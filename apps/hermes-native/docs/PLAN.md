@@ -471,4 +471,8 @@ Match the pinned Desktop image path for BMP, GIF, JPEG, PNG and WebP files. Read
 
 Extend the fixed-source image formats to SVG. Parse with `usvg::Tree::from_data_nested` so external image references are ignored, render on the existing image worker, and enforce a 16 MiB input, 16,384-pixel edge and 64-megapixel canvas bound before allocation. Test rendered SVG pixel output, malformed-document errors, and that an external `file:` image reference does not prevent local vector rendering. PDF/HTML, full source comparison, source-paired visuals and native Windows acceptance remain open; PAR-0105 remains pending.
 
+### Revision 91 — PDF page preview and navigation
+
+Match the pinned preview's supported PDF path with a bundled, license-preserving PDFium 8125 Windows x64 runtime. Bind PDFium once inside the read worker with the matching API, cap input at 16 MiB and rendered page output at 1280×1800, and expose Previous/Next controls that request only the selected page. The two-page fixture exercises navigation through the same accessible Next page button and records both visible page states. PDF continuous-scroll/zoom parity, non-Windows runtimes, HTML, exact source visuals and source-paired Windows acceptance remain open; PAR-0107 remains pending.
+
 Add `actions.fill` for accessible single- and multiline-text inputs. It validates a unique semantic locator, enabled state, payload length and current UI generation, then sends AccessKit `SetValue` through egui to replace the complete field value (including clearing it). Tests prove fill, replacement, clearing, and the structured action receipt. This complements typed keystrokes while preserving the normal widget path.

@@ -743,3 +743,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** Isolated capture completed in under ten seconds after build.
 - **risks:** Synthetic target-only screenshot does not establish source-matched behavior or live Windows acceptance.
 - **follow_up:** Continue PDF/HTML and other pinned Files behaviors, then gather source-paired evidence.
+- **id:** HUI-062
+- **timestamp:** 2026-11-15T14:36:35Z
+- **what:** Added PDF preview with worker-bound PDFium 8125, selected-page rendering, Previous/Next controls, Windows x64 DLL staging, two-page offline fixture and release-license provenance.
+- **why:** The pinned Hermes preview uses a built-in Chromium PDF viewer; plain text decoding could not preview PDFs in the native UI.
+- **components:** Hermes Native Files preview, PDFium runtime package, build script, automation fixture and documentation.
+- **type:** feature slice and validation.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 132 library + 11 automation tests; all-target feature check and `git diff --check` passed; the PDFium DLL copied beside target output has the bundled SHA-256; headless UI captured page 1 and clicked Next page to verify distinct page 2 content.
+- **performance:** PDF input capped at 16 MiB; output is constrained to 1280×1800; only the selected page is rendered and cached; PDFium work stays on the dedicated preview worker.
+- **risks:** PDF experience is page-at-a-time instead of Chromium's continuous-scroll/zoom UI; bundled binary is Windows x64 only; HTML and source-paired acceptance remain open; PAR-0107 remains pending.
+- **follow_up:** Add continuous page scrolling/zoom or a faithful native document canvas, additional platform runtimes, HTML preview, and source-paired comparisons.

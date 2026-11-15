@@ -18,6 +18,9 @@ const MAX_DIRECTORY_ENTRIES: usize = 1_000;
 const MAX_PREVIEW_BYTES: u64 = 512 * 1024;
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_IMAGE_PIXELS: u64 = 64 * 1024 * 1024;
+const MAX_PDF_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_PDF_RENDER_WIDTH: i32 = 1_280;
+const MAX_PDF_RENDER_HEIGHT: i32 = 1_800;
 const IMAGE_EXTENSIONS: &[&str] = &["bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"];
 const EXCLUDED_NAMES: &[&str] = &[
     ".git",
@@ -59,11 +62,13 @@ struct DirectoryResult {
 
 struct PreviewRequest {
     path: PathBuf,
+    page_index: usize,
     force: bool,
 }
 
 struct PreviewResult {
     path: PathBuf,
+    page_index: usize,
     result: Result<FilePreviewContent, String>,
 }
 
@@ -84,37 +89,49 @@ pub enum FilePreviewKind {
         height: usize,
         rgba: Vec<u8>,
     },
+    Pdf {
+        page_count: usize,
+        width: usize,
+        height: usize,
+        rgba: Vec<u8>,
+    },
 }
 
 #[derive(Default)]
 pub struct FilePreviewStore {
-    contents: BTreeMap<PathBuf, Result<FilePreviewContent, String>>,
-    images: BTreeMap<PathBuf, egui::TextureHandle>,
-    pending: BTreeSet<PathBuf>,
+    contents: BTreeMap<(PathBuf, usize), Result<FilePreviewContent, String>>,
+    images: BTreeMap<(PathBuf, usize), egui::TextureHandle>,
+    pending: BTreeSet<(PathBuf, usize)>,
+    pdf_page: BTreeMap<PathBuf, usize>,
     request_tx: Option<Sender<PreviewRequest>>,
     result_rx: Option<Receiver<PreviewResult>>,
 }
 
 impl FilePreviewStore {
     pub fn request(&mut self, path: &Path) {
+        let page_index = self.pdf_page.get(path).copied().unwrap_or(0);
+        self.request_page(path, page_index, false);
+    }
+
+    fn request_page(&mut self, path: &Path, page_index: usize, force: bool) {
         self.ensure_worker();
         self.poll();
-        if !self.contents.contains_key(path) && !self.pending.contains(path) {
+        let key = (path.to_path_buf(), page_index);
+        if !self.contents.contains_key(&key) && !self.pending.contains(&key) {
             if self.pending.len() < 8 {
-                self.pending.insert(path.to_path_buf());
+                self.pending.insert(key.clone());
                 let sent = self.request_tx.as_ref().is_some_and(|tx| {
                     tx.send(PreviewRequest {
                         path: path.to_path_buf(),
-                        force: false,
+                        page_index,
+                        force,
                     })
                     .is_ok()
                 });
                 if !sent {
-                    self.pending.remove(path);
-                    self.contents.insert(
-                        path.to_path_buf(),
-                        Err("File preview worker stopped".into()),
-                    );
+                    self.pending.remove(&key);
+                    self.contents
+                        .insert(key, Err("File preview worker stopped".into()));
                 }
             }
         }
@@ -123,7 +140,10 @@ impl FilePreviewStore {
     pub fn open(&mut self, ui: &mut egui::Ui, path: &Path, markdown_cache: &mut CommonMarkCache) {
         self.request(path);
         let mut force_preview = false;
-        match self.contents.get(path) {
+        let page_index = self.pdf_page.get(path).copied().unwrap_or(0);
+        let key = (path.to_path_buf(), page_index);
+        let mut next_pdf_page = None;
+        match self.contents.get(&key) {
             Some(Ok(content)) => match &content.kind {
                 FilePreviewKind::Text {
                     text,
@@ -160,7 +180,7 @@ impl FilePreviewStore {
                     height,
                     rgba,
                 } => {
-                    let texture = self.images.entry(path.to_path_buf()).or_insert_with(|| {
+                    let texture = self.images.entry(key.clone()).or_insert_with(|| {
                         let image =
                             egui::ColorImage::from_rgba_unmultiplied([*width, *height], rgba);
                         ui.ctx().load_texture(
@@ -176,6 +196,43 @@ impl FilePreviewStore {
                             ui.image(&*texture);
                         });
                 }
+                FilePreviewKind::Pdf {
+                    page_count,
+                    width,
+                    height,
+                    rgba,
+                } => {
+                    let texture = self.images.entry(key.clone()).or_insert_with(|| {
+                        let image =
+                            egui::ColorImage::from_rgba_unmultiplied([*width, *height], rgba);
+                        ui.ctx().load_texture(
+                            format!("hermes-file-preview-pdf:{}:{page_index}", path.display()),
+                            image,
+                            egui::TextureOptions::LINEAR,
+                        )
+                    });
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(page_index > 0, egui::Button::new("Previous page"))
+                            .clicked()
+                        {
+                            next_pdf_page = Some(page_index.saturating_sub(1));
+                        }
+                        ui.label(format!("Page {} of {page_count}", page_index + 1));
+                        if ui
+                            .add_enabled(
+                                page_index + 1 < *page_count,
+                                egui::Button::new("Next page"),
+                            )
+                            .clicked()
+                        {
+                            next_pdf_page = Some(page_index + 1);
+                        }
+                    });
+                    egui::ScrollArea::both()
+                        .id_salt(("hermes-file-preview-pdf", path, page_index))
+                        .show(ui, |ui| ui.image(&*texture));
+                }
             },
             Some(Err(error)) => {
                 ui.vertical_centered(|ui| {
@@ -188,7 +245,7 @@ impl FilePreviewStore {
                     }
                 });
             }
-            None if self.pending.contains(path) => {
+            None if self.pending.contains(&key) => {
                 ui.centered_and_justified(|ui| {
                     ui.label("Loading file preview…");
                 });
@@ -202,31 +259,36 @@ impl FilePreviewStore {
         if force_preview {
             self.request_force(path);
         }
+        if let Some(page_index) = next_pdf_page {
+            self.pdf_page.insert(path.to_path_buf(), page_index);
+            self.request_page(path, page_index, false);
+        }
     }
 
     fn request_force(&mut self, path: &Path) {
-        self.contents.remove(path);
-        self.pending.remove(path);
+        let page_index = self.pdf_page.get(path).copied().unwrap_or(0);
+        let key = (path.to_path_buf(), page_index);
+        self.contents.remove(&key);
+        self.pending.remove(&key);
         self.ensure_worker();
         if self.pending.len() >= 8 {
             self.contents
-                .insert(path.to_path_buf(), Err("Preview queue is full".into()));
+                .insert(key, Err("Preview queue is full".into()));
             return;
         }
-        self.pending.insert(path.to_path_buf());
+        self.pending.insert(key.clone());
         let sent = self.request_tx.as_ref().is_some_and(|tx| {
             tx.send(PreviewRequest {
                 path: path.to_path_buf(),
+                page_index,
                 force: true,
             })
             .is_ok()
         });
         if !sent {
-            self.pending.remove(path);
-            self.contents.insert(
-                path.to_path_buf(),
-                Err("File preview worker stopped".into()),
-            );
+            self.pending.remove(&key);
+            self.contents
+                .insert(key, Err("File preview worker stopped".into()));
         }
     }
 
@@ -238,8 +300,10 @@ impl FilePreviewStore {
         loop {
             match receiver.try_recv() {
                 Ok(result) => {
-                    self.pending.remove(&result.path);
-                    self.contents.insert(result.path, result.result);
+                    self.pending
+                        .remove(&(result.path.clone(), result.page_index));
+                    self.contents
+                        .insert((result.path, result.page_index), result.result);
                     changed = true;
                 }
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
@@ -257,11 +321,39 @@ impl FilePreviewStore {
         let spawn = thread::Builder::new()
             .name("hermes-file-preview".into())
             .spawn(move || {
+                let mut pdfium: Option<Result<pdfium_render::prelude::Pdfium, String>> = None;
                 while let Ok(request) = request_rx.recv() {
-                    let result = read_file_preview(&request.path, request.force);
+                    let is_pdf = request
+                        .path
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"));
+                    let result = if is_pdf {
+                        if pdfium.is_none() {
+                            pdfium = Some(load_pdfium());
+                        }
+                        match pdfium.as_ref() {
+                            Some(Ok(pdfium)) => read_file_preview_with_pdfium(
+                                &request.path,
+                                request.force,
+                                request.page_index,
+                                Some(pdfium),
+                            ),
+                            Some(Err(error)) => Err(error.clone()),
+                            None => Err("PDF renderer initialization failed".into()),
+                        }
+                    } else {
+                        read_file_preview_with_pdfium(
+                            &request.path,
+                            request.force,
+                            request.page_index,
+                            None,
+                        )
+                    };
                     if result_tx
                         .send(PreviewResult {
                             path: request.path,
+                            page_index: request.page_index,
                             result,
                         })
                         .is_err()
@@ -569,7 +661,17 @@ impl FileBrowserState {
     }
 }
 
+#[cfg(test)]
 fn read_file_preview(path: &Path, force: bool) -> Result<FilePreviewContent, String> {
+    read_file_preview_with_pdfium(path, force, 0, None)
+}
+
+fn read_file_preview_with_pdfium(
+    path: &Path,
+    force: bool,
+    page_index: usize,
+    pdfium: Option<&pdfium_render::prelude::Pdfium>,
+) -> Result<FilePreviewContent, String> {
     let metadata = fs::metadata(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
     if !metadata.is_file() {
         return Err("Only regular files can be previewed".into());
@@ -581,6 +683,12 @@ fn read_file_preview(path: &Path, force: bool) -> Result<FilePreviewContent, Str
         .to_ascii_lowercase();
     if IMAGE_EXTENSIONS.contains(&extension.as_str()) {
         return read_image_preview(path, metadata.len());
+    }
+    if extension == "pdf" {
+        let Some(pdfium) = pdfium else {
+            return Err("PDF renderer is unavailable".into());
+        };
+        return read_pdf_preview(path, metadata.len(), page_index, pdfium);
     }
     if metadata.len() > MAX_PREVIEW_BYTES && !force {
         return Err(format!(
@@ -623,6 +731,79 @@ fn read_file_preview(path: &Path, force: bool) -> Result<FilePreviewContent, Str
             text,
             language,
             truncated,
+        },
+    })
+}
+
+fn pdfium_library_path() -> Result<PathBuf, String> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf));
+    let candidates = [
+        exe_dir.map(|directory| directory.join("pdfium-8125.dll")),
+        Some(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("assets/pdfium/chromium-8125/bin/pdfium.dll"),
+        ),
+    ];
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|path| path.is_file())
+        .ok_or_else(|| "Bundled PDFium 8125 runtime is missing".into())
+}
+
+fn load_pdfium() -> Result<pdfium_render::prelude::Pdfium, String> {
+    let path = pdfium_library_path()?;
+    let bindings = pdfium_render::prelude::Pdfium::bind_to_library(&path)
+        .map_err(|error| format!("Unable to load PDFium runtime: {error}"))?;
+    Ok(pdfium_render::prelude::Pdfium::new(bindings))
+}
+
+fn read_pdf_preview(
+    path: &Path,
+    file_size: u64,
+    page_index: usize,
+    pdfium: &pdfium_render::prelude::Pdfium,
+) -> Result<FilePreviewContent, String> {
+    if file_size > MAX_PDF_BYTES {
+        return Err(format!(
+            "PDF exceeds the {MAX_PDF_BYTES}-byte preview limit"
+        ));
+    }
+    let bytes = fs::read(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
+    if !bytes.starts_with(b"%PDF-") {
+        return Err("Invalid PDF file header".into());
+    }
+    let document = pdfium
+        .load_pdf_from_byte_vec(bytes, None)
+        .map_err(|error| format!("Unable to open PDF: {error}"))?;
+    let page_count = document.pages().len() as usize;
+    if page_count == 0 {
+        return Err("PDF contains no pages".into());
+    }
+    let page = document
+        .pages()
+        .get(page_index as _)
+        .map_err(|error| format!("Unable to open PDF page {}: {error}", page_index + 1))?;
+    let bitmap = page
+        .render_with_config(
+            &pdfium_render::prelude::PdfRenderConfig::new()
+                .set_maximum_width(MAX_PDF_RENDER_WIDTH)
+                .set_maximum_height(MAX_PDF_RENDER_HEIGHT),
+        )
+        .map_err(|error| format!("Unable to render PDF page {}: {error}", page_index + 1))?;
+    let width = bitmap.width() as usize;
+    let height = bitmap.height() as usize;
+    if width == 0 || height == 0 || (width as u64) * (height as u64) > MAX_IMAGE_PIXELS {
+        return Err("PDF page dimensions exceed the preview limit".into());
+    }
+    Ok(FilePreviewContent {
+        kind: FilePreviewKind::Pdf {
+            page_count,
+            width,
+            height,
+            rgba: bitmap.as_rgba_bytes(),
         },
     })
 }
@@ -917,6 +1098,102 @@ mod tests {
                 .contains("Unable to parse SVG")
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn pdf_preview_renders_selected_page_with_bounded_output() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("hermes-pdf-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("sample.pdf");
+        write_test_pdf(
+            &path,
+            &["1 0 0 rg 0 0 100 100 re f", "0 0 1 rg 0 0 100 100 re f"],
+        );
+        let pdfium = load_pdfium().expect("bundled PDFium runtime must load for its preview test");
+        let first = read_file_preview_with_pdfium(&path, false, 0, Some(&pdfium)).unwrap();
+        let second = read_file_preview_with_pdfium(&path, false, 1, Some(&pdfium)).unwrap();
+        let FilePreviewKind::Pdf {
+            page_count: 2,
+            width,
+            height,
+            rgba: first_rgba,
+        } = first.kind
+        else {
+            panic!("expected first PDF page preview");
+        };
+        let FilePreviewKind::Pdf {
+            page_count: 2,
+            rgba: second_rgba,
+            ..
+        } = second.kind
+        else {
+            panic!("expected second PDF page preview");
+        };
+        assert!(width <= MAX_PDF_RENDER_WIDTH as usize);
+        assert!(height <= MAX_PDF_RENDER_HEIGHT as usize);
+        assert_ne!(first_rgba, second_rgba);
+
+        let malformed = root.join("bad.pdf");
+        fs::write(&malformed, b"not a pdf").unwrap();
+        assert!(
+            read_file_preview_with_pdfium(&malformed, false, 0, Some(&pdfium))
+                .unwrap_err()
+                .contains("Invalid PDF file header")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn write_test_pdf(path: &Path, page_contents: &[&str]) {
+        let mut objects = vec![
+            "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+            format!(
+                "<< /Type /Pages /Count {} /Kids [{}] >>",
+                page_contents.len(),
+                (0..page_contents.len())
+                    .map(|index| format!("{} 0 R", 3 + index * 2))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+        ];
+        for (index, content) in page_contents.iter().enumerate() {
+            let page_id = 3 + index * 2;
+            let content_id = page_id + 1;
+            objects.push(format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] /Resources << >> /Contents {content_id} 0 R >>"
+            ));
+            objects.push(format!(
+                "<< /Length {} >>\nstream\n{}\nendstream",
+                content.len(),
+                content
+            ));
+        }
+        let mut bytes = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::with_capacity(objects.len() + 1);
+        offsets.push(0usize);
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(bytes.len());
+            bytes
+                .extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+        }
+        let xref_offset = bytes.len();
+        bytes.extend_from_slice(
+            format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len()).as_bytes(),
+        );
+        for offset in offsets.iter().skip(1) {
+            bytes.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        bytes.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+                offsets.len()
+            )
+            .as_bytes(),
+        );
+        fs::write(path, bytes).unwrap();
     }
 
     #[test]

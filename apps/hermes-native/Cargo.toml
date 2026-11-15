@@ -25,6 +25,7 @@ zeroize = "1"
 egui_commonmark = { version = "0.26.0", default-features = false, features = ["pulldown_cmark", "better_syntax_highlighting"] }
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 resvg = { version = "0.49.0", default-features = false, features = ["raster-images", "system-fonts", "text"] }
+pdfium-render = { version = "=0.9.5", default-features = false, features = ["pdfium_8125"] }
 time = { version = "0.3.55", features = ["formatting", "local-offset"] }
 
 [[bin]]

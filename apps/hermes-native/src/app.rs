@@ -696,6 +696,7 @@ fn render_message() -> &'static str {
         root: &std::path::Path,
         image_preview: bool,
         svg_preview: bool,
+        pdf_preview: bool,
     ) -> Result<(), String> {
         std::fs::create_dir_all(root)
             .map_err(|error| format!("create fixture project: {error}"))?;
@@ -732,6 +733,9 @@ fn render_message() -> &'static str {
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"><rect width="320" height="180" fill="#252d3a"/><circle cx="160" cy="90" r="64" fill="#4990e0"/><path d="M120 90h80M160 50v80" stroke="#ffffff" stroke-width="8"/></svg>"##,
         )
         .map_err(|error| format!("write fixture vector: {error}"))?;
+        let pdf_path = root.join("preview.pdf");
+        std::fs::write(&pdf_path, pdf_preview_fixture_bytes())
+            .map_err(|error| format!("write fixture PDF: {error}"))?;
 
         let session_id = "files-preview-fixture";
         let profile = "fixture-profile";
@@ -755,7 +759,7 @@ fn render_message() -> &'static str {
         });
         self.transcript = vec![
             json!({"role":"user","content":"Show the project files."}),
-            json!({"role":"assistant","content": if svg_preview { "The SVG image is open in a transient preview pane." } else if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
+            json!({"role":"assistant","content": if pdf_preview { "The two-page PDF is open in a transient preview pane." } else if svg_preview { "The SVG image is open in a transient preview pane." } else if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
         ];
         self.workspace
             .preferences
@@ -764,7 +768,9 @@ fn render_message() -> &'static str {
         self.workspace.apply_active_profile()?;
         self.files.set_root(Some(root.to_path_buf()));
 
-        let preview_path = if svg_preview {
+        let preview_path = if pdf_preview {
+            pdf_path
+        } else if svg_preview {
             svg_path
         } else if image_preview {
             image_path
@@ -9056,6 +9062,48 @@ fn render_message() -> &'static str {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
+}
+
+#[cfg(feature = "agent-automation")]
+fn pdf_preview_fixture_bytes() -> Vec<u8> {
+    let mut objects = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+        "<< /Type /Pages /Count 2 /Kids [3 0 R 5 0 R] >>".to_owned(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 320 180] /Resources << >> /Contents 4 0 R >>"
+            .to_owned(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 320 180] /Resources << >> /Contents 6 0 R >>"
+            .to_owned(),
+    ];
+    for content in [
+        "0.2 0.5 0.9 rg 0 0 320 180 re f",
+        "0.9 0.4 0.2 rg 0 0 320 180 re f",
+    ] {
+        let page_stream = format!(
+            "<< /Length {} >>\nstream\n{}\nendstream",
+            content.len(),
+            content
+        );
+        objects.insert(if objects.len() == 4 { 3 } else { 5 }, page_stream);
+    }
+    let mut bytes = b"%PDF-1.4\n".to_vec();
+    let mut offsets = vec![0usize];
+    for (index, object) in objects.iter().enumerate() {
+        offsets.push(bytes.len());
+        bytes.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+    }
+    let xref_offset = bytes.len();
+    bytes.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len()).as_bytes());
+    for offset in offsets.iter().skip(1) {
+        bytes.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+    }
+    bytes.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+            offsets.len()
+        )
+        .as_bytes(),
+    );
+    bytes
 }
 
 fn merge_older_transcript_page(

@@ -1,0 +1,12 @@
+{
+  "notes": "Matches pdfium-render bindings for API 8125. Archive from immutable GitHub release tag chromium/8125; archive and extracted DLL hashes measured locally.",
+  "third_party_licenses_path": "licenses/",
+  "dll_sha256": "4b0dec92555d69437bef0df37be630181ab3e83a6823ca264ede355a4f2ef994",
+  "pdfium_api": "chromium/8125",
+  "archive_url": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8125/pdfium-win-x64.tgz",
+  "component": "PDFium Windows x64 runtime",
+  "license_path": "LICENSE",
+  "archive_sha256": "9a964261760cff52570aabf038ab346d3a5034dd8b30d0d5fe8861235d356b8b",
+  "dll_path": "bin/pdfium.dll",
+  "version": "158.0.8125.0"
+}
