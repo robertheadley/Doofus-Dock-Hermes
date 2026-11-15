@@ -1166,3 +1166,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No benchmark performed.
   **risks:** Local automated coverage does not establish visual parity or physical Windows acceptance.
   **follow_up:** Source-pair the Files tree and previews against the fixed snapshot before closing those matrix rows.
+
+- **id:** HUR-001-087
+  **timestamp:** 2026-11-15T13:42:30Z
+  **what:** Published the reviewed transient Files preview slice to origin/main.
+  **why:** Deliver approved parity work in small, validated increments on the selected repository.
+  **components:** Doofus-Dock-Hermes repository, main branch.
+  **type:** publication
+  **validation:** Commit 121b486 pushed successfully; full feature test/check and diff validation completed before commit.
+  **performance:** Not applicable.
+  **risks:** Publication does not establish source-paired visual parity or complete Files behavior.
+  **follow_up:** Continue from the fixed source pin; navigate to target states before capturing screenshots.
