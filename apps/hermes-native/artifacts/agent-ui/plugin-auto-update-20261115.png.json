@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "request_id": "hermes-ui-parity-20261115-plugin-auto-update",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "base_head": "a0cf840900a2f91d418c84f2c3edb0b063835ce6",
+  "source_diff_sha256": "dbc4de5e4b7dd7c0edf5f25739f8215ca910e8b36850cbe414ed3a3b4eae9db95",
+  "automation_binary_sha256": "c432d6d6d4f20a19ee888cdaf04c3d01693794e83cbc3a94496e768a5514f990",
+  "screenshot_sha256": "ccb0b8da053cfaf5e48530fa1ab0ef0b9fcb87fee35b1facf15089c3a64bf915",
+  "viewport": { "width": 1440, "height": 900 },
+  "route": "/capabilities?tab=plugins",
+  "fixture": "synthetic profile automatic plugin update preference; no Hermes gateway transport",
+  "state": {
+    "profile": "default synthetic profile",
+    "auto_apply": true,
+    "check_hours": 12,
+    "gateway_transport": "absent",
+    "gateway_connected_ui_flag": true
+  },
+  "capture_method": "hermes-automation --plugin-auto-update-fixture --screenshot",
+  "access_receipt": "AccessKit test verifies the setting label, offline disabling, unsupported-backend hiding, and that action attempts fail closed while disconnected. WebSocket fixture verifies exact profile-scoped read/write RPC parameters and checked receipts.",
+  "visual_review": "Distinct 1440x900 Plugins view shows the enabled Automatic plugin updates setting above installed Agent Plugin inventory; visually inspected.",
+  "limitations": [
+    "synthetic connected flag is seeded only to render the control; screenshot fixture activates no setting",
+    "no Hermes gateway or installed profile was accessed",
+    "automatic update-all, source-paired Windows comparison and live profile acceptance remain open"
+  ]
+}

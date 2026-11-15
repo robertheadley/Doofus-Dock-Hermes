@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 69 (implementation in progress).
+- **Working revision:** 70 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -388,3 +388,8 @@ Add catalog-row Install actions and a registered agent action that share one pat
 ### Revision 69 — Agent Plugin update consent and scan review
 
 Add an Update-to-target control to eligible installed Agent Plugin rows and a shared registered agent action. Issue profile-scoped `plugins.manage action=update` requests. When Hermes returns `consent_required`, show the target pin and bounded capability-delta lines and resubmit only after explicit acceptance using `accept_capabilities=true`. When Hermes returns a scan block, surface severity-sorted findings; only `caution` allows a confirmation that resubmits with `force=true`, while `dangerous` remains non-overridable. Preserve already accepted options across subsequent backend gates, correlate every outcome to name/profile/options, and reload the inventory after applied updates. An isolated WebSocket fixture covers consent → caution → explicit override → applied; AccessKit fixtures cover the caution review and dangerous disabled state. Desktop-half reconciliation, uncertain live update resolution, update-all, paired source visuals and live profile acceptance remain open.
+
+### Revision 70 — profile-scoped automatic Agent Plugin updates
+
+Read and write the pinned Desktop `plugins.manage action=auto_update` setting for the selected profile. Render the Automatic plugin updates checkbox only when the backend returns supported settings; keep it hidden on unsupported/error responses as the pinned Desktop does. The setting includes backend-provided `check_hours`, and the tooltip clarifies that capability widening and caution-scan reviews still require user approval. The human checkbox and registered `set_agent_plugin_auto_update` action share one profile-fenced handler. Correlate read/write responses by request ID and profile, validate interval bounds, preserve the old value when a write fails, disable changes while offline/in-flight, and clear scoped state on disconnect. An isolated WebSocket fixture checks exact read/write parameters and receipts; AccessKit coverage verifies the control is discoverable but disabled offline. Update-all, live profile acceptance and source-paired visual evidence remain open.
+Revision 70 implementation note: the downloaded source contract provides check_hours as backend data but specifies no allowed range. Native validates that the receipt is a nonnegative integer and preserves the backend value without a guessed client-side range.

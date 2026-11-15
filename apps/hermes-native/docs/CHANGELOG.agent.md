@@ -932,3 +932,13 @@ Validation: 111 library tests and 7 automation tests passed; formatting, default
 Change record: id `HUI-040`; type `feature`; components `Plugins catalog, gateway actor, agent action registry, headless fixture`; performance `no benchmarked runtime change`; risks `backend update may produce an unknown outcome after disconnect and requires fresh inventory reconciliation`; follow-up `implement Desktop-half reconciliation and uncertain update handling, then pursue remaining pinned-source workflows and paired acceptance`.
 
 HUI-040 publication: implementation commit `b6e3686` was pushed to `main` after verifying its parent matched `origin/main`; publication evidence is appended separately.
+
+### HUI-041 — profile-scoped automatic Agent Plugin updates
+
+Added the pinned Desktop plugins.manage auto_update read/write control to the Plugins inventory. The accessible checkbox appears only when the backend supports the operation, uses the selected profile, and shows the backend-provided check interval. Shared UI and agent action handling validates profile state, correlates request IDs, disables writes offline or while a write is pending, preserves the previous setting on write errors, and clears scoped state on disconnect. Unsupported backends keep the control hidden.
+
+Validation: 112 library tests and 7 automation tests passed; formatting, default/all-target builds, fixed-source package validation and diff check passed. The 565-row research inventory remains pending and optional PyYAML parsing was skipped. The 1440x900 synthetic auto-update UI screenshot was visually inspected; no Hermes gateway/profile was used. No runtime performance benchmark was taken.
+
+Change record: id HUI-041; type feature; components Plugins inventory, gateway actor, shared UI action registry, headless fixture; performance no benchmarked runtime change; risks setting is unavailable on backend versions without plugins.manage auto_update; follow-up implement update-all, desktop/package reconciliation, remaining pinned-source workflows and source-paired acceptance.
+
+Validation correction for HUI-041: after adding the interval parser boundary test, the final complete suite passed 113 library tests and 7 automation tests. The default and all-target checks, package validation, screenshot and sidecar validation also passed.

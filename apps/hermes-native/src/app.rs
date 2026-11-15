@@ -1,8 +1,8 @@
 use crate::gateway::{
-    AgentPluginInfo, AgentPluginInspection, AgentPluginScanFinding, AgentPluginUpdateOutcome,
-    AgentPluginsSnapshot, CapabilitiesSnapshot, ConnectorsSnapshot, GatewayDiscovery,
-    GatewayEndpoint, GatewayEvent, PromptSubmitReceipt, SessionSearchResult, SessionSummary,
-    SkillInfo, ToolsetInfo,
+    AgentPluginAutoUpdateSettings, AgentPluginInfo, AgentPluginInspection, AgentPluginScanFinding,
+    AgentPluginUpdateOutcome, AgentPluginsSnapshot, CapabilitiesSnapshot, ConnectorsSnapshot,
+    GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt, SessionSearchResult,
+    SessionSummary, SkillInfo, ToolsetInfo,
 };
 use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
@@ -64,6 +64,9 @@ pub enum RegisteredUiAction {
     },
     RequestAgentPluginUpdate {
         name: String,
+    },
+    SetAgentPluginAutoUpdate {
+        enabled: bool,
     },
     RequestCatalogPluginInstall {
         name: String,
@@ -168,6 +171,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
             ,{"type":"request_agent_plugin_update","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded manageable plugin with an available update"}}
+            ,{"type":"set_agent_plugin_auto_update","permission":"ui_interaction","mutates":true,"schema":{"enabled":"boolean; selected Hermes profile; available when plugins.manage auto_update is supported"}}
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
@@ -253,6 +257,13 @@ struct PendingAgentPluginUpdate {
     request_id: String,
     enabled: bool,
     profile: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingAgentPluginAutoUpdate {
+    request_id: String,
+    profile: Option<String>,
+    enabled: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -444,6 +455,8 @@ pub struct HermesNativeApp {
     agent_plugins_request_id: Option<String>,
     agent_plugins_pending: bool,
     agent_plugins_error: Option<String>,
+    agent_plugin_auto_update: Option<(Option<String>, AgentPluginAutoUpdateSettings)>,
+    pending_agent_plugin_auto_update: Option<PendingAgentPluginAutoUpdate>,
     pending_agent_plugin_updates: BTreeMap<String, PendingAgentPluginUpdate>,
     pending_agent_plugin_catalog_updates: BTreeMap<String, PendingAgentPluginCatalogUpdate>,
     agent_plugin_update_dialog: Option<AgentPluginUpdateDialog>,
@@ -753,6 +766,23 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_plugin_auto_update_fixture_for_automation(&mut self) {
+        self.load_plugin_catalog_fixture_for_automation();
+        self.agent_plugins_profile = None;
+        self.agent_plugin_auto_update = Some((
+            None,
+            AgentPluginAutoUpdateSettings {
+                auto_apply: true,
+                check_hours: 12,
+            },
+        ));
+        // Seed only the displayed connected state. The fixture has no transport
+        // and no action is activated during screenshot capture.
+        self.gateway_connected = true;
+        self.status = "Automatic plugin updates · synthetic profile".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_connectors_fixture_for_automation(&mut self) {
         self.route = AppRoute::Capabilities;
         self.capabilities_tab = CapabilitiesTab::Connectors;
@@ -876,6 +906,8 @@ fn render_message() -> &'static str {
             agent_plugins_request_id: None,
             agent_plugins_pending: false,
             agent_plugins_error: None,
+            agent_plugin_auto_update: None,
+            pending_agent_plugin_auto_update: None,
             pending_agent_plugin_updates: BTreeMap::new(),
             pending_agent_plugin_catalog_updates: BTreeMap::new(),
             agent_plugin_update_dialog: None,
@@ -2550,6 +2582,38 @@ fn render_message() -> &'static str {
                         );
                     }
                 });
+                if let Some((profile, settings)) = self.agent_plugin_auto_update.clone()
+                    && self.agent_plugins_profile == profile
+                    && self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone())
+                        == profile
+                {
+                    ui.horizontal(|ui| {
+                        let mut enabled = settings.auto_apply;
+                        let toggle = ui
+                            .add_enabled(
+                                self.gateway_connected
+                                    && self.pending_agent_plugin_auto_update.is_none(),
+                                egui::Checkbox::new(&mut enabled, "Automatic plugin updates"),
+                            )
+                            .on_hover_text(format!(
+                                "Checks every {} hours. Updates requiring capability or scan review still need your approval.",
+                                settings.check_hours
+                            ))
+                            .accessible_name("Automatic plugin updates for this profile");
+                        if toggle.changed() {
+                            self.execute_registered_action(
+                                RegisteredUiAction::SetAgentPluginAutoUpdate { enabled },
+                            )
+                            .unwrap_or_else(|error| self.status = error);
+                        }
+                        if self.pending_agent_plugin_auto_update.is_some() {
+                            ui.label(RichText::new("Saving…").size(10.0).color(MUTED));
+                        }
+                    });
+                }
                 if self.agent_plugins_pending && self.agent_plugins.is_none() {
                     ui.label(
                         RichText::new("Loading installed plugins…")
@@ -5382,6 +5446,9 @@ fn render_message() -> &'static str {
             RegisteredUiAction::RequestAgentPluginUpdate { name } => {
                 self.request_agent_plugin_update(name)?;
             }
+            RegisteredUiAction::SetAgentPluginAutoUpdate { enabled } => {
+                self.set_agent_plugin_auto_update(enabled)?;
+            }
             RegisteredUiAction::RequestCatalogPluginInstall { name } => {
                 self.request_catalog_plugin_install(name)?;
             }
@@ -5452,6 +5519,68 @@ fn render_message() -> &'static str {
         self.agent_plugins_request_id = Some(request_id);
         self.agent_plugins_pending = true;
         self.agent_plugins_error = None;
+        self.load_agent_plugin_auto_update()
+            .unwrap_or_else(|error| self.status = error);
+        Ok(())
+    }
+
+    fn load_agent_plugin_auto_update(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before loading automatic plugin updates".into());
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self
+            .pending_agent_plugin_auto_update
+            .as_ref()
+            .is_some_and(|pending| pending.profile == profile && pending.enabled.is_none())
+        {
+            return Ok(());
+        }
+        let request_id = operation_id("agent-plugin-auto-update-read");
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway reader is unavailable".to_owned())?
+            .load_agent_plugin_auto_update(request_id.clone(), profile.clone())?;
+        self.pending_agent_plugin_auto_update = Some(PendingAgentPluginAutoUpdate {
+            request_id,
+            profile,
+            enabled: None,
+        });
+        Ok(())
+    }
+
+    fn set_agent_plugin_auto_update(&mut self, enabled: bool) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before changing automatic plugin updates".into());
+        }
+        if self.pending_agent_plugin_auto_update.is_some() {
+            return Err("Automatic plugin update setting is already changing".into());
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let Some((loaded_profile, _)) = self.agent_plugin_auto_update.as_ref() else {
+            return Err("Automatic plugin updates are unavailable for this Hermes profile".into());
+        };
+        if *loaded_profile != profile || self.agent_plugins_profile != profile {
+            return Err(
+                "Plugin settings belong to a different profile; refresh the inventory".into(),
+            );
+        }
+        let request_id = operation_id("agent-plugin-auto-update-set");
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
+            .set_agent_plugin_auto_update(request_id.clone(), profile.clone(), enabled)?;
+        self.pending_agent_plugin_auto_update = Some(PendingAgentPluginAutoUpdate {
+            request_id,
+            profile,
+            enabled: Some(enabled),
+        });
         Ok(())
     }
 
@@ -7626,6 +7755,69 @@ fn render_message() -> &'static str {
                         Err(error) => self.agent_plugins_error = Some(error),
                     }
                 }
+                GatewayEvent::AgentPluginAutoUpdateLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_agent_plugin_auto_update.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.enabled.is_some()
+                        || pending.profile != profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.pending_agent_plugin_auto_update = None;
+                    match result {
+                        Ok(settings) => {
+                            self.agent_plugin_auto_update = Some((profile, settings));
+                        }
+                        Err(_) => {
+                            // The pinned Desktop hides this control when the backend does not
+                            // implement plugins.manage auto_update (or cannot read its state).
+                            self.agent_plugin_auto_update = None;
+                        }
+                    }
+                }
+                GatewayEvent::AgentPluginAutoUpdateSet {
+                    request_id,
+                    profile,
+                    enabled,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_agent_plugin_auto_update.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.enabled != Some(enabled)
+                        || pending.profile != profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.pending_agent_plugin_auto_update = None;
+                    match result {
+                        Ok(settings) => {
+                            self.agent_plugin_auto_update = Some((profile, settings));
+                            self.status = format!(
+                                "Automatic plugin updates {}",
+                                if enabled { "enabled" } else { "disabled" }
+                            );
+                        }
+                        Err(error) => self.status = error,
+                    }
+                }
                 GatewayEvent::AgentPluginInspected {
                     request_id,
                     catalog_name,
@@ -7995,6 +8187,8 @@ fn render_message() -> &'static str {
                     self.capabilities_request_id = None;
                     self.agent_plugins_pending = false;
                     self.agent_plugins_request_id = None;
+                    self.agent_plugin_auto_update = None;
+                    self.pending_agent_plugin_auto_update = None;
                     if !self.pending_agent_plugin_updates.is_empty() {
                         self.pending_agent_plugin_updates.clear();
                         self.agent_plugins_error = Some(
@@ -9575,6 +9769,14 @@ mod tests {
     fn installed_plugin_fixture_exposes_profile_row_and_offline_action_fails_closed() {
         let (mut app, profile) = isolated_app();
         app.load_plugin_catalog_fixture_for_automation();
+        app.agent_plugins_profile = None;
+        app.agent_plugin_auto_update = Some((
+            None,
+            AgentPluginAutoUpdateSettings {
+                auto_apply: false,
+                check_hours: 12,
+            },
+        ));
         let harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1440.0, 900.0))
             .build_ui(|ui| app.draw(ui));
@@ -9582,6 +9784,14 @@ mod tests {
             .query_by_label("Agent plugin: Legacy Helper")
             .expect("installed plugin has a semantic toggle");
         assert_eq!(format!("{:?}", toggle.accesskit_node().role()), "CheckBox");
+        assert!(
+            harness
+                .query_by_label("Automatic plugin updates for this profile")
+                .expect("supported profile setting is accessible")
+                .accesskit_node()
+                .is_disabled(),
+            "automatic updates are not actionable while disconnected"
+        );
         assert!(
             harness
                 .query_all_by(|node| node.value().as_deref() == Some("Update available · 1.3.0"))
@@ -9596,6 +9806,24 @@ mod tests {
                 .accesskit_node()
                 .is_disabled(),
             "update action stays disabled while the gateway is disconnected"
+        );
+        drop(harness);
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::SetAgentPluginAutoUpdate {
+                enabled: true,
+            })
+            .expect_err("automatic update setting must be rejected offline")
+            .contains("Connect to Hermes")
+        );
+        app.agent_plugin_auto_update = None;
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_by_label("Automatic plugin updates for this profile")
+                .is_none(),
+            "unsupported backends do not display the preference control"
         );
         drop(harness);
         assert!(
@@ -9916,6 +10144,13 @@ mod tests {
                 .expect("action catalog array")
                 .iter()
                 .any(|action| action["type"] == "request_agent_plugin_removal")
+        );
+        assert!(
+            registered_ui_action_catalog()["actions"]
+                .as_array()
+                .expect("action catalog array")
+                .iter()
+                .any(|action| action["type"] == "set_agent_plugin_auto_update")
         );
         assert!(
             registered_ui_action_catalog()["actions"]
@@ -12285,6 +12520,12 @@ impl HermesNativeApp {
                 "installed_plugins_bundled_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.bundled_count),
                 "plugin_updates_pending": self.pending_agent_plugin_updates.len(),
                 "plugin_catalog_updates_pending": self.pending_agent_plugin_catalog_updates.len(),
+                "plugin_auto_update": self.agent_plugin_auto_update.as_ref().map(|(profile, settings)| json!({
+                    "profile": profile,
+                    "auto_apply": settings.auto_apply,
+                    "check_hours": settings.check_hours,
+                })),
+                "plugin_auto_update_pending": self.pending_agent_plugin_auto_update.is_some(),
                 "plugin_update_review": self.agent_plugin_update_dialog.as_ref().map(|dialog| match &dialog.review {
                     AgentPluginUpdateReview::Consent { .. } => json!({"name":dialog.name,"kind":"consent","profile":dialog.profile}),
                     AgentPluginUpdateReview::Scan { verdict, findings } => json!({"name":dialog.name,"kind":"scan","verdict":verdict,"finding_count":findings.len(),"profile":dialog.profile}),

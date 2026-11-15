@@ -499,3 +499,11 @@ Add profile-scoped Agent Plugin updates with capability-consent and malware-scan
 Validation: 111 library and 7 automation tests passed; formatting, default/all-target checks, package validation and diff check passed. The 565-row inventory remains pending and optional PyYAML was skipped. The synthetic screenshot was inspected without connecting to Hermes. No runtime benchmark was taken. See app-level HUI-040 and execution records.
 
 HUI-040 publication: implementation commit `b6e3686` is published on `main` after confirming parent `2be5378` against `origin/main`.
+
+### HUI-041 — profile-scoped automatic Agent Plugin updates
+
+Add the pinned Desktop plugins.manage auto_update preference to the Plugins inventory, scoped to the selected profile. The control is hidden when unsupported, preserves the backend check interval, and shares one receipt-fenced handler between the visible checkbox and agent action. Offline, stale-profile and in-flight writes fail closed. A synthetic UI fixture and isolated WebSocket contract test cover the new surface.
+
+Validation: 112 library and 7 automation tests passed; formatting, default/all-target checks, fixed-source package validation and diff check passed. The 565-row research inventory remains pending; optional PyYAML was skipped. The screenshot was visually inspected without connecting to Hermes. No runtime benchmark was taken. See app-level HUI-041 and execution records.
+
+Validation correction for HUI-041: the final complete suite passed 113 library tests and 7 automation tests after adding backend interval parsing coverage. All compile/package checks and the screenshot sidecar check passed.

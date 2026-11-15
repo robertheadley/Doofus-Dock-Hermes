@@ -258,6 +258,12 @@ pub struct AgentPluginsSnapshot {
     pub bundled_count: usize,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct AgentPluginAutoUpdateSettings {
+    pub auto_apply: bool,
+    pub check_hours: u64,
+}
+
 #[derive(Clone, Debug)]
 pub struct AgentPluginToggleReceipt {
     pub plugin: AgentPluginInfo,
@@ -442,6 +448,17 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<AgentPluginsSnapshot, String>,
     },
+    AgentPluginAutoUpdateLoaded {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<AgentPluginAutoUpdateSettings, String>,
+    },
+    AgentPluginAutoUpdateSet {
+        request_id: String,
+        profile: Option<String>,
+        enabled: bool,
+        result: Result<AgentPluginAutoUpdateSettings, String>,
+    },
     AgentPluginToggled {
         request_id: String,
         key: String,
@@ -514,6 +531,15 @@ enum GatewayCommand {
     LoadAgentPlugins {
         request_id: String,
         profile: Option<String>,
+    },
+    LoadAgentPluginAutoUpdate {
+        request_id: String,
+        profile: Option<String>,
+    },
+    SetAgentPluginAutoUpdate {
+        request_id: String,
+        profile: Option<String>,
+        enabled: bool,
     },
     SetAgentPluginEnabled {
         request_id: String,
@@ -915,6 +941,34 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
+    pub fn load_agent_plugin_auto_update(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::LoadAgentPluginAutoUpdate {
+                request_id,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn set_agent_plugin_auto_update(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        enabled: bool,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::SetAgentPluginAutoUpdate {
+                request_id,
+                profile,
+                enabled,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn set_agent_plugin_enabled(
         &self,
         request_id: String,
@@ -1289,6 +1343,68 @@ fn gateway_actor(
                     .send(GatewayEvent::AgentPluginsLoaded {
                         request_id,
                         profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::LoadAgentPluginAutoUpdate {
+                request_id,
+                profile,
+            }) => {
+                let result = session_profile_params(
+                    serde_json::json!({"action":"auto_update"}),
+                    profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "plugins.manage",
+                        params,
+                        Some(&events),
+                    )
+                })
+                .and_then(parse_agent_plugin_auto_update_settings);
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginAutoUpdateLoaded {
+                        request_id,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::SetAgentPluginAutoUpdate {
+                request_id,
+                profile,
+                enabled,
+            }) => {
+                let result = session_profile_params(
+                    serde_json::json!({"action":"auto_update","enable":enabled}),
+                    profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "plugins.manage",
+                        params,
+                        Some(&events),
+                    )
+                })
+                .and_then(parse_agent_plugin_auto_update_settings);
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginAutoUpdateSet {
+                        request_id,
+                        profile,
+                        enabled,
                         result,
                     })
                     .is_err()
@@ -2312,6 +2428,31 @@ fn session_profile_params(
         serde_json::Value::String(profile.to_owned()),
     );
     Ok(params)
+}
+
+fn parse_agent_plugin_auto_update_settings(
+    value: serde_json::Value,
+) -> Result<AgentPluginAutoUpdateSettings, String> {
+    if value.get("ok").and_then(serde_json::Value::as_bool) == Some(false) {
+        return Err(value
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("Hermes refused to read automatic plugin updates")
+            .to_owned());
+    }
+    let check_hours = match value.get("check_hours") {
+        None | Some(serde_json::Value::Null) => 24,
+        Some(hours) => hours.as_u64().ok_or_else(|| {
+            "Hermes returned an invalid automatic plugin update interval".to_owned()
+        })?,
+    };
+    Ok(AgentPluginAutoUpdateSettings {
+        auto_apply: value
+            .get("auto_apply")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        check_hours,
+    })
 }
 
 const TICKET_CLIENT: &str = r#"
@@ -3556,6 +3697,24 @@ fn is_bare_loopback_origin(origin: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugin_auto_update_settings_use_backend_interval_without_client_range_guessing() {
+        let settings = parse_agent_plugin_auto_update_settings(json!({
+            "auto_apply": true,
+            "check_hours": 8760
+        }))
+        .expect("backend interval is preserved");
+        assert!(settings.auto_apply);
+        assert_eq!(settings.check_hours, 8760);
+        assert_eq!(
+            parse_agent_plugin_auto_update_settings(json!({"auto_apply":false}))
+                .expect("source default interval")
+                .check_hours,
+            24
+        );
+        assert!(parse_agent_plugin_auto_update_settings(json!({"check_hours":-1})).is_err());
+    }
     use serde_json::json;
     use std::net::TcpListener;
 
@@ -4783,6 +4942,83 @@ mod tests {
         assert_eq!(snapshot.connectors[0].connector, "linear");
         assert_eq!(snapshot.catalog[0].name, "Linear");
         assert_eq!(snapshot.accounts[0].alias.as_deref(), Some("Engineering"));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn plugin_auto_update_read_and_write_preserve_profile_scope() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for (enabled, auto_apply) in [(None, false), (Some(true), true)] {
+                let request: serde_json::Value = match socket.read().expect("read plugin setting") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                    other => panic!("expected setting request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "plugins.manage");
+                assert_eq!(request["params"]["profile"], "fixture-profile");
+                assert_eq!(request["params"]["action"], "auto_update");
+                if let Some(enabled) = enabled {
+                    assert_eq!(request["params"]["enable"], enabled);
+                } else {
+                    assert!(request["params"].get("enable").is_none());
+                }
+                let id = request["id"].as_u64().expect("numeric RPC id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":{"auto_apply":auto_apply,"check_hours":12}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send auto-update receipt");
+            }
+            socket.close(None).expect("close fixture WebSocket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::LoadAgentPluginAutoUpdate {
+                request_id: "auto-read".into(),
+                profile: Some("fixture-profile".into()),
+            })
+            .expect("queue auto-update read");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("read result"),
+            GatewayEvent::AgentPluginAutoUpdateLoaded {
+                request_id,
+                profile: Some(profile),
+                result: Ok(AgentPluginAutoUpdateSettings { auto_apply: false, check_hours: 12 }),
+            } if request_id == "auto-read" && profile == "fixture-profile"
+        ));
+        command_tx
+            .send(GatewayCommand::SetAgentPluginAutoUpdate {
+                request_id: "auto-write".into(),
+                profile: Some("fixture-profile".into()),
+                enabled: true,
+            })
+            .expect("queue auto-update write");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("write result"),
+            GatewayEvent::AgentPluginAutoUpdateSet {
+                request_id,
+                profile: Some(profile),
+                enabled: true,
+                result: Ok(AgentPluginAutoUpdateSettings { auto_apply: true, check_hours: 12 }),
+            } if request_id == "auto-write" && profile == "fixture-profile"
+        ));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");
