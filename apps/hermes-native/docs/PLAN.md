@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 58 (implementation in progress).
+- **Working revision:** 59 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -339,3 +339,8 @@ This removes one automation limitation, not the broader native keyboard parity g
 Implement the fixed Desktop `session.next` and `session.prev` shortcuts: `Ctrl+Tab` / `Ctrl+PageDown` advance, and `Ctrl+Shift+Tab` / `Ctrl+PageUp` reverse. The target ladder is hovered eligible main/session strip, focused strip, then workspace. The active tab wraps, selects through a canonical `SelectTab` transaction, and restores the selected profile-scoped session route. Keyboard focus on a rendered tab now updates the focused-group marker. The agent modifier-keypress path exercises the same shortcuts.
 
 Opening another session now appends to the existing workspace tab group instead of nesting a new group around the workspace panel. On open, old session tiles left in nested ancestor groups by earlier builds are moved into the workspace tab group with canonical `TabPanel` transactions; other Dock zones are left alone. Tests cover flat group structure, legacy nested layout repair, hover/focus/workspace target choice, wraparound, route identity and both shortcut aliases. When no eligible tab strip exists, the pinned source falls back to its recent-session switcher; that fallback, broader shortcut coverage and physical Windows keyboard acceptance remain open.
+### Revision 59 — recent-session switcher fallback
+
+When the fixed-source session cycling shortcuts find no eligible visible tab strip, a quick chord advances immediately through the active profile's unarchived session list. Holding the chord for 220 ms reveals a compact top-center HUD; repeating the chord advances its highlight, releasing Ctrl commits the highlighted profile-scoped session, and Escape or click-away dismisses the HUD. The same egui shortcut, navigation and accessible row handlers are used by a person and the headless UI agent. Read-only agent state exposes whether the switcher is pending/open and its selected index/session IDs.
+
+Headless tests cover quick activation, profile filtering, hold reveal, repeated-step wrap/commit and accessible row selection. `artifacts/agent-ui/recent-session-switcher-20261115.png` plus its sidecar show a distinct synthetic 1440x900 fixture. Captures without actions or fixtures intentionally show the fresh offline New session route. Physical Windows key hold/focus acceptance and paired source screenshots remain open.

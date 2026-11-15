@@ -14,7 +14,7 @@ The protocol is `hermes-native-agent-ui/1`. The first output line is a `ready` e
 | `capabilities.list` | Read only | Implemented and explicitly unsupported capabilities |
 | `app.actions.list` | Read only | Versioned catalog of typed first-party app actions and validation schemas |
 | `app.action.execute` | UI interaction | Typed `action` object plus `expected_state_generation`; executes a registered shared app handler |
-| `state.get` | Read only | Current route, layout, panels, gateway summary, generation |
+| `state.get` | Read only | Current route, layout, panels, gateway summary, recent-session switcher open/pending/index/session IDs, generation |
 | `ui.tree` | Read only | AccessKit role/name/value/disabled/bounds, nullable stable `test_id`, and child tree |
 | `events.list` | Read only | Bounded recent event receipts |
 | `diagnostics.bundle` | Read only | State, bounded events, process and protocol health counters |
@@ -23,7 +23,7 @@ The protocol is `hermes-native-agent-ui/1`. The first output line is a `ready` e
 | `actions.drag` | UI interaction | Source either `test_id` or `role` + `name`; destination either `to_test_id`, `to_role` + `to_name`, or logical `to_x` + `to_y`; optional `steps` (1–32) and `expected_state_generation`; emits egui pointer events |
 | `actions.type` | UI interaction | Either `test_id` or `role` + `name`, plus `text` and `expected_state_generation`; requires one exact accessible match |
 | `actions.select` | UI interaction | Either `test_id` or `role` + `name`, plus `option` and `expected_state_generation`; opens the accessible selector and clicks the unique visible option |
-| `actions.keypress` | UI interaction | `key`, optional `modifiers` string array of up to four names (`ALT`, `CTRL`, `SHIFT`, `COMMAND`, `META`), and `expected_state_generation`; key names include navigation/edit keys and A–Z. `COMMAND` is the platform shortcut modifier; `CTRL` is the physical Control key. The protocol exercises `CTRL+TAB`, `CTRL+SHIFT+TAB`, `CTRL+PAGEDOWN` and `CTRL+PAGEUP` through the application keyboard path. |
+| `actions.keypress` | UI interaction | `key`, optional `modifiers` string array of up to four names (`ALT`, `CTRL`, `SHIFT`, `COMMAND`, `META`), and `expected_state_generation`; key names include navigation/edit keys and A–Z. `COMMAND` is the platform shortcut modifier; `CTRL` is the physical Control key. The protocol exercises `CTRL+TAB`, `CTRL+SHIFT+TAB`, `CTRL+PAGEDOWN` and `CTRL+PAGEUP` through the application keyboard path. When no eligible Dock strip exists, these shortcuts use the fixed-source recent-session fallback: quick navigation, delayed/repeated HUD browsing, and Ctrl-release commit. |
 | `ui.wait_for` | Read only | Either `test_id` or `role` + `name`, optional `timeout_ms` from 0 to 5000; waits for one visible accessible control |
 | `screenshots.capture` | Artifact write | `filename`; single `.png` basename under `artifacts/agent-ui`, never overwrites |
 | `protocol.close` | Process control | Empty object; returns closed and exits |

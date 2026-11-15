@@ -60,3 +60,6 @@ The current 1440×900 new-chat capture is `artifacts/agent-ui/chat-approval-v27.
 Typography evidence: `artifacts/agent-ui/font-choice-v24.png` and its JSON sidecar capture the chosen JetBrains Mono UI and Fira Code composer family at 1440×900. This is an isolated, gateway-disabled headless run; it does not establish physical Windows font rasterization or source-paired parity.
 
 The session-pane fixture is artifacts/agent-ui/session-pane-resume-error-20261115.png. Resume-error and Retry accessibility are verified by isolated AccessKit app tests; this screenshot shows the normal pane fixture, not the error card. No authenticated gateway or physical Windows evidence is implied.
+## Recent session switcher fixture
+
+Use `cargo run --features agent-automation --bin hermes-automation -- --recent-session-switcher-fixture --inspect --screenshot apps/hermes-native/artifacts/agent-ui/recent-session-switcher-20261115.png` to capture the recent-session HUD over three synthetic profile-scoped rows. The runner always starts a fresh isolated offline profile; without a fixture or navigation action, its screenshot shows the default New session route. The committed capture and JSON sidecar record the source SHA, target build, route, viewport, fixture limits and image hash.

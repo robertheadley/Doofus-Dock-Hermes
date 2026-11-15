@@ -82,6 +82,7 @@ fn run() -> Result<(), String> {
     let mut markdown_fixture = false;
     let mut long_session_fixture = false;
     let mut session_pane_fixture = false;
+    let mut recent_session_switcher_fixture = false;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -101,6 +102,7 @@ fn run() -> Result<(), String> {
             "--markdown-fixture" => markdown_fixture = true,
             "--long-session-fixture" => long_session_fixture = true,
             "--session-pane-fixture" => session_pane_fixture = true,
+            "--recent-session-switcher-fixture" => recent_session_switcher_fixture = true,
             "--click" => actions.push(Action::Click(take(&args, &mut index, "--click")?)),
             "--type" => {
                 let label = take(&args, &mut index, "--type")?;
@@ -116,10 +118,15 @@ fn run() -> Result<(), String> {
         }
         index += 1;
     }
-    if [markdown_fixture, long_session_fixture, session_pane_fixture]
-        .into_iter()
-        .filter(|enabled| *enabled)
-        .count()
+    if [
+        markdown_fixture,
+        long_session_fixture,
+        session_pane_fixture,
+        recent_session_switcher_fixture,
+    ]
+    .into_iter()
+    .filter(|enabled| *enabled)
+    .count()
         > 1
     {
         return Err("UI fixtures are mutually exclusive".into());
@@ -135,11 +142,18 @@ fn run() -> Result<(), String> {
         app.borrow_mut().load_long_session_fixture_for_automation();
     } else if session_pane_fixture {
         app.borrow_mut().load_session_pane_fixture_for_automation();
+    } else if recent_session_switcher_fixture {
+        app.borrow_mut()
+            .load_recent_session_switcher_fixture_for_automation();
     }
     let app_for_frame = app.clone();
-    let mut harness = Harness::builder()
-        .with_size(Vec2::new(width, height))
-        .build_ui(move |ui| app_for_frame.borrow_mut().draw(ui));
+    let mut builder = Harness::builder().with_size(Vec2::new(width, height));
+    if recent_session_switcher_fixture {
+        builder = builder.with_context_setup(|ctx| {
+            ctx.input_mut(|input| input.modifiers = egui::Modifiers::CTRL);
+        });
+    }
+    let mut harness = builder.build_ui(move |ui| app_for_frame.borrow_mut().draw(ui));
     for action in actions {
         match action {
             Action::Inspect => {
@@ -210,7 +224,7 @@ fn describe_node(node: egui_kittest::Node<'_>) -> Value {
 
 fn print_help() {
     println!("Hermes Native background UI agent runner
-Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture | --session-pane-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
+Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture | --session-pane-fixture | --recent-session-switcher-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
 Accessible actions use egui's AccessKit UI tree and normal widget input handling.");
 }

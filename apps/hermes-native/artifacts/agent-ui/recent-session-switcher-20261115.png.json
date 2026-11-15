@@ -1,0 +1,18 @@
+{
+  "timestamp_utc": "2026-11-15T08:06:13Z",
+  "request_id": "HUI-032-switcher-visual-review",
+  "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "target_parent_commit": "6b64afa728f96145184d078d9ea6f26b3036ad57",
+  "build_sha256": "E754D24F4075461996667972C9FEBFF01DB1D1E80943BADD7A8AA25B46EBB245",
+  "process_generation": "one-shot headless egui_kittest",
+  "route": "/sessions/switcher-session-b",
+  "viewport": {"width": 1440, "height": 900, "scale_factor": 1.0},
+  "profile": "isolated temporary profile; removed by runner",
+  "gateway": "disabled; fixture state only",
+  "native_window": false,
+  "actions": ["load three profile-scoped fixture sessions", "open the shared recent-session switcher widget with Ctrl held", "inspect AccessKit names", "render the shared HermesNativeApp draw path"],
+  "screenshot": "recent-session-switcher-20261115.png",
+  "screenshot_sha256": "46370F02F517333192B5893797F2040D1B1380CB6B8A537777ADB19355BD2C0F",
+  "bytes": 101976,
+  "visual_review": "Distinct 1440x900 capture shows the source-positioned top-center switcher with a selected recent-session row. Synthetic offline fixture only; no live backend or source-paired visual parity is claimed."
+}

@@ -273,6 +273,18 @@ struct BatchClarifyPrompt {
     lock_in_flight: Option<(String, String)>,
 }
 
+const SESSION_SWITCHER_REVEAL_DELAY: std::time::Duration = std::time::Duration::from_millis(220);
+
+#[derive(Clone, Debug)]
+struct RecentSessionSwitcher {
+    sessions: Vec<SessionSummary>,
+    index: usize,
+    pending_browse: bool,
+    open: bool,
+    tab_down: bool,
+    reveal_at: std::time::Instant,
+}
+
 pub struct HermesNativeApp {
     workspace: Workspace,
     load_error: Option<String>,
@@ -287,6 +299,7 @@ pub struct HermesNativeApp {
     sessions: Vec<SessionSummary>,
     archived_sessions: Vec<SessionSummary>,
     show_archived_sessions: bool,
+    recent_session_switcher: Option<RecentSessionSwitcher>,
     archived_sessions_request_id: Option<String>,
     archived_sessions_loading: bool,
     archived_sessions_error: Option<String>,
@@ -443,6 +456,41 @@ fn render_message() -> &'static str {
         self.status = "Session pane fixture · gateway isolated".into();
     }
 
+    #[cfg(feature = "agent-automation")]
+    pub fn load_recent_session_switcher_fixture_for_automation(&mut self) {
+        self.active_session_profile = Some("fixture-profile".into());
+        self.route = AppRoute::Session("switcher-session-b".into());
+        let sessions = [
+            ("switcher-session-a", "Layout review"),
+            ("switcher-session-b", "Gateway recovery"),
+            ("switcher-session-c", "Rust parity work"),
+        ]
+        .into_iter()
+        .map(|(id, title)| SessionSummary {
+            id: id.into(),
+            profile: Some("fixture-profile".into()),
+            title: title.into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        })
+        .collect::<Vec<_>>();
+        self.recent_session_switcher = Some(RecentSessionSwitcher {
+            sessions,
+            index: 2,
+            pending_browse: false,
+            open: true,
+            tab_down: true,
+            reveal_at: std::time::Instant::now(),
+        });
+        self.status = "Recent session switcher fixture · gateway isolated".into();
+    }
+
     fn from_workspace_result(
         connect_gateway: bool,
         workspace: Result<Workspace, String>,
@@ -471,6 +519,7 @@ fn render_message() -> &'static str {
             sessions: Vec::new(),
             archived_sessions: Vec::new(),
             show_archived_sessions: false,
+            recent_session_switcher: None,
             archived_sessions_request_id: None,
             archived_sessions_loading: false,
             archived_sessions_error: None,
@@ -4621,7 +4670,7 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
-    fn cycle_active_dock_tab(&mut self, direction: isize) {
+    fn cycle_active_dock_tab(&mut self, direction: isize) -> bool {
         let snapshot = self.workspace.dock.snapshot();
         let groups = collect_dock_tab_groups(snapshot.document.root.as_deref());
         let Some(group) = cycle_target_tab_group(
@@ -4631,7 +4680,7 @@ fn render_message() -> &'static str {
             &snapshot.document,
             &PanelId::from(WORKSPACE),
         ) else {
-            return;
+            return false;
         };
         let group_node = group.node.clone();
         let panels = group.panels.clone();
@@ -4651,7 +4700,7 @@ fn render_message() -> &'static str {
                 Ok(_) => self.workspace.save_layout(),
                 Err(error) => {
                     self.status = error.to_string();
-                    return;
+                    return true;
                 }
             }
         }
@@ -4675,6 +4724,237 @@ fn render_message() -> &'static str {
             self.save_active_chat_view();
             self.active_session_profile = profile;
             self.navigate_after_save(AppRoute::Session(session_id));
+        }
+        true
+    }
+
+    fn step_recent_session_switcher(&mut self, direction: isize, now: std::time::Instant) {
+        if let Some(switcher) = &mut self.recent_session_switcher {
+            if switcher.open {
+                switcher.index =
+                    cycle_tab_index(switcher.index, switcher.sessions.len(), direction);
+                switcher.tab_down = true;
+                return;
+            }
+            if switcher.pending_browse {
+                switcher.pending_browse = false;
+                switcher.open = true;
+                switcher.index =
+                    cycle_tab_index(switcher.index, switcher.sessions.len(), direction);
+                switcher.tab_down = true;
+                return;
+            }
+        }
+
+        let sessions = self
+            .sessions
+            .iter()
+            .filter(|session| !session.archived && session.profile == self.active_session_profile)
+            .cloned()
+            .collect::<Vec<_>>();
+        if sessions.len() < 2 {
+            self.recent_session_switcher = None;
+            return;
+        }
+
+        let current_session = match &self.route {
+            AppRoute::Session(session_id) => Some(session_id.as_str()),
+            _ => None,
+        };
+        let current_index = current_session
+            .and_then(|session_id| sessions.iter().position(|session| session.id == session_id));
+        let start = current_index.unwrap_or(if direction >= 0 {
+            sessions.len() - 1
+        } else {
+            0
+        });
+        let index = cycle_tab_index(start, sessions.len(), direction);
+        let target = sessions[index].clone();
+        self.recent_session_switcher = Some(RecentSessionSwitcher {
+            sessions,
+            index,
+            pending_browse: true,
+            open: false,
+            tab_down: true,
+            reveal_at: now + SESSION_SWITCHER_REVEAL_DELAY,
+        });
+        self.open_recent_session(&target);
+    }
+
+    fn open_recent_session(&mut self, session: &SessionSummary) {
+        if let Err(error) = self.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: session.id.clone(),
+            profile: session.profile.clone(),
+        }) {
+            self.status = error;
+        }
+    }
+
+    fn release_recent_session_switcher_tab(&mut self) {
+        if let Some(switcher) = &mut self.recent_session_switcher {
+            switcher.tab_down = false;
+            if !switcher.open && !switcher.pending_browse {
+                self.recent_session_switcher = None;
+            }
+        }
+    }
+
+    fn commit_recent_session_switcher(&mut self) {
+        let target = self.recent_session_switcher.take().and_then(|switcher| {
+            switcher
+                .open
+                .then(|| switcher.sessions.get(switcher.index).cloned())
+                .flatten()
+        });
+        if let Some(target) = target {
+            self.open_recent_session(&target);
+        }
+    }
+
+    fn close_recent_session_switcher(&mut self) {
+        self.recent_session_switcher = None;
+    }
+
+    fn update_recent_session_switcher(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|input| input.focused) {
+            self.close_recent_session_switcher();
+            return;
+        }
+        let now = std::time::Instant::now();
+        let switcher_open = self
+            .recent_session_switcher
+            .as_ref()
+            .is_some_and(|switcher| switcher.open);
+        let (tab_released, page_released, ctrl_down, escape_pressed) = ctx.input_mut(|input| {
+            let tab_released = input.key_released(egui::Key::Tab);
+            let page_released =
+                input.key_released(egui::Key::PageDown) || input.key_released(egui::Key::PageUp);
+            let ctrl_down = input.modifiers.ctrl;
+            let escape_pressed =
+                switcher_open && input.consume_key(input.modifiers, egui::Key::Escape);
+            (tab_released, page_released, ctrl_down, escape_pressed)
+        });
+
+        if tab_released || page_released {
+            self.release_recent_session_switcher_tab();
+        }
+        if escape_pressed
+            && self
+                .recent_session_switcher
+                .as_ref()
+                .is_some_and(|switcher| switcher.open)
+        {
+            self.close_recent_session_switcher();
+        } else if self
+            .recent_session_switcher
+            .as_ref()
+            .is_some_and(|switcher| switcher.open && !ctrl_down)
+        {
+            self.commit_recent_session_switcher();
+        } else if !ctrl_down
+            && self
+                .recent_session_switcher
+                .as_ref()
+                .is_some_and(|switcher| switcher.pending_browse)
+        {
+            self.close_recent_session_switcher();
+        }
+        self.reveal_recent_session_switcher_if_due(ctx, now);
+    }
+
+    fn reveal_recent_session_switcher_if_due(
+        &mut self,
+        ctx: &egui::Context,
+        now: std::time::Instant,
+    ) {
+        if let Some(switcher) = &mut self.recent_session_switcher
+            && switcher.pending_browse
+            && switcher.tab_down
+        {
+            if now >= switcher.reveal_at {
+                switcher.pending_browse = false;
+                switcher.open = true;
+            } else {
+                ctx.request_repaint_after(switcher.reveal_at - now);
+            }
+        }
+    }
+
+    fn show_recent_session_switcher(&mut self, ctx: &egui::Context) {
+        let Some(switcher) = self
+            .recent_session_switcher
+            .as_ref()
+            .filter(|switcher| switcher.open)
+        else {
+            return;
+        };
+        let sessions = switcher.sessions.clone();
+        let selected_index = switcher.index;
+        let mut selected = None;
+        let mut dismiss = false;
+        let screen_rect = ctx.content_rect();
+        let clicked_away = egui::Area::new(Id::NULL.with("recent-session-switcher-backdrop"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen_rect.min)
+            .show(ctx, |ui| {
+                ui.allocate_rect(
+                    Rect::from_min_size(ui.min_rect().min, screen_rect.size()),
+                    egui::Sense::click(),
+                )
+                .clicked()
+            })
+            .inner;
+        if clicked_away {
+            self.close_recent_session_switcher();
+            return;
+        }
+        egui::Area::new(Id::NULL.with("recent-session-switcher"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 12.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(304.0);
+                    ui.horizontal(|ui| {
+                        ui.heading("Recent sessions");
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            dismiss = ui
+                                .button("×")
+                                .accessible_name("Close recent session switcher")
+                                .clicked();
+                        });
+                    });
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .max_height(320.0)
+                        .show(ui, |ui| {
+                            for (index, session) in sessions.iter().enumerate() {
+                                let title = if session.title.trim().is_empty() {
+                                    session.id.as_str()
+                                } else {
+                                    session.title.as_str()
+                                };
+                                ui.push_id(&session.id, |ui| {
+                                    if ui
+                                        .selectable_label(index == selected_index, title)
+                                        .accessible_name(format!(
+                                            "Switch to session {title} ({})",
+                                            session.id
+                                        ))
+                                        .clicked()
+                                    {
+                                        selected = Some(session.clone());
+                                    }
+                                });
+                            }
+                        });
+                    ui.label("Release Ctrl to switch · Esc to close");
+                });
+            });
+        if let Some(session) = selected {
+            self.close_recent_session_switcher();
+            self.open_recent_session(&session);
+        } else if dismiss {
+            self.close_recent_session_switcher();
         }
     }
 
@@ -6422,6 +6702,219 @@ mod tests {
         assert_eq!(cycle_tab_index(0, 3, -1), 2);
         assert_eq!(cycle_tab_index(2, 3, 1), 0);
         assert_eq!(cycle_tab_index(7, 0, 1), 0);
+    }
+
+    #[test]
+    fn recent_session_switcher_quick_cycle_activates_profile_scoped_session() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_session_profile = Some("work".into());
+        app.route = AppRoute::Session("recent-a".into());
+        app.sessions = ["recent-a", "recent-b", "recent-c"]
+            .into_iter()
+            .map(|id| SessionSummary {
+                id: id.into(),
+                profile: Some("work".into()),
+                title: format!("Session {id}"),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            })
+            .collect();
+
+        assert!(
+            !app.cycle_active_dock_tab(1),
+            "a workspace without a tab strip falls back to recent sessions"
+        );
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::Tab);
+        harness.run();
+        assert_eq!(
+            app.borrow().route,
+            AppRoute::Session("recent-b".into()),
+            "a quick chord immediately activates the next recent session"
+        );
+        assert!(
+            app.borrow().recent_session_switcher.is_none(),
+            "a quick key release does not leave the delayed HUD armed"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn recent_session_switcher_repeated_chord_opens_and_ctrl_release_commits_highlight() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_session_profile = Some("work".into());
+        app.route = AppRoute::Session("recent-a".into());
+        app.sessions = ["recent-a", "recent-b", "recent-c"]
+            .into_iter()
+            .map(|id| SessionSummary {
+                id: id.into(),
+                profile: Some("work".into()),
+                title: format!("Session {id}"),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            })
+            .collect();
+        let now = std::time::Instant::now();
+        app.step_recent_session_switcher(1, now);
+        app.step_recent_session_switcher(1, now + std::time::Duration::from_millis(50));
+        let switcher = app
+            .recent_session_switcher
+            .as_ref()
+            .expect("second chord opens the HUD");
+        assert!(switcher.open);
+        assert_eq!(switcher.index, 2);
+        app.commit_recent_session_switcher();
+        assert_eq!(app.route, AppRoute::Session("recent-c".into()));
+        assert!(app.recent_session_switcher.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn recent_session_switcher_reveals_after_hold_and_selects_accessible_rows() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_session_profile = Some("work".into());
+        app.route = AppRoute::Session("recent-a".into());
+        app.sessions = ["recent-a", "recent-b", "recent-c"]
+            .into_iter()
+            .map(|id| SessionSummary {
+                id: id.into(),
+                profile: Some("work".into()),
+                title: format!("Session {id}"),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            })
+            .collect();
+        let now = std::time::Instant::now();
+        app.step_recent_session_switcher(1, now);
+        app.reveal_recent_session_switcher_if_due(
+            &egui::Context::default(),
+            now + SESSION_SWITCHER_REVEAL_DELAY,
+        );
+        assert!(
+            app.recent_session_switcher
+                .as_ref()
+                .is_some_and(|switcher| switcher.open),
+            "holding the cycle chord past the source reveal delay opens the switcher"
+        );
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .with_context_setup(|ctx| {
+                ctx.input_mut(|input| input.modifiers = egui::Modifiers::CTRL);
+            })
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref() == Some("Switch to session Session recent-c (recent-c)")
+                })
+                .next()
+                .is_some(),
+            "the recent session switcher exposes accessible session rows"
+        );
+        harness
+            .get_by_label("Switch to session Session recent-c (recent-c)")
+            .click();
+        harness.run();
+        drop(harness);
+        assert_eq!(app.borrow().route, AppRoute::Session("recent-c".into()));
+        assert!(app.borrow().recent_session_switcher.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn recent_session_switcher_click_away_dismisses_overlay() {
+        let (mut app, profile_dir) = isolated_app();
+        app.load_recent_session_switcher_fixture_for_automation();
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .with_context_setup(|ctx| {
+                ctx.input_mut(|input| input.modifiers = egui::Modifiers::CTRL);
+            })
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let outside = egui::pos2(24.0, 150.0);
+        harness.event(egui::Event::PointerMoved(outside));
+        harness.event(egui::Event::PointerButton {
+            pos: outside,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        });
+        harness.event(egui::Event::PointerButton {
+            pos: outside,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        harness.run();
+        assert!(
+            app.borrow().recent_session_switcher.is_none(),
+            "clicking outside the top-center HUD dismisses it"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn recent_session_switcher_escape_dismisses_without_changing_the_current_session() {
+        let (mut app, profile_dir) = isolated_app();
+        app.load_recent_session_switcher_fixture_for_automation();
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .with_context_setup(|ctx| {
+                ctx.input_mut(|input| input.modifiers = egui::Modifiers::CTRL);
+            })
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.event(egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: Some(egui::Key::Escape),
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::CTRL,
+        });
+        harness.run();
+        assert!(app.borrow().recent_session_switcher.is_none());
+        assert_eq!(
+            app.borrow().route,
+            AppRoute::Session("switcher-session-b".into()),
+            "Escape dismisses browsing but preserves the immediate quick-cycle destination"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
@@ -8444,11 +8937,24 @@ impl HermesNativeApp {
                 egui::Key::PageDown,
             ))
         });
-        if previous_tab {
-            self.cycle_active_dock_tab(-1);
+        let switcher_browsing = self
+            .recent_session_switcher
+            .as_ref()
+            .is_some_and(|switcher| switcher.open || switcher.pending_browse);
+        if previous_tab && switcher_browsing {
+            self.step_recent_session_switcher(-1, std::time::Instant::now());
+        } else if next_tab && switcher_browsing {
+            self.step_recent_session_switcher(1, std::time::Instant::now());
+        } else if previous_tab {
+            if !self.cycle_active_dock_tab(-1) {
+                self.step_recent_session_switcher(-1, std::time::Instant::now());
+            }
         } else if next_tab {
-            self.cycle_active_dock_tab(1);
+            if !self.cycle_active_dock_tab(1) {
+                self.step_recent_session_switcher(1, std::time::Instant::now());
+            }
         }
+        self.update_recent_session_switcher(&ctx);
         let close_active_tab = ctx.input_mut(|input| {
             input.consume_shortcut(&egui::KeyboardShortcut::new(
                 egui::Modifiers::COMMAND,
@@ -8828,6 +9334,7 @@ impl HermesNativeApp {
         self.show_route_overlay(&ctx);
         self.show_rename_dialog(&ctx);
         self.show_session_close_dialog(&ctx);
+        self.show_recent_session_switcher(&ctx);
     }
 
     #[cfg(feature = "agent-automation")]
@@ -8853,6 +9360,14 @@ impl HermesNativeApp {
                     "panels": group.panels.iter().map(|panel| panel.0.clone()).collect::<Vec<_>>(),
                 }))
                 .collect::<Vec<_>>(),
+            "recent_session_switcher": self.recent_session_switcher.as_ref().map(|switcher| {
+                serde_json::json!({
+                    "open": switcher.open,
+                    "pending_browse": switcher.pending_browse,
+                    "index": switcher.index,
+                    "session_ids": switcher.sessions.iter().map(|session| session.id.as_str()).collect::<Vec<_>>(),
+                })
+            }),
             "available_profiles": self.workspace.profile_ids(),
             "panels": {
                 "sessions": self.workspace.pane_is_open(SESSIONS),
