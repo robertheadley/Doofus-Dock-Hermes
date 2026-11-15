@@ -337,6 +337,99 @@ impl ProtocolState {
                     }),
                 )
             }
+            "actions.scroll" => {
+                let (role, name) = match resolve_locator(harness, &params, "") {
+                    Ok(locator) => locator,
+                    Err((code, message)) => return failure(id.clone(), code, message),
+                };
+                let Some(delta_x) = number_param(&params, "delta_x") else {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "delta_x must be a finite number".into(),
+                    );
+                };
+                let Some(delta_y) = number_param(&params, "delta_y") else {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "delta_y must be a finite number".into(),
+                    );
+                };
+                if delta_x == 0.0 && delta_y == 0.0 {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "at least one scroll delta must be non-zero".into(),
+                    );
+                }
+                if delta_x.abs() > 3000.0 || delta_y.abs() > 3000.0 {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "scroll deltas must be within 3000 points".into(),
+                    );
+                }
+                if let Err(error) = self.check_generation(&params) {
+                    return failure(id.clone(), error.0, error.1);
+                }
+                let before_generation = self.generation;
+                let before_state = snapshot(app, before_generation);
+                let matches = matching_nodes(harness, &role, &name);
+                if matches.len() != 1 {
+                    let (code, message) = match matches.len() {
+                        0 => ("target_not_found", format!("no {role} named {name:?}")),
+                        _ => (
+                            "ambiguous_target",
+                            format!("{} {role} controls are named {name:?}", matches.len()),
+                        ),
+                    };
+                    self.record_event(id, method, "failed", before_generation, before_generation);
+                    return failure(id.clone(), code, message);
+                }
+                let bounds = matches[0].rect();
+                if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+                    self.record_event(id, method, "failed", before_generation, before_generation);
+                    return failure(
+                        id.clone(),
+                        "target_has_no_bounds",
+                        format!("{role} named {name:?} has no visible bounds"),
+                    );
+                }
+                let position = bounds.center();
+                harness.event(egui::Event::PointerMoved(position));
+                harness.run();
+                harness.event(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(delta_x as f32, delta_y as f32),
+                    phase: egui::TouchPhase::Move,
+                    source: egui::MouseWheelSource::Wheel,
+                    modifiers: egui::Modifiers::default(),
+                });
+                harness.run();
+                self.generation = self.generation.saturating_add(1);
+                let after_state = snapshot(app, self.generation);
+                self.record_event(id, method, "succeeded", before_generation, self.generation);
+                success(
+                    id.clone(),
+                    json!({
+                        "request_id": request_id,
+                        "correlation_id": request_id,
+                        "trace_id": format!("ui-{request_id}"),
+                        "actor": "stdio-peer",
+                        "permission_class": "ui-interaction",
+                        "command": "ui.scroll",
+                        "target": {"role": role, "name": name, "bounds": {"x": bounds.min.x, "y": bounds.min.y, "width": bounds.width(), "height": bounds.height()}},
+                        "delta_x": delta_x,
+                        "delta_y": delta_y,
+                        "state_generation_before": before_generation,
+                        "state_generation_after": self.generation,
+                        "before": before_state,
+                        "after": after_state,
+                        "outcome": "succeeded"
+                    }),
+                )
+            }
             "actions.type" => {
                 let (role, name) = match resolve_locator(harness, &params, "") {
                     Ok(locator) => locator,
@@ -1153,6 +1246,7 @@ fn capabilities() -> Value {
             {"id":"diagnostics.bundle","method":"diagnostics.bundle","permission":"read_only","implemented":true,"verification":"runtime"},
             {"id":"ui.click","method":"actions.click","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
             {"id":"ui.right_click","method":"actions.right_click","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
+            {"id":"ui.scroll","method":"actions.scroll","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.type","method":"actions.type","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
             {"id":"ui.drag","method":"actions.drag","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.select","method":"actions.select","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
@@ -1283,6 +1377,13 @@ fn write_message(writer: &mut impl Write, message: &Value) -> Result<(), String>
 
 fn string_param<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
     params.get(key).and_then(Value::as_str)
+}
+
+fn number_param(params: &Value, key: &str) -> Option<f64> {
+    params
+        .get(key)
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
 }
 
 fn success(id: Value, result: Value) -> Value {
@@ -2133,6 +2234,96 @@ mod tests {
             json!([0.4, 0.6])
         );
         assert_eq!(state["dock_tab_groups"], json!([]));
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn semantic_scroll_reaches_the_egui_scroll_area_under_the_locator() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        let visible_rows = Rc::new(RefCell::new(Vec::<usize>::new()));
+        let frame_visible_rows = visible_rows.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(420.0, 220.0))
+            .build_ui(move |ui| {
+                frame_visible_rows.borrow_mut().clear();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for index in 0..40 {
+                        let response = ui.button(format!("Scroll row {index}"));
+                        if ui.is_rect_visible(response.rect) {
+                            frame_visible_rows.borrow_mut().push(index);
+                        }
+                    }
+                });
+            });
+        let initial = visible_rows.borrow().clone();
+        assert!(initial.contains(&0));
+        let mut protocol = ProtocolState::default();
+        let response = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "scroll-list-down",
+                "method": "actions.scroll",
+                "params": {
+                    "role": "Button",
+                    "name": "Scroll row 0",
+                    "delta_x": 0,
+                    "delta_y": -500,
+                    "expected_state_generation": 0
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(response["status"], "succeeded", "{response}");
+        assert_eq!(response["result"]["command"], "ui.scroll");
+        assert_eq!(response["result"]["state_generation_after"], 1);
+        let after = visible_rows.borrow().clone();
+        assert!(
+            after.iter().any(|row| *row > 5),
+            "visible rows after scroll: {after:?}"
+        );
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn semantic_scroll_rejects_unbounded_and_empty_deltas_without_input() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+        for (id, delta_y) in [("empty-scroll", 0), ("oversized-scroll", 3001)] {
+            let response = protocol.handle(
+                json!({
+                    "version": 1,
+                    "id": id,
+                    "method": "actions.scroll",
+                    "params": {
+                        "role": "Button",
+                        "name": "Files",
+                        "delta_x": 0,
+                        "delta_y": delta_y,
+                        "expected_state_generation": 0
+                    }
+                }),
+                &mut harness,
+                &app,
+            );
+            assert_eq!(response["status"], "failed", "{response}");
+            assert_eq!(response["error"]["code"], "invalid_argument");
+            assert_eq!(protocol.generation, 0);
+        }
         drop(harness);
         drop(app);
         drop(profile);

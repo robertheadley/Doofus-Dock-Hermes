@@ -1055,3 +1055,29 @@ HUI-048/HUI-049 publication: implementation commit `4d247d7ccbee6f31604923e52fc3
 - **follow_up:** Finish timestamp format/tool-run parity and matched Windows evidence.
 
 HUI-050/HUI-051 publication: `cdeffe3b2e2dac737b8c463aea01d19bd73a866c` (implementation) and `86eacb86ccd159c55221ae4667586504c2b38d64` (evidence) are published on `origin/main`. PAR-0065 remains pending.
+
+## HUI-052 — 2026-11-15
+
+- **id:** HUI-052
+- **timestamp:** 2026-11-15
+- **what:** Added bounded semantic scrolling to the headless agent UI protocol using real egui mouse-wheel input at an accessible target.
+- **why:** Let background agents navigate scrollable content through the same pointer input path a person uses.
+- **components:** automation protocol, agent automation docs, README, plan and crosswalk.
+- **type:** agent UI control capability.
+- **validation:** Focused protocol tests prove content movement in an egui ScrollArea and rejection of zero/oversized deltas; full automation-feature suite and all-target check are pending.
+- **performance:** One pointer event and one bounded UI frame per scroll request.
+- **risks:** This is headless semantic control only; no authenticated bridge, physical window control, or fixed-source visual acceptance.
+- **follow_up:** Validate the complete protocol suite and extend shared native-window control without bypassing normal UI actions.
+
+## HUI-053 — 2026-11-15
+
+- **id:** HUI-053
+- **timestamp:** 2026-11-15
+- **what:** Completed full validation for semantic agent scrolling.
+- **why:** Verify the new action in the complete automation feature build, not only its focused tests.
+- **components:** Hermes Native agent protocol and automation test suite.
+- **type:** validation follow-up.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --features agent-automation` passed 123 library + 10 automation tests; `cargo check -p hermes-native --all-targets --features agent-automation` passed; `git diff --check` passed.
+- **performance:** One bounded wheel event and one frame per action; no performance benchmark required.
+- **risks:** Headless semantic evidence does not prove native Windows wheel-device or DPI behavior.
+- **follow_up:** Continue app-wide route workflows and physical host parity.
