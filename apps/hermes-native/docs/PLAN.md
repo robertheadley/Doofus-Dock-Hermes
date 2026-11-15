@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 53 (published canonical workspace to the user-provided repository).
+- **Working revision:** 54 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -304,3 +304,10 @@ Local tests cover matching and stale failures, owner-scoped error rendering and 
 ### Revision 53 — resume failure takes precedence over cached transcript
 
 A latched resume failure now renders its pane-local error and Retry action even when that cached pane still has transcript messages from an earlier visit. This matches the source tile's failed-open state instead of leaving the user looking at cached conversation with no visible recovery action. The AccessKit test now seeds cached history before delivering the correlated failure. The headless standard-pane screenshot is unchanged and does not depict this error state. Live gateway and source-paired host evidence remain open.
+
+
+### Revision 54 — close the active session tab in its Dock group
+
+Session-tab close targeting now follows the pinned Desktop's eligible-group ladder: the currently hovered tab group containing the workspace or a session tile, then the last clicked eligible group, then the workspace group. A focused session tile in another Dock group closes through the existing busy-session confirmation and canonical Dock close path, leaving the workspace chat untouched. The registered agent action and Ctrl+W still share the same handler.
+
+Local tests cover hover/focus/workspace target resolution, stale group fallback, and closing a profile-scoped session pane that shares a Files tab group. Physical pointer/keyboard acceptance is not established. Egui keyboard traversal does not yet update the focused-group marker, and generic tool-tab close/visibility-store handoff remains open; this revision therefore closes one source gap without claiming complete close-target precedence.

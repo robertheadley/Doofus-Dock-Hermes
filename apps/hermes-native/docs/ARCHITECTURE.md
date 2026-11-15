@@ -72,3 +72,5 @@ Approval and batch clarification requests are assigned by runtime session ID plu
 ### New session draft reuse
 
 The Sessions-pane New session action fronts the primary New session only when it is empty and matches the attached profile. It can also front a tracked tile only when its pane is open, runtime view is known and idle, message/transcript/composer state is empty, session is unlisted and profile matches. Edited drafts are preserved; creation requests remain single-flight. The native surface does not yet implement Bot Mode owner routes, attachments or debounce-flush synchronization.
+
+Ctrl+W and the semantic close_active_tab action share one close handler. The native target ladder prefers the hovered Dock tab group containing the workspace or a session tile, then the last clicked eligible group, then workspace. A profile-scoped session tile in another Dock group closes via its canonical pane transaction and busy-session confirmation. Egui keyboard traversal does not yet update the focused group, and generic non-session tool-tab closer handoff remains open.

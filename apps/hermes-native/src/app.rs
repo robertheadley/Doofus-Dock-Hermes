@@ -323,6 +323,8 @@ pub struct HermesNativeApp {
     panel_drag_source: Option<PanelId>,
     tab_reorder: Option<TabReorderSession>,
     dock_tabs: BTreeMap<String, TabStripState>,
+    focused_dock_group: Option<NodeId>,
+    hovered_dock_group: Option<NodeId>,
     split_resize: Option<SplitResizeSession>,
 }
 
@@ -503,6 +505,8 @@ fn render_message() -> &'static str {
             panel_drag_source: None,
             tab_reorder: None,
             dock_tabs: BTreeMap::new(),
+            focused_dock_group: None,
+            hovered_dock_group: None,
             split_resize: None,
         }
     }
@@ -4553,15 +4557,20 @@ fn render_message() -> &'static str {
     fn close_active_tab(&mut self) -> Result<(), String> {
         let snapshot = self.workspace.dock.snapshot();
         let groups = collect_dock_tab_groups(snapshot.document.root.as_deref());
-        let workspace_group = groups
-            .iter()
-            .find(|group| group.panels.contains(&PanelId::from(WORKSPACE)));
-        let active_panel = workspace_group
+        let workspace_panel = PanelId::from(WORKSPACE);
+        let active_group = close_target_tab_group(
+            &groups,
+            self.hovered_dock_group.as_ref(),
+            self.focused_dock_group.as_ref(),
+            &snapshot.document,
+            &workspace_panel,
+        );
+        let active_panel = active_group
             .and_then(|group| group.panels.get(group.active_index))
             .cloned()
-            .unwrap_or_else(|| PanelId::from(WORKSPACE));
+            .unwrap_or_else(|| workspace_panel.clone());
 
-        if active_panel != PanelId::from(WORKSPACE) {
+        if active_panel != workspace_panel {
             if snapshot
                 .document
                 .descriptor(&active_panel)
@@ -5757,6 +5766,36 @@ fn collect_dock_tab_groups(root: Option<&Node>) -> Vec<DockTabGroup> {
     groups
 }
 
+fn close_target_tab_group<'a>(
+    groups: &'a [DockTabGroup],
+    hovered_group: Option<&NodeId>,
+    focused_group: Option<&NodeId>,
+    document: &doofusdock_core::LayoutDocument,
+    workspace_panel: &PanelId,
+) -> Option<&'a DockTabGroup> {
+    let is_main_tab_group = |group: &&DockTabGroup| {
+        group.panels.iter().any(|panel| {
+            panel == workspace_panel
+                || document
+                    .descriptor(panel)
+                    .is_some_and(|descriptor| descriptor.role == "hermes_session_tile")
+        })
+    };
+    hovered_group
+        .and_then(|hovered| groups.iter().find(|group| &group.node == hovered))
+        .filter(is_main_tab_group)
+        .or_else(|| {
+            focused_group
+                .and_then(|focused| groups.iter().find(|group| &group.node == focused))
+                .filter(is_main_tab_group)
+        })
+        .or_else(|| {
+            groups
+                .iter()
+                .find(|group| group.panels.contains(workspace_panel))
+        })
+}
+
 struct DockSplit {
     node: NodeId,
     orientation: Orientation,
@@ -5906,6 +5945,140 @@ fn panel_drop_operation(source: PanelId, target: PanelDropTarget) -> Operation {
 mod tests {
     use super::*;
     use egui_kittest::kittest::{NodeT, Queryable};
+
+    #[test]
+    fn close_active_tab_target_uses_hover_focus_then_workspace_ladder() {
+        let workspace = PanelId::from(WORKSPACE);
+        let workspace_session = PanelId::from("session-workspace");
+        let tool_session = PanelId::from("session-tool-zone");
+        let workspace_group = DockTabGroup {
+            node: NodeId::from("tabs-workspace"),
+            panels: vec![workspace.clone(), workspace_session],
+            active_index: 0,
+        };
+        let tool_document = Workspace::load_fallback().dock.snapshot().document;
+        let mut tool_document = tool_document;
+        let mut tool_session_descriptor =
+            doofusdock_core::PanelDescriptor::new(tool_session.0.clone(), "Session in tool zone");
+        tool_session_descriptor.role = "hermes_session_tile".into();
+        Arc::make_mut(&mut tool_document.panels).push(tool_session_descriptor);
+        let tool_group = DockTabGroup {
+            node: NodeId::from("tabs-tools"),
+            panels: vec![PanelId::from(FILES), tool_session.clone()],
+            active_index: 1,
+        };
+        let plain_tool_group = DockTabGroup {
+            node: NodeId::from("tabs-plain-tools"),
+            panels: vec![PanelId::from(FILES), PanelId::from(TERMINAL)],
+            active_index: 0,
+        };
+        let groups = vec![
+            workspace_group,
+            tool_group.clone(),
+            plain_tool_group.clone(),
+        ];
+
+        let focused = close_target_tab_group(
+            &groups,
+            Some(&tool_group.node),
+            Some(&groups[0].node),
+            &tool_document,
+            &workspace,
+        )
+        .expect("hovered eligible session group takes precedence over focus");
+        assert_eq!(focused.panels[focused.active_index], tool_session);
+
+        let focus_fallback = close_target_tab_group(
+            &groups,
+            None,
+            Some(&tool_group.node),
+            &tool_document,
+            &workspace,
+        )
+        .expect("focused eligible session group is the second rung");
+        assert_eq!(
+            focus_fallback.panels[focus_fallback.active_index],
+            tool_session
+        );
+
+        let ineligible_hover = close_target_tab_group(
+            &groups,
+            Some(&plain_tool_group.node),
+            Some(&tool_group.node),
+            &tool_document,
+            &workspace,
+        )
+        .expect("ineligible tool group does not steal the session close target");
+        assert_eq!(
+            ineligible_hover.panels[ineligible_hover.active_index],
+            tool_session
+        );
+
+        let fallback = close_target_tab_group(&groups, None, None, &tool_document, &workspace)
+            .expect("workspace tab group is the keyboard fallback");
+        assert_eq!(fallback.panels[fallback.active_index], workspace);
+
+        let stale_focus = close_target_tab_group(
+            &groups,
+            None,
+            Some(&NodeId::from("closed-group")),
+            &tool_document,
+            &workspace,
+        )
+        .expect("a removed focus group falls back to workspace");
+        assert_eq!(stale_focus.panels[stale_focus.active_index], workspace);
+    }
+
+    #[test]
+    fn close_active_tab_uses_the_focused_session_in_another_dock_group() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = false;
+        let pane = app
+            .workspace
+            .open_session_pane(Some("work"), "tool-zone-session", "Tool zone session")
+            .expect("open the profile-scoped session tile");
+        app.workspace
+            .toggle_pane(FILES)
+            .expect("reveal the Files panel as a Dock target");
+        let snapshot = app.workspace.dock.snapshot();
+        app.workspace
+            .dock
+            .transact(
+                snapshot.revision,
+                CommandId::from("move-session-pane-to-tool-group"),
+                [Operation::CenterPanel {
+                    panel: pane.clone(),
+                    target_panel: PanelId::from(FILES),
+                }],
+            )
+            .expect("center the session tile in the Files tab group");
+        app.workspace
+            .select_panel(&PanelId::from(FILES))
+            .expect("make Files the initial tab before UI selection");
+        let groups =
+            collect_dock_tab_groups(app.workspace.dock.snapshot().document.root.as_deref());
+        let tool_group = groups
+            .iter()
+            .find(|group| group.panels.contains(&pane))
+            .expect("session and Files panels share a tab group");
+        app.focused_dock_group = Some(tool_group.node.clone());
+        app.workspace
+            .select_panel(&pane)
+            .expect("select the session tile in the Files group");
+
+        app.close_active_tab()
+            .expect("close the focused session tab");
+        assert!(
+            app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&pane)
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
 
     #[test]
     fn older_transcript_history_exposes_an_accessible_control() {
@@ -7964,6 +8137,7 @@ impl HermesNativeApp {
                     self.draw_panel(ui, id.0.as_str(), rect, rect, true);
                 }
             }
+            let mut hovered_dock_group = None;
             for group in &tab_groups {
                 let Some(group_bounds) = snapshot.nodes.get(&group.node) else {
                     continue;
@@ -7975,6 +8149,23 @@ impl HermesNativeApp {
                         (group_bounds.y + group_bounds.h) as f32,
                     ),
                 );
+                let pointer_clicked_group = ui.input(|input| {
+                    (input.pointer.button_clicked(egui::PointerButton::Primary)
+                        || input.pointer.button_clicked(egui::PointerButton::Secondary))
+                        && input
+                            .pointer
+                            .interact_pos()
+                            .is_some_and(|position| group_rect.contains(position))
+                });
+                if pointer_clicked_group {
+                    self.focused_dock_group = Some(group.node.clone());
+                }
+                let pointer_hovers_group = ui
+                    .input(|input| input.pointer.hover_pos())
+                    .is_some_and(|position| group_rect.contains(position));
+                if pointer_hovers_group {
+                    hovered_dock_group = Some(group.node.clone());
+                }
                 let tab_rect =
                     Rect::from_min_size(group_rect.min, Vec2::new(group_rect.width(), 32.0));
                 let titles = group
@@ -8053,6 +8244,7 @@ impl HermesNativeApp {
                 if let Some(index) = response.selected
                     && index != group.active_index
                 {
+                    self.focused_dock_group = Some(group.node.clone());
                     match self.workspace.dock.transact(
                         layout.revision,
                         CommandId::from(format!("select-dock-tab-{}-{index}", group.node.0)),
@@ -8070,6 +8262,7 @@ impl HermesNativeApp {
                     break;
                 }
             }
+            self.hovered_dock_group = hovered_dock_group;
             self.draw_split_resize_handles(ui, &layout, &snapshot);
             self.paint_panel_drop_preview(ui);
             let cancel_drag = (self.panel_drag.is_some() || self.split_resize.is_some())
