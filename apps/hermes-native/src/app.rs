@@ -176,6 +176,18 @@ struct PendingToolsetUpdate {
     previous_enabled: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+struct SessionChatViewState {
+    profile: Option<String>,
+    runtime_session_id: Option<String>,
+    transcript: Vec<serde_json::Value>,
+    transcript_message_count: usize,
+    transcript_has_more: bool,
+    older_transcript_request: Option<(String, String, Option<String>, usize)>,
+    older_transcript_error: Option<String>,
+    draft: String,
+}
+
 #[derive(Clone, Debug)]
 struct PendingPrompt {
     session_id: String,
@@ -272,6 +284,9 @@ pub struct HermesNativeApp {
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
+    session_chat_views: BTreeMap<String, SessionChatViewState>,
+    session_chat_view_order: VecDeque<String>,
+    new_chat_draft: String,
     transcript: Vec<serde_json::Value>,
     transcript_message_count: usize,
     transcript_has_more: bool,
@@ -407,6 +422,9 @@ fn render_message() -> &'static str {
             pending_toolset_updates: BTreeMap::new(),
             fonts_installed: false,
             gateway_connected: false,
+            session_chat_views: BTreeMap::new(),
+            session_chat_view_order: VecDeque::new(),
+            new_chat_draft: String::new(),
             transcript: Vec::new(),
             transcript_message_count: 0,
             transcript_has_more: false,
@@ -2113,6 +2131,7 @@ fn render_message() -> &'static str {
         }
         self.older_transcript_error = None;
         self.older_transcript_request = Some((request_id, session_id, profile, offset));
+        self.save_active_chat_view();
     }
 
     fn create_session_from_draft(&mut self) {
@@ -2917,6 +2936,51 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn apply_background_chat_event(
+        &mut self,
+        runtime_session_id: &str,
+        event: &serde_json::Value,
+        event_type: &str,
+        payload: &serde_json::Value,
+        execution_generation: Option<u64>,
+    ) {
+        if !matches!(
+            event_type,
+            "tool.start" | "tool.complete" | "message.start" | "message.delta" | "message.complete"
+        ) {
+            return;
+        }
+        let event_profile = event
+            .get("profile")
+            .or_else(|| payload.get("profile"))
+            .and_then(|value| value.as_str());
+        let matches = self
+            .session_chat_views
+            .iter()
+            .filter(|(_, view)| {
+                view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                    && event_profile.is_none_or(|profile| view.profile.as_deref() == Some(profile))
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        // Runtime IDs may be profile-local on some backends. Fail closed if an
+        // event cannot be assigned to exactly one cached profile/session view.
+        let [key] = matches.as_slice() else { return };
+        self.session_chat_view_order
+            .retain(|candidate| candidate != key);
+        self.session_chat_view_order.push_back(key.clone());
+        let Some(view) = self.session_chat_views.get_mut(key) else {
+            return;
+        };
+        apply_stream_event_to_transcript(
+            &mut view.transcript,
+            event_type,
+            payload,
+            execution_generation,
+        );
+        view.transcript_message_count = view.transcript_message_count.max(view.transcript.len());
+    }
+
     fn handle_server_event(&mut self, event: serde_json::Value) {
         let session_id = event.get("session_id").and_then(|value| value.as_str());
         let event_type = event
@@ -2958,6 +3022,13 @@ fn render_message() -> &'static str {
             return;
         };
         if session_id.is_some_and(|session_id| session_id != active_session) {
+            self.apply_background_chat_event(
+                session_id.unwrap_or_default(),
+                &event,
+                event_type,
+                &payload,
+                execution_generation,
+            );
             return;
         }
         match event_type {
@@ -3088,8 +3159,8 @@ fn render_message() -> &'static str {
                     self.clarify_prompts.remove(prompt_id);
                 }
             }
-            "tool.start" | "tool.complete" => {
-                upsert_tool_row(
+            "tool.start" | "tool.complete" | "message.delta" | "message.complete" => {
+                apply_stream_event_to_transcript(
                     &mut self.transcript,
                     event_type,
                     &payload,
@@ -3101,54 +3172,11 @@ fn render_message() -> &'static str {
                         .and_then(|value| value.as_str())
                         .unwrap_or("tool");
                     self.status = format!("Running {name}…");
+                } else if event_type == "message.complete" {
+                    self.status = "Hermes response complete".into();
                 }
             }
             "message.start" => self.status = "Hermes is thinking…".into(),
-            "message.delta" => {
-                let delta = payload
-                    .get("text")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or_default();
-                if delta.is_empty() {
-                    return;
-                }
-                let streaming = self.transcript.iter_mut().rev().find(|message| {
-                    message.get("role").and_then(|value| value.as_str()) == Some("assistant")
-                        && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
-                });
-                if let Some(message) = streaming {
-                    if let Some(content) = message
-                        .get_mut("content")
-                        .and_then(|value| value.as_str())
-                        .map(str::to_owned)
-                    {
-                        message["content"] = serde_json::Value::String(format!("{content}{delta}"));
-                    }
-                } else {
-                    self.transcript.push(
-                        serde_json::json!({"role":"assistant","content":delta,"streaming":true}),
-                    );
-                }
-            }
-            "message.complete" => {
-                let final_text = payload
-                    .get("text")
-                    .or_else(|| payload.get("rendered"))
-                    .and_then(|value| value.as_str());
-                if let Some(message) = self.transcript.iter_mut().rev().find(|message| {
-                    message.get("role").and_then(|value| value.as_str()) == Some("assistant")
-                        && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
-                }) {
-                    if let Some(text) = final_text.filter(|text| !text.is_empty()) {
-                        message["content"] = serde_json::Value::String(text.to_owned());
-                    }
-                    message["streaming"] = serde_json::Value::Bool(false);
-                } else if let Some(text) = final_text.filter(|text| !text.is_empty()) {
-                    self.transcript
-                        .push(serde_json::json!({"role":"assistant","content":text}));
-                }
-                self.status = "Hermes response complete".into();
-            }
             "error" => {
                 self.status = payload
                     .get("message")
@@ -3174,25 +3202,124 @@ fn render_message() -> &'static str {
         });
     }
 
+    fn cache_session_chat_view(&mut self, key: String, view: SessionChatViewState) {
+        self.session_chat_view_order
+            .retain(|existing| existing != &key);
+        self.session_chat_view_order.push_back(key.clone());
+        self.session_chat_views.insert(key, view);
+        while self.session_chat_views.len() > 32 {
+            let active_key = match &self.route {
+                AppRoute::Session(session_id) => Some(session_identity_key(
+                    session_id,
+                    self.active_session_profile.as_deref(),
+                )),
+                _ => None,
+            };
+            let candidate = self
+                .session_chat_view_order
+                .iter()
+                .find(|candidate| {
+                    if active_key.as_ref() == Some(*candidate) {
+                        return false;
+                    }
+                    let Some(view) = self.session_chat_views.get(*candidate) else {
+                        return true;
+                    };
+                    if view.older_transcript_request.is_some()
+                        || view.transcript.iter().any(|message| {
+                            message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+                        })
+                    {
+                        return false;
+                    }
+                    let Some(runtime) = view.runtime_session_id.as_deref() else {
+                        return true;
+                    };
+                    let runtime_key = session_identity_key(runtime, view.profile.as_deref());
+                    !self.pending_submissions.contains_key(&runtime_key)
+                        && !self
+                            .pending_interrupt
+                            .as_ref()
+                            .is_some_and(|(_, id)| id == runtime)
+                        && !self
+                            .approval_prompts
+                            .values()
+                            .any(|prompt| prompt.session_id == runtime)
+                        && !self
+                            .clarify_prompts
+                            .values()
+                            .any(|prompt| prompt.session_id == runtime)
+                        && !self
+                            .batch_clarify_prompts
+                            .values()
+                            .any(|prompt| prompt.session_id == runtime)
+                })
+                .cloned();
+            let Some(candidate) = candidate else { break };
+            self.session_chat_view_order.retain(|key| key != &candidate);
+            self.session_chat_views.remove(&candidate);
+        }
+    }
+
+    fn save_active_chat_view(&mut self) {
+        match &self.route {
+            AppRoute::Session(session_id) => {
+                let key = session_identity_key(session_id, self.active_session_profile.as_deref());
+                self.cache_session_chat_view(
+                    key,
+                    SessionChatViewState {
+                        profile: self.active_session_profile.clone(),
+                        runtime_session_id: self.active_runtime_session_id.clone(),
+                        transcript: self.transcript.clone(),
+                        transcript_message_count: self.transcript_message_count,
+                        transcript_has_more: self.transcript_has_more,
+                        older_transcript_request: self.older_transcript_request.clone(),
+                        older_transcript_error: self.older_transcript_error.clone(),
+                        draft: self.draft.clone(),
+                    },
+                );
+            }
+            AppRoute::NewChat => self.new_chat_draft.clone_from(&self.draft),
+            _ => {}
+        }
+    }
+
     fn navigate(&mut self, route: AppRoute) {
+        self.save_active_chat_view();
+        self.navigate_after_save(route);
+    }
+
+    fn navigate_after_save(&mut self, route: AppRoute) {
         let route = AppRoute::parse(&route.path(), &self.contributed_paths);
         if route.is_overlay() && !self.route.is_overlay() {
             self.overlay_return = self.route.clone();
         }
         match &route {
             AppRoute::Session(session_id) => {
-                self.transcript.clear();
-                self.transcript_message_count = 0;
-                self.transcript_has_more = false;
-                self.older_transcript_request = None;
-                self.older_transcript_error = None;
-                self.active_runtime_session_id = None;
-                if let Some(gateway) = &self.gateway_discovery {
-                    if let Err(error) = gateway
+                let key = session_identity_key(session_id, self.active_session_profile.as_deref());
+                if let Some(view) = self.session_chat_views.get(&key).cloned() {
+                    self.transcript = view.transcript;
+                    self.transcript_message_count = view.transcript_message_count;
+                    self.transcript_has_more = view.transcript_has_more;
+                    self.older_transcript_request = view.older_transcript_request;
+                    self.older_transcript_error = view.older_transcript_error;
+                    self.active_runtime_session_id = view.runtime_session_id;
+                    self.draft = view.draft;
+                } else {
+                    self.transcript.clear();
+                    self.transcript_message_count = 0;
+                    self.transcript_has_more = false;
+                    self.older_transcript_request = None;
+                    self.older_transcript_error = None;
+                    self.active_runtime_session_id = None;
+                    self.draft.clear();
+                }
+                if self.active_runtime_session_id.is_none()
+                    && let Some(gateway) = &self.gateway_discovery
+                    && let Err(error) = gateway
                         .resume_session(session_id.clone(), self.active_session_profile.clone())
-                    {
-                        self.status = error;
-                    }
+                {
+                    self.status = error;
                 }
             }
             AppRoute::NewChat => {
@@ -3206,6 +3333,7 @@ fn render_message() -> &'static str {
                     .gateway_endpoint
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.clone());
+                self.draft.clone_from(&self.new_chat_draft);
             }
             _ => {}
         }
@@ -3219,6 +3347,9 @@ fn render_message() -> &'static str {
     pub fn navigate_path(&mut self, target: &str) -> Result<(), String> {
         let route = AppRoute::parse(target, &self.contributed_paths);
         if let AppRoute::Session(session_id) = &route {
+            // Save before replacing the selected profile so the previous chat
+            // remains keyed by its own profile/session identity.
+            self.save_active_chat_view();
             let matches = self
                 .sessions
                 .iter()
@@ -3236,10 +3367,12 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.clone())
             });
+            self.navigate_after_save(route.clone());
+        } else {
+            self.navigate(route.clone());
         }
         let capabilities_tab =
             (route == AppRoute::Capabilities).then(|| CapabilitiesTab::from_query(target));
-        self.navigate(route);
         if let Some(tab) = capabilities_tab {
             self.capabilities_tab = tab;
             if self.gateway_connected && self.skills.is_none() && !self.capabilities_pending {
@@ -3276,8 +3409,9 @@ fn render_message() -> &'static str {
                 }) {
                     return Err("Session profile is invalid".into());
                 }
+                self.save_active_chat_view();
                 self.active_session_profile = profile;
-                self.navigate(AppRoute::Session(session_id));
+                self.navigate_after_save(AppRoute::Session(session_id));
                 self.status = "Opened Session".into();
             }
             RegisteredUiAction::TogglePane { panel } => {
@@ -3900,17 +4034,31 @@ fn render_message() -> &'static str {
                     }
                 },
                 GatewayEvent::SessionResumed(Ok(snapshot)) => {
+                    let key =
+                        session_identity_key(&snapshot.session_id, snapshot.profile.as_deref());
+                    let mut view = self
+                        .session_chat_views
+                        .get(&key)
+                        .cloned()
+                        .unwrap_or_default();
+                    view.profile = snapshot.profile.clone();
+                    view.transcript = snapshot.messages;
+                    view.transcript_message_count =
+                        snapshot.message_count.max(view.transcript.len());
+                    view.transcript_has_more =
+                        view.transcript.len() < view.transcript_message_count;
+                    view.older_transcript_request = None;
+                    view.older_transcript_error = None;
+                    view.runtime_session_id = Some(snapshot.runtime_session_id.clone());
+                    self.cache_session_chat_view(key, view.clone());
                     if self.route == AppRoute::Session(snapshot.session_id.clone())
                         && self.active_session_profile == snapshot.profile
                     {
-                        self.transcript = snapshot.messages;
-                        self.transcript_message_count =
-                            snapshot.message_count.max(self.transcript.len());
-                        self.transcript_has_more =
-                            self.transcript.len() < self.transcript_message_count;
+                        self.transcript = view.transcript.clone();
+                        self.transcript_message_count = view.transcript_message_count;
+                        self.transcript_has_more = view.transcript_has_more;
                         self.older_transcript_request = None;
                         self.older_transcript_error = None;
-                        self.active_session_profile = snapshot.profile;
                         self.active_runtime_session_id = Some(snapshot.runtime_session_id);
                         self.status = format!("Session open · {} messages", snapshot.message_count);
                     }
@@ -3923,7 +4071,12 @@ fn render_message() -> &'static str {
                     offset,
                     result,
                 } => {
-                    let expected = self.older_transcript_request.as_ref().is_some_and(
+                    self.save_active_chat_view();
+                    let key = session_identity_key(&session_id, profile.as_deref());
+                    let Some(view) = self.session_chat_views.get_mut(&key) else {
+                        continue;
+                    };
+                    let expected = view.older_transcript_request.as_ref().is_some_and(
                         |(pending_id, pending_session, pending_profile, pending_offset)| {
                             pending_id == &request_id
                                 && pending_session == &session_id
@@ -3931,35 +4084,41 @@ fn render_message() -> &'static str {
                                 && pending_offset == &offset
                         },
                     );
-                    if expected
-                        && self.route == AppRoute::Session(session_id.clone())
-                        && self.active_session_profile == profile
-                    {
-                        self.older_transcript_request = None;
+                    if expected {
+                        view.older_transcript_request = None;
                         match result {
                             Ok(page) => {
                                 if page.replace_all {
-                                    self.transcript = page.messages;
-                                    self.transcript_has_more = false;
+                                    view.transcript = page.messages;
+                                    view.transcript_has_more = false;
                                 } else {
-                                    self.transcript = merge_older_transcript_page(
+                                    view.transcript = merge_older_transcript_page(
                                         page.messages,
-                                        std::mem::take(&mut self.transcript),
+                                        std::mem::take(&mut view.transcript),
                                     );
-                                    self.transcript_has_more = page.has_more;
+                                    view.transcript_has_more = page.has_more;
                                 }
-                                self.transcript_message_count =
-                                    self.transcript_message_count.max(self.transcript.len());
-                                self.older_transcript_error = None;
+                                view.transcript_message_count =
+                                    view.transcript_message_count.max(view.transcript.len());
+                                view.older_transcript_error = None;
                                 self.status = format!(
                                     "Loaded earlier messages · {} visible",
-                                    self.transcript.len()
+                                    view.transcript.len()
                                 );
                             }
                             Err(error) => {
-                                self.older_transcript_error = Some(error.clone());
+                                view.older_transcript_error = Some(error.clone());
                                 self.status = format!("Could not load earlier messages: {error}");
                             }
+                        }
+                        if self.route == AppRoute::Session(session_id.clone())
+                            && self.active_session_profile == profile
+                        {
+                            self.transcript = view.transcript.clone();
+                            self.transcript_message_count = view.transcript_message_count;
+                            self.transcript_has_more = view.transcript_has_more;
+                            self.older_transcript_request = None;
+                            self.older_transcript_error = view.older_transcript_error.clone();
                         }
                     }
                 }
@@ -4367,6 +4526,61 @@ fn merge_older_transcript_page(
     merged.extend(older.into_iter().take(older_prefix_len));
     merged.extend(current);
     merged
+}
+
+fn apply_stream_event_to_transcript(
+    transcript: &mut Vec<serde_json::Value>,
+    event_type: &str,
+    payload: &serde_json::Value,
+    execution_generation: Option<u64>,
+) {
+    match event_type {
+        "tool.start" | "tool.complete" => {
+            upsert_tool_row(transcript, event_type, payload, execution_generation);
+        }
+        "message.delta" => {
+            let delta = payload
+                .get("text")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            if delta.is_empty() {
+                return;
+            }
+            if let Some(message) = transcript.iter_mut().rev().find(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                    && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            }) {
+                if let Some(content) = message
+                    .get("content")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned)
+                {
+                    message["content"] = serde_json::Value::String(format!("{content}{delta}"));
+                }
+            } else {
+                transcript
+                    .push(serde_json::json!({"role":"assistant","content":delta,"streaming":true}));
+            }
+        }
+        "message.complete" => {
+            let final_text = payload
+                .get("text")
+                .or_else(|| payload.get("rendered"))
+                .and_then(|value| value.as_str());
+            if let Some(message) = transcript.iter_mut().rev().find(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                    && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            }) {
+                if let Some(text) = final_text.filter(|text| !text.is_empty()) {
+                    message["content"] = serde_json::Value::String(text.to_owned());
+                }
+                message["streaming"] = serde_json::Value::Bool(false);
+            } else if let Some(text) = final_text.filter(|text| !text.is_empty()) {
+                transcript.push(serde_json::json!({"role":"assistant","content":text}));
+            }
+        }
+        _ => {}
+    }
 }
 
 fn transcript_message(message: &serde_json::Value) -> (String, String) {
@@ -6105,6 +6319,134 @@ mod tests {
     }
 
     #[test]
+    fn switching_duplicate_session_ids_restores_profile_scoped_draft_and_transcript() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("same-id".into());
+        app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("runtime-work".into());
+        app.transcript = vec![json!({"role":"assistant","content":"work transcript"})];
+        app.draft = "work draft".into();
+        app.save_active_chat_view();
+
+        app.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: "same-id".into(),
+            profile: Some("personal".into()),
+        })
+        .unwrap();
+        app.active_runtime_session_id = Some("runtime-personal".into());
+        app.transcript = vec![json!({"role":"assistant","content":"personal transcript"})];
+        app.draft = "personal draft".into();
+        app.save_active_chat_view();
+
+        app.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: "same-id".into(),
+            profile: Some("work".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-work")
+        );
+        assert_eq!(app.transcript[0]["content"], "work transcript");
+        assert_eq!(app.draft, "work draft");
+
+        app.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: "same-id".into(),
+            profile: Some("personal".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-personal")
+        );
+        assert_eq!(app.transcript[0]["content"], "personal transcript");
+        assert_eq!(app.draft, "personal draft");
+        assert_eq!(app.session_chat_views.len(), 2);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
+    fn session_view_cache_is_bounded_and_keeps_the_visible_session() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("visible".into());
+        app.active_session_profile = Some("work".into());
+        let visible_key = session_identity_key("visible", Some("work"));
+        app.cache_session_chat_view(
+            visible_key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-visible".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        for index in 0..40 {
+            let id = format!("session-{index}");
+            app.cache_session_chat_view(
+                session_identity_key(&id, Some("work")),
+                SessionChatViewState {
+                    profile: Some("work".into()),
+                    transcript: vec![json!({"role":"assistant","content":id})],
+                    ..SessionChatViewState::default()
+                },
+            );
+        }
+        assert_eq!(app.session_chat_views.len(), 32);
+        assert!(app.session_chat_views.contains_key(&visible_key));
+        assert!(
+            app.session_chat_views
+                .contains_key(&session_identity_key("session-39", Some("work")))
+        );
+        assert!(
+            !app.session_chat_views
+                .contains_key(&session_identity_key("session-0", Some("work")))
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
+    fn background_stream_events_update_only_the_exact_cached_runtime_and_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("visible".into());
+        app.active_runtime_session_id = Some("runtime-visible".into());
+        for profile in ["work", "personal"] {
+            app.session_chat_views.insert(
+                session_identity_key("same-id", Some(profile)),
+                SessionChatViewState {
+                    profile: Some(profile.into()),
+                    runtime_session_id: Some("runtime-duplicate".into()),
+                    ..SessionChatViewState::default()
+                },
+            );
+        }
+        app.handle_server_event(json!({
+            "type":"message.delta","session_id":"runtime-duplicate",
+            "payload":{"text":"ambiguous"}
+        }));
+        assert!(
+            app.session_chat_views
+                .values()
+                .all(|view| view.transcript.is_empty())
+        );
+
+        app.handle_server_event(json!({
+            "type":"message.delta","session_id":"runtime-duplicate","profile":"work",
+            "payload":{"text":"work background"}
+        }));
+        let work = &app.session_chat_views[&session_identity_key("same-id", Some("work"))];
+        let personal = &app.session_chat_views[&session_identity_key("same-id", Some("personal"))];
+        assert_eq!(work.transcript[0]["content"], "work background");
+        assert!(personal.transcript.is_empty());
+        assert!(
+            app.transcript.is_empty(),
+            "background deltas must not change visible chat"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
     fn events_from_a_different_runtime_session_do_not_touch_the_visible_chat() {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());
@@ -6394,6 +6736,7 @@ impl HermesNativeApp {
                 "transcript_page_loading": self.older_transcript_request.is_some(),
                 "transcript_page_error": self.older_transcript_error.as_deref(),
                 "active_profile": self.active_session_profile.as_deref(),
+                "cached_session_view_count": self.session_chat_views.len(),
                 "submission_pending": self.active_runtime_session_id.as_ref().is_some_and(|session_id| {
                     self.pending_submissions.contains_key(&session_identity_key(session_id, self.active_session_profile.as_deref()))
                 }),

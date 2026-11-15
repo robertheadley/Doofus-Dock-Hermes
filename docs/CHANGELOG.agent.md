@@ -255,3 +255,15 @@
 - **performance:** Complete response bounded by 512 KiB and 10,000 rows; normal paginated reads remain 120 rows.
 - **risks:** Live source gateway compatibility remains unverified.
 - **follow_up:** Exercise current and legacy page shapes against an isolated gateway from the pinned snapshot.
+## HUI-021
+
+- **id:** HUI-021
+- **timestamp:** 2026-11-15T05:34:17Z
+- **what:** Added profile-scoped in-memory chat view caching, draft/transcript restoration across routes, and background message/tool stream routing with ambiguity rejection.
+- **why:** Establish independent session state before exposing multiple dynamic Hermes session panes.
+- **components:** Hermes Native app route state, gateway event projection, diagnostics, app tests.
+- **type:** session-state foundation.
+- **validation:** Formatting and all-target feature check passed; test suite passed (68 library + 5 automation tests), including profile collision, background routing and cache-bound coverage.
+- **performance:** Cache targets 32 idle session views; active/in-flight work is protected.
+- **risks:** State is memory-only and not rendered as separate dynamic panes; background approval/clarify request ownership remains open.
+- **follow_up:** Bind each DoofusDock session descriptor to its own visible chat view and request lifecycle.

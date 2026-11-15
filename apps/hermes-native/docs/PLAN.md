@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 46 (published canonical workspace to the user-provided repository).
+- **Working revision:** 47 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -259,3 +259,8 @@ Acceptance: layout revision and persisted pane order/active selection change onl
 Added profile-scoped stable session-pane identities as DoofusDock `PanelDescriptor`s, including validated session/profile metadata and bounded titles. Opening a pane uses revision-bound `Operation::AddPanel` targeting the canonical workspace node; fronting and closing use `SelectTab` and `ClosePanel`. Profile application preserves open session panes in the workspace tab group and leaves explicitly closed panes closed; reopening uses the current profile's canonical profile transaction. Tests cover duplicate stored IDs across profiles, bounded/control-character validation, identity metadata, profile changes, close/reopen, active tab selection, and persisted layout restoration.
 
 This is the layout foundation only. No UI action creates these panes yet, the renderer does not show a session chat inside each pane, busy-close confirmation is not wired, and per-pane transcript/draft/runtime event ownership is still open. This slice is not user-visible session-tab parity.
+### Revision 47 — profile-keyed session chat state and background stream routing
+
+The app now keeps an in-memory chat view cache keyed by `(profile, stored_session_id)`. Route changes save and restore runtime session identity, transcript/page state and composer draft, so equal stored IDs in different profiles remain independent. Resume snapshots hydrate the matching view. Message deltas/completions and tool start/completion events from a non-visible runtime update only the unique matching cached view; when an event omits profile and runtime identity is ambiguous, it is ignored. The cache targets 32 views, evicts least-recently used idle views first, and protects the visible view, streams, pending transcript reads, submissions, interrupts and unresolved approval/clarify prompts. Automation diagnostics expose only the cached view count.
+
+This remains route-level state, not per-pane rendering. The map is in-memory only; views can be recovered from Hermes after app restart. Hidden-session approval/clarify server-request routing and visual chat widgets inside dynamic DoofusDock panes remain open. No user-visible session-tab parity is claimed.

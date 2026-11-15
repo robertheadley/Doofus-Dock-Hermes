@@ -659,3 +659,15 @@
 - **performance:** No benchmark; session pane IDs are fixed 16-digit FNV-1a hashes with full identity checked in metadata.
 - **risks:** No UI controls or independent session content is wired; layout descriptors can persist after close because the pinned Dock API has no descriptor-removal operation.
 - **follow_up:** Add independent per-pane chat view models and gateway event routing before exposing session panes to users.
+### Revision 47 — profile-keyed session chat state and background stream routing
+
+- **id:** HUR-001-059
+- **timestamp:** 2026-11-15T05:34:17Z
+- **what:** Added profile+stored-session keyed in-memory chat views, route-switch draft/transcript/runtime restoration, correlated resume hydration, and unique background message/tool event routing with a protected 32-view idle cache.
+- **why:** Independent session state and background streaming must exist before dynamic DoofusDock panes can safely render multiple Hermes conversations.
+- **components:** apps/hermes-native/src/app.rs; session route transitions; GatewayEvent::SessionResumed; server message/tool event reduction; diagnostics.
+- **type:** chat state and event routing.
+- **validation:** `cargo fmt --all -- --check`; `cargo check -p hermes-native --all-targets --features agent-automation`; full `cargo test -p hermes-native --all-targets --features agent-automation` passed (68 library + 5 automation tests). Added profile-collision route restore, ambiguous background runtime rejection, profile-specific background event and bounded-cache tests.
+- **performance:** Cache target 32 idle session views; active, streaming, pending-page, submission, interrupt, approval and clarification state is protected from eviction. Cache is in-memory.
+- **risks:** Views are not yet rendered inside DoofusDock panes; server-request ownership for hidden sessions is incomplete; this cache is lost on app restart.
+- **follow_up:** Render each pane from its keyed view model, route all interactive RPC receipts by profile/session, and add open/create/close UI actions.
