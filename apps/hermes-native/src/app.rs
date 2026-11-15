@@ -1433,10 +1433,15 @@ fn render_message() -> &'static str {
             ui.label(RichText::new("PROJECT FILES").strong().color(TEXT));
             if let Some(root) = self.files.root() {
                 ui.label(
-                    RichText::new(root.display().to_string())
-                        .small()
-                        .color(MUTED),
-                );
+                    RichText::new(
+                        root.file_name()
+                            .map(|name| name.to_string_lossy())
+                            .unwrap_or_else(|| root.display().to_string().into()),
+                    )
+                    .small()
+                    .color(MUTED),
+                )
+                .on_hover_text(root.display().to_string());
             }
             if ui.small_button("Refresh").clicked() {
                 self.files.refresh();

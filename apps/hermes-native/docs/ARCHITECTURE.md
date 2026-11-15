@@ -66,6 +66,8 @@ An installed Agent Plugin with `update_available` exposes a profile-bound update
 
 The opt-in headless agent runner starts at New session for every invocation. Named route fixtures are responsible for constructing their own offline workspace state; the Files-preview fixture creates its project only under the isolated runner profile and waits for asynchronous tree/preview results before rendering.
 
+The Files panel displays the active project folder name and exposes its full root path on hover. A preview pane uses the file basename in Dock chrome rather than repeating a clipped absolute path in its body.
+
 ## Typography
 
 JetBrains Mono is the primary application UI typeface; its Medium face is used for heading and button text styles. Fira Code is the egui monospace family and is explicitly used by the Hermes message composer. Both are bundled from official tagged releases with their OFL 1.1 license texts and archive hashes in `assets/fonts/README.md`. The original egui fonts remain fallbacks for uncovered glyphs.

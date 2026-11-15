@@ -109,26 +109,25 @@ impl FilePreviewStore {
         let mut force_preview = false;
         match self.contents.get(path) {
             Some(Ok(content)) => {
-                ui.label(
-                    egui::RichText::new(path.display().to_string())
-                        .small()
-                        .color(ui.visuals().weak_text_color()),
-                );
-                ui.separator();
                 egui::ScrollArea::both()
                     .id_salt(("hermes-file-preview", path))
                     .show(ui, |ui| {
-                        if content.language == "markdown" {
-                            CommonMarkViewer::new().show(ui, markdown_cache, &content.text);
-                        } else {
-                            ui.label(
-                                egui::RichText::new(&content.text)
-                                    .font(egui::FontId::monospace(12.0)),
-                            );
-                        }
-                        if content.truncated {
-                            ui.label("Preview is truncated at 512 KiB.");
-                        }
+                        ui.horizontal(|ui| {
+                            ui.add_space(12.0);
+                            ui.vertical(|ui| {
+                                if content.language == "markdown" {
+                                    CommonMarkViewer::new().show(ui, markdown_cache, &content.text);
+                                } else {
+                                    ui.label(
+                                        egui::RichText::new(&content.text)
+                                            .font(egui::FontId::monospace(12.0)),
+                                    );
+                                }
+                                if content.truncated {
+                                    ui.label("Preview is truncated at 512 KiB.");
+                                }
+                            });
+                        });
                     });
             }
             Some(Err(error)) => {

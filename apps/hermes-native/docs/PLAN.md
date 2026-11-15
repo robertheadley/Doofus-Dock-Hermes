@@ -455,4 +455,8 @@ Add a named, offline `--files-preview-fixture` to the one-shot agent runner. It 
 
 The pinned `preview-file.tsx` sets `TEXT_PREVIEW_MAX_BYTES` to 512 KiB, renders Markdown as its default view, and offers a deliberate Preview anyway action for binary or oversized files. Update Hermes Native to the same default limit and Markdown treatment; Preview anyway reads at most 512 KiB and marks truncation rather than loading an unbounded file. Cover regular text, binary refusal/override, oversized refusal/forced truncation, and preserve worker isolation. This remains only a first preview mode: source image/PDF/HTML modes, diff/edit workflows, source styling, and side-by-side acceptance are open.
 
+### Revision 87 — make the Files preview fixture readable at target viewport
+
+Capture review found the synthetic temporary absolute path consumed and clipped the narrow preview and Files headers, and the Markdown viewer's first glyph touched the panel boundary. Use the file name as the preview pane title, remove the redundant full path line, inset preview content, and render the project folder basename with the full path available on hover. Recapture a distinct 1440×900 image with a sidecar bound to the exact source SHA, target commit and binary/image hashes. This remains target-only visual evidence.
+
 Add `actions.fill` for accessible single- and multiline-text inputs. It validates a unique semantic locator, enabled state, payload length and current UI generation, then sends AccessKit `SetValue` through egui to replace the complete field value (including clearing it). Tests prove fill, replacement, clearing, and the structured action receipt. This complements typed keystrokes while preserving the normal widget path.

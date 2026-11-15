@@ -1243,3 +1243,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No benchmark performed.
   **risks:** Test evidence does not establish visual parity.
   **follow_up:** Keep the preview slice open for exact source comparisons and acceptance tests.
+
+- **id:** HUR-001-094
+  **timestamp:** 2026-11-15T13:58:30Z
+  **what:** Improved the Files preview and root labels to remain readable in the 1440×900 target state.
+  **why:** Visual review showed the temporary absolute path clipped the preview and project header.
+  **components:** src/app.rs, src/files.rs, docs/ARCHITECTURE.md, docs/PLAN.md.
+  **type:** fidelity
+  **validation:** Feature-enabled full test/check matrix passed; the navigated preview fixture produced and visually rendered a distinct 1440×900 image.
+  **performance:** No benchmark performed.
+  **risks:** Target screenshot is synthetic and not source-paired.
+  **follow_up:** Bind the committed PNG sidecar to the final commit and keep source parity open.
+
+- **id:** HUR-001-095
+  **timestamp:** 2026-11-15T13:58:30Z
+  **what:** Validated the readable Files-preview screenshot fixture after the UI refinement.
+  **why:** Confirm the screenshot reflects the real preview route instead of the default New session screen.
+  **components:** src/app.rs, src/files.rs, docs/EXECUTION_LOGS.md.
+  **type:** validation
+  **validation:** Formatting, 128 library tests, 11 protocol tests, all-target check and whitespace validation passed. The explicit fixture rendered a distinct screenshot whose AccessKit tree contains preview and Files controls.
+  **performance:** No benchmark performed.
+  **risks:** Screenshot proves the native fixture only, not pinned-source parity or physical Windows host behavior.
+  **follow_up:** Use the sidecar and exact scenario when collecting source-paired evidence.
