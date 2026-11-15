@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 81 (implementation in progress).
+- **Working revision:** 96 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -484,3 +484,15 @@ Match the downloaded Desktop's Files filtering with local Git repository discove
 ### Revision 93 — continuous PDF page stack and zoom
 
 Match the pinned Files preview's Chromium PDF document behavior more closely by laying all pages into one vertical scroll surface, fitting each page to the pane width by default, tracking the leading visible page, and providing accessible page jumps and 50–300% zoom. Read page dimensions with the PDFium worker, render only visible and nearby pages, and cap the raster cache at eight pages. Preserve the page-at-a-time worker boundary and 16 MiB input limit. Add a six-page isolated automation fixture; navigate several pages and zoom through accessible controls, then capture the distinct scrolled state. Source still provides Chromium's richer native PDF toolbar/text selection/search and this native viewer does not yet match those controls; Windows x64, source-paired visuals and installed-host acceptance remain open.
+
+### Revision 94 — HTML source and rendered preview modes
+
+Match the pinned `preview-pane.tsx` local HTML path with selectable Source and Preview modes. Keep the default in syntax-highlighted source mode; lazily create a Windows WebView2 child from pinned Wry 0.57.2 only when Preview is selected, position it in the active Dock preview bounds, hide it on frames without the preview, and load the canonical local file URL so relative resources and page scripts work. Block non-file navigation and expose an accessible retry when WebView2 initialization fails. Add an HTML fixture and semantic mode-switch capture. Validation must include the all-target feature tests/check, path escaping, AccessKit mode selection, and a later native-window smoke proving the rendered DOM and relative assets; the headless runner cannot prove WebView2 rendering.
+
+### Revision 95 — native WebView2 file URL and relative asset smoke
+
+Normalize Windows extended-length canonical paths before forming local file URLs, including drive and UNC forms. Restrict top-level navigation to `about:blank` or the exact selected HTML document while permitting relative subresource loading. Run a standalone native Wry child-WebView smoke on an isolated Windows desktop; require the HTML `onload` script to observe the 16-pixel relative SVG and report that title through WebView2. The successful smoke validates Wry/WebView2, local URL loading, JavaScript and relative-resource resolution. It does not yet prove the Hermes Files pane's live Dock bounds, hide/reopen behavior, or source-paired Windows visuals; keep those acceptance items open.
+
+### Revision 96 — exact HTML navigation allowlist
+
+Bind top-level navigation to the canonical URL of the active HTML preview. Keep `about:blank` available for initial WebView2 setup, allow the selected document itself, and deny navigation to other local files or remote origins without blocking relative images and other subresources. Add explicit allow/deny cases for the selected document, another file, and an HTTPS URL. Re-run the native WebView2 relative-asset smoke and all-target Windows feature tests. Actual Files-pane docking geometry, visibility transitions and source-paired acceptance remain open.

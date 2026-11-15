@@ -8,6 +8,8 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 #[cfg(test)]
 use std::process::Command;
+#[cfg(windows)]
+use std::{cell::RefCell, rc::Rc};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
@@ -154,6 +156,144 @@ pub enum FilePreviewKind {
     },
 }
 
+#[cfg(windows)]
+struct HtmlPreviewHost {
+    webview: Option<wry::WebView>,
+    active_path: Option<PathBuf>,
+    error: Option<String>,
+    allowed_url: Rc<RefCell<Option<String>>>,
+}
+
+#[cfg(windows)]
+struct ParentWindowHandle(wry::raw_window_handle::RawWindowHandle);
+
+#[cfg(windows)]
+impl wry::raw_window_handle::HasWindowHandle for ParentWindowHandle {
+    fn window_handle(
+        &self,
+    ) -> Result<wry::raw_window_handle::WindowHandle<'_>, wry::raw_window_handle::HandleError> {
+        // SAFETY: this raw handle was copied from eframe's live main-window
+        // handle and FilePreviewStore never outlives that window.
+        Ok(unsafe { wry::raw_window_handle::WindowHandle::borrow_raw(self.0) })
+    }
+}
+
+#[cfg(windows)]
+impl HtmlPreviewHost {
+    fn new(parent: Option<wry::raw_window_handle::RawWindowHandle>) -> Self {
+        let allowed_url = Rc::new(RefCell::new(None::<String>));
+        let Some(parent) = parent else {
+            return Self {
+                webview: None,
+                active_path: None,
+                error: Some("The native window handle is unavailable.".into()),
+                allowed_url,
+            };
+        };
+        let bounds = wry::Rect {
+            position: wry::dpi::LogicalPosition::new(0.0, 0.0).into(),
+            size: wry::dpi::LogicalSize::new(1.0, 1.0).into(),
+        };
+        let navigation_allowlist = Rc::clone(&allowed_url);
+        match wry::WebViewBuilder::new()
+            .with_url("about:blank")
+            .with_bounds(bounds)
+            .with_visible(false)
+            .with_navigation_handler(move |url| {
+                is_allowed_html_navigation(&url, navigation_allowlist.borrow().as_deref())
+            })
+            .build_as_child(&ParentWindowHandle(parent))
+        {
+            Ok(webview) => Self {
+                webview: Some(webview),
+                active_path: None,
+                error: None,
+                allowed_url,
+            },
+            Err(error) => Self {
+                webview: None,
+                active_path: None,
+                error: Some(format!("Could not initialize the HTML preview: {error}")),
+                allowed_url,
+            },
+        }
+    }
+
+    fn hide(&self) {
+        if let Some(webview) = &self.webview {
+            let _ = webview.set_visible(false);
+        }
+    }
+
+    fn show(&mut self, path: &Path, bounds: egui::Rect) {
+        let Some(webview) = &self.webview else {
+            return;
+        };
+        if self.active_path.as_deref() != Some(path) {
+            match html_file_url(path) {
+                Ok(url) => {
+                    *self.allowed_url.borrow_mut() = Some(url.clone());
+                    if let Err(error) = webview.load_url(&url) {
+                        self.error = Some(format!("Could not open HTML preview: {error}"));
+                        return;
+                    }
+                    self.active_path = Some(path.to_path_buf());
+                    self.error = None;
+                }
+                Err(error) => {
+                    self.error = Some(error);
+                    return;
+                }
+            }
+        }
+        let bounds = wry::Rect {
+            position: wry::dpi::LogicalPosition::new(bounds.min.x as f64, bounds.min.y as f64)
+                .into(),
+            size: wry::dpi::LogicalSize::new(bounds.width() as f64, bounds.height() as f64).into(),
+        };
+        if let Err(error) = webview
+            .set_bounds(bounds)
+            .and_then(|_| webview.set_visible(true))
+        {
+            self.error = Some(format!("Could not show HTML preview: {error}"));
+        }
+    }
+}
+
+#[cfg(windows)]
+fn html_file_url(path: &Path) -> Result<String, String> {
+    let path = path
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve HTML preview path: {error}"))?;
+    let mut path = path.to_string_lossy().replace('\\', "/");
+    if let Some(unc_path) = path.strip_prefix("//?/UNC/") {
+        path = format!("//{unc_path}");
+    } else if let Some(drive_path) = path.strip_prefix("//?/") {
+        path = drive_path.to_owned();
+    }
+    let is_unc = path.starts_with("//");
+    let encoded = path
+        .bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || b"/-._~:".contains(&byte) {
+                (byte as char).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect::<String>();
+    if is_unc {
+        Ok(format!("file://{encoded}"))
+    } else {
+        Ok(format!("file:///{}", encoded.trim_start_matches('/')))
+    }
+}
+
+#[cfg(windows)]
+fn is_allowed_html_navigation(url: &str, allowed_url: Option<&str>) -> bool {
+    url == "about:blank" || Some(url) == allowed_url
+}
+
 #[derive(Default)]
 pub struct FilePreviewStore {
     contents: BTreeMap<(PathBuf, usize), Result<FilePreviewContent, String>>,
@@ -163,11 +303,35 @@ pub struct FilePreviewStore {
     pdf_zoom: BTreeMap<PathBuf, f32>,
     pdf_sizes: BTreeMap<PathBuf, (usize, Vec<(f32, f32)>)>,
     pdf_cache_order: VecDeque<(PathBuf, usize)>,
+    html_preview_paths: BTreeSet<PathBuf>,
+    #[cfg(windows)]
+    html_parent_handle: Option<wry::raw_window_handle::RawWindowHandle>,
+    #[cfg(windows)]
+    html_preview_host: Option<HtmlPreviewHost>,
     request_tx: Option<Sender<PreviewRequest>>,
     result_rx: Option<Receiver<PreviewResult>>,
 }
 
 impl FilePreviewStore {
+    pub fn from_creation_context(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut store = Self::default();
+        #[cfg(windows)]
+        {
+            use wry::raw_window_handle::HasWindowHandle;
+            store.html_parent_handle = cc.window_handle().ok().map(|handle| handle.as_raw());
+        }
+        #[cfg(not(windows))]
+        let _ = cc;
+        store
+    }
+
+    pub fn begin_frame(&mut self) {
+        #[cfg(windows)]
+        if let Some(host) = &self.html_preview_host {
+            host.hide();
+        }
+    }
+
     pub fn request(&mut self, path: &Path) {
         let page_index = self.pdf_page.get(path).copied().unwrap_or(0);
         if is_pdf_path(path) {
@@ -208,6 +372,10 @@ impl FilePreviewStore {
         self.request(path);
         if is_pdf_path(path) {
             self.open_pdf(ui, path);
+            return;
+        }
+        if is_html_path(path) {
+            self.open_html(ui, path, markdown_cache);
             return;
         }
         let mut force_preview = false;
@@ -334,6 +502,87 @@ impl FilePreviewStore {
         if let Some(page_index) = next_pdf_page {
             self.pdf_page.insert(path.to_path_buf(), page_index);
             self.request_page(path, page_index, false);
+        }
+    }
+
+    fn open_html(&mut self, ui: &mut egui::Ui, path: &Path, markdown_cache: &mut CommonMarkCache) {
+        let mut rendered = self.html_preview_paths.contains(path);
+        ui.horizontal(|ui| {
+            if ui.selectable_label(!rendered, "Source").clicked() {
+                rendered = false;
+            }
+            if ui.selectable_label(rendered, "Preview").clicked() {
+                rendered = true;
+            }
+        });
+        if rendered {
+            self.html_preview_paths.insert(path.to_path_buf());
+            let bounds = ui.available_rect_before_wrap();
+            #[cfg(windows)]
+            if self.html_preview_host.is_none() {
+                self.html_preview_host = Some(HtmlPreviewHost::new(self.html_parent_handle));
+            }
+            #[cfg(windows)]
+            let host_error = if let Some(host) = &mut self.html_preview_host {
+                host.show(path, bounds);
+                host.error.clone()
+            } else {
+                Some("The HTML preview surface could not be initialized.".into())
+            };
+            if let Some(error) = host_error {
+                let mut retry = false;
+                ui.vertical_centered(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(error);
+                    retry = ui.button("Retry preview").clicked();
+                });
+                if retry {
+                    self.html_preview_host = Some(HtmlPreviewHost::new(self.html_parent_handle));
+                    ui.ctx().request_repaint();
+                }
+            } else {
+                ui.allocate_rect(bounds, egui::Sense::hover());
+            }
+            #[cfg(not(windows))]
+            ui.centered_and_justified(|ui| {
+                ui.label("Rendered HTML preview is supported by the Windows desktop host.");
+            });
+            return;
+        }
+        self.html_preview_paths.remove(path);
+
+        let key = (path.to_path_buf(), 0);
+        match self.contents.get(&key) {
+            Some(Ok(FilePreviewContent {
+                kind:
+                    FilePreviewKind::Text {
+                        text,
+                        language,
+                        truncated,
+                    },
+            })) => {
+                egui::ScrollArea::both()
+                    .id_salt(("hermes-file-preview-html-source", path))
+                    .show(ui, |ui| {
+                        ui.add_space(12.0);
+                        if let Some(markdown) = syntax_highlight_markdown(language, text) {
+                            CommonMarkViewer::new().show(ui, markdown_cache, &markdown);
+                        } else {
+                            ui.label(egui::RichText::new(text).font(egui::FontId::monospace(12.0)));
+                        }
+                        if *truncated {
+                            ui.label("Preview is truncated at 512 KiB.");
+                        }
+                    });
+            }
+            Some(Err(error)) => {
+                ui.centered_and_justified(|ui| {
+                    ui.label(format!("Unable to preview this file: {error}"))
+                });
+            }
+            _ => {
+                ui.centered_and_justified(|ui| ui.label("Loading HTML source…"));
+            }
         }
     }
 
@@ -653,6 +902,12 @@ fn is_pdf_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+}
+
+fn is_html_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "html" | "htm"))
 }
 
 fn syntax_highlight_markdown(language: &str, source: &str) -> Option<String> {
@@ -1319,6 +1574,53 @@ fn gitignore_rules(repo_root: &Path, directory: &Path) -> Option<(PathBuf, Gitig
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_html_and_htm_case_insensitively() {
+        assert!(is_html_path(Path::new("preview.html")));
+        assert!(is_html_path(Path::new("PREVIEW.HTM")));
+        assert!(!is_html_path(Path::new("preview.htm.txt")));
+        assert!(!is_html_path(Path::new("preview.rs")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn html_file_url_escapes_path_delimiters() {
+        let root = std::env::temp_dir().join(format!(
+            "hermes-html-url-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("preview with space#1.html");
+        fs::write(&path, "<h1>local</h1>").unwrap();
+
+        let url = html_file_url(&path).unwrap();
+        assert!(url.starts_with("file:///C:/"));
+        assert!(!url.contains("%3F"));
+        assert!(url.ends_with("/preview%20with%20space%231.html"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn html_navigation_only_allows_blank_or_the_selected_document() {
+        let selected = "file:///C:/project/preview.html";
+        assert!(is_allowed_html_navigation("about:blank", Some(selected)));
+        assert!(is_allowed_html_navigation(selected, Some(selected)));
+        assert!(!is_allowed_html_navigation(
+            "file:///C:/private/other.html",
+            Some(selected)
+        ));
+        assert!(!is_allowed_html_navigation(
+            "https://example.com",
+            Some(selected)
+        ));
+    }
     use std::{
         fs,
         time::{SystemTime, UNIX_EPOCH},

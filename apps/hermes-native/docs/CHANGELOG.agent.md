@@ -1342,3 +1342,46 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Hashing and atomic sidecar write completed locally in under one second.
   **risks:** Synthetic target-only capture; no paired Hermes source or installed desktop acceptance.
   **follow_up:** Continue source-paired Files parity and native-window interaction validation.
+
+- **id:** HUR-001-103
+  **timestamp:** 2026-11-15T15:35:00Z
+  **what:** Added HTML Source/Preview controls and a lazy Windows WebView2 child surface for local HTML files; added a distinct HTML fixture and navigation controls to the headless runner.
+  **why:** The pinned Files preview exposes syntax-highlighted source and an embedded rendered view for local HTML.
+  **components:** Cargo.toml, Cargo.lock, apps/hermes-native/src/files.rs, apps/hermes-native/src/app.rs, apps/hermes-native/src/bin/hermes-automation.rs, Files docs.
+  **type:** preview fidelity feature slice.
+  **validation:** Wry 0.57.2 Windows all-target check passed; 136 library and 11 automation tests passed, including HTML extension/path escaping; the isolated runner reached the accessible Preview mode and captured a distinct HTML pane state.
+  **performance:** WebView2 initializes only when the user selects Preview; it is hidden when that file pane is inactive.
+  **risks:** The headless fixture has no native HWND and verifies the explicit fallback, not the actual rendered document. Native Windows validation of WebView2 rendering, relative assets, scripts and active-pane bounds remains open. External navigation is blocked.
+  **follow_up:** Run an isolated hidden native-window smoke against the fixture and verify DOM title, relative asset load, and hide/reopen behavior before treating HTML rendered mode as validated.
+
+- **id:** HUR-001-104
+  **timestamp:** 2026-11-15T15:50:43Z
+  **what:** Corrected Windows extended-length file URL normalization and passed an isolated native WebView2 smoke that loaded local HTML, executed JavaScript, and resolved a relative SVG asset.
+  **why:** The first native smoke exposed `\\?\` being encoded as a URL path; HTML preview needs a usable canonical `file:///` URL for local content and relative resources.
+  **components:** apps/hermes-native/src/files.rs, apps/hermes-native/src/bin/html-preview-smoke.rs, apps/hermes-native/docs/PLAN.md, artifacts/agent-ui/html-preview-smoke-result-verified-20261115.json, docs/EXECUTION_LOGS.md.
+  **type:** native preview validation and path correction.
+  **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` (136 library + 11 automation tests); `cargo build -p hermes-native --features agent-automation --bin html-preview-smoke`; `cargo check -p hermes-native --all-targets --features agent-automation`; isolated-desktop WebView2 smoke returned title `asset-loaded:16`, proving the relative 16×16 SVG loaded and the document script ran.
+  **performance:** Native smoke completed in under three seconds after process startup on the development host.
+  **risks:** The smoke hosts Wry directly and does not prove Hermes Files pane docking bounds, hide/reopen behavior, or source-paired Windows visuals. The semantic headless fixture only verifies the accessible mode and its no-HWND fallback.
+  **follow_up:** Validate actual Hermes Files-pane WebView2 bounds and visibility transitions in a non-foreground native run; continue fixed-source row acceptance.
+- **id:** HUR-001-105
+  **timestamp:** 2026-11-15T15:55:38Z
+  **what:** Restricted HTML preview top-level navigation to the active local document and `about:blank`; relative subresources remain available.
+  **why:** A generic `file:///` allow rule admitted navigation to unrelated local files. The preview now denies both another file URL and remote HTTPS navigation.
+  **components:** apps/hermes-native/src/files.rs, apps/hermes-native/README.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, apps/hermes-native/docs/ARCHITECTURE.md, apps/hermes-native/docs/PLAN.md, artifacts/agent-ui/html-preview-smoke-result-allowlist-20261115.json, docs/EXECUTION_LOGS.md.
+  **type:** preview security and validation.
+  **validation:** Added allow/deny unit cases for `about:blank`, selected file, a different local file, and HTTPS. `cargo fmt --all -- --check`; 137 library + 11 automation tests passed; all-target feature check passed; isolated native Wry/WebView2 smoke passed again with title `asset-loaded:16` and relative SVG natural width 16; `git diff --check` passed.
+  **performance:** All automated tests completed in under two seconds; native smoke completed in under three seconds after build.
+  **risks:** Native smoke does not exercise the real Hermes Files pane's Dock bounds or hide/reopen lifecycle; source-paired visual acceptance remains open.
+  **follow_up:** Run the Hermes app's own Files-pane fixture on a non-foreground native desktop, capture the rendered content and verify resize/hide/reopen transitions.
+
+- **id:** HUR-001-106
+  **timestamp:** 2026-11-15T15:57:55Z
+  **what:** Synchronized user-facing documentation with the standalone native WebView2 smoke's actual scope and retained only the successful, current smoke evidence artifacts.
+  **why:** Make the distinction clear between verified WebView2 loading and the still-unverified Hermes pane integration, and avoid presenting blank or failed exploratory captures as current evidence.
+  **components:** apps/hermes-native/README.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, artifacts/agent-ui/html-preview-headless-fallback-20261115.png, artifacts/agent-ui/html-preview-smoke-result-allowlist-20261115.json.
+  **type:** documentation and evidence hygiene.
+  **validation:** Documentation now says standalone local HTML, JavaScript and relative SVG loading was verified; Files-pane bounds and hide/reopen remain open. `git diff --check` passed; retained smoke JSON reports `asset-loaded:16`.
+  **performance:** Documentation and artifact cleanup completed locally in under one second.
+  **risks:** The retained headless screenshot depicts the no-HWND retry fallback and is not rendered HTML evidence.
+  **follow_up:** Capture actual Files-pane rendering when the native fixture path is available; maintain distinct route/state screenshots.

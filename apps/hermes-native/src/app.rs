@@ -550,8 +550,13 @@ pub struct HermesNativeApp {
 }
 
 impl HermesNativeApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        Self::from_workspace_result(true, Workspace::load(), Workspace::load_fallback())
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::from_workspace_result(
+            true,
+            Workspace::load(),
+            Workspace::load_fallback(),
+            FilePreviewStore::from_creation_context(cc),
+        )
     }
 
     #[cfg(feature = "agent-automation")]
@@ -561,6 +566,7 @@ impl HermesNativeApp {
             false,
             Workspace::load_isolated(profile_dir),
             Workspace::load_fallback_isolated(fallback_dir),
+            FilePreviewStore::default(),
         )
     }
 
@@ -698,6 +704,7 @@ fn render_message() -> &'static str {
         svg_preview: bool,
         pdf_preview: bool,
         pdf_scroll_preview: bool,
+        html_preview: bool,
     ) -> Result<(), String> {
         std::fs::create_dir_all(root)
             .map_err(|error| format!("create fixture project: {error}"))?;
@@ -716,6 +723,11 @@ fn render_message() -> &'static str {
             "fn main() {\n    println!(\"Hello from the preview fixture\");\n}\n",
         )
         .map_err(|error| format!("write fixture source: {error}"))?;
+        std::fs::write(
+            root.join("preview.html"),
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Preview fixture</title><style>body{font:16px sans-serif;background:#f6f4ef;color:#252d3a;padding:32px}h1{color:#3972b9}button{padding:8px 12px}</style></head><body><h1>Rendered HTML preview</h1><p>This is a distinct local HTML fixture.</p><button id=\"fixture-action\" onclick=\"this.textContent='Clicked'\">Click fixture action</button></body></html>",
+        )
+        .map_err(|error| format!("write fixture HTML: {error}"))?;
         std::fs::write(root.join(".gitignore"), "ignored-preview.txt\n")
             .map_err(|error| format!("write fixture ignore rules: {error}"))?;
         std::fs::write(root.join("ignored-preview.txt"), "hidden until requested\n")
@@ -777,7 +789,7 @@ fn render_message() -> &'static str {
         });
         self.transcript = vec![
             json!({"role":"user","content":"Show the project files."}),
-            json!({"role":"assistant","content": if pdf_scroll_preview { "The six-page PDF is open in a continuous preview pane." } else if pdf_preview { "The two-page PDF is open in a transient preview pane." } else if svg_preview { "The SVG image is open in a transient preview pane." } else if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
+            json!({"role":"assistant","content": if html_preview { "The HTML source is open with a rendered Preview mode available." } else if pdf_scroll_preview { "The six-page PDF is open in a continuous preview pane." } else if pdf_preview { "The two-page PDF is open in a transient preview pane." } else if svg_preview { "The SVG image is open in a transient preview pane." } else if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
         ];
         self.workspace
             .preferences
@@ -786,7 +798,9 @@ fn render_message() -> &'static str {
         self.workspace.apply_active_profile()?;
         self.files.set_root(Some(root.to_path_buf()));
 
-        let preview_path = if pdf_preview {
+        let preview_path = if html_preview {
+            root.join("preview.html")
+        } else if pdf_preview {
             pdf_path
         } else if svg_preview {
             svg_path
@@ -1084,6 +1098,7 @@ fn render_message() -> &'static str {
         connect_gateway: bool,
         workspace: Result<Workspace, String>,
         fallback: Workspace,
+        file_previews: FilePreviewStore,
     ) -> Self {
         let (workspace, load_error) = match workspace {
             Ok(workspace) => (workspace, None),
@@ -1107,7 +1122,7 @@ fn render_message() -> &'static str {
             gateway_endpoint: None,
             sessions: Vec::new(),
             files: FileBrowserState::default(),
-            file_previews: FilePreviewStore::default(),
+            file_previews,
             archived_sessions: Vec::new(),
             show_archived_sessions: false,
             recent_session_switcher: None,
@@ -13309,6 +13324,7 @@ mod tests {
 impl HermesNativeApp {
     pub fn draw(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        self.file_previews.begin_frame();
         if self.file_previews.poll() {
             ctx.request_repaint();
         }

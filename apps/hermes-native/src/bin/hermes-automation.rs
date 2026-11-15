@@ -97,6 +97,7 @@ fn run() -> Result<(), String> {
     let mut svg_preview_fixture = false;
     let mut pdf_preview_fixture = false;
     let mut pdf_scroll_fixture = false;
+    let mut html_preview_fixture = false;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -130,6 +131,7 @@ fn run() -> Result<(), String> {
             "--svg-preview-fixture" => svg_preview_fixture = true,
             "--pdf-preview-fixture" => pdf_preview_fixture = true,
             "--pdf-scroll-fixture" => pdf_scroll_fixture = true,
+            "--html-preview-fixture" => html_preview_fixture = true,
             "--click" => actions.push(Action::Click(take(&args, &mut index, "--click")?)),
             "--scroll-down" => actions.push(Action::Scroll(
                 take(&args, &mut index, "--scroll-down")?,
@@ -171,6 +173,7 @@ fn run() -> Result<(), String> {
         svg_preview_fixture,
         pdf_preview_fixture,
         pdf_scroll_fixture,
+        html_preview_fixture,
     ]
     .into_iter()
     .filter(|enabled| *enabled)
@@ -223,11 +226,13 @@ fn run() -> Result<(), String> {
             false,
             false,
             false,
+            false,
         )?;
     } else if image_preview_fixture {
         app.borrow_mut().load_files_preview_fixture_for_automation(
             &profile_path.join("image-preview-project"),
             true,
+            false,
             false,
             false,
             false,
@@ -239,6 +244,7 @@ fn run() -> Result<(), String> {
             true,
             false,
             false,
+            false,
         )?;
     } else if pdf_preview_fixture {
         app.borrow_mut().load_files_preview_fixture_for_automation(
@@ -247,6 +253,7 @@ fn run() -> Result<(), String> {
             false,
             true,
             false,
+            false,
         )?;
     } else if pdf_scroll_fixture {
         app.borrow_mut().load_files_preview_fixture_for_automation(
@@ -254,6 +261,16 @@ fn run() -> Result<(), String> {
             false,
             false,
             true,
+            true,
+            false,
+        )?;
+    } else if html_preview_fixture {
+        app.borrow_mut().load_files_preview_fixture_for_automation(
+            &profile_path.join("html-preview-project"),
+            false,
+            false,
+            false,
+            false,
             true,
         )?;
     }
@@ -350,7 +367,7 @@ fn describe_node(node: egui_kittest::Node<'_>) -> Value {
 
 fn print_help() {
     println!("Hermes Native background UI agent runner
-Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
+Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
 Accessible actions use egui's AccessKit UI tree and normal widget input handling.");
 }
