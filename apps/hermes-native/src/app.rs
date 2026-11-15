@@ -92,6 +92,30 @@ enum ConnectorsSegment {
     Off,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PluginCatalogFacetGroup {
+    #[default]
+    Categories,
+    Tiers,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PluginCatalogSort {
+    #[default]
+    Stars,
+    Newest,
+    Updated,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PluginCatalogFacets {
+    tiers: BTreeSet<String>,
+    categories: BTreeSet<String>,
+    tags: BTreeSet<String>,
+    installed_only: bool,
+    updates_only: bool,
+}
+
 impl CapabilitiesTab {
     fn as_str(self) -> &'static str {
         match self {
@@ -373,6 +397,9 @@ pub struct HermesNativeApp {
     plugin_catalog_error: Option<String>,
     selected_plugin_id: Option<String>,
     plugin_catalog_visible_limit: usize,
+    plugin_catalog_facets: PluginCatalogFacets,
+    plugin_catalog_facet_group: PluginCatalogFacetGroup,
+    plugin_catalog_sort: PluginCatalogSort,
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
@@ -585,7 +612,7 @@ fn render_message() -> &'static str {
                 ..PluginCatalogEntry::default()
             },
         ]);
-        self.selected_plugin_id = Some("fixture-research".into());
+        self.selected_plugin_id = Some("official:fixture-research".into());
         self.plugin_catalog_visible_limit = PLUGIN_CATALOG_PAGE_SIZE;
         self.plugin_catalog_pending = false;
         self.plugin_catalog_error = None;
@@ -743,6 +770,9 @@ fn render_message() -> &'static str {
             plugin_catalog_error: None,
             selected_plugin_id: None,
             plugin_catalog_visible_limit: PLUGIN_CATALOG_PAGE_SIZE,
+            plugin_catalog_facets: PluginCatalogFacets::default(),
+            plugin_catalog_facet_group: PluginCatalogFacetGroup::default(),
+            plugin_catalog_sort: PluginCatalogSort::default(),
             pending_toolset_updates: BTreeMap::new(),
             fonts_installed: false,
             gateway_connected: false,
@@ -2620,19 +2650,238 @@ fn render_message() -> &'static str {
                         return;
                     }
                 }
-                let Some(entries) = &self.plugin_catalog else {
+                let Some(catalog) = self.plugin_catalog.clone() else {
                     self.route_unavailable(ui, "Load the public plugin catalog to browse plugins.");
                     return;
                 };
                 if self.plugin_catalog_pending {
                     ui.label(RichText::new("Refreshing catalog…").size(11.0).color(MUTED));
                 }
-                let query = self.capabilities_query.trim().to_lowercase();
-                let filtered = entries
-                    .iter()
-                    .filter(|entry| query.is_empty() || entry.search.contains(&query))
-                    .cloned()
+                let installed = self
+                    .agent_plugins
+                    .as_ref()
+                    .map(|snapshot| snapshot.plugins.as_slice())
+                    .unwrap_or_default();
+                let entries = merge_installed_agent_plugins(&catalog, installed);
+                let tiers = ["official", "verified", "community"]
+                    .into_iter()
+                    .filter(|tier| {
+                        entries
+                            .iter()
+                            .any(|entry| plugin_catalog_tier(&entry.tier) == *tier)
+                    })
                     .collect::<Vec<_>>();
+                let mut categories = BTreeMap::<String, (String, usize)>::new();
+                for entry in &entries {
+                    let row = categories
+                        .entry(entry.category.clone())
+                        .or_insert_with(|| (entry.category_label.clone(), 0));
+                    row.1 += 1;
+                }
+                let mut categories = categories.into_iter().collect::<Vec<_>>();
+                categories.sort_by(|left, right| {
+                    let left_other = left.0 == "other" || left.1.0.eq_ignore_ascii_case("other");
+                    let right_other = right.0 == "other" || right.1.0.eq_ignore_ascii_case("other");
+                    left_other
+                        .cmp(&right_other)
+                        .then_with(|| left.1.0.to_lowercase().cmp(&right.1.0.to_lowercase()))
+                });
+                let mut tag_counts = BTreeMap::<String, usize>::new();
+                for entry in &entries {
+                    for tag in entry.tags.iter().collect::<BTreeSet<_>>() {
+                        *tag_counts.entry(tag.clone()).or_default() += 1;
+                    }
+                }
+                let mut tags = tag_counts.into_iter().collect::<Vec<_>>();
+                tags.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+                let mut filters_changed = false;
+                let updates_count = entries
+                    .iter()
+                    .filter(|entry| entry.update_available)
+                    .count();
+                let active_filter_count = self.plugin_catalog_facets.tiers.len()
+                    + self.plugin_catalog_facets.categories.len()
+                    + self.plugin_catalog_facets.tags.len()
+                    + usize::from(self.plugin_catalog_facets.updates_only);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("Browse by").size(10.0).color(MUTED));
+                    filters_changed |= ui
+                        .selectable_value(
+                            &mut self.plugin_catalog_facet_group,
+                            PluginCatalogFacetGroup::Categories,
+                            "Category",
+                        )
+                        .changed();
+                    filters_changed |= ui
+                        .selectable_value(
+                            &mut self.plugin_catalog_facet_group,
+                            PluginCatalogFacetGroup::Tiers,
+                            "Tier",
+                        )
+                        .changed();
+                    let (rows, selected) = match self.plugin_catalog_facet_group {
+                        PluginCatalogFacetGroup::Categories => (
+                            categories
+                                .iter()
+                                .map(|(key, (label, _))| (key.clone(), label.clone()))
+                                .collect::<Vec<_>>(),
+                            &mut self.plugin_catalog_facets.categories,
+                        ),
+                        PluginCatalogFacetGroup::Tiers => (
+                            tiers
+                                .iter()
+                                .map(|tier| (tier.to_string(), tier.to_string()))
+                                .collect::<Vec<_>>(),
+                            &mut self.plugin_catalog_facets.tiers,
+                        ),
+                    };
+                    if ui.selectable_label(selected.is_empty(), "All").clicked()
+                        && !selected.is_empty()
+                    {
+                        selected.clear();
+                        filters_changed = true;
+                    }
+                    let visible = rows
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, (key, _))| *index < 3 || selected.contains(key))
+                        .map(|(_, row)| row.clone())
+                        .collect::<Vec<_>>();
+                    for (key, label) in &visible {
+                        let clicked = ui.selectable_label(selected.contains(key), label).clicked();
+                        if clicked {
+                            if !selected.insert(key.clone()) {
+                                selected.remove(key);
+                            } else if rows.iter().all(|(row_key, _)| selected.contains(row_key)) {
+                                selected.clear();
+                            }
+                            filters_changed = true;
+                        }
+                    }
+                    let overflow = rows
+                        .iter()
+                        .filter(|(key, _)| {
+                            !visible.iter().any(|(visible_key, _)| visible_key == key)
+                        })
+                        .collect::<Vec<_>>();
+                    if !overflow.is_empty() {
+                        ui.menu_button(format!("More · {}", overflow.len()), |ui| {
+                            for (key, label) in overflow {
+                                let clicked =
+                                    ui.selectable_label(selected.contains(key), label).clicked();
+                                if clicked {
+                                    if !selected.insert(key.clone()) {
+                                        selected.remove(key);
+                                    } else if rows
+                                        .iter()
+                                        .all(|(row_key, _)| selected.contains(row_key))
+                                    {
+                                        selected.clear();
+                                    }
+                                    filters_changed = true;
+                                    ui.close();
+                                }
+                            }
+                        });
+                    }
+                    if updates_count > 0 || self.plugin_catalog_facets.updates_only {
+                        if ui
+                            .selectable_label(
+                                self.plugin_catalog_facets.updates_only,
+                                format!("Updates available · {updates_count}"),
+                            )
+                            .clicked()
+                        {
+                            self.plugin_catalog_facets.updates_only =
+                                !self.plugin_catalog_facets.updates_only;
+                            filters_changed = true;
+                        }
+                    }
+                    ui.menu_button(format!("Filters · {active_filter_count}"), |ui| {
+                        ui.label(RichText::new("Sort by").size(10.0).color(MUTED));
+                        let sort_options = [
+                            (
+                                PluginCatalogSort::Stars,
+                                "Most starred",
+                                entries.iter().any(|entry| entry.stars.is_some()),
+                            ),
+                            (
+                                PluginCatalogSort::Newest,
+                                "Newest",
+                                entries.iter().any(|entry| entry.added_at.is_some()),
+                            ),
+                            (
+                                PluginCatalogSort::Updated,
+                                "Recently updated",
+                                entries.iter().any(|entry| entry.updated_at.is_some()),
+                            ),
+                        ];
+                        for (sort, label, _) in sort_options.into_iter().filter(|row| row.2) {
+                            if ui
+                                .selectable_value(&mut self.plugin_catalog_sort, sort, label)
+                                .changed()
+                            {
+                                filters_changed = true;
+                            }
+                        }
+                        ui.separator();
+                        filters_changed |= ui
+                            .checkbox(
+                                &mut self.plugin_catalog_facets.installed_only,
+                                "Installed only",
+                            )
+                            .changed();
+                        if !tags.is_empty() {
+                            ui.separator();
+                            ui.label(RichText::new("Tags").size(10.0).color(MUTED));
+                            let mut visible_tags =
+                                tags.iter().take(16).cloned().collect::<Vec<_>>();
+                            for selected_tag in &self.plugin_catalog_facets.tags {
+                                if let Some(tag) = tags.iter().find(|(tag, _)| tag == selected_tag)
+                                    && !visible_tags
+                                        .iter()
+                                        .any(|(visible, _)| visible == selected_tag)
+                                {
+                                    visible_tags.push(tag.clone());
+                                }
+                            }
+                            for (tag, count) in visible_tags {
+                                let mut selected = self.plugin_catalog_facets.tags.contains(&tag);
+                                if ui
+                                    .checkbox(&mut selected, format!("{tag} · {count}"))
+                                    .changed()
+                                {
+                                    if selected {
+                                        self.plugin_catalog_facets.tags.insert(tag.clone());
+                                    } else {
+                                        self.plugin_catalog_facets.tags.remove(&tag);
+                                    }
+                                    filters_changed = true;
+                                }
+                            }
+                        }
+                        if ui.button("Clear filters").clicked() {
+                            self.plugin_catalog_facets = PluginCatalogFacets::default();
+                            self.capabilities_query.clear();
+                            filters_changed = true;
+                        }
+                    });
+                });
+                if filters_changed {
+                    self.plugin_catalog_visible_limit = PLUGIN_CATALOG_PAGE_SIZE;
+                }
+                let mut filtered = filter_plugin_catalog(
+                    &entries,
+                    &self.capabilities_query,
+                    &self.plugin_catalog_facets,
+                );
+                sort_plugin_catalog(&mut filtered, self.plugin_catalog_sort);
+                if !filtered.iter().any(|entry| {
+                    self.selected_plugin_id.as_deref()
+                        == Some(plugin_catalog_entry_id(entry).as_str())
+                }) {
+                    self.selected_plugin_id = filtered.first().map(plugin_catalog_entry_id);
+                }
                 ui.horizontal(|ui| {
                     ui.add_space(4.0);
                     ui.label(
@@ -2644,7 +2893,13 @@ fn render_message() -> &'static str {
                 if filtered.is_empty() {
                     self.empty_panel(
                         ui,
-                        if query.is_empty() {
+                        if self.capabilities_query.trim().is_empty()
+                            && self.plugin_catalog_facets.tiers.is_empty()
+                            && self.plugin_catalog_facets.categories.is_empty()
+                            && self.plugin_catalog_facets.tags.is_empty()
+                            && !self.plugin_catalog_facets.installed_only
+                            && !self.plugin_catalog_facets.updates_only
+                        {
                             "No plugins in catalog"
                         } else {
                             "No matching plugins"
@@ -2657,8 +2912,8 @@ fn render_message() -> &'static str {
                 let visible = filtered.into_iter().take(visible_count).collect::<Vec<_>>();
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for entry in visible {
-                        let selected =
-                            self.selected_plugin_id.as_deref() == Some(&entry.identifier);
+                        let entry_id = plugin_catalog_entry_id(&entry);
+                        let selected = self.selected_plugin_id.as_deref() == Some(&entry_id);
                         let mut open_repo = false;
                         ui.group(|ui| {
                             ui.horizontal(|ui| {
@@ -2669,9 +2924,21 @@ fn render_message() -> &'static str {
                                     )
                                     .clicked()
                                 {
-                                    self.selected_plugin_id = Some(entry.identifier.clone());
+                                    self.selected_plugin_id = Some(entry_id.clone());
                                 }
                                 ui.label(RichText::new(&entry.tier).color(ACCENT));
+                                if entry.installed_key.is_some() {
+                                    ui.label(RichText::new("Installed").color(ACCENT));
+                                }
+                                if entry.update_available {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "Update · {}",
+                                            entry.update_target.as_deref().unwrap_or("available")
+                                        ))
+                                        .color(ACCENT),
+                                    );
+                                }
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     if !entry.repo.is_empty() {
                                         open_repo = ui.small_button("Repository").clicked();
@@ -2700,11 +2967,16 @@ fn render_message() -> &'static str {
                                             .color(MUTED),
                                     );
                                 }
-                                if !entry.version.is_empty() || !entry.sha.is_empty() {
+                                let version = entry
+                                    .installed_version
+                                    .as_deref()
+                                    .filter(|version| !version.is_empty())
+                                    .unwrap_or(&entry.version);
+                                if !version.is_empty() || !entry.sha.is_empty() {
                                     ui.label(
                                         RichText::new(format!(
                                             "{}{}",
-                                            entry.version,
+                                            version,
                                             if entry.sha.is_empty() {
                                                 String::new()
                                             } else {
@@ -8437,6 +8709,49 @@ mod tests {
     }
 
     #[test]
+    fn plugin_catalog_tier_chip_filters_the_accessible_catalog_rows() {
+        let (mut app, profile) = isolated_app();
+        app.load_plugin_catalog_fixture_for_automation();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        harness.get_by_label("Tier").click();
+        harness.run();
+        harness
+            .query_all_by(|node| node.label().as_deref() == Some("official"))
+            .next()
+            .expect("official facet button")
+            .click();
+        harness.run();
+        assert!(
+            harness.query_by_label("Research Companion").is_some(),
+            "Official facet keeps the official plugin"
+        );
+        assert!(
+            harness.query_by_label("Workspace Helper").is_none(),
+            "Official facet removes verified plugins from the accessible catalog"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref() == Some("Plugins · 1 of 3"))
+                .next()
+                .is_some(),
+            "the catalog result count reflects all catalog facets"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node
+                    .label()
+                    .is_some_and(|label| label.starts_with("Filters")))
+                .next()
+                .is_some()
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn user_plugin_uninstall_requires_profile_bound_confirmation() {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Capabilities;
@@ -8514,6 +8829,102 @@ mod tests {
         assert!(!agent_plugin_is_manageable(&hidden));
         assert!(agent_plugin_is_manageable(&manageable_bundled));
         assert!(!agent_plugin_is_manageable(&unrelated_bundled));
+    }
+
+    #[test]
+    fn plugin_catalog_merges_installed_rows_and_applies_source_facets() {
+        let catalog = vec![
+            PluginCatalogEntry {
+                name: "Weather Tools".into(),
+                identifier: "weather-tools".into(),
+                tier: "official".into(),
+                category: "tools".into(),
+                category_label: "Tools".into(),
+                tags: vec!["weather".into(), "forecast".into()],
+                search: "weather tools forecasts".into(),
+                stars: Some(9),
+                added_at: Some("2026-01-01".into()),
+                updated_at: Some("2026-02-01".into()),
+                ..PluginCatalogEntry::default()
+            },
+            PluginCatalogEntry {
+                name: "Browser Companion".into(),
+                identifier: "browser-companion".into(),
+                tier: "verified".into(),
+                category: "web".into(),
+                category_label: "Web & Browser".into(),
+                tags: vec!["browser".into()],
+                search: "browser companion".into(),
+                stars: Some(3),
+                added_at: Some("2026-03-01".into()),
+                updated_at: Some("2026-03-15".into()),
+                ..PluginCatalogEntry::default()
+            },
+        ];
+        let installed = vec![
+            AgentPluginInfo {
+                name: "Weather Tools".into(),
+                key: "weather/tools".into(),
+                catalog_name: Some("Weather Tools".into()),
+                catalog_tier: Some("official".into()),
+                source: "user".into(),
+                version: "1.0.0".into(),
+                update_available: Some(true),
+                catalog_version: Some("1.1.0".into()),
+                ..AgentPluginInfo::default()
+            },
+            AgentPluginInfo {
+                name: "Local Helper".into(),
+                key: "local/helper".into(),
+                source: "git".into(),
+                version: "0.5.0".into(),
+                ..AgentPluginInfo::default()
+            },
+        ];
+
+        let merged = merge_installed_agent_plugins(&catalog, &installed);
+        assert_eq!(merged.len(), 3);
+        let weather = merged
+            .iter()
+            .find(|entry| entry.name == "Weather Tools")
+            .expect("matching catalog plugin is retained");
+        assert_eq!(weather.installed_key.as_deref(), Some("weather/tools"));
+        assert_eq!(weather.installed_version.as_deref(), Some("1.0.0"));
+        assert_eq!(weather.update_target.as_deref(), Some("1.1.0"));
+        assert!(weather.update_available);
+        assert!(merged.iter().any(|entry| entry.name == "Local Helper"));
+
+        let facets = PluginCatalogFacets {
+            tiers: ["official".into()].into_iter().collect(),
+            categories: ["tools".into()].into_iter().collect(),
+            tags: ["forecast".into()].into_iter().collect(),
+            installed_only: true,
+            updates_only: true,
+        };
+        let result = filter_plugin_catalog(&merged, "weather", &facets);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "Weather Tools");
+
+        let installed_only = filter_plugin_catalog(
+            &merged,
+            "",
+            &PluginCatalogFacets {
+                installed_only: true,
+                ..PluginCatalogFacets::default()
+            },
+        );
+        assert_eq!(
+            installed_only
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Weather Tools", "Local Helper"]
+        );
+
+        let mut newest = merged;
+        sort_plugin_catalog(&mut newest, PluginCatalogSort::Newest);
+        assert_eq!(newest[0].name, "Browser Companion");
+        assert_eq!(newest.last().unwrap().name, "Local Helper");
     }
 
     #[test]
@@ -10868,6 +11279,22 @@ impl HermesNativeApp {
                 "plugin_catalog_entry_count": self.plugin_catalog.as_ref().map(Vec::len),
                 "selected_plugin_id": self.selected_plugin_id,
                 "plugin_catalog_visible_limit": self.plugin_catalog_visible_limit,
+                "plugin_catalog_filter_mode": match self.plugin_catalog_facet_group {
+                    PluginCatalogFacetGroup::Categories => "categories",
+                    PluginCatalogFacetGroup::Tiers => "tiers",
+                },
+                "plugin_catalog_sort": match self.plugin_catalog_sort {
+                    PluginCatalogSort::Stars => "stars",
+                    PluginCatalogSort::Newest => "newest",
+                    PluginCatalogSort::Updated => "updated",
+                },
+                "plugin_catalog_active_facets": {
+                    "tiers": self.plugin_catalog_facets.tiers.len(),
+                    "categories": self.plugin_catalog_facets.categories.len(),
+                    "tags": self.plugin_catalog_facets.tags.len(),
+                    "installed_only": self.plugin_catalog_facets.installed_only,
+                    "updates_only": self.plugin_catalog_facets.updates_only,
+                },
                 "installed_plugins_pending": self.agent_plugins_pending,
                 "installed_plugins_error": self.agent_plugins_error,
                 "installed_plugin_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.plugins.len()),
@@ -10991,6 +11418,153 @@ fn agent_plugin_is_manageable(plugin: &AgentPluginInfo) -> bool {
     !["dashboard_auth/", "model-providers/", "platforms/"]
         .iter()
         .any(|prefix| plugin.key.starts_with(prefix))
+}
+
+fn plugin_catalog_tier(tier: &str) -> &'static str {
+    match tier {
+        "official" | "bundled" => "official",
+        "verified" => "verified",
+        _ => "community",
+    }
+}
+
+fn plugin_catalog_entry_id(entry: &PluginCatalogEntry) -> String {
+    entry
+        .installed_key
+        .as_ref()
+        .map(|key| format!("installed:{key}"))
+        .unwrap_or_else(|| format!("{}:{}", entry.tier, entry.identifier))
+}
+
+fn merge_installed_agent_plugins(
+    catalog: &[PluginCatalogEntry],
+    installed: &[AgentPluginInfo],
+) -> Vec<PluginCatalogEntry> {
+    let installed = installed
+        .iter()
+        .filter(|plugin| agent_plugin_is_manageable(plugin))
+        .collect::<Vec<_>>();
+    let mut matched = BTreeSet::new();
+    let mut merged = catalog
+        .iter()
+        .cloned()
+        .map(|mut entry| {
+            let plugin = installed
+                .iter()
+                .rev()
+                .find(|plugin| plugin.catalog_name.as_deref() == Some(entry.name.as_str()));
+            if let Some(plugin) = plugin {
+                matched.insert(plugin.name.clone());
+                entry.installed_key = Some(if plugin.key.is_empty() {
+                    plugin.name.clone()
+                } else {
+                    plugin.key.clone()
+                });
+                entry.installed_source = Some(plugin.source.clone());
+                entry.installed_version = Some(plugin.version.clone());
+                entry.update_available = plugin.update_available == Some(true);
+                entry.update_target = plugin
+                    .catalog_version
+                    .clone()
+                    .or_else(|| plugin.catalog_sha.clone())
+                    .or_else(|| plugin.update_target.clone());
+                entry.search = format!(
+                    "{} {} {} {}",
+                    entry.search, plugin.name, plugin.key, plugin.source
+                )
+                .to_lowercase();
+            }
+            entry
+        })
+        .collect::<Vec<_>>();
+
+    for plugin in installed {
+        if matched.contains(&plugin.name) {
+            continue;
+        }
+        let identifier = if plugin.key.is_empty() {
+            plugin.name.clone()
+        } else {
+            plugin.key.clone()
+        };
+        let tier = plugin
+            .catalog_tier
+            .as_deref()
+            .unwrap_or(plugin.source.as_str())
+            .to_owned();
+        merged.push(PluginCatalogEntry {
+            name: plugin.name.clone(),
+            description: plugin.description.clone(),
+            category: "general".into(),
+            category_label: "General".into(),
+            tier: tier.clone(),
+            identifier,
+            version: plugin.version.clone(),
+            installed_key: Some(if plugin.key.is_empty() {
+                plugin.name.clone()
+            } else {
+                plugin.key.clone()
+            }),
+            installed_source: Some(plugin.source.clone()),
+            installed_version: Some(plugin.version.clone()),
+            update_available: plugin.update_available == Some(true),
+            update_target: plugin
+                .catalog_version
+                .clone()
+                .or_else(|| plugin.catalog_sha.clone())
+                .or_else(|| plugin.update_target.clone()),
+            search: format!("{} {} {} {}", plugin.name, plugin.key, plugin.source, tier)
+                .to_lowercase(),
+            ..PluginCatalogEntry::default()
+        });
+    }
+    merged
+}
+
+fn filter_plugin_catalog(
+    entries: &[PluginCatalogEntry],
+    query: &str,
+    facets: &PluginCatalogFacets,
+) -> Vec<PluginCatalogEntry> {
+    let query = query.trim().to_lowercase();
+    entries
+        .iter()
+        .filter(|entry| {
+            (facets.tiers.is_empty() || facets.tiers.contains(plugin_catalog_tier(&entry.tier)))
+                && (facets.categories.is_empty() || facets.categories.contains(&entry.category))
+                && (facets.tags.is_empty()
+                    || facets.tags.iter().any(|tag| entry.tags.contains(tag)))
+                && (!facets.installed_only || entry.installed_key.is_some())
+                && (!facets.updates_only || entry.update_available)
+                && (query.is_empty() || entry.search.to_lowercase().contains(&query))
+        })
+        .cloned()
+        .collect()
+}
+
+fn sort_plugin_catalog(entries: &mut [PluginCatalogEntry], sort: PluginCatalogSort) {
+    match sort {
+        // The source feed is published in stars-descending order; keep stable source ordering.
+        PluginCatalogSort::Stars => {}
+        PluginCatalogSort::Newest | PluginCatalogSort::Updated => {
+            entries.sort_by(|left, right| {
+                let (left_date, right_date) = match sort {
+                    PluginCatalogSort::Newest => (
+                        left.added_at.as_deref().filter(|date| !date.is_empty()),
+                        right.added_at.as_deref().filter(|date| !date.is_empty()),
+                    ),
+                    PluginCatalogSort::Updated => (
+                        left.updated_at.as_deref().filter(|date| !date.is_empty()),
+                        right.updated_at.as_deref().filter(|date| !date.is_empty()),
+                    ),
+                    PluginCatalogSort::Stars => unreachable!(),
+                };
+                right_date
+                    .cmp(&left_date)
+                    .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            });
+        }
+    }
 }
 
 fn connector_directory_state(

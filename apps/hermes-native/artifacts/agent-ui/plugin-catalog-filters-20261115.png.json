@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "request_id": "hermes-ui-parity-20261115-plugin-catalog-facets",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "base_head": "cdde57ecd1de95b84723b885a73be2bc15ba3ac1",
+  "source_diff_sha256": "db304372366fe8eccdb798aaaec19e12d3c0363139c49d3fef8b0117c2e2a19c",
+  "automation_binary_sha256": "6b39f62effa954c13059900f2198e9d094f43409b3bda9fe69aecd7320d1798d",
+  "screenshot_sha256": "dd32d6d3f4fee39e1781c3e681b632393d2c3e0efc324c1eb3369e7e052052c1",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "route": "/capabilities?tab=plugins",
+  "fixture": "offline synthetic installed Legacy Helper plus two synthetic public plugin catalog entries",
+  "state": {
+    "catalog_entry_count": 3,
+    "installed_count": 1,
+    "tiers": [
+      "official",
+      "verified",
+      "community"
+    ],
+    "filter_groups": [
+      "category",
+      "tier"
+    ],
+    "filters": [
+      "installed_only",
+      "updates_only",
+      "tags"
+    ],
+    "sort_options": [
+      "stars",
+      "newest",
+      "updated_when_available"
+    ],
+    "gateway_connected": false
+  },
+  "capture_method": "headless egui_kittest / hermes-automation --plugins-catalog-fixture",
+  "access_receipt": "AccessKit tree exposes plugin rows, category/tier controls, search, and Filters menu; a UI interaction test selects the Official tier and verifies the catalog count and remaining rows",
+  "limitations": [
+    "synthetic catalog and plugin inventory only",
+    "no Hermes gateway or installed profile touched",
+    "Desktop plugin runtime halves and install/update actions remain incomplete",
+    "no source-paired Windows visual comparison"
+  ]
+}

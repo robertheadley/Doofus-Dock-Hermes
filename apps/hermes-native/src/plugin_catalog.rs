@@ -36,6 +36,15 @@ pub struct PluginCatalogEntry {
     pub middleware: Vec<String>,
     pub commands: Vec<String>,
     pub license: String,
+    pub added_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub stars: Option<u64>,
+    pub featured: Option<u64>,
+    pub installed_key: Option<String>,
+    pub installed_source: Option<String>,
+    pub installed_version: Option<String>,
+    pub update_available: bool,
+    pub update_target: Option<String>,
     pub search: String,
 }
 
@@ -189,6 +198,15 @@ pub fn parse_plugin_catalog(data: &[u8]) -> Result<Vec<PluginCatalogEntry>, Stri
             middleware,
             commands,
             license: field(row, "license"),
+            added_at: nonempty_field(row, "addedAt"),
+            updated_at: nonempty_field(row, "updatedAt"),
+            stars: row.get("stars").and_then(Value::as_u64),
+            featured: row.get("featured").and_then(Value::as_u64),
+            installed_key: None,
+            installed_source: None,
+            installed_version: None,
+            update_available: false,
+            update_target: None,
             search,
         };
         let key = format!("{}:{}", entry.tier, entry.identifier);
@@ -258,7 +276,7 @@ mod tests {
             br#"[
               {"name":"Weather","identifier":"weather","description":"Forecast tools","overview":"Detailed forecast","category":"productivity","categoryLabel":"Productivity","tier":"official","maintainer":"Hermes","repo":"https://github.com/nous/weather","sha":"0123456789012345678901234567890123456789","subdir":"plugin","version":"1.2.0","requiresHermes":">=0.9","tags":["forecast"],"platforms":["windows"],"license":"MIT","commands":["/weather"],"capabilities":{"providesTools":["forecast"],"providesHooks":["before_tool"],"providesMiddleware":["retry"],"requiresEnv":["WEATHER_KEY"]}},
               {"name":"Weather","identifier":"weather","description":"Later duplicate wins","category":"productivity","categoryLabel":"Productivity","tier":"official","maintainer":"Hermes","tags":["forecast"],"capabilities":{"providesTools":["forecast"],"requiresEnv":["WEATHER_KEY"]}},
-              {"name":"Weather","identifier":"weather-alt","tier":"community"},
+              {"name":"Weather","identifier":"weather-alt","tier":"community","stars":42,"addedAt":"2026-01-03T00:00:00Z","updatedAt":"2026-02-04T00:00:00Z","featured":3},
               {"name":"---","identifier":"not-renderable"},
               null
             ]"#,
@@ -273,6 +291,13 @@ mod tests {
         assert_eq!(weather.requirements, ["WEATHER_KEY"]);
         assert!(weather.search.contains("weather_key"));
         assert!(weather.search.contains("forecast"));
+        assert_eq!(catalog[1].stars, Some(42));
+        assert_eq!(catalog[1].added_at.as_deref(), Some("2026-01-03T00:00:00Z"));
+        assert_eq!(
+            catalog[1].updated_at.as_deref(),
+            Some("2026-02-04T00:00:00Z")
+        );
+        assert_eq!(catalog[1].featured, Some(3));
         assert_eq!(catalog[2].name, "not-renderable");
     }
 
