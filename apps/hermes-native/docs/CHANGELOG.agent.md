@@ -1109,3 +1109,5 @@ HUI-052/HUI-053 publication: `688b6cae39d84e2739df5b23fdc2f33f468e6047` is publi
 - **performance:** One AccessKit action and one UI frame per fill.
 - **risks:** Physical Windows UI Automation and IME acceptance remain open.
 - **follow_up:** Continue pinned-source workflow parity and native host evidence.
+
+HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is published on `origin/main`; 123 library and 11 automation tests pass.
