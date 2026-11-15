@@ -753,3 +753,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** PDF input capped at 16 MiB; output is constrained to 1280×1800; only the selected page is rendered and cached; PDFium work stays on the dedicated preview worker.
 - **risks:** PDF experience is page-at-a-time instead of Chromium's continuous-scroll/zoom UI; bundled binary is Windows x64 only; HTML and source-paired acceptance remain open; PAR-0107 remains pending.
 - **follow_up:** Add continuous page scrolling/zoom or a faithful native document canvas, additional platform runtimes, HTML preview, and source-paired comparisons.
+- **id:** HUI-063
+- **timestamp:** 2026-11-15T14:37:16Z
+- **what:** Added separate, hash-bound PDF page 1 and page 2 screenshot artifacts for published commit `b84c3e69aac2cdfea0cdff8a4f502d4f9e191f5e`.
+- **why:** Capture both initial and navigated PDF states instead of repeating the default page.
+- **components:** Offline PDF fixture, accessible page action and screenshot metadata.
+- **type:** capture and verification.
+- **validation:** Sidecars assert exact source/binary/image digests and 1440×900 dimensions; AccessKit click navigates through `Next page`; both images visually inspected.
+- **performance:** Two fixture captures run in seconds from the incremental build.
+- **risks:** Captures are synthetic target-only proof, not source-matched or native-installed acceptance.
+- **follow_up:** Continue pinned-source PDF toolbar/continuous-scroll behavior and paired source evidence.

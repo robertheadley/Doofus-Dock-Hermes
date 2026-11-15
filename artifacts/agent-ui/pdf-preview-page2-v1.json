@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-11-15T14:37:16Z",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "b84c3e69aac2cdfea0cdff8a4f502d4f9e191f5e",
+  "target_binary_sha256": "7e09990bf1d1bb6d6cf8ab3eed62b97decbb01663a114c0d03781af0e7e2644b",
+  "screenshot_sha256": "fb898b9bacbfcfb2452d072511a72bd3d5f01e753b9d0beb046dd9a2c67cff91",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale": "headless logical pixels"
+  },
+  "route": "/pdf-preview-fixture",
+  "actions": [
+    {
+      "action": "click",
+      "accessible_name": "Next page"
+    }
+  ],
+  "fixture": "two-page synthetic PDF under isolated TemporaryProfile; gateway disabled",
+  "visible_state": [
+    "Files pane and project tree",
+    "preview.pdf \u00b7 Page 2 of 2",
+    "PDFium-rendered page 2"
+  ],
+  "verification": "AccessKit confirms PDF preview controls; page 2 capture is reached by clicking the accessible Next page button; both 1440x900 PNGs were visually inspected.",
+  "limitations": [
+    "Synthetic target-only screenshot; no paired Hermes source capture",
+    "No physical Windows host evidence",
+    "PDF uses page-at-a-time native navigation rather than Chromium continuous-scroll/zoom"
+  ]
+}
