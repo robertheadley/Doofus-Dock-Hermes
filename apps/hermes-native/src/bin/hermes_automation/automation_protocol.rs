@@ -646,19 +646,23 @@ impl ProtocolState {
                         format!("unsupported key: {key_name}"),
                     );
                 };
+                let modifiers = match parse_modifiers(params.get("modifiers")) {
+                    Ok(modifiers) => modifiers,
+                    Err(message) => return failure(id.clone(), "invalid_argument", message),
+                };
                 if let Err(error) = self.check_generation(&params) {
                     return failure(id.clone(), error.0, error.1);
                 }
                 let before_generation = self.generation;
                 let before_state = snapshot(app, before_generation);
-                harness.key_press(key);
+                harness.key_press_modifiers(modifiers, key);
                 harness.run();
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
                 success(
                     id.clone(),
-                    json!({"request_id":request_id,"correlation_id":request_id,"trace_id":format!("ui-{request_id}"),"actor":"stdio-peer","permission_class":"ui-interaction","command":"ui.keypress","key":key_name,"state_generation_before":before_generation,"state_generation_after":self.generation,"before":before_state,"after":after_state,"outcome":"succeeded"}),
+                    json!({"request_id":request_id,"correlation_id":request_id,"trace_id":format!("ui-{request_id}"),"actor":"stdio-peer","permission_class":"ui-interaction","command":"ui.keypress","key":key_name,"modifiers":modifier_names(&modifiers),"state_generation_before":before_generation,"state_generation_after":self.generation,"before":before_state,"after":after_state,"outcome":"succeeded"}),
                 )
             }
             "ui.wait_for" => {
@@ -931,6 +935,58 @@ fn parse_key(name: &str) -> Option<egui::Key> {
         "Z" => Key::Z,
         _ => return None,
     })
+}
+
+fn parse_modifiers(value: Option<&Value>) -> Result<egui::Modifiers, String> {
+    let Some(value) = value else {
+        return Ok(egui::Modifiers::NONE);
+    };
+    let Some(values) = value.as_array() else {
+        return Err("modifiers must be an array of modifier names".into());
+    };
+    if values.len() > 4 {
+        return Err("modifiers accepts at most four names".into());
+    }
+    let mut names = HashSet::new();
+    let mut modifiers = egui::Modifiers::NONE;
+    for value in values {
+        let Some(name) = value.as_str() else {
+            return Err("each modifier must be a string".into());
+        };
+        let normalized = name.to_ascii_uppercase();
+        if !names.insert(normalized.clone()) {
+            return Err(format!("duplicate modifier: {name}"));
+        }
+        match normalized.as_str() {
+            "ALT" => modifiers.alt = true,
+            "CTRL" | "CONTROL" => modifiers.ctrl = true,
+            "SHIFT" => modifiers.shift = true,
+            "COMMAND" | "CMD" => modifiers.command = true,
+            "META" => modifiers.mac_cmd = true,
+            _ => return Err(format!("unsupported modifier: {name}")),
+        }
+    }
+    Ok(modifiers)
+}
+
+fn modifier_names(modifiers: &egui::Modifiers) -> Vec<&'static str> {
+    let mut names = Vec::new();
+    if modifiers.alt {
+        names.push("ALT");
+    }
+    if modifiers.ctrl {
+        names.push("CTRL");
+    }
+    if modifiers.shift {
+        names.push("SHIFT");
+    }
+    if modifiers.command {
+        names.push("COMMAND");
+    }
+    if modifiers.mac_cmd {
+        names.push("META");
+    }
+    names
 }
 
 fn describe_node(node: egui_kittest::Node<'_>) -> Value {
@@ -1725,6 +1781,71 @@ mod tests {
             "secondary-pointer interaction must be discoverable"
         );
 
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn modifier_keypress_routes_command_w_through_the_shared_close_handler() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        app.borrow_mut()
+            .execute_registered_action(RegisteredUiAction::OpenSession {
+                session_id: "keyboard-close-session".into(),
+                profile: Some("work".into()),
+            })
+            .expect("open an isolated session tab");
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+        let session_panel = app.borrow().automation_state()["layout_document"]["panels"]
+            .as_array()
+            .expect("layout panel descriptors")
+            .iter()
+            .find(|panel| {
+                panel["role"] == "hermes_session_tile"
+                    && panel["metadata"]["hermes.session.id"] == "keyboard-close-session"
+            })
+            .and_then(|panel| panel["id"].as_str())
+            .expect("profile-scoped session pane")
+            .to_owned();
+
+        let invalid = protocol.handle(
+            json!({
+                "version":1,
+                "id":"reject-unsupported-modifier",
+                "method":"actions.keypress",
+                "params":{"key":"W","modifiers":["SUPER"],"expected_state_generation":0}
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(invalid["status"], "failed");
+        assert_eq!(invalid["error"]["code"], "invalid_argument");
+
+        let closed = protocol.handle(
+            json!({
+                "version":1,
+                "id":"command-w-close-session-tab",
+                "method":"actions.keypress",
+                "params":{"key":"W","modifiers":["COMMAND"],"expected_state_generation":0}
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(closed["status"], "succeeded", "{closed}");
+        assert_eq!(closed["result"]["modifiers"], json!(["COMMAND"]));
+        assert!(
+            closed["result"]["after"]["layout_document"]["closed_panels"]
+                .as_array()
+                .is_some_and(|panels| panels.iter().any(|panel| panel == &session_panel)),
+            "Command+W from the agent must invoke the human close-tab handler"
+        );
         drop(harness);
         drop(app);
         drop(profile);

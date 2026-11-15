@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 56 (implementation in progress).
+- **Working revision:** 57 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -325,3 +325,10 @@ The directly pinned DoofusDock checkout is dirty in unrelated projects, so it wi
 The exact pinned `doofusdock-render-egui` crate is now vendored under the Hermes Native workspace with its MIT license, and Cargo patches only that renderer package to the local source. Its existing `tab_strip` API remains compatible; a callback-based `tab_strip_with_context_menu` API exposes the pinned renderer's actual context menu to Hermes. Tabs provide Pin/Unpin, Close tab, Close others, Close tabs to the right, and Close all. Bulk actions target open session panes only and preserve the workspace tab. Idle panes close through canonical Dock transactions; active panes enter the existing serialized confirmation queue. The agent protocol adds `actions.right_click`, emitting real egui secondary-pointer events so the agent opens the same context menu as a person.
 
 Tests verify real secondary-pointer access to the shared Dock menu and discoverable capability reporting. The full package suite, pinned-source validator and all-target build must pass before publication. Direct app tests cover session-only close target ordering, workspace preservation, duplicate filtering and serialized busy-pane close queue advancement. The protocol fixture verifies a real secondary-pointer menu open. Physical Windows menu interaction and source-paired screenshot evidence remain open. This does not complete tab/tool parity or the full 1:1 replacement.
+
+
+### Revision 57 — modifier-aware agent keyboard input
+
+Extend `actions.keypress` with an optional bounded list of explicit modifiers (`ALT`, `CTRL`, `SHIFT`, `COMMAND`, `META`). The agent injects the same egui modifier/key event path used by the app, returns the normalized modifier receipt, and rejects malformed, duplicate or unsupported values before input. `COMMAND` represents the platform shortcut modifier (Ctrl on Windows/Linux, Command on macOS); `CTRL` remains the physical Control key. An isolated end-to-end test opens a profile-scoped Hermes session tile, invokes `COMMAND+W` through the protocol and verifies the canonical close handler closes that same tile; unsupported modifier rejection is also covered.
+
+This removes one automation limitation, not the broader native keyboard parity gate. Shortcut coverage, focus ownership across tool panes, physical Windows acceptance and source-paired keyboard evidence remain open.
