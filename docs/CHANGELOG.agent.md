@@ -507,3 +507,5 @@ Add the pinned Desktop plugins.manage auto_update preference to the Plugins inve
 Validation: 112 library and 7 automation tests passed; formatting, default/all-target checks, fixed-source package validation and diff check passed. The 565-row research inventory remains pending; optional PyYAML was skipped. The screenshot was visually inspected without connecting to Hermes. No runtime benchmark was taken. See app-level HUI-041 and execution records.
 
 Validation correction for HUI-041: the final complete suite passed 113 library tests and 7 automation tests after adding backend interval parsing coverage. All compile/package checks and the screenshot sidecar check passed.
+
+HUI-041 publication: implementation commit 88206d5 is published on main after confirming parent a0cf840 against origin/main.

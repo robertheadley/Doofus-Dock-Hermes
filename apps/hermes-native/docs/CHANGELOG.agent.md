@@ -942,3 +942,5 @@ Validation: 112 library tests and 7 automation tests passed; formatting, default
 Change record: id HUI-041; type feature; components Plugins inventory, gateway actor, shared UI action registry, headless fixture; performance no benchmarked runtime change; risks setting is unavailable on backend versions without plugins.manage auto_update; follow-up implement update-all, desktop/package reconciliation, remaining pinned-source workflows and source-paired acceptance.
 
 Validation correction for HUI-041: after adding the interval parser boundary test, the final complete suite passed 113 library tests and 7 automation tests. The default and all-target checks, package validation, screenshot and sidecar validation also passed.
+
+HUI-041 publication: implementation commit 88206d5 was pushed to main after fetching and confirming its parent matched origin/main; publication evidence is appended separately.
