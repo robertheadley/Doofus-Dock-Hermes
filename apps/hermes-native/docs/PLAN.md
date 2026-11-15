@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 108 (implementation in progress).
+- **Working revision:** 109 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -546,3 +546,7 @@ Extend each `ui.tree` node with `visible`, `enabled` and `parent_id`, retaining 
 ### Revision 108 — provenance-bound stdio captures
 
 Extend `screenshots.capture` to publish a PNG and same-stem JSON sidecar as one rollback-safe artifact bundle. Preserve the existing capture metadata convention and record the fixed source pins, target source revision and dirty state, executable/image hashes, timestamp/request ID, route and state generation, isolated profile/fixture, viewport pixel dimensions and scale factor, prior action receipts, and the headless DPI limitation. Add a protocol-level regression test that opens the written artifact and validates the sidecar against the response and image bytes. This completes reviewable headless capture provenance; a native background window, physical DPI and source-paired Windows screenshots remain acceptance requirements.
+
+### Revision 109 — Playwright-shaped JavaScript client
+
+Add a dependency-free Node-compatible client that launches the isolated Rust stdio runner and exposes semantic role/name and test-ID locators, user-equivalent actions, state/tree/diagnostic reads and screenshot capture. Serialize mutations with expected-generation tracking, keep timed-out mutation outcomes unknown without replay, and provide explicit process close. Validate the client with Node's test runner and a real Rust child-process navigation/screenshot/hash smoke. Bun compatibility is intended through its Node APIs but remains unverified in this environment because Bun is not installed. This provides an ergonomic headless control API, not native window or OS UI Automation.

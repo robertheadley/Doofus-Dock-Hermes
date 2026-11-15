@@ -774,3 +774,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** Reads the running executable once per capture to record its SHA-256; output remains bounded by the protocol response limit.
 - **risks:** Headless capture has no physical OS DPI or native-window pixels; native window and source-paired visual acceptance stay open.
 - **follow_up:** Keep headless and native-window evidence separate; proceed with isolated background window and bridge/supervisor work.
+
+- **id:** HUI-065
+- **timestamp:** 2026-11-15T18:26:52Z
+- **what:** Added a dependency-free Node-compatible `HermesPage` client with Playwright-shaped semantic locators and actions over the Hermes Rust stdio protocol.
+- **why:** Let an agent write readable user-like UI scripts, inspect state, capture evidence and drive the isolated runner without hand-building NDJSON requests.
+- **components:** JavaScript client, fake-child tests, Node documentation and plan.
+- **type:** feature and validation.
+- **validation:** `node --test apps/hermes-native/agent/hermes-page.test.mjs` and `node --check` passed; 3/3 client tests cover semantic queries, generation tracking, stale-state refusal and no replay after an unknown screenshot-write timeout. A real Node-launched Rust child navigated to the Toolsets tab, queried state, captured a hash-bound screenshot and exited cleanly.
+- **performance:** No runtime dependencies; one child process per page; mutations are serialized.
+- **risks:** Bun execution is unverified because Bun is not installed here; this client is headless and does not control a native window.
+- **follow_up:** Run the same suite under Bun when available, then integrate the client with an isolated native background host.

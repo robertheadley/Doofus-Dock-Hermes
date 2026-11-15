@@ -103,3 +103,5 @@ Agent Plugin Update all sends one profile-scoped `plugins.manage action=update_a
 ### Headless capture provenance
 
 Successful `screenshots.capture` stdio calls publish the PNG with a same-stem JSON sidecar binding the fixed Hermes/DoofusDock pins, target revision and dirty state, executable and image hashes, route/state generation, viewport scale, timestamp, temporary profile and prior action receipts. Physical DPI is null because the renderer is headless; this does not establish native-window pixels or OS focus behavior.
+
+The dependency-free `agent/hermes-page.mjs` module wraps the inherited-stdio protocol for Node-compatible agents. It provides `getByRole`/`getByTestId` locators and serializes mutations with the protocol's generation fence. It launches one isolated headless process and cannot operate native-window or operating-system UI controls.

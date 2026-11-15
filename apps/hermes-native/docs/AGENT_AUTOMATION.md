@@ -16,6 +16,25 @@ This is a local development executable, not an external service. It has no authe
 
 The exact wire contract, bounds and error cases are in `AGENT_AUTOMATION_PROTOCOL.md`. This inherited-pipe interface is a child-process capability for a trusted parent; it is not the supplemental authenticated loopback Debug Bridge or a production service.
 
+## Node-compatible Playwright-shaped client
+
+`agent/hermes-page.mjs` provides a small JavaScript client over the Rust stdio protocol. Its API includes `page.getByRole(role, { name })`, `page.getByTestId(id)`, locator `click`, `fill`, `type`, `selectOption`, `scroll`, `dragTo`, `waitFor`, visibility/enabled/bounds queries, `page.press`, diagnostics/state/tree reads, and hash-bound screenshots. It launches one isolated runner by default, sequences UI mutations against the last observed generation, surfaces stale-state errors, and never retries a timed-out mutation whose outcome is unknown.
+
+Run its client tests with `node --test apps/hermes-native/agent/hermes-page.test.mjs`. The module uses Node built-in APIs and is intended to be usable from Bun as well; this checkout has Node v24 installed but no Bun executable, so the current automated client validation runs under Node. The client controls the existing headless semantic runner, not a native OS window; isolated background native-window control remains open.
+
+```js
+import { HermesPage } from "./apps/hermes-native/agent/hermes-page.mjs";
+
+const page = await HermesPage.launch();
+try {
+  await page.getByTestId("route.capabilities").click();
+  await page.getByRole("Button", { name: "Toolsets" }).waitFor();
+  await page.screenshot("toolsets-review.png");
+} finally {
+  await page.close();
+}
+```
+
 ## Intended external interface
 
 Expose stable semantic locators backed by native accessibility information and explicit test IDs. A client should be able to inspect the visible control tree and query by role, accessible name, test ID, enabled/visible state, and bounds. Provide Playwright-like actions: click, fill/type, select, modified keypress including tab cycling, bounded pointer drag, wait for a condition, and capture a screenshot. Each action must enter the same application event/handler path used by a human.
@@ -43,7 +62,7 @@ Store screenshots and traces as reviewable evidence with timestamp, source SHA, 
 
 ## Current status
 
-The headless semantic runner has completed Files-panel reveal and Capabilities-route navigation, each with a screenshot. The opt-in stdio child protocol has also exercised pointer drag to center-tab and left-edge split panels, accessible dock-tab selection, reorder, and right-click context menus, modified Ctrl+Tab session cycling (with semantic source and destination locators), split resize via canonical `ResizeSplit`, stale-state rejection, idempotent replay, diagnostics/events and screenshot capture. The reordered tab screenshot is `artifacts/agent-ui/tab-reorder-v19.png`; its adjacent metadata records the isolated process, canonical revision and binary/screenshot hashes. Fixed first-party controls expose stable IDs and protocol tests click/type/select/wait/drag through them. The typed app-action registry offers Toolsets enable/disable, generation-scoped approval choices, and prompt-ID-scoped clarify answers through the same handlers as the visible controls; protocol coverage confirms registration. Dynamic rows, broader shortcut coverage, the complete typed action registry, supervisor, real window operations and full acceptance remain open. See `docs/AGENT_AUTOMATION_PROTOCOL.md`, `docs/AGENT_CONTROL_CROSSWALK.md` and `docs/PLAN.md`.
+The headless semantic runner has completed Files-panel reveal and Capabilities-route navigation, each with a screenshot. The opt-in stdio child protocol has also exercised pointer drag to center-tab and left-edge split panels, accessible dock-tab selection, reorder, and right-click context menus, modified Ctrl+Tab session cycling (with semantic source and destination locators), split resize via canonical `ResizeSplit`, stale-state rejection, idempotent replay, diagnostics/events and screenshot capture. The reordered tab screenshot is `artifacts/agent-ui/tab-reorder-v19.png`; its adjacent metadata records the isolated process, canonical revision and binary/screenshot hashes. Fixed first-party controls expose stable IDs and protocol tests click/type/select/wait/drag through them. A Node-compatible `HermesPage` wrapper now offers Playwright-shaped locators and actions and has driven a real Rust child from Node. The typed app-action registry offers Toolsets enable/disable, generation-scoped approval choices, and prompt-ID-scoped clarify answers through the same handlers as the visible controls; protocol coverage confirms registration. Dynamic rows, broader shortcut coverage, the complete typed action registry, supervisor, real window operations and full acceptance remain open. See `docs/AGENT_AUTOMATION_PROTOCOL.md`, `docs/AGENT_CONTROL_CROSSWALK.md` and `docs/PLAN.md`.
 
 Latest evidence: the 1440×900 headless screenshot `artifacts/agent-ui/capabilities-toolsets-v23.png` was captured after semantic navigation to Toolsets, with source/build/route/profile metadata in the adjacent JSON. The expected offline message is shown because the isolated run disables the gateway. This validates route rendering and agent navigation only, not live inventory rendering or source/Windows visual parity.
 
