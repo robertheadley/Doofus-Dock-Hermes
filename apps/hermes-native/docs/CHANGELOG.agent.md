@@ -1425,3 +1425,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Semantic interaction and capture completed in under three seconds after incremental build.
   **risks:** Gateway is intentionally disabled, so archived sessions show unavailable/no items. This does not prove pinned-source parity or live gateway behavior.
   **follow_up:** Build matched source and Rust captures for this workflow, then continue the fixed 499-row parity matrix.
+
+- **id:** HUR-001-111
+  **timestamp:** 2026-11-15T17:01:48.9134165Z
+  **what:** Captured the exact pinned Hermes source first-run onboarding with its E2E Playwright harness and a same-size native launch candidate; added hash-bound source/target sidecars and updated the source screenshot gap record.
+  **why:** Source pairing must use the selected downloaded commit, a real isolated app route, and a visibly identified target gap instead of later upstream code or repeated target fixture images.
+  **components:** .staging/hermes-pinned-878305, .staging/tools/node-v26.13.1-win-x64, apps/hermes-native/docs/BACKLOG.md, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, apps/hermes-native/docs/CHANGELOG.agent.md, artifacts/agent-ui/hermes-upstream-first-run-878305-20261115.png, artifacts/agent-ui/hermes-upstream-first-run-878305-20261115.json, artifacts/agent-ui/hermes-native-launch-1220x800-20261115.png, artifacts/agent-ui/hermes-native-launch-1220x800-20261115.json, docs/EXECUTION_LOGS.md.
+  **type:** pinned-source and native target visual gap evidence.
+  **validation:** Exact-source package commit/tree and build stamp verified; frozen pnpm install completed using verified Node 26; Electron app ran on a separate Windows desktop with isolated no-provider home; upstream onboarding E2E passed 1/1 and asserted provider setup labels; CSS-scale source PNG decoded at 1220×800 and was visually inspected; native headless capture decoded at 1220×800 and was visually inspected; both sidecars bind their PNG hashes. No parity row was accepted.
+  **performance:** Pinned Electron build completed; source E2E screenshot completed in 10.3s after build.
+  **risks:** Source setup uses an empty provider configuration and random temporary install path; target uses a disabled gateway. They show different visual states and are not source-paired acceptance. The source checkout has a strict pnpm/Node≥26 install requirement; Bun runtime compatibility was not tested in this pass.
+  **follow_up:** Implement the full source first-run flow and side-by-side card layout/choices in Hermes Native, then capture the same transitions and negative paths before accepting PAR-0001.

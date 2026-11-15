@@ -1,0 +1,33 @@
+{
+  "captured_at": "2026-11-15T16:58:33.148Z",
+  "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66",
+  "source_tree": "bc85c669a2aeeee4b6c22f8981324fd3a3b3c2ce",
+  "app_route": "first-run/onboarding",
+  "fixture": "pinned-source setupNoProvider; empty config; isolated Hermes home and Electron user-data; no live profile or provider credentials",
+  "fixture_profile": "C:\\Users\\orphe\\AppData\\Local\\Temp\\pw-IGVGra\\hermes-e2e-noprovider-0.10720215106728378E6xkP",
+  "process_id": 39364,
+  "node_runtime": "v26.13.1",
+  "electron_binary_sha256": "05e472fd3b2159c8965e7113cbea05ef3c1ca3419f779ea3af4e2da8e40f13be",
+  "electron_main_sha256": "7e36332f303720fe789a4bd5bbf4754438c3e118add18eaad5bbe0e6df4cfd30",
+  "viewport_css_px": {
+    "width": 1220,
+    "height": 800
+  },
+  "device_pixel_ratio": 1.0000000298023224,
+  "screenshot_scale": "css",
+  "screenshot_px": {
+    "width": 1220,
+    "height": 800
+  },
+  "visible_state_assertions": [
+    "Set up Hermes Desktop",
+    "Connect to existing Hermes",
+    "Install Hermes locally"
+  ],
+  "observed_state_text": "SESSIONS\nBOTS\nNew session\nCtrl\nN\nCapabilities\nMessaging\nArtifacts\nScheduled jobs\nPINNED\nShift-click a chat to pin\nSESSIONS\nNEW SESSION\nScroll to bottom\n⠋\n⠙\n⠹\n⠸\n⠼\n⠴\n⠦\n⠧\n⠇\n⠏\nWaking up …\n⠋\n⠙\n⠹\n⠸\n⠼\n⠴\n⠦\n⠧\n⠇\n⠏\nBackend\noffline\nSet up Hermes Desktop\n\nConnect this app to a Hermes gateway you already run, or install Hermes locally on this computer.\n\nConnect to existing Hermes\n\nUse a remote backend with a session token or browser sign-in. No local install will start.\n\nInstall Hermes locally\n\nDownload Hermes, create its Python environment, and run the backend on this computer.\n\nWill install to C:\\Users\\orphe\\AppData\\Local\\Temp\\pw-IGVGra\\hermes-e2e-noprovider-0.10720215106728378E6xkP\\hermes-home\\hermes-agent\nCONNE/-=*_",
+  "screenshot": "hermes-upstream-first-run-878305-20261115.png",
+  "screenshot_sha256": "2d73abe173980ea82e28ee1d521a4cb0d6b4d31375e1084fc804b9dd0aaf513f",
+  "evidence_limit": "Pinned-source screenshot and source E2E proof only. No target match, source parity acceptance, or physical desktop screenshot is claimed.",
+  "e2e_result": "1 passed; onboarding route and three visible labels asserted",
+  "isolated_profile_cleanup": "completed by fixture cleanup after screenshot capture"
+}

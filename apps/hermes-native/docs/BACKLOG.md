@@ -80,7 +80,7 @@ The first shell passed compile and two layout-policy tests and was opened on Win
 ## Known risks
 
 - The parity target is the downloaded Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`. Keep implementation and acceptance tied to that commit; re-pin only if the user explicitly selects a different downloaded source.
-- The supplied source map is research evidence, not live visual acceptance; no real-source screenshot has yet been saved to the project.
+- The source map remains research evidence rather than live visual acceptance. A real-source first-run onboarding capture now exists at `artifacts/agent-ui/hermes-upstream-first-run-878305-20261115.png`, and the native 1220×800 launch candidate is `artifacts/agent-ui/hermes-native-launch-1220x800-20261115.png`; they reveal a concrete visual gap but are not a matched source-state pair. The 499 in-scope requirements remain pending source-paired acceptance.
 - Native viewport behavior and multi-DPI acceptance need physical Windows evidence.
 - Gateway discovery may start or attach to the user's persistent upstream gateway when the native app opens. The installed Hermes CLI does not provide `gateway attach`; Rust uses the installed-runtime ticket bridge. A live gateway list and transcript restore were observed.
 - A live session listing and resume were verified against the existing local gateway. Local protocol fixtures cover fresh-session create then submit and existing-session submissions; the socket worker forwards basic message events. The fresh-session write path has not been exercised against the installed gateway. Disconnect recovery, server requests, replay, heartbeat and full current-source parity remain unverified.

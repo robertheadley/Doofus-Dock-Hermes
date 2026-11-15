@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-11-15T17:01:48.9134165Z",
+  "hermes_parity_source": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_source": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "d886798281ed5621d5b8afc8b4c5f77221227b45",
+  "executable_sha256": "f498b8dfd493c1975ef0e7afc164d18e5aace3fb1b4836c7f59ae521e4b28e0b",
+  "fixture": "default native Hermes launch view; fresh automation profile; gateway disabled",
+  "profile_isolated": true,
+  "process_generation": "one-shot hermes-automation",
+  "app_route": "new-session/welcome",
+  "active_dock_pane": "New session",
+  "viewport_px": "1220x800",
+  "dpi": "headless egui logical scale 1.0; Windows DPI not measured",
+  "state_revision": null,
+  "layout_revision": null,
+  "interaction_receipts": [],
+  "visible_state": [
+    "Welcome to Hermes",
+    "Connect to Hermes",
+    "Install Hermes locally",
+    "Waiting for Hermes gateway…"
+  ],
+  "screenshot": "hermes-native-launch-1220x800-20261115.png",
+  "screenshot_sha256": "342f54f5edd41f36905b2e13aff4685a21d10fbcd32723735f0447cb18ee4ca2",
+  "evidence_limit": "Target-only default launch capture. Does not reproduce the pinned source first-run onboarding route, so it is a visual gap reference, not paired parity acceptance."
+}
