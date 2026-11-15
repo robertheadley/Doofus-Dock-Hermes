@@ -1265,3 +1265,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No benchmark performed.
   **risks:** Screenshot proves the native fixture only, not pinned-source parity or physical Windows host behavior.
   **follow_up:** Use the sidecar and exact scenario when collecting source-paired evidence.
+
+- **id:** HUR-001-096
+  **timestamp:** 2026-11-15T13:59:30Z
+  **what:** Captured a distinct Files-tree plus Markdown-preview target screen with exact build/source metadata.
+  **why:** Each agent process is fresh; explicit fixture navigation is required to capture meaningful pane state.
+  **components:** artifacts/agent-ui/files-preview-v1.png, artifacts/agent-ui/files-preview-v1.json, docs/EXECUTION_LOGS.md.
+  **type:** evidence
+  **validation:** AccessKit tree contained the session, file rows, README preview content and close control; PNG visually inspected at 1440×900; sidecar binds source SHA, target commit and binary/image hashes.
+  **performance:** No benchmark performed.
+  **risks:** This is target-only synthetic evidence; no paired Hermes source capture or physical Windows host result is implied.
+  **follow_up:** Collect a matching source screen and record a reviewer decision before changing any Files capability status.
+
+- **id:** HUR-001-097
+  **timestamp:** 2026-11-15T13:59:30Z
+  **what:** Prepared the source-bound screenshot and sidecar for repository publication.
+  **why:** Preserve the distinct visual review artifact beside its exact target build metadata.
+  **components:** Doofus-Dock-Hermes repository, artifacts/agent-ui.
+  **type:** publication
+  **validation:** Screenshot signature/dimensions and JSON sidecar were validated; content SHA-256 matches metadata.
+  **performance:** Not applicable.
+  **risks:** Artifact documents only the native target fixture.
+  **follow_up:** Publish artifact and journal record, then continue the fixed-source parity queue.
