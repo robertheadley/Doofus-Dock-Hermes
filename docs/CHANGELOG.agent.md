@@ -497,3 +497,5 @@ HUI-039 publication: implementation commit `c9cd13d` is published on `main` afte
 Add profile-scoped Agent Plugin updates with capability-consent and malware-scan review. Preserve accepted options through backend gates; only caution findings permit explicit force, while dangerous findings remain blocked. Isolated gateway and AccessKit tests validate the flow. Desktop-half reconciliation, uncertain live result handling, update-all and live/source-paired acceptance remain open.
 
 Validation: 111 library and 7 automation tests passed; formatting, default/all-target checks, package validation and diff check passed. The 565-row inventory remains pending and optional PyYAML was skipped. The synthetic screenshot was inspected without connecting to Hermes. No runtime benchmark was taken. See app-level HUI-040 and execution records.
+
+HUI-040 publication: implementation commit `b6e3686` is published on `main` after confirming parent `2be5378` against `origin/main`.

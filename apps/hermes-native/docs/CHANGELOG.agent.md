@@ -930,3 +930,5 @@ Added profile-scoped Agent Plugin updates to installed eligible rows and the sha
 Validation: 111 library tests and 7 automation tests passed; formatting, default/all-target builds, fixed-source package validation and diff check passed. The validator still reports all 565 inventory rows pending; optional PyYAML parsing was skipped. A synthetic caution review screenshot was visually inspected; no Hermes gateway/profile was used. No runtime performance benchmark was taken.
 
 Change record: id `HUI-040`; type `feature`; components `Plugins catalog, gateway actor, agent action registry, headless fixture`; performance `no benchmarked runtime change`; risks `backend update may produce an unknown outcome after disconnect and requires fresh inventory reconciliation`; follow-up `implement Desktop-half reconciliation and uncertain update handling, then pursue remaining pinned-source workflows and paired acceptance`.
+
+HUI-040 publication: implementation commit `b6e3686` was pushed to `main` after verifying its parent matched `origin/main`; publication evidence is appended separately.
