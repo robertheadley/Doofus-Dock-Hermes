@@ -455,6 +455,9 @@ pub struct HermesNativeApp {
     find_in_page_focus_pending: bool,
     find_in_page_route: Option<String>,
     timestamps_enabled: bool,
+    timestamps_override: Option<bool>,
+    timestamps_config_request: Option<(String, String)>,
+    timestamps_config_profile: Option<String>,
     session_filter: String,
     session_search_changed_at: Option<std::time::Instant>,
     session_search_request_id: Option<String>,
@@ -990,6 +993,9 @@ fn render_message() -> &'static str {
             find_in_page_focus_pending: false,
             find_in_page_route: None,
             timestamps_enabled: false,
+            timestamps_override: None,
+            timestamps_config_request: None,
+            timestamps_config_profile: None,
             session_filter: String::new(),
             session_search_changed_at: None,
             session_search_request_id: None,
@@ -4341,15 +4347,15 @@ fn render_message() -> &'static str {
         } else {
             match argument.as_str() {
                 "" | "toggle" => {
-                    self.timestamps_enabled = !self.timestamps_enabled;
+                    self.set_timestamps_window_override(!self.timestamps_enabled);
                     timestamps_status(self.timestamps_enabled)
                 }
                 "on" => {
-                    self.timestamps_enabled = true;
+                    self.set_timestamps_window_override(true);
                     timestamps_status(true)
                 }
                 "off" => {
-                    self.timestamps_enabled = false;
+                    self.set_timestamps_window_override(false);
                     timestamps_status(false)
                 }
                 "status" => timestamps_status(self.timestamps_enabled),
@@ -4359,6 +4365,11 @@ fn render_message() -> &'static str {
         self.draft.clear();
         self.status = result;
         true
+    }
+
+    fn set_timestamps_window_override(&mut self, enabled: bool) {
+        self.timestamps_override = Some(enabled);
+        self.timestamps_enabled = enabled;
     }
 
     fn retry_uncertain_prompt(&mut self) {
@@ -5874,6 +5885,34 @@ fn render_message() -> &'static str {
         self.capabilities_pending = true;
         self.capabilities_error = None;
         Ok(())
+    }
+
+    fn sync_display_timestamps_config(&mut self) {
+        if !self.gateway_connected || self.timestamps_config_request.is_some() {
+            return;
+        }
+        let Some(profile) = self.active_session_profile.clone().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        }) else {
+            return;
+        };
+        if self.timestamps_config_profile.as_deref() == Some(profile.as_str()) {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            return;
+        };
+        let request_id = operation_id("display-timestamps-config");
+        if gateway
+            .load_display_timestamps(request_id.clone(), Some(profile.clone()))
+            .is_ok()
+        {
+            self.timestamps_config_request = Some((request_id, profile));
+        } else {
+            self.timestamps_config_profile = Some(profile);
+        }
     }
 
     fn load_connectors(&mut self) -> Result<(), String> {
@@ -8193,6 +8232,28 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::DisplayTimestampsLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile)) =
+                        self.timestamps_config_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_id != &request_id || profile.as_deref() != Some(expected_profile) {
+                        continue;
+                    }
+                    let loaded_profile = expected_profile.clone();
+                    self.timestamps_config_request = None;
+                    self.timestamps_config_profile = Some(loaded_profile);
+                    if let Ok(enabled) = result {
+                        if self.timestamps_override.is_none() {
+                            self.timestamps_enabled = enabled;
+                        }
+                    }
+                }
                 GatewayEvent::AgentPluginsLoaded {
                     request_id,
                     profile,
@@ -8713,6 +8774,8 @@ fn render_message() -> &'static str {
                 }
                 GatewayEvent::Disconnected(error) => {
                     self.gateway_connected = false;
+                    self.timestamps_config_request = None;
+                    self.timestamps_config_profile = None;
                     if let Some(pending) = self.pending_catalog_plugin_install.take() {
                         self.uncertain_catalog_plugin_installs
                             .insert(pending.catalog_name.clone());
@@ -8800,6 +8863,7 @@ fn render_message() -> &'static str {
             self.load_agent_plugins()
                 .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
         }
+        self.sync_display_timestamps_config();
         if load_archived_after_connect {
             self.load_archived_sessions();
         }

@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 77 (implementation in progress).
+- **Working revision:** 78 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -420,3 +420,7 @@ Implement the pinned Desktop message timestamp display gate as an off-by-default
 ### Revision 77 — record partial P0 evidence without closing acceptance
 
 Record `ui-display-local-timestamps-and-message-role` as `partial` in the fixed 565-row UCM inventory, crosswalk, and full capability map, with EV-0016 bound to implementation commit `4d247d7ccbee6f31604923e52fc37a799100aa3d`. Keep PAR-0065 pending because config-backed initialization, exact source tooltip/locale behavior, tool-run timestamps, and source-paired Windows validation remain open. Extend the package validator to accept documented `partial`/`implemented`/`verified` states and typed implementation receipts while still requiring every acceptance row to remain pending until actual review.
+
+### Revision 78 — read the selected Hermes display timestamp setting
+
+Match the pinned Desktop `getHermesConfig(profile)` source path by reading only the `display.timestamps` field from the profile-scoped authenticated `/api/config` endpoint. Keep the command override window-local and authoritative over late config responses; refresh the default when the active profile changes or the gateway reconnects. The HTTP worker validates the loopback origin and ticket, uses the source profile query and bounded JSON reader, and materializes no other config fields. Gateway fixtures cover the scoped request, ticket header and accepted config value forms. Source locale/tooltips, tool-group boundaries and paired Windows acceptance remain open; PAR-0065 stays pending.

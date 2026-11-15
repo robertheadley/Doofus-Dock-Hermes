@@ -148,6 +148,18 @@ pub struct CapabilitiesSnapshot {
     pub toolsets: Vec<ToolsetInfo>,
 }
 
+#[derive(Deserialize)]
+struct DisplayTimestampsConfig {
+    #[serde(default)]
+    display: Option<DisplayTimestampsSection>,
+}
+
+#[derive(Deserialize)]
+struct DisplayTimestampsSection {
+    #[serde(default)]
+    timestamps: Option<serde_json::Value>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct ConnectorCatalogEntry {
     pub slug: String,
@@ -449,6 +461,11 @@ pub enum GatewayEvent {
         request_id: String,
         result: Result<CapabilitiesSnapshot, String>,
     },
+    DisplayTimestampsLoaded {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<bool, String>,
+    },
     ConnectorsLoaded {
         request_id: String,
         result: Result<ConnectorsSnapshot, String>,
@@ -670,6 +687,10 @@ enum GatewayHttpCommand {
     },
     LoadCapabilities {
         request_id: String,
+    },
+    LoadDisplayTimestamps {
+        request_id: String,
+        profile: Option<String>,
     },
     SetToolsetEnabled {
         request_id: String,
@@ -954,6 +975,19 @@ impl GatewayDiscovery {
     pub fn load_capabilities(&self, request_id: String) -> Result<(), String> {
         self.http_sender
             .send(GatewayHttpCommand::LoadCapabilities { request_id })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn load_display_timestamps(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadDisplayTimestamps {
+                request_id,
+                profile,
+            })
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
 
@@ -2783,6 +2817,14 @@ fn gateway_http_actor(
                     result: load_capabilities_http(&endpoint),
                 }
             }
+            GatewayHttpCommand::LoadDisplayTimestamps {
+                request_id,
+                profile,
+            } => GatewayEvent::DisplayTimestampsLoaded {
+                request_id,
+                profile: profile.clone(),
+                result: load_display_timestamps_http(&endpoint, profile.as_deref()),
+            },
             GatewayHttpCommand::SetToolsetEnabled {
                 request_id,
                 name,
@@ -3204,6 +3246,54 @@ fn load_capabilities_http(endpoint: &GatewayEndpoint) -> Result<CapabilitiesSnap
         skills_ticket.as_str(),
         toolsets_ticket.as_str(),
     )
+}
+
+fn load_display_timestamps_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+) -> Result<bool, String> {
+    if !is_bare_loopback_origin(&endpoint.api_origin) {
+        return Err(
+            "Hermes display configuration requires the verified loopback API origin".into(),
+        );
+    }
+    let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+    validate_http_ticket(&ticket)?;
+    read_display_timestamps(
+        &endpoint.api_origin,
+        ticket.as_str(),
+        profile.unwrap_or(&endpoint.profile_id),
+    )
+}
+
+fn read_display_timestamps(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+) -> Result<bool, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err(
+            "Hermes display configuration requires the verified loopback API origin".into(),
+        );
+    }
+    let url = format!(
+        "{}/api/config{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let config: DisplayTimestampsConfig = request_gateway_json(api_origin, ticket, &url)?;
+    let value = config.display.and_then(|display| display.timestamps);
+    Ok(value.as_ref().is_some_and(display_timestamps_enabled))
+}
+
+fn display_timestamps_enabled(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Bool(enabled) => *enabled,
+        serde_json::Value::String(value) => value == "true",
+        serde_json::Value::Number(value) => value.as_i64() == Some(1),
+        _ => false,
+    }
 }
 
 fn set_toolset_enabled_http(
@@ -4378,6 +4468,62 @@ mod tests {
         assert!(!sessions[1].pinned);
         assert!(!sessions[1].unread);
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn display_timestamps_config_read_uses_profile_scoped_source_api() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind display-config fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept display-config request");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with("GET /api/config?profile=work%20profile HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n")
+            );
+            let body = json!({
+                "display":{"timestamps":true},
+                "model":{"provider":"ignored without deserializing secrets"}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write display-config fixture response");
+        });
+        let enabled = read_display_timestamps(
+            &format!("http://{address}"),
+            "fixture-native-http-ticket",
+            "work profile",
+        )
+        .expect("read source display config");
+        assert!(enabled);
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn display_timestamps_config_matches_hermes_truthy_contract() {
+        for value in [json!(true), json!("true"), json!(1)] {
+            assert!(display_timestamps_enabled(&value), "{value}");
+        }
+        for value in [
+            json!(false),
+            json!("false"),
+            json!("True"),
+            json!(0),
+            json!("1"),
+            json!(null),
+        ] {
+            assert!(!display_timestamps_enabled(&value), "{value}");
+        }
+        let missing: DisplayTimestampsConfig = serde_json::from_value(json!({})).unwrap();
+        assert!(
+            !missing
+                .display
+                .and_then(|display| display.timestamps)
+                .as_ref()
+                .is_some_and(display_timestamps_enabled)
+        );
     }
 
     #[test]

@@ -598,3 +598,16 @@ HUI-041 publication: implementation commit 88206d5 is published on main after co
 - **follow_up:** Continue the fixed-source parity work and close only requirements with source-paired evidence.
 
 HUI-048/HUI-049 publication: commits `4d247d7ccbee6f31604923e52fc37a799100aa3d` (implementation) and `27504e9c55f31a6cdcc8e47ee075ba712ca87dac` (partial evidence + validator) were pushed to `origin/main`. PAR-0065 remains pending.
+
+## HUI-050 — 2026-11-15
+
+- **id:** HUI-050
+- **timestamp:** 2026-11-15
+- **what:** Load only the selected Hermes profile's `display.timestamps` value from authenticated `/api/config`; preserve a window-local `/timestamps` override across late config responses.
+- **why:** Complete the pinned-source config-default behavior without allowing unrelated Hermes configuration into the native UI.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, timestamp parity docs.
+- **type:** source-parity implementation slice.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --features agent-automation` (123 library + 8 automation tests); `cargo check -p hermes-native --all-targets --features agent-automation`; fixed-source package validator (565 target behaviors, 565 inventory items, 565 pending tests); `git diff --check`.
+- **performance:** One bounded config read on connect/profile change; no benchmarked performance change.
+- **risks:** Exact timestamp locale/tooltips and tool-run lifecycle behavior, live-profile behavior, and source-paired Windows acceptance remain open; PAR-0065 remains pending. Optional PyYAML validation is unavailable.
+- **follow_up:** Implement remaining timestamp details and capture matched source/target Windows states before accepting PAR-0065.

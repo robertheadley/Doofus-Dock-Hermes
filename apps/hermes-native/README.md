@@ -21,7 +21,7 @@ Titlebar drags can center-tab or edge-split panels through canonical DoofusDock 
 
 The active transcript uses egui_commonmark 0.26 with pulldown-cmark and syntect for CommonMark/GFM structures, links, tables, and highlighted fenced code. The feature-gated agent runner can load an isolated Markdown fixture for screenshots. Streaming-specific repairs, math/media plugins, transcript directives, artifact conversion, and matched source visual verification remain open.
 
-The transcript keeps message roles visible and supports local per-message timestamps. `/timestamps` toggles them; `/timestamps on|off|status` selects or reports the window-only override. They default off, use millisecond local clock labels, and never go to the Hermes model as prompt text. The `--transcript-timestamps-fixture` automation option captures the distinct timestamp-on surface. Reading the persistent `display.timestamps` config key, exact source locale/tooltip formatting, tool-run lifecycle stamps, and source-paired Windows verification remain open.
+The transcript keeps message roles visible and supports local per-message timestamps. The selected Hermes profile's `display.timestamps` config is read through authenticated `/api/config`; `/timestamps` toggles timestamps and `/timestamps on|off|status` selects or reports a window-only override. The config defaults off, labels use local millisecond time, and commands never go to the model as prompt text. The `--transcript-timestamps-fixture` option captures the distinct timestamp-on surface. Exact source locale/tooltip formatting, tool-run lifecycle stamps, and source-paired Windows verification remain open.
 
 ## Run on Windows
 
