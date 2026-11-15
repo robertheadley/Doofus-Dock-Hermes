@@ -3,51 +3,91 @@
 use std::{
     fs,
     path::PathBuf,
-    sync::mpsc::{self, Receiver},
     time::{Duration, Instant},
 };
 
 use eframe::egui;
-use wry::{
-    WebView, WebViewBuilder,
-    dpi::{LogicalPosition, LogicalSize},
-};
+use hermes_native::app::HermesNativeApp;
 
 const EXPECTED_TITLE: &str = "asset-loaded:16";
 
+#[derive(Clone, Copy, Debug)]
+enum SmokePhase {
+    WaitingForVisible,
+    WaitingForHidden,
+    WaitingForReopen,
+}
+
 struct SmokeApp {
-    webview: WebView,
-    title_rx: Receiver<String>,
+    hermes: HermesNativeApp,
+    preview_path: PathBuf,
     output_path: PathBuf,
+    phase: SmokePhase,
     deadline: Instant,
-    observed_titles: Vec<String>,
-    result: Option<Result<String, String>>,
+    result: Option<Result<(), String>>,
+    initial_state: Option<serde_json::Value>,
+    hidden_state: Option<serde_json::Value>,
+    reopened_state: Option<serde_json::Value>,
 }
 
 impl eframe::App for SmokeApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.hermes.draw(ui);
         let ctx = ui.ctx();
-        while let Ok(title) = self.title_rx.try_recv() {
-            self.observed_titles.push(title.clone());
-            if title == EXPECTED_TITLE {
-                self.result = Some(Ok(title));
-                let _ = self.webview.set_visible(false);
-                break;
+        if self.result.is_none() {
+            if let Some(state) = self.hermes.html_preview_state_for_automation() {
+                match self.phase {
+                    SmokePhase::WaitingForVisible if is_healthy_preview(&state) => {
+                        self.initial_state = Some(state);
+                        self.hermes
+                            .set_html_preview_mode_for_automation(&self.preview_path, false);
+                        self.phase = SmokePhase::WaitingForHidden;
+                        self.deadline = Instant::now() + Duration::from_secs(3);
+                    }
+                    SmokePhase::WaitingForHidden if state["visible"] == false => {
+                        self.hidden_state = Some(state);
+                        self.hermes
+                            .set_html_preview_mode_for_automation(&self.preview_path, true);
+                        self.phase = SmokePhase::WaitingForReopen;
+                        self.deadline = Instant::now() + Duration::from_secs(3);
+                    }
+                    SmokePhase::WaitingForReopen if is_healthy_preview(&state) => {
+                        self.reopened_state = Some(state);
+                        self.result = Some(Ok(()));
+                    }
+                    _ => {}
+                }
             }
-        }
-        if self.result.is_none() && Instant::now() >= self.deadline {
-            self.result = Some(Err(format!(
-                "Timed out waiting for WebView2 document title {EXPECTED_TITLE:?}; observed titles {:?}; current URL {:?}",
-                self.observed_titles,
-                self.webview.url()
-            )));
+            if self.result.is_none() && Instant::now() >= self.deadline {
+                self.result = Some(Err(format!(
+                    "Timed out during {:?}; visible state {:?}",
+                    self.phase,
+                    self.hermes.html_preview_state_for_automation(),
+                )));
+            }
         }
         if let Some(result) = &self.result {
             let record = match result {
-                Ok(title) => {
-                    serde_json::json!({"ok":true,"document_title":title,"checks":["WebView2 child initialized","local HTML loaded","JavaScript executed","relative SVG asset loaded"]})
-                }
-                Err(error) => serde_json::json!({"ok":false,"error":error}),
+                Ok(()) => serde_json::json!({
+                    "ok": true,
+                    "document_title": EXPECTED_TITLE,
+                    "preview_states": {
+                        "initial": self.initial_state,
+                        "hidden": self.hidden_state,
+                        "reopened": self.reopened_state,
+                    },
+                    "checks": [
+                        "HermesNativeApp Files fixture opened the HTML preview pane",
+                        "FilePreviewStore created its child WebView2 inside the active Dock preview",
+                        "WebView2 is visible within non-zero Dock pane bounds",
+                        "local HTML document loaded",
+                        "document JavaScript executed",
+                        "relative 16x16 SVG asset loaded",
+                        "WebView2 hid when rendered preview mode was left",
+                        "WebView2 re-opened when rendered preview mode was restored",
+                    ]
+                }),
+                Err(error) => serde_json::json!({"ok": false, "error": error}),
             };
             let _ = atomic_write(&self.output_path, record.to_string().as_bytes());
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -55,6 +95,17 @@ impl eframe::App for SmokeApp {
             ctx.request_repaint_after(Duration::from_millis(25));
         }
     }
+}
+
+fn is_healthy_preview(state: &serde_json::Value) -> bool {
+    state["document_title"].as_str() == Some(EXPECTED_TITLE)
+        && state["visible"] == true
+        && state["error"].is_null()
+        && state["bounds"].as_array().is_some_and(|values| {
+            values.len() == 4
+                && values[2].as_f64().is_some_and(|width| width > 100.0)
+                && values[3].as_f64().is_some_and(|height| height > 100.0)
+        })
 }
 
 fn main() -> Result<(), String> {
@@ -66,64 +117,50 @@ fn main() -> Result<(), String> {
     if args.next().is_some() {
         return Err("Usage: html-preview-smoke RESULT_JSON_PATH".into());
     }
-
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|error| format!("create result directory: {error}"))?;
     }
     let _ = fs::remove_file(&output_path);
-    let root =
-        std::env::temp_dir().join(format!("hermes-html-preview-smoke-{}", std::process::id()));
-    fs::create_dir_all(&root).map_err(|error| format!("create HTML fixture: {error}"))?;
-    fs::write(
-        root.join("asset.svg"),
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><circle cx=\"8\" cy=\"8\" r=\"7\" fill=\"blue\"/></svg>",
-    )
-    .map_err(|error| format!("write relative asset: {error}"))?;
-    fs::write(
-        root.join("index.html"),
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>waiting</title></head><body><img src=\"asset.svg\" onload=\"document.title='asset-loaded:'+this.naturalWidth\"></body></html>",
-    )
-    .map_err(|error| format!("write HTML document: {error}"))?;
-    let url = file_url(&root.join("index.html"))?;
-    let (title_tx, title_rx) = mpsc::channel();
+
+    let root = unique_temp_dir("hermes-html-preview-app-smoke")?;
+    fs::create_dir(&root).map_err(|error| format!("create isolated smoke root: {error}"))?;
+    let fixture_root = root.join("project");
+    let profile_dir = root.join("profile");
+    fs::create_dir(&profile_dir).map_err(|error| format!("create isolated profile: {error}"))?;
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Hermes HTML preview smoke")
-            .with_inner_size([640.0, 480.0])
+            .with_inner_size([1440.0, 900.0])
             .with_taskbar(false)
             .with_visible(true),
         ..Default::default()
     };
     let result_path = output_path.clone();
+    let profile_for_app = profile_dir.clone();
+    let fixture_for_app = fixture_root.clone();
+    let preview_path = fixture_root.join("preview.html");
     let run_result = eframe::run_native(
         "Hermes HTML preview smoke",
         options,
         Box::new(move |cc| {
-            let bounds = wry::Rect {
-                position: LogicalPosition::new(0.0, 0.0).into(),
-                size: LogicalSize::new(640.0, 480.0).into(),
-            };
-            let webview = WebViewBuilder::new()
-                .with_url(url)
-                .with_bounds(bounds)
-                .with_visible(true)
-                .with_document_title_changed_handler(move |title| {
-                    let _ = title_tx.send(title);
-                })
-                .build_as_child(cc)
-                .map_err(|error| format!("create WebView2 child: {error}"))?;
+            let mut hermes = HermesNativeApp::new_for_native_automation(cc, profile_for_app);
+            hermes.load_html_preview_fixture_for_native_smoke(&fixture_for_app)?;
             Ok(Box::new(SmokeApp {
-                webview,
-                title_rx,
+                hermes,
+                preview_path,
                 output_path: result_path,
-                deadline: Instant::now() + Duration::from_secs(15),
-                observed_titles: Vec::new(),
+                deadline: Instant::now() + Duration::from_secs(20),
+                phase: SmokePhase::WaitingForVisible,
                 result: None,
+                initial_state: None,
+                hidden_state: None,
+                reopened_state: None,
             }))
         }),
     );
     let _ = fs::remove_dir_all(&root);
-    run_result.map_err(|error| format!("run hidden WebView2 smoke: {error}"))?;
+    run_result.map_err(|error| format!("run Hermes HTML preview smoke: {error}"))?;
     let result: serde_json::Value = serde_json::from_slice(
         &fs::read(&output_path).map_err(|error| format!("read smoke result: {error}"))?,
     )
@@ -131,39 +168,19 @@ fn main() -> Result<(), String> {
     if result["ok"] != true {
         return Err(result["error"]
             .as_str()
-            .unwrap_or("WebView2 smoke failed")
+            .unwrap_or("Hermes HTML preview smoke failed")
             .to_owned());
     }
     println!("{}", result);
     Ok(())
 }
 
-fn file_url(path: &std::path::Path) -> Result<String, String> {
-    let path = path
-        .canonicalize()
-        .map_err(|error| format!("canonicalize HTML fixture path: {error}"))?;
-    let mut path = path.to_string_lossy().replace('\\', "/");
-    if let Some(unc_path) = path.strip_prefix("//?/UNC/") {
-        path = format!("//{unc_path}");
-    } else if let Some(drive_path) = path.strip_prefix("//?/") {
-        path = drive_path.to_owned();
-    }
-    let is_unc = path.starts_with("//");
-    let encoded = path
-        .bytes()
-        .map(|byte| {
-            if byte.is_ascii_alphanumeric() || b"/-._~:".contains(&byte) {
-                (byte as char).to_string()
-            } else {
-                format!("%{byte:02X}")
-            }
-        })
-        .collect::<String>();
-    if is_unc {
-        Ok(format!("file://{encoded}"))
-    } else {
-        Ok(format!("file:///{}", encoded.trim_start_matches('/')))
-    }
+fn unique_temp_dir(prefix: &str) -> Result<PathBuf, String> {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("read system clock: {error}"))?
+        .as_nanos();
+    Ok(std::env::temp_dir().join(format!("{prefix}-{}-{nonce}", std::process::id())))
 }
 
 fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {

@@ -571,6 +571,20 @@ impl HermesNativeApp {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn new_for_native_automation(
+        cc: &eframe::CreationContext<'_>,
+        profile_dir: std::path::PathBuf,
+    ) -> Self {
+        let fallback_dir = profile_dir.clone();
+        Self::from_workspace_result(
+            false,
+            Workspace::load_isolated(profile_dir),
+            Workspace::load_fallback_isolated(fallback_dir),
+            FilePreviewStore::from_creation_context(cc),
+        )
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_markdown_fixture_for_automation(&mut self) {
         let markdown = r#"# Markdown preview
 
@@ -725,9 +739,14 @@ fn render_message() -> &'static str {
         .map_err(|error| format!("write fixture source: {error}"))?;
         std::fs::write(
             root.join("preview.html"),
-            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Preview fixture</title><style>body{font:16px sans-serif;background:#f6f4ef;color:#252d3a;padding:32px}h1{color:#3972b9}button{padding:8px 12px}</style></head><body><h1>Rendered HTML preview</h1><p>This is a distinct local HTML fixture.</p><button id=\"fixture-action\" onclick=\"this.textContent='Clicked'\">Click fixture action</button></body></html>",
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Preview fixture</title><style>body{font:16px sans-serif;background:#f6f4ef;color:#252d3a;padding:32px}h1{color:#3972b9}button{padding:8px 12px}</style></head><body><h1>Rendered HTML preview</h1><p>This is a distinct local HTML fixture.</p><img src=\"preview-asset.svg\" onload=\"document.title='asset-loaded:'+this.naturalWidth\"><button id=\"fixture-action\" onclick=\"this.textContent='Clicked'\">Click fixture action</button></body></html>",
         )
         .map_err(|error| format!("write fixture HTML: {error}"))?;
+        std::fs::write(
+            root.join("preview-asset.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><circle cx=\"8\" cy=\"8\" r=\"7\" fill=\"blue\"/></svg>",
+        )
+        .map_err(|error| format!("write fixture relative SVG: {error}"))?;
         std::fs::write(root.join(".gitignore"), "ignored-preview.txt\n")
             .map_err(|error| format!("write fixture ignore rules: {error}"))?;
         std::fs::write(root.join("ignored-preview.txt"), "hidden until requested\n")
@@ -824,6 +843,28 @@ fn render_message() -> &'static str {
         }
         self.status = "Files preview fixture · isolated local files · gateway disabled".into();
         Ok(())
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn load_html_preview_fixture_for_native_smoke(
+        &mut self,
+        root: &std::path::Path,
+    ) -> Result<(), String> {
+        self.load_files_preview_fixture_for_automation(root, false, false, false, false, true)?;
+        self.file_previews
+            .set_html_preview_mode_for_automation(&root.join("preview.html"), true);
+        Ok(())
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn set_html_preview_mode_for_automation(&mut self, path: &std::path::Path, rendered: bool) {
+        self.file_previews
+            .set_html_preview_mode_for_automation(path, rendered);
+    }
+
+    #[cfg(all(feature = "agent-automation", windows))]
+    pub fn html_preview_state_for_automation(&self) -> Option<serde_json::Value> {
+        self.file_previews.html_preview_state_for_automation()
     }
 
     #[cfg(feature = "agent-automation")]

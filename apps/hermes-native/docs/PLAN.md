@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 96 (implementation in progress).
+- **Working revision:** 97 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -496,3 +496,7 @@ Normalize Windows extended-length canonical paths before forming local file URLs
 ### Revision 96 — exact HTML navigation allowlist
 
 Bind top-level navigation to the canonical URL of the active HTML preview. Keep `about:blank` available for initial WebView2 setup, allow the selected document itself, and deny navigation to other local files or remote origins without blocking relative images and other subresources. Add explicit allow/deny cases for the selected document, another file, and an HTTPS URL. Re-run the native WebView2 relative-asset smoke and all-target Windows feature tests. Actual Files-pane docking geometry, visibility transitions and source-paired acceptance remain open.
+
+### Revision 97 — Hermes Files-pane native lifecycle smoke
+
+Launch Hermes Native itself on a separate Windows desktop with a fresh isolated profile and local HTML project fixture, with the Hermes gateway disabled. Require the real Files preview pane to load its local HTML, execute JavaScript, and resolve the relative 16×16 SVG; inspect the child WebView's active path, visible state, and non-zero Dock bounds. Leave rendered mode and verify the child hides, then restore it and verify the same document is visible again. This does not replace matched fixed-source screenshots, other preview formats, external navigation behavior, or the remaining 499-row acceptance.

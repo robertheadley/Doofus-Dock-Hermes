@@ -162,6 +162,9 @@ struct HtmlPreviewHost {
     active_path: Option<PathBuf>,
     error: Option<String>,
     allowed_url: Rc<RefCell<Option<String>>>,
+    document_title: Rc<RefCell<Option<String>>>,
+    is_visible: bool,
+    last_bounds: Option<egui::Rect>,
 }
 
 #[cfg(windows)]
@@ -188,6 +191,9 @@ impl HtmlPreviewHost {
                 active_path: None,
                 error: Some("The native window handle is unavailable.".into()),
                 allowed_url,
+                document_title: Rc::new(RefCell::new(None)),
+                is_visible: false,
+                last_bounds: None,
             };
         };
         let bounds = wry::Rect {
@@ -195,10 +201,15 @@ impl HtmlPreviewHost {
             size: wry::dpi::LogicalSize::new(1.0, 1.0).into(),
         };
         let navigation_allowlist = Rc::clone(&allowed_url);
+        let document_title = Rc::new(RefCell::new(None::<String>));
+        let observed_title = Rc::clone(&document_title);
         match wry::WebViewBuilder::new()
             .with_url("about:blank")
             .with_bounds(bounds)
             .with_visible(false)
+            .with_document_title_changed_handler(move |title| {
+                *observed_title.borrow_mut() = Some(title);
+            })
             .with_navigation_handler(move |url| {
                 is_allowed_html_navigation(&url, navigation_allowlist.borrow().as_deref())
             })
@@ -209,19 +220,28 @@ impl HtmlPreviewHost {
                 active_path: None,
                 error: None,
                 allowed_url,
+                document_title,
+                is_visible: false,
+                last_bounds: None,
             },
             Err(error) => Self {
                 webview: None,
                 active_path: None,
                 error: Some(format!("Could not initialize the HTML preview: {error}")),
                 allowed_url,
+                document_title,
+                is_visible: false,
+                last_bounds: None,
             },
         }
     }
 
-    fn hide(&self) {
+    fn hide(&mut self) {
         if let Some(webview) = &self.webview {
-            let _ = webview.set_visible(false);
+            match webview.set_visible(false) {
+                Ok(()) => self.is_visible = false,
+                Err(error) => self.error = Some(format!("Could not hide HTML preview: {error}")),
+            }
         }
     }
 
@@ -246,16 +266,27 @@ impl HtmlPreviewHost {
                 }
             }
         }
+        let egui_bounds = bounds;
         let bounds = wry::Rect {
-            position: wry::dpi::LogicalPosition::new(bounds.min.x as f64, bounds.min.y as f64)
-                .into(),
-            size: wry::dpi::LogicalSize::new(bounds.width() as f64, bounds.height() as f64).into(),
+            position: wry::dpi::LogicalPosition::new(
+                egui_bounds.min.x as f64,
+                egui_bounds.min.y as f64,
+            )
+            .into(),
+            size: wry::dpi::LogicalSize::new(
+                egui_bounds.width() as f64,
+                egui_bounds.height() as f64,
+            )
+            .into(),
         };
         if let Err(error) = webview
             .set_bounds(bounds)
             .and_then(|_| webview.set_visible(true))
         {
             self.error = Some(format!("Could not show HTML preview: {error}"));
+        } else {
+            self.is_visible = true;
+            self.last_bounds = Some(egui_bounds);
         }
     }
 }
@@ -325,9 +356,35 @@ impl FilePreviewStore {
         store
     }
 
+    #[cfg(feature = "agent-automation")]
+    pub fn set_html_preview_mode_for_automation(&mut self, path: &Path, rendered: bool) {
+        if rendered {
+            self.html_preview_paths.insert(path.to_path_buf());
+        } else {
+            self.html_preview_paths.remove(path);
+        }
+    }
+
+    #[cfg(all(feature = "agent-automation", windows))]
+    pub fn html_preview_state_for_automation(&self) -> Option<serde_json::Value> {
+        let host = self.html_preview_host.as_ref()?;
+        Some(serde_json::json!({
+            "document_title": host.document_title.borrow().clone(),
+            "visible": host.is_visible,
+            "bounds": host.last_bounds.map(|bounds| [
+                bounds.min.x,
+                bounds.min.y,
+                bounds.width(),
+                bounds.height(),
+            ]),
+            "active_path": host.active_path.as_ref().map(|path| path.to_string_lossy()),
+            "error": host.error.as_deref(),
+        }))
+    }
+
     pub fn begin_frame(&mut self) {
         #[cfg(windows)]
-        if let Some(host) = &self.html_preview_host {
+        if let Some(host) = &mut self.html_preview_host {
             host.hide();
         }
     }

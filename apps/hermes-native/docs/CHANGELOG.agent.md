@@ -1385,3 +1385,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Documentation and artifact cleanup completed locally in under one second.
   **risks:** The retained headless screenshot depicts the no-HWND retry fallback and is not rendered HTML evidence.
   **follow_up:** Capture actual Files-pane rendering when the native fixture path is available; maintain distinct route/state screenshots.
+- **id:** HUR-001-107
+  **timestamp:** 2026-11-15T16:08:23Z
+  **what:** Upgraded the HTML smoke to launch Hermes Native itself with an isolated Files fixture, and verified the real child WebView2 loads, fits inside the active Dock preview, hides when rendered mode is left, and reopens successfully.
+  **why:** The previous smoke tested Wry independently and could not prove the product's FilePreviewStore and DoofusDock integration.
+  **components:** apps/hermes-native/src/files.rs, apps/hermes-native/src/app.rs, apps/hermes-native/src/bin/html-preview-smoke.rs, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, artifacts/agent-ui/html-preview-files-pane-hide-reopen-20261115.json, docs/EXECUTION_LOGS.md.
+  **type:** integrated native UI validation.
+  **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` (137 library + 11 automation); `cargo check -p hermes-native --all-targets --features agent-automation`; native smoke build and isolated-desktop run passed. Recorded initial/hidden/reopened states: initial and reopened visible at `[792.125,157.34375,329.28125,742.65625]`, hidden state false, document title `asset-loaded:16`, active file path, and no WebView error. Hermes gateway remained disabled and the user's foreground desktop was not switched.
+  **performance:** Integrated native run completed in under five seconds after build.
+  **risks:** Synthetic fixture only; no paired upstream screenshot or acceptance rows are closed. External navigation behavior and other preview-specific parity remain open.
+  **follow_up:** Capture the rendered native pane if reliable isolated-desktop screenshot acquisition is added; continue fixed-source acceptance against the downloaded Hermes snapshot.
