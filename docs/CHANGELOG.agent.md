@@ -424,3 +424,5 @@ HUI-033 live-feed follow-up: the isolated Rust UI agent loaded the actual 2,378-
 HUI-033 screenshot evidence follow-up: identified that fresh headless processes reset to New session, so captures without route navigation/fixtures repeated the default view. Added an explicit route-or-fixture plus wait requirement, and recorded a visually distinct live public catalog capture separately from the synthetic fixture, with route/state/hash-bound sidecars.
 
 HUI-034: added the pinned-source Connectors catalog/list/accounts read path, searchable directory and expanded account status using the profile-bound gateway actor. Local WebSocket and AccessKit fixtures pass; a distinct synthetic directory screenshot is saved. Connector authentication, local MCP, policy/tools management, hosted account operations and live/source-paired acceptance remain open.
+
+HUI-034 publication record: committed the verified Connectors read slice as `aab2176` and pushed it to `origin/main` after confirming the remote parent matched; local/remote main agree and the worktree is clean.
