@@ -22,7 +22,7 @@ The saved layout is stored under `%APPDATA%\HermesDoofusDock\layouts\hermes-main
 
 ## Agent UI control
 
-`cargo run --features agent-automation --bin hermes-automation -- --stdio` starts an isolated headless UI with versioned JSON requests over inherited stdio. It exposes the accessibility tree, registered actions, state, events, semantic scrolling, and screenshots without opening a native window or connecting to the Hermes gateway. A successful action advances the UI frame before state or screenshot readback. Native window control and authenticated live-gateway automation remain to be implemented.
+`cargo run --features agent-automation --bin hermes-automation -- --stdio` starts an isolated headless UI with versioned JSON requests over inherited stdio. It exposes the accessibility tree, registered actions, state, events, semantic scrolling and exact text-field fill, and screenshots without opening a native window or connecting to the Hermes gateway. A successful action advances the UI frame before state or screenshot readback. Native window control and authenticated live-gateway automation remain to be implemented.
 
 ## Validation
 

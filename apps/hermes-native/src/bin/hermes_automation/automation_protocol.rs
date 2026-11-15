@@ -493,6 +493,84 @@ impl ProtocolState {
                     }),
                 )
             }
+            "actions.fill" => {
+                let (role, name) = match resolve_locator(harness, &params, "") {
+                    Ok(locator) => locator,
+                    Err((code, message)) => return failure(id.clone(), code, message),
+                };
+                if !matches!(role.as_str(), "TextInput" | "MultilineTextInput") {
+                    return failure(
+                        id.clone(),
+                        "target_not_editable",
+                        format!("{role} named {name:?} is not a text input"),
+                    );
+                }
+                let Some(text) = string_param(&params, "text") else {
+                    return failure(id.clone(), "invalid_argument", "text is required".into());
+                };
+                if text.chars().count() > MAX_TEXT_CHARS {
+                    return failure(
+                        id.clone(),
+                        "payload_too_large",
+                        "text exceeds 16384 characters".into(),
+                    );
+                }
+                if let Err(error) = self.check_generation(&params) {
+                    return failure(id.clone(), error.0, error.1);
+                }
+                let before_generation = self.generation;
+                let before_state = snapshot(app, before_generation);
+                let matches = matching_nodes(harness, &role, &name);
+                if matches.len() != 1 {
+                    let (code, message) = match matches.len() {
+                        0 => ("target_not_found", format!("no {role} named {name:?}")),
+                        _ => (
+                            "ambiguous_target",
+                            format!("{} {role} controls are named {name:?}", matches.len()),
+                        ),
+                    };
+                    self.record_event(id, method, "failed", before_generation, before_generation);
+                    return failure(id.clone(), code, message);
+                }
+                if matches[0].accesskit_node().is_disabled() {
+                    return failure(
+                        id.clone(),
+                        "target_disabled",
+                        format!("{role} named {name:?} is disabled"),
+                    );
+                }
+                let (target_node, target_tree) = matches[0].accesskit_node().locate();
+                harness.event(egui::Event::AccessKitActionRequest(
+                    egui::accesskit::ActionRequest {
+                        action: egui::accesskit::Action::SetValue,
+                        target_node,
+                        target_tree,
+                        data: Some(egui::accesskit::ActionData::Value(text.into())),
+                    },
+                ));
+                harness.run();
+                self.generation = self.generation.saturating_add(1);
+                let after_state = snapshot(app, self.generation);
+                self.record_event(id, method, "succeeded", before_generation, self.generation);
+                success(
+                    id.clone(),
+                    json!({
+                        "request_id": request_id,
+                        "correlation_id": request_id,
+                        "trace_id": format!("ui-{request_id}"),
+                        "actor": "stdio-peer",
+                        "permission_class": "ui-interaction",
+                        "command": "ui.fill",
+                        "target": {"role": role, "name": name},
+                        "characters": text.chars().count(),
+                        "state_generation_before": before_generation,
+                        "state_generation_after": self.generation,
+                        "before": before_state,
+                        "after": after_state,
+                        "outcome": "succeeded"
+                    }),
+                )
+            }
             "actions.drag" => {
                 let (role, name) = match resolve_locator(harness, &params, "") {
                     Ok(locator) => locator,
@@ -1248,13 +1326,14 @@ fn capabilities() -> Value {
             {"id":"ui.right_click","method":"actions.right_click","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.scroll","method":"actions.scroll","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.type","method":"actions.type","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
+            {"id":"ui.fill","method":"actions.fill","permission":"ui_interaction","implemented":true,"verification":"headless_keyboard_text_events"},
             {"id":"ui.drag","method":"actions.drag","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.select","method":"actions.select","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
             {"id":"ui.keypress","method":"actions.keypress","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
             {"id":"ui.wait_for","method":"ui.wait_for","permission":"read_only","implemented":true,"verification":"headless_semantic"},
             {"id":"screenshot.capture","method":"screenshots.capture","permission":"artifact_write","implemented":true,"verification":"headless_render"},
             {"id":"native_window_control","method":null,"permission":"unsupported","implemented":false,"verification":"not_tested"},
-            {"id":"stable_test_id_locator","method":"actions.click/actions.right_click/actions.type/actions.select/actions.drag/ui.wait_for","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"}
+            {"id":"stable_test_id_locator","method":"actions.click/actions.right_click/actions.scroll/actions.type/actions.fill/actions.select/actions.drag/ui.wait_for","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"}
         ]
     })
 }
@@ -2287,6 +2366,47 @@ mod tests {
             after.iter().any(|row| *row > 5),
             "visible rows after scroll: {after:?}"
         );
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn semantic_fill_replaces_and_clears_accessible_text_inputs() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+        for (id, text, generation) in [
+            ("fill-search-first", "first query", 0),
+            ("fill-search-replace", "second query", 1),
+            ("fill-search-clear", "", 2),
+        ] {
+            let response = protocol.handle(
+                json!({
+                    "version": 1,
+                    "id": id,
+                    "method": "actions.fill",
+                    "params": {
+                        "test_id": "sessions.search",
+                        "text": text,
+                        "expected_state_generation": generation
+                    }
+                }),
+                &mut harness,
+                &app,
+            );
+            assert_eq!(response["status"], "succeeded", "{response}");
+            assert_eq!(response["result"]["command"], "ui.fill");
+            let fields = matching_nodes(&mut harness, "TextInput", "Search sessions");
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].value().as_deref(), Some(text));
+        }
         drop(harness);
         drop(app);
         drop(profile);

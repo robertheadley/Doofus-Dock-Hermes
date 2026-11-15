@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 80 (implementation in progress).
+- **Working revision:** 81 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -432,3 +432,7 @@ Add EV-0017 for the selected-profile authenticated `display.timestamps` read imp
 ### Revision 80 — semantic pointer scrolling for unattended navigation
 
 Extend the opt-in agent UI protocol with bounded `actions.scroll` over a unique accessible role/name or stable test ID. The action moves the pointer to the target bounds center, emits an egui mouse-wheel event in logical points, enforces the current state generation, and returns a structured action receipt. Tests verify that the event changes visible content in a real egui ScrollArea and that empty/oversized deltas are rejected without advancing generation. This improves background navigation but does not add a live native window bridge, physical OS control, or source-paired visual acceptance.
+
+### Revision 81 — exact semantic fill for native text fields
+
+Add `actions.fill` for accessible single- and multiline-text inputs. It validates a unique semantic locator, enabled state, payload length and current UI generation, then sends AccessKit `SetValue` through egui to replace the complete field value (including clearing it). Tests prove fill, replacement, clearing, and the structured action receipt. This complements typed keystrokes while preserving the normal widget path.

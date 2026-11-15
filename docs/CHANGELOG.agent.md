@@ -654,3 +654,29 @@ HUI-050/HUI-051 publication: `cdeffe3b2e2dac737b8c463aea01d19bd73a866c` (impleme
 - **follow_up:** Continue app-wide route workflows and physical host parity.
 
 HUI-052/HUI-053 publication: `688b6cae39d84e2739df5b23fdc2f33f468e6047` is published on `origin/main`; 123 library and 10 automation tests pass.
+
+## HUI-054 — 2026-11-15
+
+- **id:** HUI-054
+- **timestamp:** 2026-11-15
+- **what:** Added generation-fenced semantic `actions.fill` for exact replacement or clearing of accessible text fields using AccessKit `SetValue`.
+- **why:** Give background agents a Playwright-style exact field operation without requiring pointer positioning or a fragile select-all sequence.
+- **components:** Hermes Native automation protocol, AccessKit UI input path, protocol docs and acceptance plan.
+- **type:** agent UI control capability.
+- **validation:** Focused test passes for initial fill, replacement and empty clear. Full automation suite, all-target build, formatting and diff checks are in progress.
+- **performance:** One AccessKit action and one bounded UI frame per fill.
+- **risks:** Headless semantics do not prove Windows UI Automation behavior across native text controls or IME composition.
+- **follow_up:** Run full validation and extend native app workflows against the pinned source.
+
+## HUI-055 — 2026-11-15
+
+- **id:** HUI-055
+- **timestamp:** 2026-11-15
+- **what:** Completed full validation for semantic exact-value fill.
+- **why:** Verify field replacement in the complete automation build, beyond the focused regression.
+- **components:** Hermes Native agent UI protocol and feature tests.
+- **type:** validation follow-up.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --features agent-automation` passed 123 library + 11 automation tests; `cargo check -p hermes-native --all-targets --features agent-automation` passed; `git diff --check` passed.
+- **performance:** One AccessKit action and one UI frame per fill.
+- **risks:** Physical Windows UI Automation and IME acceptance remain open.
+- **follow_up:** Continue pinned-source workflow parity and native host evidence.
