@@ -1309,3 +1309,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Capture completed in the isolated local runner.
   **risks:** Synthetic target-only screenshot; no paired Hermes source or installed Windows host acceptance.
   **follow_up:** Publish the artifact and continue source-paired Files review.
+
+- **id:** HUR-001-100
+  **timestamp:** 2026-11-15T15:00:00Z
+  **what:** Replaced the PDF preview's isolated page display with a fit-to-pane continuous page stack, accessible page jumps and zoom; added all-page dimensions, visible-neighbor requests and an eight-page raster cache.
+  **why:** The pinned Hermes file preview opens PDFs in Chromium's embedded document viewer, whose normal interaction is a continuous document surface rather than one bitmap page at a time.
+  **components:** apps/hermes-native/src/files.rs, apps/hermes-native/src/app.rs, apps/hermes-native/src/bin/hermes-automation.rs, Files docs and PDF automation fixtures.
+  **type:** fidelity feature slice
+  **validation:** Focused PDF rendering test passed with dimensions for every page; all-target agent feature check passed. The six-page fixture captured a distinct 1440×900 scrolled document after four accessible Next page clicks and Zoom in; visible page colors confirm a continuous sequence, and AccessKit exposes page and zoom controls.
+  **performance:** PDF work stays on the worker; only visible/nearby pages are requested; rendered PDF page cache is bounded to eight images.
+  **risks:** The viewer is raster-based and does not yet provide Chromium's text selection/search, full toolbar or PDF annotations. PDFium runtime remains Windows x64; source-paired and installed-host acceptance remain open.
+  **follow_up:** Validate manual wheel scrolling and add source-paired PDF interaction/screenshots; continue other Files features.
+
+- **id:** HUR-001-101
+  **timestamp:** 2026-11-15T15:20:00Z
+  **what:** Added bounded semantic scroll actions to the offline UI runner and captured the PDF preview after five 100-point scroll actions.
+  **why:** The previous fixture screenshots shared the same initial viewport, making scroll behavior difficult to distinguish visually.
+  **components:** apps/hermes-native/src/bin/hermes-automation.rs, artifacts/agent-ui/pdf-agent-scrolled-five-20261115.png.
+  **type:** agent interaction and evidence.
+  **validation:** Full agent feature tests passed (134 library and 11 automation tests); formatting and all-target feature check passed. The semantic scroll action returned success and screenshot shows Page 3 of 6 with later pages in view at 100%.
+  **performance:** Five local semantic scroll actions and one frame capture completed in under three seconds on the development host.
+  **risks:** Offline synthetic PDF fixture; it does not prove native-window wheel routing, Chromium text features, or installed Hermes integration.
+  **follow_up:** Capture the rest of the feature evidence from different actual UI states; continue source-paired Files parity.

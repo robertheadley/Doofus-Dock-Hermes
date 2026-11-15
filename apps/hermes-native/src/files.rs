@@ -9,7 +9,7 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 #[cfg(test)]
 use std::process::Command;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -22,8 +22,10 @@ const MAX_PREVIEW_BYTES: u64 = 512 * 1024;
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_IMAGE_PIXELS: u64 = 64 * 1024 * 1024;
 const MAX_PDF_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_PDF_PAGES: usize = 10_000;
 const MAX_PDF_RENDER_WIDTH: i32 = 1_280;
 const MAX_PDF_RENDER_HEIGHT: i32 = 1_800;
+const MAX_CACHED_PDF_PAGES: usize = 8;
 const IMAGE_EXTENSIONS: &[&str] = &["bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"];
 const ALWAYS_EXCLUDED_NAMES: &[&str] = &[
     ".git",
@@ -126,12 +128,12 @@ struct PreviewResult {
     result: Result<FilePreviewContent, String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FilePreviewContent {
     pub kind: FilePreviewKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FilePreviewKind {
     Text {
         text: String,
@@ -145,6 +147,7 @@ pub enum FilePreviewKind {
     },
     Pdf {
         page_count: usize,
+        page_sizes: Vec<(f32, f32)>,
         width: usize,
         height: usize,
         rgba: Vec<u8>,
@@ -157,6 +160,9 @@ pub struct FilePreviewStore {
     images: BTreeMap<(PathBuf, usize), egui::TextureHandle>,
     pending: BTreeSet<(PathBuf, usize)>,
     pdf_page: BTreeMap<PathBuf, usize>,
+    pdf_zoom: BTreeMap<PathBuf, f32>,
+    pdf_sizes: BTreeMap<PathBuf, (usize, Vec<(f32, f32)>)>,
+    pdf_cache_order: VecDeque<(PathBuf, usize)>,
     request_tx: Option<Sender<PreviewRequest>>,
     result_rx: Option<Receiver<PreviewResult>>,
 }
@@ -164,7 +170,14 @@ pub struct FilePreviewStore {
 impl FilePreviewStore {
     pub fn request(&mut self, path: &Path) {
         let page_index = self.pdf_page.get(path).copied().unwrap_or(0);
-        self.request_page(path, page_index, false);
+        if is_pdf_path(path) {
+            self.request_page(path, 0, false);
+            if page_index > 0 {
+                self.request_page(path, page_index, false);
+            }
+        } else {
+            self.request_page(path, page_index, false);
+        }
     }
 
     fn request_page(&mut self, path: &Path, page_index: usize, force: bool) {
@@ -193,6 +206,10 @@ impl FilePreviewStore {
 
     pub fn open(&mut self, ui: &mut egui::Ui, path: &Path, markdown_cache: &mut CommonMarkCache) {
         self.request(path);
+        if is_pdf_path(path) {
+            self.open_pdf(ui, path);
+            return;
+        }
         let mut force_preview = false;
         let page_index = self.pdf_page.get(path).copied().unwrap_or(0);
         let key = (path.to_path_buf(), page_index);
@@ -255,6 +272,7 @@ impl FilePreviewStore {
                     width,
                     height,
                     rgba,
+                    ..
                 } => {
                     let texture = self.images.entry(key.clone()).or_insert_with(|| {
                         let image =
@@ -319,6 +337,187 @@ impl FilePreviewStore {
         }
     }
 
+    fn open_pdf(&mut self, ui: &mut egui::Ui, path: &Path) {
+        let Some((page_count, page_sizes)) = self.pdf_sizes.get(path).cloned() else {
+            let current_page = self.pdf_page.get(path).copied().unwrap_or(0);
+            if let Some(Err(error)) = self.contents.get(&(path.to_path_buf(), current_page)) {
+                ui.centered_and_justified(|ui| {
+                    ui.label(format!("Unable to preview this file: {error}"));
+                });
+            } else {
+                ui.centered_and_justified(|ui| {
+                    ui.label("Loading PDF preview…");
+                });
+            }
+            return;
+        };
+        if page_count == 0 || page_sizes.is_empty() {
+            ui.centered_and_justified(|ui| {
+                ui.label("PDF contains no pages.");
+            });
+            return;
+        }
+
+        let mut page = self
+            .pdf_page
+            .get(path)
+            .copied()
+            .unwrap_or(0)
+            .min(page_count - 1);
+        let mut zoom = *self.pdf_zoom.entry(path.to_path_buf()).or_insert(1.0);
+        let mut jump_to = None;
+        let mut zoom_changed = false;
+        ui.horizontal(|ui| {
+            let previous = ui
+                .add_enabled(page > 0, egui::Button::new("‹").small())
+                .on_hover_text("Previous page");
+            previous.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::Button, page > 0, "Previous page")
+            });
+            if previous.clicked() {
+                page = page.saturating_sub(1);
+                jump_to = Some(page);
+            }
+            ui.label(format!("Page {} of {page_count}", page + 1));
+            let next = ui
+                .add_enabled(page + 1 < page_count, egui::Button::new("›").small())
+                .on_hover_text("Next page");
+            next.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::Button, page + 1 < page_count, "Next page")
+            });
+            if next.clicked() {
+                page += 1;
+                jump_to = Some(page);
+            }
+            let zoom_out = ui
+                .add_enabled(zoom > 0.5, egui::Button::new("−").small())
+                .on_hover_text("Zoom out");
+            zoom_out.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::Button, zoom > 0.5, "Zoom out")
+            });
+            if zoom_out.clicked() {
+                zoom = (zoom - 0.1).max(0.5);
+                zoom_changed = true;
+            }
+            ui.label(format!("{}%", (zoom * 100.0).round() as u32));
+            let zoom_in = ui
+                .add_enabled(zoom < 3.0, egui::Button::new("+").small())
+                .on_hover_text("Zoom in");
+            zoom_in.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::Button, zoom < 3.0, "Zoom in")
+            });
+            if zoom_in.clicked() {
+                zoom = (zoom + 0.1).min(3.0);
+                zoom_changed = true;
+            }
+        });
+        if zoom_changed {
+            self.pdf_zoom.insert(path.to_path_buf(), zoom);
+        }
+
+        let mut visible_page = None;
+        egui::ScrollArea::both()
+            .id_salt(("hermes-file-preview-pdf-document", path))
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.add_space(12.0);
+                for (page_index, (page_width_points, page_height_points)) in
+                    page_sizes.iter().copied().enumerate()
+                {
+                    let available_width = (ui.available_width() - 24.0).max(160.0);
+                    let page_width = available_width * zoom;
+                    let page_height =
+                        page_width * (page_height_points / page_width_points.max(1.0));
+                    let margin = ((ui.available_width() - page_width) / 2.0).max(0.0);
+                    let (page_rect, _) = ui
+                        .horizontal(|ui| {
+                            ui.add_space(margin);
+                            ui.allocate_exact_size(
+                                egui::vec2(page_width, page_height),
+                                egui::Sense::hover(),
+                            )
+                        })
+                        .inner;
+                    if jump_to == Some(page_index) {
+                        ui.scroll_to_rect(page_rect, Some(egui::Align::Min));
+                    }
+                    if visible_page.is_none() && page_rect.intersects(ui.clip_rect()) {
+                        visible_page = Some(page_index);
+                    }
+                    if page_rect.intersects(ui.clip_rect().expand(page_height.min(900.0))) {
+                        self.request_page(path, page_index, false);
+                    }
+                    let key = (path.to_path_buf(), page_index);
+                    match self.contents.get(&key) {
+                        Some(Ok(FilePreviewContent {
+                            kind:
+                                FilePreviewKind::Pdf {
+                                    width,
+                                    height,
+                                    rgba,
+                                    ..
+                                },
+                        })) => {
+                            let texture = self.images.entry(key).or_insert_with(|| {
+                                let image = egui::ColorImage::from_rgba_unmultiplied(
+                                    [*width, *height],
+                                    rgba,
+                                );
+                                ui.ctx().load_texture(
+                                    format!(
+                                        "hermes-file-preview-pdf:{}:{page_index}",
+                                        path.display()
+                                    ),
+                                    image,
+                                    egui::TextureOptions::LINEAR,
+                                )
+                            });
+                            ui.painter()
+                                .rect_filled(page_rect, 1.0, egui::Color32::WHITE);
+                            ui.painter().image(
+                                texture.id(),
+                                page_rect,
+                                egui::Rect::from_min_max(
+                                    egui::pos2(0.0, 0.0),
+                                    egui::pos2(1.0, 1.0),
+                                ),
+                                egui::Color32::WHITE,
+                            );
+                        }
+                        Some(Err(error)) => {
+                            ui.painter()
+                                .rect_filled(page_rect, 1.0, ui.visuals().faint_bg_color);
+                            ui.painter().text(
+                                page_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                format!("Page {} failed: {error}", page_index + 1),
+                                egui::FontId::proportional(12.0),
+                                ui.visuals().error_fg_color,
+                            );
+                        }
+                        _ => {
+                            ui.painter()
+                                .rect_filled(page_rect, 1.0, egui::Color32::WHITE);
+                            ui.painter().text(
+                                page_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                format!("Loading page {}…", page_index + 1),
+                                egui::FontId::proportional(12.0),
+                                egui::Color32::DARK_GRAY,
+                            );
+                        }
+                    }
+                    ui.add_space(12.0);
+                }
+            });
+        if let Some(jump_to) = jump_to {
+            self.pdf_page.insert(path.to_path_buf(), jump_to);
+            self.request_page(path, jump_to, false);
+        } else if let Some(visible_page) = visible_page {
+            self.pdf_page.insert(path.to_path_buf(), visible_page);
+        }
+    }
+
     fn request_force(&mut self, path: &Path) {
         let page_index = self.pdf_page.get(path).copied().unwrap_or(0);
         let key = (path.to_path_buf(), page_index);
@@ -354,10 +553,37 @@ impl FilePreviewStore {
         loop {
             match receiver.try_recv() {
                 Ok(result) => {
-                    self.pending
-                        .remove(&(result.path.clone(), result.page_index));
-                    self.contents
-                        .insert((result.path, result.page_index), result.result);
+                    let key = (result.path.clone(), result.page_index);
+                    self.pending.remove(&key);
+                    let is_pdf_page = if let Ok(FilePreviewContent {
+                        kind:
+                            FilePreviewKind::Pdf {
+                                page_count,
+                                page_sizes,
+                                ..
+                            },
+                    }) = &result.result
+                    {
+                        self.pdf_sizes
+                            .insert(result.path.clone(), (*page_count, page_sizes.clone()));
+                        true
+                    } else {
+                        false
+                    };
+                    self.contents.insert(key.clone(), result.result);
+                    if is_pdf_page {
+                        self.pdf_cache_order.retain(|cached| cached != &key);
+                        self.pdf_cache_order.push_back(key);
+                        while self.pdf_cache_order.len() > MAX_CACHED_PDF_PAGES {
+                            if let Some((evicted_path, evicted_page)) =
+                                self.pdf_cache_order.pop_front()
+                            {
+                                let evicted_key = (evicted_path, evicted_page);
+                                self.contents.remove(&evicted_key);
+                                self.images.remove(&evicted_key);
+                            }
+                        }
+                    }
                     changed = true;
                 }
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
@@ -421,6 +647,12 @@ impl FilePreviewStore {
             self.result_rx = Some(result_rx);
         }
     }
+}
+
+fn is_pdf_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
 }
 
 fn syntax_highlight_markdown(language: &str, source: &str) -> Option<String> {
@@ -844,12 +1076,29 @@ fn read_pdf_preview(
     let document = pdfium
         .load_pdf_from_byte_vec(bytes, None)
         .map_err(|error| format!("Unable to open PDF: {error}"))?;
-    let page_count = document.pages().len() as usize;
+    let pages = document.pages();
+    let page_count = pages.len() as usize;
     if page_count == 0 {
         return Err("PDF contains no pages".into());
     }
-    let page = document
-        .pages()
+    if page_count > MAX_PDF_PAGES {
+        return Err(format!(
+            "PDF exceeds the {MAX_PDF_PAGES}-page preview limit"
+        ));
+    }
+    let mut page_sizes = Vec::with_capacity(page_count);
+    for index in 0..page_count {
+        let page = pages
+            .get(index as _)
+            .map_err(|error| format!("Unable to inspect PDF page {}: {error}", index + 1))?;
+        let width = page.width().value;
+        let height = page.height().value;
+        if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+            return Err(format!("PDF page {} has invalid dimensions", index + 1));
+        }
+        page_sizes.push((width, height));
+    }
+    let page = pages
         .get(page_index as _)
         .map_err(|error| format!("Unable to open PDF page {}: {error}", page_index + 1))?;
     let bitmap = page
@@ -867,6 +1116,7 @@ fn read_pdf_preview(
     Ok(FilePreviewContent {
         kind: FilePreviewKind::Pdf {
             page_count,
+            page_sizes,
             width,
             height,
             rgba: bitmap.as_rgba_bytes(),
@@ -1335,6 +1585,7 @@ mod tests {
         let second = read_file_preview_with_pdfium(&path, false, 1, Some(&pdfium)).unwrap();
         let FilePreviewKind::Pdf {
             page_count: 2,
+            page_sizes,
             width,
             height,
             rgba: first_rgba,
@@ -1352,6 +1603,12 @@ mod tests {
         };
         assert!(width <= MAX_PDF_RENDER_WIDTH as usize);
         assert!(height <= MAX_PDF_RENDER_HEIGHT as usize);
+        assert_eq!(page_sizes.len(), 2);
+        assert!(
+            page_sizes
+                .iter()
+                .all(|(width, height)| *width > 0.0 && *height > 0.0)
+        );
         assert_ne!(first_rgba, second_rgba);
 
         let malformed = root.join("bad.pdf");

@@ -697,6 +697,7 @@ fn render_message() -> &'static str {
         image_preview: bool,
         svg_preview: bool,
         pdf_preview: bool,
+        pdf_scroll_preview: bool,
     ) -> Result<(), String> {
         std::fs::create_dir_all(root)
             .map_err(|error| format!("create fixture project: {error}"))?;
@@ -746,7 +747,12 @@ fn render_message() -> &'static str {
         )
         .map_err(|error| format!("write fixture vector: {error}"))?;
         let pdf_path = root.join("preview.pdf");
-        std::fs::write(&pdf_path, pdf_preview_fixture_bytes())
+        let pdf_fixture = if pdf_scroll_preview {
+            pdf_preview_fixture_bytes_for_pages(6)
+        } else {
+            pdf_preview_fixture_bytes()
+        };
+        std::fs::write(&pdf_path, pdf_fixture)
             .map_err(|error| format!("write fixture PDF: {error}"))?;
 
         let session_id = "files-preview-fixture";
@@ -771,7 +777,7 @@ fn render_message() -> &'static str {
         });
         self.transcript = vec![
             json!({"role":"user","content":"Show the project files."}),
-            json!({"role":"assistant","content": if pdf_preview { "The two-page PDF is open in a transient preview pane." } else if svg_preview { "The SVG image is open in a transient preview pane." } else if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
+            json!({"role":"assistant","content": if pdf_scroll_preview { "The six-page PDF is open in a continuous preview pane." } else if pdf_preview { "The two-page PDF is open in a transient preview pane." } else if svg_preview { "The SVG image is open in a transient preview pane." } else if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
         ];
         self.workspace
             .preferences
@@ -9111,24 +9117,39 @@ fn render_message() -> &'static str {
 
 #[cfg(feature = "agent-automation")]
 fn pdf_preview_fixture_bytes() -> Vec<u8> {
-    let mut objects = vec![
-        "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
-        "<< /Type /Pages /Count 2 /Kids [3 0 R 5 0 R] >>".to_owned(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 320 180] /Resources << >> /Contents 4 0 R >>"
-            .to_owned(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 320 180] /Resources << >> /Contents 6 0 R >>"
-            .to_owned(),
-    ];
-    for content in [
+    pdf_preview_fixture_bytes_for_pages(2)
+}
+
+#[cfg(feature = "agent-automation")]
+fn pdf_preview_fixture_bytes_for_pages(page_count: usize) -> Vec<u8> {
+    let colors = [
         "0.2 0.5 0.9 rg 0 0 320 180 re f",
         "0.9 0.4 0.2 rg 0 0 320 180 re f",
-    ] {
-        let page_stream = format!(
+        "0.25 0.7 0.45 rg 0 0 320 180 re f",
+        "0.75 0.45 0.8 rg 0 0 320 180 re f",
+        "0.9 0.75 0.25 rg 0 0 320 180 re f",
+        "0.2 0.75 0.8 rg 0 0 320 180 re f",
+    ];
+    let page_refs = (0..page_count)
+        .map(|index| format!("{} 0 R", 3 + index * 2))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut objects = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+        format!("<< /Type /Pages /Count {page_count} /Kids [{page_refs}] >>"),
+    ];
+    for index in 0..page_count {
+        let page_id = 3 + index * 2;
+        let content_id = page_id + 1;
+        objects.push(format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 320 180] /Resources << >> /Contents {content_id} 0 R >>"
+        ));
+        let content = colors[index % colors.len()];
+        objects.push(format!(
             "<< /Length {} >>\nstream\n{}\nendstream",
             content.len(),
             content
-        );
-        objects.insert(if objects.len() == 4 { 3 } else { 5 }, page_stream);
+        ));
     }
     let mut bytes = b"%PDF-1.4\n".to_vec();
     let mut offsets = vec![0usize];
