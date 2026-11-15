@@ -45,14 +45,15 @@ The first shell passed compile and two layout-policy tests and was opened on Win
 ## Stage 3 — semantic control service and development bridge
 
 - [x] Add a headless egui_kittest/AccessKit runner that inspects the semantic tree, clicks by accessible name, and captures a screenshot without opening a native window or starting Hermes.
-- [x] Add an opt-in inherited-stdio v1 child protocol for health, capabilities, state, tree, events/diagnostics, click/type, screenshot, and close with bounded requests, generation checks, structured receipts and idempotent replay protection.
+- [x] Add an opt-in inherited-stdio v1 child protocol for health, capabilities, state, tree, events/diagnostics, click/type, screenshot, and close with bounded requests, generation checks, structured receipts and idempotent replay protection. Screenshot captures now include a same-stem provenance JSON with source/build/image hashes, route/state, viewport, timestamp, isolated profile and prior action receipts.
 - [x] Add accessible selector option choice, keypress and bounded wait-for-visible-control methods; expose focused state and nullable bounds in the tree.
 - [x] Expose stable test IDs for fixed first-party controls and dynamic session rows (`session.row.<stored-id>`) alongside role/name locators; headless tests cover click/type/select/wait and dock drag using IDs. Contributed/user content still needs explicit IDs; layout revision and selection metadata are available in state snapshots.
 - [x] Add the versioned typed app-action registry slice for navigation, pane toggles, interface mode, layout profiles, Capabilities, Toolsets, Stop, approval and clarify decisions; normal controls and `app.action.execute` share handlers and expected-generation checks. Remaining Hermes/DoofusDock operations and per-action authorization metadata are still open.
 - [ ] Extend the shared typed registry to all app actions and DoofusDock/Hermes operations, with per-action permission, confirmation, idempotency and revision metadata. `close_active_tab` now shares the close handler with `Ctrl+W` and is listed in the semantic catalog.
 - [ ] Add a versioned authenticated loopback development bridge for capabilities, bounded state/UI/layout/panel/window snapshots, logs/events, diagnostics, action preview/execute, tests and reload status.
 - [ ] Enforce read/write scopes, operation authorization, schema/size validation, idempotency, revision checks, redaction, audit, revocation and production-disabled packaging.
-- [ ] Run isolated background instances; retain action receipts, accessibility snapshots and screenshots with build/state/viewport metadata. The headless runner now has a deterministic dynamic-session-pane fixture; it does not yet capture matched fixed-source Windows evidence.
+- [x] Retain source/build/image hashes, route/state, viewport/scale, timestamp, isolated profile and prior action receipts for headless captures in same-stem JSON sidecars; physical DPI is explicitly unavailable in headless mode.
+- [ ] Run an isolated native background window with action receipts and accessibility snapshots; capture matched fixed-source Windows evidence without foreground focus or installed-profile access. The headless runner cannot prove native-window pixels, OS DPI, focus or window behavior.
 - [ ] Verify the agent can complete user-visible workflows and inspect additional state without bypassing normal confirmations.
 
 ## Stage 4 — development supervisor and reload

@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 102 (implementation in progress).
+- **Working revision:** 108 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -63,7 +63,7 @@ The selected and downloaded target is commit `8783054ef6cbafd86f10892241436862c1
 - [x] Support click, text entry, selection, keyboard input, bounded pointer drag, wait-for-state, screenshot, and structured action receipts through the shared egui UI input path; drag targets use exact accessible locators and generation checks.
 - [ ] Run a separate isolated app window/profile in the background for routine navigation and screenshots. Do not steal foreground focus or mutate the installed Hermes profile; live gateway acceptance must use an isolated profile or explicitly read-only scenarios.
 - [ ] Add a separate authenticated/local diagnostics surface for route/layout/session/gateway state, logs, errors, and backend receipts. Diagnostics can inspect more than a person can see, but must not bypass UI confirmation, authorization, or normal action paths.
-- [ ] Save screenshots and interaction traces with source SHA, build revision, route, viewport/DPI, fixture/profile identity, and timestamp so results are reviewable without operator participation.
+- [x] Save headless screenshots and interaction receipts with fixed source SHAs, target commit/dirty state, executable and image hashes, route/state generation, viewport and scale factor, fixture/profile identity, and timestamp. The protocol atomically publishes a same-stem JSON sidecar with each image; physical DPI is explicitly unavailable in headless rendering. Native-window and OS-DPI evidence remains open below.
 
 **Gate:** an agent completes the same visible workflows as a person using semantic controls, records screenshots and receipts from a non-foreground run, and can inspect extra diagnostic state without changing the meaning or safety of the user-facing workflow.
 
@@ -542,3 +542,7 @@ Tighten the setup URL gate to reject malformed ports, unbracketed/malformed IPv6
 ### Revision 107 — explicit semantic tree locator state
 
 Extend each `ui.tree` node with `visible`, `enabled` and `parent_id`, retaining AccessKit IDs, role/name, stable test IDs, disabled/focused state, nullable bounds and nested children. Define visible as not AccessKit-hidden with positive-area bounds, and enabled as the inverse of disabled. Test a stable route node's state/bounds and resolve its parent back to the child list, then exercise the actual inherited-stdio protocol to read the tree without opening a native window or starting Hermes. This completes the semantic tree data contract only; the isolated background native window and OS-level UI control remain open.
+
+### Revision 108 — provenance-bound stdio captures
+
+Extend `screenshots.capture` to publish a PNG and same-stem JSON sidecar as one rollback-safe artifact bundle. Preserve the existing capture metadata convention and record the fixed source pins, target source revision and dirty state, executable/image hashes, timestamp/request ID, route and state generation, isolated profile/fixture, viewport pixel dimensions and scale factor, prior action receipts, and the headless DPI limitation. Add a protocol-level regression test that opens the written artifact and validates the sidecar against the response and image bytes. This completes reviewable headless capture provenance; a native background window, physical DPI and source-paired Windows screenshots remain acceptance requirements.

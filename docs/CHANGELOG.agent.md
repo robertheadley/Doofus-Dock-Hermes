@@ -763,3 +763,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** Two fixture captures run in seconds from the incremental build.
 - **risks:** Captures are synthetic target-only proof, not source-matched or native-installed acceptance.
 - **follow_up:** Continue pinned-source PDF toolbar/continuous-scroll behavior and paired source evidence.
+
+- **id:** HUI-064
+- **timestamp:** 2026-11-15T18:15:20Z
+- **what:** Extended stdio screenshot capture to publish a hash-bound JSON provenance sidecar beside each PNG, using the existing artifact naming convention and no-clobber publication.
+- **why:** Make agent captures independently reviewable with pinned source/build, route/state, viewport, fixture/profile, timestamp and interaction-receipt evidence.
+- **components:** `hermes-automation` protocol capture, capture regression coverage, automation and plan documentation.
+- **type:** feature and validation.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 139 library and 12 automation tests; `cargo check -p hermes-native --all-targets --features agent-automation`; `git diff --check`; real `--stdio` child capture returned success and the independently recomputed PNG SHA-256 matched its sidecar. The regression also confirms duplicate capture names fail without altering the original image.
+- **performance:** Reads the running executable once per capture to record its SHA-256; output remains bounded by the protocol response limit.
+- **risks:** Headless capture has no physical OS DPI or native-window pixels; native window and source-paired visual acceptance stay open.
+- **follow_up:** Keep headless and native-window evidence separate; proceed with isolated background window and bridge/supervisor work.

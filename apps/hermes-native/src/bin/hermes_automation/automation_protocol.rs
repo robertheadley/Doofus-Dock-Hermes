@@ -4,6 +4,7 @@ use egui_kittest::{
 };
 use hermes_native::app::{HermesNativeApp, RegisteredUiAction, registered_ui_action_catalog};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashSet, VecDeque},
@@ -29,6 +30,7 @@ type UiApp = Rc<RefCell<HermesNativeApp>>;
 
 #[derive(Default)]
 struct ProtocolState {
+    profile_path: Option<PathBuf>,
     generation: u64,
     next_event_id: u64,
     events: VecDeque<Value>,
@@ -46,13 +48,16 @@ pub fn run_stdio() -> Result<(), String> {
     let profile = super::TemporaryProfile::create()?;
     let profile_path = profile.0.clone();
     let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
-        profile_path,
+        profile_path.clone(),
     )));
     let frame_app = app.clone();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1440.0, 900.0))
         .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
-    let mut protocol = ProtocolState::default();
+    let mut protocol = ProtocolState {
+        profile_path: Some(profile_path),
+        ..ProtocolState::default()
+    };
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = BufReader::new(stdin.lock());
@@ -887,7 +892,15 @@ impl ProtocolState {
                         "filename is required".into(),
                     );
                 };
-                match capture_screenshot(harness, filename) {
+                match capture_screenshot(
+                    harness,
+                    filename,
+                    id,
+                    app,
+                    self.generation,
+                    &self.events,
+                    self.profile_path.as_deref(),
+                ) {
                     Ok(result) => {
                         self.record_event(
                             id,
@@ -1365,6 +1378,11 @@ fn capabilities() -> Value {
 fn capture_screenshot(
     harness: &mut UiHarness<'_>,
     filename: &str,
+    request_id: &Value,
+    app: &UiApp,
+    generation: u64,
+    events: &VecDeque<Value>,
+    profile_path: Option<&Path>,
 ) -> Result<Value, (&'static str, String)> {
     let path = Path::new(filename);
     if filename.is_empty()
@@ -1392,10 +1410,17 @@ fn capture_screenshot(
         )
     })?;
     let destination = root.join(filename);
-    if destination.exists() {
+    let metadata_name = format!(
+        "{}.json",
+        path.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(filename)
+    );
+    let metadata_destination = root.join(metadata_name);
+    if destination.exists() || metadata_destination.exists() {
         return Err((
             "artifact_exists",
-            "refusing to overwrite existing screenshot evidence".into(),
+            "refusing to overwrite existing screenshot or metadata evidence".into(),
         ));
     }
     let nonce = SystemTime::now()
@@ -1403,6 +1428,12 @@ fn capture_screenshot(
         .map_err(|error| ("clock_error", error.to_string()))?
         .as_nanos();
     let temporary = root.join(format!(".capture-{}-{nonce}.tmp.png", process::id()));
+    let metadata_temporary = root.join(format!(".capture-{}-{nonce}.tmp.json", process::id()));
+    let mut temporary_files = TemporaryCaptureFiles {
+        png: temporary.clone(),
+        metadata: metadata_temporary.clone(),
+        keep: false,
+    };
     let image = harness.render().map_err(|error| ("render_failed", error))?;
     image
         .save(&temporary)
@@ -1413,21 +1444,174 @@ fn capture_screenshot(
         let _ = std::fs::remove_file(&temporary);
         return Err(("artifact_invalid", "renderer did not produce a PNG".into()));
     }
-    std::fs::rename(&temporary, &destination).map_err(|error| {
-        let _ = std::fs::remove_file(&temporary);
+    let pixels_per_point = harness.output().pixels_per_point;
+    let width = image.width();
+    let height = image.height();
+    let application_state = snapshot(app, generation);
+    let (target_git_commit, target_worktree_dirty) = current_git_build_identity();
+    let captured_at = ::time::OffsetDateTime::now_utc()
+        .format(&::time::format_description::well_known::Rfc3339)
+        .map_err(|error| ("clock_error", format!("format capture timestamp: {error}")))?;
+    let screenshot_sha256 = format!("{:x}", Sha256::digest(&validation));
+    let executable_sha256 = std::env::current_exe()
+        .ok()
+        .and_then(|executable| std::fs::read(executable).ok())
+        .map(|bytes| format!("{:x}", Sha256::digest(bytes)));
+    let metadata = json!({
+        "schema": "hermes-native-ui-capture/1",
+        "timestamp_utc": captured_at,
+        "request_id": request_id,
+        "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+        "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+        "target_commit": target_git_commit,
+        "target_worktree_dirty": target_worktree_dirty,
+        "build_id": executable_sha256,
+        "package_version": env!("CARGO_PKG_VERSION"),
+        "process_generation": "isolated-headless-stdio",
+        "process_generation_number": generation,
+        "process_id": process::id(),
+        "route": application_state["route"],
+        "state": application_state,
+        "viewport": {
+            "width": width,
+            "height": height,
+            "scale_factor": pixels_per_point,
+            "logical_width": width as f32 / pixels_per_point,
+            "logical_height": height as f32 / pixels_per_point,
+            "physical_dpi": null
+        },
+        "profile": {
+            "identity": "isolated temporary profile",
+            "path": profile_path
+        },
+        "fixture": "isolated-headless-stdio",
+        "gateway": "disabled",
+        "actions": events,
+        "screenshot": filename,
+        "screenshot_sha256": screenshot_sha256,
+        "screenshot_bytes": validation.len(),
+        "evidence_limits": [
+            "Headless egui render; this does not prove a native window, operating-system DPI, or physical desktop pixels."
+        ]
+    });
+    let metadata_bytes = serde_json::to_vec_pretty(&metadata).map_err(|error| {
         (
             "artifact_error",
-            format!("commit screenshot atomically: {error}"),
+            format!("encode screenshot metadata: {error}"),
         )
     })?;
+    if metadata_bytes.len() > MAX_RESPONSE_BYTES {
+        let _ = std::fs::remove_file(&temporary);
+        return Err((
+            "artifact_too_large",
+            "screenshot metadata exceeds the protocol response limit".into(),
+        ));
+    }
+    let mut metadata_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&metadata_temporary)
+        .map_err(|error| {
+            let _ = std::fs::remove_file(&temporary);
+            (
+                "artifact_error",
+                format!("create temporary screenshot metadata: {error}"),
+            )
+        })?;
+    metadata_file.write_all(&metadata_bytes).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        let _ = std::fs::remove_file(&metadata_temporary);
+        (
+            "artifact_error",
+            format!("write temporary screenshot metadata: {error}"),
+        )
+    })?;
+    let metadata_validation = std::fs::read(&metadata_temporary).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        let _ = std::fs::remove_file(&metadata_temporary);
+        (
+            "artifact_error",
+            format!("validate temporary screenshot metadata: {error}"),
+        )
+    })?;
+    serde_json::from_slice::<Value>(&metadata_validation).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        let _ = std::fs::remove_file(&metadata_temporary);
+        (
+            "artifact_invalid",
+            format!("screenshot metadata did not validate: {error}"),
+        )
+    })?;
+
+    std::fs::hard_link(&temporary, &destination).map_err(|error| {
+        let _ = std::fs::remove_file(&temporary);
+        let _ = std::fs::remove_file(&metadata_temporary);
+        (
+            "artifact_error",
+            format!("publish screenshot without overwriting existing evidence: {error}"),
+        )
+    })?;
+    std::fs::hard_link(&metadata_temporary, &metadata_destination).map_err(|error| {
+        let _ = std::fs::remove_file(&destination);
+        let _ = std::fs::remove_file(&metadata_temporary);
+        (
+            "artifact_error",
+            format!("publish screenshot metadata without overwriting existing evidence: {error}"),
+        )
+    })?;
+    temporary_files.keep = true;
+    let _ = std::fs::remove_file(&temporary);
+    let _ = std::fs::remove_file(&metadata_temporary);
     Ok(json!({
         "path": destination,
-        "width": image.width(),
-        "height": image.height(),
+        "metadata_path": metadata_destination,
+        "screenshot_sha256": screenshot_sha256,
+        "width": width,
+        "height": height,
         "bytes": validation.len(),
+        "state_generation": generation,
+        "route": application_state["route"],
         "permission_class": "artifact_write",
         "outcome": "succeeded"
     }))
+}
+
+struct TemporaryCaptureFiles {
+    png: PathBuf,
+    metadata: PathBuf,
+    keep: bool,
+}
+
+impl Drop for TemporaryCaptureFiles {
+    fn drop(&mut self) {
+        if !self.keep {
+            let _ = std::fs::remove_file(&self.png);
+            let _ = std::fs::remove_file(&self.metadata);
+        }
+    }
+}
+
+fn current_git_build_identity() -> (Option<String>, Option<bool>) {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let commit = process::Command::new("git")
+        .arg("-C")
+        .arg(manifest_dir)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let dirty = process::Command::new("git")
+        .arg("-C")
+        .arg(manifest_dir)
+        .args(["status", "--porcelain", "--untracked-files=normal"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| !output.stdout.is_empty());
+    (commit, dirty)
 }
 
 fn read_bounded_line(reader: &mut impl BufRead) -> io::Result<Option<Vec<u8>>> {
@@ -2536,5 +2720,114 @@ mod tests {
         drop(harness);
         drop(app);
         drop(profile);
+    }
+
+    #[test]
+    fn screenshot_capture_writes_hash_bound_provenance_sidecar() {
+        struct ArtifactCleanup(PathBuf, PathBuf);
+        impl Drop for ArtifactCleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+                let _ = std::fs::remove_file(&self.1);
+            }
+        }
+
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let profile_path = profile.0.clone();
+        let mut protocol = ProtocolState {
+            profile_path: Some(profile_path.clone()),
+            ..ProtocolState::default()
+        };
+        let filename = format!("protocol-capture-{}-{}.png", process::id(), unix_time_ms());
+        let artifacts = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("artifacts/agent-ui");
+        let image_path = artifacts.join(&filename);
+        let metadata_path = artifacts.join(format!(
+            "{}.json",
+            Path::new(&filename).file_stem().unwrap().to_string_lossy()
+        ));
+        let _cleanup = ArtifactCleanup(image_path.clone(), metadata_path.clone());
+
+        let response = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "capture-provenance-test",
+                "method": "screenshots.capture",
+                "params": {"filename": filename}
+            }),
+            &mut harness,
+            &app,
+        );
+
+        assert_eq!(response["status"], "succeeded");
+        assert_eq!(
+            PathBuf::from(response["result"]["path"].as_str().unwrap()),
+            std::fs::canonicalize(&image_path).expect("canonical screenshot path")
+        );
+        assert_eq!(
+            PathBuf::from(response["result"]["metadata_path"].as_str().unwrap()),
+            std::fs::canonicalize(&metadata_path).expect("canonical metadata path")
+        );
+        let image_bytes = std::fs::read(&image_path).expect("captured PNG");
+        assert!(image_bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let image_sha256 = format!("{:x}", Sha256::digest(&image_bytes));
+        assert_eq!(response["result"]["screenshot_sha256"], image_sha256);
+
+        let metadata: Value = serde_json::from_slice(
+            &std::fs::read(&metadata_path).expect("capture metadata sidecar"),
+        )
+        .expect("valid capture metadata JSON");
+        assert_eq!(metadata["schema"], "hermes-native-ui-capture/1");
+        assert_eq!(metadata["request_id"], "capture-provenance-test");
+        assert_eq!(
+            metadata["source_sha"],
+            "8783054ef6cbafd86f10892241436862c1171a66"
+        );
+        assert_eq!(
+            metadata["doofusdock_sha"],
+            "f6eb49b9e488f4e851d8d3abe18e95d296201bba"
+        );
+        assert!(metadata["timestamp_utc"].as_str().unwrap().ends_with('Z'));
+        assert!(
+            metadata["build_id"]
+                .as_str()
+                .is_some_and(|hash| hash.len() == 64)
+        );
+        assert_eq!(metadata["route"], response["result"]["route"]);
+        assert_eq!(metadata["process_generation_number"], 0);
+        assert_eq!(
+            metadata["profile"]["path"],
+            profile_path.to_string_lossy().as_ref()
+        );
+        assert_eq!(metadata["viewport"]["width"], 1440);
+        assert_eq!(metadata["viewport"]["height"], 900);
+        assert!(metadata["viewport"]["scale_factor"].as_f64().unwrap() > 0.0);
+        assert!(metadata["viewport"]["physical_dpi"].is_null());
+        assert_eq!(metadata["screenshot_sha256"], image_sha256);
+        assert!(metadata["actions"].is_array());
+        assert!(metadata["evidence_limits"].is_array());
+
+        let duplicate = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "capture-provenance-test-duplicate",
+                "method": "screenshots.capture",
+                "params": {"filename": filename}
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(duplicate["status"], "failed");
+        assert_eq!(duplicate["error"]["code"], "artifact_exists");
+        assert_eq!(
+            format!("{:x}", Sha256::digest(std::fs::read(&image_path).unwrap())),
+            image_sha256
+        );
     }
 }
