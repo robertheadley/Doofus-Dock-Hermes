@@ -1,15 +1,14 @@
 #![cfg(windows)]
 
 use std::{
-    ffi::c_void,
     fs,
     path::PathBuf,
+    sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
 
 use eframe::egui;
 use hermes_native::app::HermesNativeApp;
-use wry::raw_window_handle::HasWindowHandle;
 
 const EXPECTED_TITLE: &str = "asset-loaded:16";
 
@@ -25,7 +24,10 @@ struct SmokeApp {
     preview_path: PathBuf,
     output_path: PathBuf,
     screenshot_path: PathBuf,
-    window_handle: isize,
+    screenshot_tx: Sender<Result<(u32, u32), String>>,
+    screenshot_rx: Receiver<Result<(u32, u32), String>>,
+    screenshot_requested: bool,
+    screenshot_result: Option<Result<(u32, u32), String>>,
     phase: SmokePhase,
     deadline: Instant,
     result: Option<Result<(), String>>,
@@ -70,18 +72,42 @@ impl eframe::App for SmokeApp {
                 )));
             }
         }
-        if let Some(result) = &self.result {
-            let screenshot = if result.is_ok() {
-                match native_capture::capture(self.window_handle, &self.screenshot_path) {
-                    Ok((width, height)) => serde_json::json!({
-                        "path": self.screenshot_path,
-                        "width": width,
-                        "height": height
-                    }),
-                    Err(error) => serde_json::json!({"error": error}),
-                }
-            } else {
-                serde_json::Value::Null
+        if self.result.as_ref().is_some_and(Result::is_ok) {
+            if !self.screenshot_requested {
+                self.screenshot_requested = true;
+                let sender = self.screenshot_tx.clone();
+                let path = self.screenshot_path.clone();
+                ctx.request_screenshot(move |image| {
+                    let _ = sender.send(save_egui_screenshot(&path, &image));
+                });
+                self.deadline = Instant::now() + Duration::from_secs(5);
+            }
+            if let Ok(capture) = self.screenshot_rx.try_recv() {
+                self.screenshot_result = Some(capture);
+            } else if Instant::now() >= self.deadline {
+                self.screenshot_result = Some(Err(
+                    "egui did not return the requested viewport screenshot".into(),
+                ));
+            }
+        }
+        let screenshot_ready = self
+            .result
+            .as_ref()
+            .is_some_and(|result| result.is_err() || self.screenshot_result.is_some());
+        if screenshot_ready {
+            let result = self
+                .result
+                .as_ref()
+                .expect("screenshot result has a smoke result");
+            let screenshot = match &self.screenshot_result {
+                Some(Ok((width, height))) => serde_json::json!({
+                    "path": self.screenshot_path,
+                    "width": width,
+                    "height": height,
+                    "method": "egui renderer viewport framebuffer"
+                }),
+                Some(Err(error)) => serde_json::json!({"error": error}),
+                None => serde_json::Value::Null,
             };
             let record = match result {
                 Ok(()) => serde_json::json!({
@@ -134,10 +160,12 @@ fn main() -> Result<(), String> {
     if args.next().is_some() {
         return Err("Usage: html-preview-smoke RESULT_JSON_PATH".into());
     }
+    let screenshot_path = output_path.with_extension("png");
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|error| format!("create result directory: {error}"))?;
     }
     let _ = fs::remove_file(&output_path);
+    let _ = fs::remove_file(&screenshot_path);
 
     let root = unique_temp_dir("hermes-html-preview-app-smoke")?;
     fs::create_dir(&root).map_err(|error| format!("create isolated smoke root: {error}"))?;
@@ -154,30 +182,26 @@ fn main() -> Result<(), String> {
         ..Default::default()
     };
     let result_path = output_path.clone();
-    let screenshot_path = output_path.with_extension("png");
     let profile_for_app = profile_dir.clone();
     let fixture_for_app = fixture_root.clone();
     let preview_path = fixture_root.join("preview.html");
+    let screenshot_path_for_app = screenshot_path.clone();
     let run_result = eframe::run_native(
         "Hermes HTML preview smoke",
         options,
         Box::new(move |cc| {
-            let window_handle = match cc
-                .window_handle()
-                .map_err(|error| format!("get native screenshot window handle: {error}"))?
-                .as_raw()
-            {
-                wry::raw_window_handle::RawWindowHandle::Win32(handle) => handle.hwnd.get(),
-                _ => return Err("HTML preview smoke requires a Win32 window".into()),
-            };
             let mut hermes = HermesNativeApp::new_for_native_automation(cc, profile_for_app);
             hermes.load_html_preview_fixture_for_native_smoke(&fixture_for_app)?;
+            let (screenshot_tx, screenshot_rx) = mpsc::channel();
             Ok(Box::new(SmokeApp {
                 hermes,
                 preview_path,
                 output_path: result_path,
-                screenshot_path,
-                window_handle,
+                screenshot_path: screenshot_path_for_app,
+                screenshot_tx,
+                screenshot_rx,
+                screenshot_requested: false,
+                screenshot_result: None,
                 deadline: Instant::now() + Duration::from_secs(20),
                 phase: SmokePhase::WaitingForVisible,
                 result: None,
@@ -219,166 +243,44 @@ fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&temp_path, path).map_err(|error| format!("publish smoke result: {error}"))
 }
 
-mod native_capture {
-    use super::*;
-    use std::mem;
-
-    const PW_RENDERFULLCONTENT: u32 = 2;
-
-    #[repr(C)]
-    struct Rect {
-        left: i32,
-        top: i32,
-        right: i32,
-        bottom: i32,
+fn save_egui_screenshot(
+    path: &std::path::Path,
+    screenshot: &egui::ColorImage,
+) -> Result<(u32, u32), String> {
+    let [width, height] = screenshot.size;
+    if !(320..=7680).contains(&width) || !(240..=4320).contains(&height) {
+        return Err(format!(
+            "unexpected egui screenshot dimensions {width}x{height}"
+        ));
     }
-
-    #[repr(C)]
-    struct BitmapInfoHeader {
-        size: u32,
-        width: i32,
-        height: i32,
-        planes: u16,
-        bit_count: u16,
-        compression: u32,
-        size_image: u32,
-        x_pixels_per_meter: i32,
-        y_pixels_per_meter: i32,
-        colors_used: u32,
-        colors_important: u32,
+    let bytes = screenshot
+        .pixels
+        .iter()
+        .flat_map(|color| color.to_array())
+        .collect::<Vec<_>>();
+    let image = image::RgbaImage::from_raw(width as u32, height as u32, bytes)
+        .ok_or("could not assemble egui screenshot pixels")?;
+    let parent = path
+        .parent()
+        .ok_or("screenshot output path has no parent directory")?;
+    fs::create_dir_all(parent).map_err(|error| format!("create screenshot directory: {error}"))?;
+    let temp_path = path.with_extension("png.tmp");
+    image
+        .save_with_format(&temp_path, image::ImageFormat::Png)
+        .map_err(|error| format!("encode egui screenshot: {error}"))?;
+    let decoded = image::ImageReader::open(&temp_path)
+        .map_err(|error| format!("open egui screenshot for validation: {error}"))?
+        .with_guessed_format()
+        .map_err(|error| format!("detect egui screenshot format: {error}"))?
+        .decode()
+        .map_err(|error| format!("validate egui screenshot: {error}"))?;
+    if decoded.width() != width as u32 || decoded.height() != height as u32 {
+        let _ = fs::remove_file(&temp_path);
+        return Err("egui screenshot dimensions did not validate".into());
     }
-
-    #[repr(C)]
-    struct BitmapInfo {
-        header: BitmapInfoHeader,
-        colors: [u32; 1],
+    if path.exists() {
+        fs::remove_file(path).map_err(|error| format!("replace previous screenshot: {error}"))?;
     }
-
-    #[link(name = "user32")]
-    unsafe extern "system" {
-        fn GetWindowRect(hwnd: *mut c_void, rect: *mut Rect) -> i32;
-        fn GetDC(hwnd: *mut c_void) -> *mut c_void;
-        fn ReleaseDC(hwnd: *mut c_void, dc: *mut c_void) -> i32;
-        fn PrintWindow(hwnd: *mut c_void, dc: *mut c_void, flags: u32) -> i32;
-    }
-
-    #[link(name = "gdi32")]
-    unsafe extern "system" {
-        fn CreateCompatibleDC(dc: *mut c_void) -> *mut c_void;
-        fn CreateCompatibleBitmap(dc: *mut c_void, width: i32, height: i32) -> *mut c_void;
-        fn SelectObject(dc: *mut c_void, object: *mut c_void) -> *mut c_void;
-        fn GetDIBits(
-            dc: *mut c_void,
-            bitmap: *mut c_void,
-            start: u32,
-            lines: u32,
-            bits: *mut c_void,
-            info: *mut BitmapInfo,
-            usage: u32,
-        ) -> i32;
-        fn DeleteObject(object: *mut c_void) -> i32;
-        fn DeleteDC(dc: *mut c_void) -> i32;
-    }
-
-    pub(super) fn capture(hwnd_value: isize, path: &std::path::Path) -> Result<(u32, u32), String> {
-        let hwnd = hwnd_value as *mut c_void;
-        let mut rect = Rect {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        };
-        if unsafe { GetWindowRect(hwnd, &mut rect) } == 0 {
-            return Err("GetWindowRect failed".into());
-        }
-        let width = rect.right - rect.left;
-        let height = rect.bottom - rect.top;
-        if !(320..=7680).contains(&width) || !(240..=4320).contains(&height) {
-            return Err(format!("unexpected window dimensions {width}x{height}"));
-        }
-        let window_dc = unsafe { GetDC(hwnd) };
-        if window_dc.is_null() {
-            return Err("GetDC failed".into());
-        }
-        let memory_dc = unsafe { CreateCompatibleDC(window_dc) };
-        let bitmap = unsafe { CreateCompatibleBitmap(window_dc, width, height) };
-        if memory_dc.is_null() || bitmap.is_null() {
-            if !bitmap.is_null() {
-                unsafe { DeleteObject(bitmap) };
-            }
-            if !memory_dc.is_null() {
-                unsafe { DeleteDC(memory_dc) };
-            }
-            unsafe { ReleaseDC(hwnd, window_dc) };
-            return Err("could not allocate screenshot bitmap".into());
-        }
-
-        let old_bitmap = unsafe { SelectObject(memory_dc, bitmap) };
-        let printed = unsafe { PrintWindow(hwnd, memory_dc, PW_RENDERFULLCONTENT) };
-        unsafe { SelectObject(memory_dc, old_bitmap) };
-        let mut pixels = vec![0_u8; width as usize * height as usize * 4];
-        let mut info = BitmapInfo {
-            header: BitmapInfoHeader {
-                size: mem::size_of::<BitmapInfoHeader>() as u32,
-                width,
-                height: -height,
-                planes: 1,
-                bit_count: 32,
-                compression: 0,
-                size_image: pixels.len() as u32,
-                x_pixels_per_meter: 0,
-                y_pixels_per_meter: 0,
-                colors_used: 0,
-                colors_important: 0,
-            },
-            colors: [0],
-        };
-        let lines = unsafe {
-            GetDIBits(
-                memory_dc,
-                bitmap,
-                0,
-                height as u32,
-                pixels.as_mut_ptr().cast(),
-                &mut info,
-                0,
-            )
-        };
-        unsafe {
-            DeleteObject(bitmap);
-            DeleteDC(memory_dc);
-            ReleaseDC(hwnd, window_dc);
-        }
-        if printed == 0 || lines != height {
-            return Err(format!(
-                "PrintWindow/GetDIBits failed (print={printed}, lines={lines})"
-            ));
-        }
-        for pixel in pixels.chunks_exact_mut(4) {
-            pixel.swap(0, 2);
-        }
-        let image = image::RgbaImage::from_raw(width as u32, height as u32, pixels)
-            .ok_or("could not assemble screenshot pixels")?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("create screenshot folder: {error}"))?;
-        }
-        let temp_path = path.with_extension("png.tmp");
-        image
-            .save_with_format(&temp_path, image::ImageFormat::Png)
-            .map_err(|error| format!("encode screenshot PNG: {error}"))?;
-        let decoded = image::ImageReader::open(&temp_path)
-            .map_err(|error| format!("open screenshot PNG for validation: {error}"))?
-            .with_guessed_format()
-            .map_err(|error| format!("detect screenshot PNG format: {error}"))?
-            .decode()
-            .map_err(|error| format!("validate screenshot PNG: {error}"))?;
-        if decoded.width() != width as u32 || decoded.height() != height as u32 {
-            let _ = fs::remove_file(&temp_path);
-            return Err("screenshot dimensions did not validate".into());
-        }
-        let _ = fs::remove_file(path);
-        fs::rename(&temp_path, path).map_err(|error| format!("publish screenshot: {error}"))?;
-        Ok((width as u32, height as u32))
-    }
+    fs::rename(&temp_path, path).map_err(|error| format!("publish egui screenshot: {error}"))?;
+    Ok((width as u32, height as u32))
 }

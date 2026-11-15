@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "f9384a66489b7517a11143c8d48af51cc145ec14",
+  "smoke_binary_sha256": "f6b84feae7660e8a6308b612a5b6447648c53875403c2856b818196a6f836e3e",
+  "smoke_state_json_sha256": "02a53c4cc3f73c5dfdaf8926f1e62c936c781d255d74cd75ddfc0198de52a1b3",
+  "screenshot_sha256": "6d7f78c3c226ecc1503ea4f8e14eae6b097b6aa209c5ee184b9c01f802da23a9",
+  "dimensions": {
+    "width": 2160,
+    "height": 1350
+  },
+  "route": "/files-preview-fixture/preview.html",
+  "state": "HermesNativeApp Files pane with HTML Preview selected; child WebView confirmed visible, asset-loaded:16, then hidden and reopened",
+  "capture_method": "egui::Context::request_screenshot on renderer framebuffer from a separate Windows desktop",
+  "limitations": [
+    "egui screenshot captures the Hermes OpenGL shell but not the separate native WebView2 child HWND",
+    "the rendered HTML child content is available as a separate crop artifact",
+    "target-only fixture; no matched source screenshot or parity row accepted"
+  ],
+  "gateway": "disabled",
+  "profile": "temporary isolated profile"
+}

@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 98 (implementation in progress).
+- **Working revision:** 99 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -504,3 +504,7 @@ Launch Hermes Native itself on a separate Windows desktop with a fresh isolated 
 ### Revision 98 — background capture of the rendered HTML child
 
 Capture the Hermes native HWND with Win32 `PrintWindow` after the actual Files preview returns to its rendered state; validate and atomically save the PNG beside its JSON lifecycle receipt. The captured WebView child clearly shows the distinct HTML document. Windows did not include the parent's OpenGL-rendered shell in the PrintWindow result, so preserve the raw capture, separately label the cropped child image, and leave full-window visual parity to a renderer-aware screenshot path. Do not treat this target-only fixture as source-paired acceptance.
+
+### Revision 99 — full Hermes viewport capture from egui
+
+Use egui's screenshot callback to capture the Hermes native renderer framebuffer on the isolated desktop, including the application shell and the navigated Files/HTML Preview layout, without foregrounding the window. Validate and atomically save the PNG and bind it to its JSON lifecycle receipt. The WebView2 child is a separate native HWND and is not present in the egui framebuffer; pair the full-shell screenshot with the separately labeled child-WebView capture from Revision 98. Keep both artifacts target-only until matched fixed-source evidence is reviewed.

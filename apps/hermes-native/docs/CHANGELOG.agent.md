@@ -1405,3 +1405,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Capture, PNG validation and crop verification completed in under one second after native smoke.
   **risks:** PrintWindow omitted the parent OpenGL-rendered Hermes shell. The crop shows only the actual child WebView, not full app chrome, and remains target-only evidence.
   **follow_up:** Use renderer-aware capture for full native app screenshots and compare to matched pinned-source states; continue all remaining parity rows.
+- **id:** HUR-001-109
+  **timestamp:** 2026-11-15T16:24:09Z
+  **what:** Replaced the OpenGL-blind PrintWindow shell capture with egui's renderer framebuffer screenshot callback and captured the full Hermes shell on a separate desktop.
+  **why:** Full-app visual evidence must include Hermes' renderer output while the agent works without switching the operator's foreground desktop.
+  **components:** apps/hermes-native/src/bin/html-preview-smoke.rs, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, artifacts/agent-ui/html-preview-files-pane-egui-capture-20261115.png, artifacts/agent-ui/html-preview-files-pane-egui-capture-20261115.json, artifacts/agent-ui/html-preview-files-pane-egui-capture-20261115.png.json, docs/EXECUTION_LOGS.md.
+  **type:** background native screenshot capture.
+  **validation:** `cargo fmt --all -- --check`; 137 library + 11 automation tests; all-target check/build; isolated Hermes Native run returned the Files HTML state and completed visible-hidden-reopened checks; egui callback produced a validated 2160×1350 PNG which was visually inspected. Sidecar binds source SHA, DoofusDock SHA, target commit, smoke binary, output image and state JSON.
+  **performance:** Background app lifecycle and capture completed in under six seconds.
+  **risks:** egui renderer capture includes the full Hermes shell but not its separate native WebView2 child. The HTML body is held in a separately labeled child-render capture; neither is source-paired evidence.
+  **follow_up:** Add a dual-renderer composition or viewport-capture path that records the native child alongside the full shell; continue the 499-row fixed-source acceptance.
