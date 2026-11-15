@@ -1,0 +1,51 @@
+{
+  "total_target_capabilities": 565,
+  "source_baseline_capabilities": 15,
+  "by_area": {
+    "shell-navigation": 32,
+    "chat-transcript": 36,
+    "sessions-projects": 26,
+    "file-browser": 23,
+    "artifacts-browser": 16,
+    "terminal": 22,
+    "git-review": 25,
+    "subagent-tasks": 20,
+    "models-quota": 27,
+    "profiles-gateways": 23,
+    "skills-plugins": 31,
+    "messaging-bots": 18,
+    "scheduling-webhooks": 18,
+    "settings-admin": 34,
+    "memory-learning": 14,
+    "native-platform": 20,
+    "ux-accessibility": 30,
+    "doofus-control": 31,
+    "doofus-vault": 16,
+    "doofus-rules-core": 19,
+    "dashboard-administration": 21,
+    "protocol-reliability": 26,
+    "plugin-compatibility": 15,
+    "security-release": 22
+  },
+  "by_surface": {
+    "Desktop": 243,
+    "Desktop + Doofus": 41,
+    "Desktop + Dashboard": 101,
+    "Crosscutting": 93,
+    "Doofus": 47,
+    "Backend preserved": 19,
+    "Dashboard": 21
+  },
+  "by_phase": {
+    "01-foundation": 32,
+    "03-chat": 36,
+    "02-gateway": 75,
+    "04-tools": 61,
+    "05-source-control": 25,
+    "06-agent-workflow": 111,
+    "07-management": 138,
+    "08-platform": 50,
+    "09-parity": 37
+  },
+  "source_review_level": "snapshot source inspection and public docs; no UI live testing"
+}

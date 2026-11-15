@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "description": "Design contracts, not auto-generated Rust API declarations. Fetch actual gateway schemas before implementing.",
+  "types": [
+    {
+      "name": "GatewayScope",
+      "fields": [
+        "gateway_id",
+        "profile_id",
+        "session_id",
+        "connection_generation"
+      ]
+    },
+    {
+      "name": "GatewayRequest",
+      "fields": [
+        "request_id",
+        "scope",
+        "method",
+        "params",
+        "idempotency",
+        "generation"
+      ]
+    },
+    {
+      "name": "GatewayEvent",
+      "fields": [
+        "event_id",
+        "scope",
+        "stream_sequence",
+        "method",
+        "payload",
+        "received_at"
+      ]
+    },
+    {
+      "name": "ClientApproval",
+      "fields": [
+        "server_request_id",
+        "scope",
+        "action_kind",
+        "risk_summary",
+        "decision",
+        "consent_provenance"
+      ]
+    },
+    {
+      "name": "DoofusEvent",
+      "fields": [
+        "event_id",
+        "sequence",
+        "workspace_id",
+        "session_id",
+        "task_id",
+        "category",
+        "phase",
+        "evidence_refs",
+        "related_event_ids"
+      ]
+    },
+    {
+      "name": "UiIntent",
+      "fields": [
+        "intent_id",
+        "scope",
+        "kind",
+        "payload",
+        "expected_revision",
+        "permission_class"
+      ]
+    },
+    {
+      "name": "UiSnapshot",
+      "fields": [
+        "source_revisions",
+        "connection_state",
+        "sessions",
+        "transcript",
+        "tasks",
+        "notifications",
+        "layout_projection"
+      ]
+    },
+    {
+      "name": "TerminalHandle",
+      "fields": [
+        "pty_id",
+        "origin_gateway",
+        "process_generation",
+        "rows",
+        "cols",
+        "lifecycle_state"
+      ]
+    }
+  ],
+  "invariants": [
+    "All backend mutations track request ids and generation",
+    "Doofus verified state only comes from authoritative positive proof",
+    "Layout uses the Dock canonical service",
+    "Reconnection does not repeat unconfirmed non-idempotent RPC",
+    "UI drafts and transient overlays are not canonically persisted with agent data",
+    "Cross-origin file previews require trust boundary",
+    "Hiding a terminal does not destroy its PTY"
+  ]
+}

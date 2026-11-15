@@ -1,0 +1,22 @@
+{
+  "protocol": "hermes-native-agent-ui/1",
+  "result": "passed",
+  "request_count": 141,
+  "response_count": 141,
+  "checks": [
+    "capabilities include diagnostics.bundle",
+    "diagnostics bundle is read-only and gateway-disabled",
+    "semantic click advanced generation once",
+    "duplicate request replayed cached response",
+    "conflicting duplicate rejected",
+    "stale generation rejected",
+    "screenshot traversal rejected",
+    "screenshot captured at 1440x900",
+    "old request ID rejected after response cache eviction",
+    "protocol closed cleanly"
+  ],
+  "receipt": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\stdio-protocol-receipts-v2.jsonl",
+  "screenshot": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\stdio-bridge-route-v2.png",
+  "binary_sha256": "A5C5EBC8463565F01FDB3EDE7BE0D96B1E26492EC139D15D6516A35C76B3D013",
+  "captured_utc": "2026-11-13T22:51:17.246406+00:00"
+}

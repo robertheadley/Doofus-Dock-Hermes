@@ -1,0 +1,78 @@
+note: Proposed alternate layout intentions; Hermes source profiles are authoritative
+  and must be implemented first. Codex/Antigravity are inspired profiles, not claimed
+  pixel replicas.
+layouts:
+- id: hermes-advanced-default
+  fidelity: pixel-accurate-upstream-required
+  source_tree_ref: maps/HERMES_SOURCE_LAYOUT_TREES.json#source_default
+  stage: 1-source-parity
+- id: hermes-basic
+  source_tree_ref: maps/HERMES_SOURCE_LAYOUT_TREES.json#source_basic
+  stage: 1-source-parity
+- id: hermes-focus
+  source_tree_ref: maps/HERMES_SOURCE_LAYOUT_TREES.json#source_focus
+  stage: 1-source-parity
+- id: hermes-terminal-deck
+  source_tree_ref: maps/HERMES_SOURCE_LAYOUT_TREES.json#source_terminal_deck
+  stage: 1-source-parity
+- id: hermes-quad
+  source_tree_ref: maps/HERMES_SOURCE_LAYOUT_TREES.json#source_quad
+  stage: 1-source-parity
+- id: codex-inspired
+  stage: 2-morph
+  regions:
+    left:
+    - sessions
+    - project-files
+    center:
+    - workspace
+    - file-preview
+    right:
+    - review
+    - agent-state
+    bottom:
+    - terminal
+  note: Only use existing native Hermes surface functionality; no new agent runtime
+- id: antigravity-inspired
+  stage: 2-morph
+  regions:
+    left:
+    - sessions
+    - project-files
+    center:
+    - workspace
+    - file-preview
+    right:
+    - review
+    - subagents
+    bottom:
+    - terminal
+  note: Inspirational composition only, not third-party visual parity claim
+- id: ide-inspired
+  stage: 2-morph
+  regions:
+    left:
+    - files
+    - sessions
+    center:
+    - file-preview
+    - workspace
+    right:
+    - review
+    bottom:
+    - terminal
+  note: Retain chat/composer as a reusable panel
+- id: doofus-inspired
+  stage: 2-morph
+  regions:
+    left:
+    - files
+    - sessions
+    center:
+    - workspace
+    right:
+    - review
+    - file-preview
+    bottom:
+    - terminal
+  note: Layout only. No Doofus Hermes plugin views, bridge, Vault or truth-layer port.

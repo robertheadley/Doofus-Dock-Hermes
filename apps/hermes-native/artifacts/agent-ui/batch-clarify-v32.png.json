@@ -1,0 +1,24 @@
+{
+  "timestamp_utc": "2026-11-15T00:58:03Z",
+  "request_id": "HUR-001-043-EVIDENCE",
+  "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "build_sha256": "b58bf0a11f1b62f9a4bda8bd8d329c7b686f5349dfa407dd8f872f911682ecef",
+  "process_generation": "one-shot headless egui_kittest",
+  "route": "/sessions/stored-session",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale_factor": 1.0
+  },
+  "profile": "isolated temporary profile; removed by test",
+  "gateway": "disabled; UI state fixture marks connection available for enabled controls",
+  "actions": [
+    "inject batch clarify server-request fixture for active runtime session",
+    "seed one editable replay answer and one skipped answer",
+    "render shared app draw path",
+    "inspect AccessKit labels and action enabled state"
+  ],
+  "screenshot": "batch-clarify-v32.png",
+  "screenshot_sha256": "d9066ad42e5100054b519bf3133d2a04c01cc69d9b28b6261d6709f4b993c329",
+  "visual_review": "1440x900 fixture shows batch progress, single and multi-select questions, replayed recommendation choice, free-text inputs, and Confirm and continue/Skip. Local fixture only; no live request or source-paired parity comparison."
+}

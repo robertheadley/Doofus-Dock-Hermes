@@ -1,0 +1,50 @@
+{
+  "name": "Hermes Upstream GUI Native Rust + DoofusDock 1:1 First, Morph Second",
+  "date": "2026-11-13",
+  "source_sha": {
+    "hermes_upstream": {
+      "repo": "NousResearch/hermes-agent",
+      "sha": "ffdc7eeb25343df1a7ee84503ba552538db9af72",
+      "selection": "latest commit surfaced by connected GitHub search on 2026-11-13; re-resolve at implementation start"
+    },
+    "doofusdock": {
+      "repo": "robertheadley/doofusdock",
+      "sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+      "selection": "latest commit surfaced by connected GitHub search on 2026-11-13; private repo"
+    }
+  },
+  "target_count": 491,
+  "deferred_count": 108,
+  "file_count_excluding_manifest": 29,
+  "sha256": {
+    "PROMPT_FOR_HERMES.md": "41da585e52ab55c69bfb9d7c1a056c315dd8500ea52115c769a1c22f60e6900f",
+    "README.md": "7bc2180f95063ed68c5a3cd7386cb7abe12fbe6bf4a9c70bc16c9bd892286f10",
+    "contracts/RUST_ADAPTER_CONTRACTS.json": "aa5809f7517d7b2520f35d8c251a96f2d3d8dac932b3dadb004abcb0064993bc",
+    "diagrams/ARCHITECTURE.mmd": "6c36314944720a94a6e4feb05271c050f02616e4341d2b4c655be3a96dadbc09",
+    "diagrams/MORPH_STATE_MACHINE.mmd": "58b4c0dd3139e0b3ec32b94706ca588019988717dbadb7a54b028dd4250423cb",
+    "maps/CAPABILITY_CROSSWALK.csv": "fc684e29bf878dda38cd4cee8d17957f42bfe9075e4e5a95e3b9e304ec5ae187",
+    "maps/CAPABILITY_SUMMARY.json": "c5d331baa7e78039fc434139bab3376db25e82ca080d678fedb44423da5911de",
+    "maps/DEFERRED_OUT_OF_SCOPE.json": "bcd54140579686713ee4e87e0cfbab6b77c17c0461ac00bfec319dc11bf4030b",
+    "maps/HERMES_SOURCE_LAYOUT_TREES.json": "7e4fb8b0e1e685b75ccceaba1ea8c5a5770d2a26533499fceb29fb063d00e256",
+    "maps/LAYOUT_PROFILES.yaml": "3543c68e8a09955827258bb4a9a2bd481b08d74604a108445dddd7364d886747",
+    "maps/NAVIGATION_SCREENS_SOURCE_PREVIOUS.json": "11ddc3c5823113c8ff6822f68e381101b1a5d27e9548ce1db5c90e278af1558b",
+    "maps/SOURCE_SNAPSHOTS.json": "6d5458b9d0136a40bcded51694ab52663c4470ea346d242ddfa4174a621a5707",
+    "maps/STATE_OWNERSHIP.csv": "b840049840490d2b6bb05fe914772135cad2e63cf49524a8bfb9ee5dd43a50ff",
+    "maps/UI_COMPONENT_SPECS.csv": "03fbbdf39d2b3d2edafcd095da08313d5198b503ee6794df19c47c6bf972dfb1",
+    "maps/UI_ELEMENT_INVENTORY.csv": "62ed4bfeb012c229a97cf6a9a9660cacfc3008dc6a27213ed6c0451da450f34a",
+    "maps/UPSTREAM_DESKTOP_ROUTES.json": "35f903bb3d6493917add1ad5543f5ca9a266fd55da17590747d33b24c70a2e66",
+    "maps/capabilities.yaml": "da559997cd4bbd5b6e88a59cab3d777a6d2b20956911f420ad9457009a8d6500",
+    "maps/full_program_capability_map.json": "f5c53b565716dcd94d81df1f679af43410d73700066d69060171cb3208eef6d9",
+    "planning/ACCEPTANCE_GATES.md": "6eebb3378a11738455f8fa001e97781ce00d74422ae7751135ab62b765fb5ed3",
+    "planning/ACCEPTANCE_MATRIX.csv": "c30c96eed5fbf1eedd85578c6911e1fd1bc714b5d05980d577b89656e1ccb1b8",
+    "planning/ARCHITECTURE.md": "1b02c789d5c05837133bc0e9407dadea262c39f1f0e0e837fc495119db3b3a13",
+    "planning/IMPLEMENTATION_PLAN.md": "cf14c233f8273a366a4808d6dc383c831de9d7ffa493be1a60c6333815b4a621",
+    "planning/REQUIREMENTS_LEDGER.csv": "3f2660a9c25b3a37282e4d568f497f7fe3c42ecb43d7f53803df3c7bcb8bef63",
+    "research/EXACT_SOURCE_LAYOUT_AND_PARITY.md": "313db4964276398c2dd8dacd94a9c3781b75c142a2448776e2e99276049af375",
+    "research/SCOPE_AND_CONFIDENCE.md": "1b62b972d2be269e6ce1b1d3bd8cce38dcc72257d762440100ed34887418f40d",
+    "research/SOURCE_INDEX.csv": "c1020ba3a9924f2979eded716cfc3a576bd025179a7e6fbb144b9aee643ff900",
+    "skills/hermes-upstream-doofusdock/SKILL.md": "a23f7d83a5103e0670d705c74a55179baef9ec09499035d3d23cedeaa8e49655",
+    "tools/compare_screenshots.py": "57bdd886d3f035441446b2454e93a4036f8b26e2f1254de4090e55affe2b775f",
+    "tools/validate_package.py": "ad967ad260393e10332e7307d9817211fe9a76b2f878b577c5a72dd82f664689"
+  }
+}

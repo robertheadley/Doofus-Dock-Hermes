@@ -1,0 +1,17 @@
+﻿entity,authority,bridge,invariant
+Panel and workspace geometry,DoofusDock LayoutDocument,validated Dock transactions,No duplicate window model
+Focus and pointer gestures,egui native host,semantic host intentions to Dock service,Do not persist frame samples
+"Session, message and turn identities",Hermes gateway,JSON-RPC request + stream projection,No local authoritative transcript
+Session composer unsent draft,Native Rust UI,local profile-scoped app-state,Never send on reconnection
+Agent tool execution and permissions,Hermes runtime,approval request/reply,Fail closed; one response per ID
+Gateway attachment and credentials,Hermes gateway manager,scoped connection handshake,No tokens in layout docs
+Doofus task/requirement/evidence,Hermes-Doofus truth layer,token-gated Doofus bridge,No second verdict engine
+Doofus intervention events,Hermes-Doofus canonical event store,sequence/cursor replay,Do not clear demands on read
+Secret values,Hermes/Doofus vault,authorized opaque RPC lease,Never cache plaintext
+Terminal PTY and subprocess,selected gateway/native terminal service,PTY lifecycle handles,Hide is not close
+Git tree and diffs,scoped backend Git adapter,permission-checked commands,No silent local path substitution
+UI transient overlays and toasts,Native egui host,ephemeral overlay records,No canonical layout write
+Notifications read status,Native plugin profile-scoped UI,durable read watermark,Read does not mean resolved
+Third-party UI plugin content,Compatibility host or native extension,explicit sandboxed provider contract,Not solved by Dock provider registry
+Theme and saved profiles,DoofusDock canonical and native settings,validated persisted package,No mutable UI-owned shadows
+Update and release transaction,signed external updater,verified package hashes,Rollback before cutover

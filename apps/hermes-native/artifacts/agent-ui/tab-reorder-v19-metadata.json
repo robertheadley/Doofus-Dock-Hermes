@@ -1,0 +1,50 @@
+{
+  "captured_at": "2026-11-14T00:40:03.6315962Z",
+  "evidence_id": "HUR-001-024-tab-reorder-fallback",
+  "hermes_source": "5163cc678bf38cb6b9e730716ca665914fccc0ad",
+  "doofusdock_source": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "protocol": "hermes-native-agent-ui/1",
+  "process": "hermes-automation --stdio",
+  "profile": "temporary isolated profile",
+  "gateway": "disabled",
+  "native_window": "not opened",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale_factor": "egui headless logical viewport"
+  },
+  "state": {
+    "route": "/",
+    "layout_revision": 3,
+    "tab_group": "center-tabs-2-workspace",
+    "panels": [
+      "sessions",
+      "workspace"
+    ],
+    "active_index": 0
+  },
+  "action": {
+    "source": {
+      "role": "Tab",
+      "name": "Dock tab Sessions"
+    },
+    "destination": {
+      "role": "Tab",
+      "name": "Dock tab New session"
+    },
+    "mechanism": "semantic accessible locators; destination coordinates omitted",
+    "result": "succeeded"
+  },
+  "screenshot": {
+    "file": "tab-reorder-v19.png",
+    "sha256": "5E311C1EE0D977053FF2DDD28328CAAEDC072507F43A70AB6F8A096C05DC5423",
+    "bytes": 57932,
+    "width": 1440,
+    "height": 900
+  },
+  "executable": {
+    "file": "hermes-automation.exe",
+    "sha256": "ED9D86B2B06A4C0DF182593FDC2A858A37CBD86D0E586C3923CC4D42F3AC004E"
+  },
+  "visual_review": "Inspected: Sessions tab is first and selected; shell remains visibly incomplete versus upstream."
+}

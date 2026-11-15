@@ -1,0 +1,21 @@
+{
+  "source_sha": "5163cc678bf38cb6b9e730716ca665914fccc0ad",
+  "binary_sha256": "DBCC2DDDFC8749C48B262E62360DDCD12546BE83457205942AEA62415F8833C3",
+  "scenario": "inspect new-chat composer in isolated offline profile",
+  "route": "/",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "capture_mode": "headless egui_kittest/AccessKit; no native window; Hermes gateway disabled",
+  "temporary_profile": "C:\\Users\\orphe\\AppData\\Local\\Temp\\HermesNative-Agent-25104-1794611694515392600",
+  "temporary_profile_cleaned": true,
+  "accessible_composer": {
+    "role": "MultilineTextInput",
+    "name": "Message composer",
+    "disabled": null
+  },
+  "receipt": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\chat-composer-shell-v3.jsonl",
+  "screenshot": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\chat-composer-shell-v3.png",
+  "captured_utc": "2026-11-13T23:14:55.827103+00:00"
+}

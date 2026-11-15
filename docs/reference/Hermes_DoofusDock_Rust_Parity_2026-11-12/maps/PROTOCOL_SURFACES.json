@@ -1,0 +1,98 @@
+{
+  "source": "https://github.com/NousResearch/hermes-agent/blob/415fa335b4d98ecf00e29e88625bb478dc63fb67/website/docs/developer-guide/programmatic-integration.md",
+  "source_confidence": "public upstream documented; validate exact DTO fields against pinned gateway source",
+  "transport": {
+    "recommended": "hermes gateway attach --json and gateway WebSocket JSON-RPC",
+    "protocol": "hermes-gateway-v1",
+    "bootstrap": [
+      "single-use ticket / profile gateway selection",
+      "WebSocket authenticated join",
+      "runtime.describe",
+      "client.capabilities"
+    ],
+    "idempotency": "not automatic for prompt.submit or any state mutation; correlate request and server confirmation"
+  },
+  "rpc_methods_selected": [
+    "runtime.describe",
+    "client.capabilities",
+    "session.create",
+    "session.list",
+    "session.transcript",
+    "session.status",
+    "session.title",
+    "prompt.submit",
+    "session.interrupt"
+  ],
+  "events_selected": [
+    "gateway.ready",
+    "message.delta",
+    "message.complete",
+    "tool.start",
+    "tool.generating",
+    "tool.complete",
+    "request.cancel"
+  ],
+  "server_to_client_requests": [
+    "approval",
+    "clarify",
+    "sudo",
+    "secret",
+    "vault",
+    "connection",
+    "terminal",
+    "window",
+    "preview"
+  ],
+  "server_request_rule": "Every request must receive a supported typed response or an explicit error such as -32601. Must never silently accept unknown requests.",
+  "security": [
+    "scope tokens per gateway/profile",
+    "no local credential cloning",
+    "no CDP debugging in packaged release",
+    "origin and authority checks for rendered HTML",
+    "no secret logging",
+    "full event cursor-gap reconciliation"
+  ],
+  "doofus_bridge": {
+    "base": "http://127.0.0.1:32145",
+    "auth": "bootstrap nonce exchange, then bearer token; exceptions such as availability/health verified per route",
+    "paths_confirmed_from_source": [
+      "/availability",
+      "/bootstrap/token",
+      "/status",
+      "/requirements",
+      "/task",
+      "/evidence",
+      "/events",
+      "/events/stream",
+      "/events/snapshot",
+      "/interventions",
+      "/interventions/inspect",
+      "/graph",
+      "/graph/children",
+      "/graph/node",
+      "/activity",
+      "/tasks",
+      "/tasks/control",
+      "/testing",
+      "/testing/run",
+      "/route",
+      "/provider/widget",
+      "/provider/quota",
+      "/provider/prices",
+      "/provider/capabilities",
+      "/provider/compatibility",
+      "/provider/refresh",
+      "/provider/verify",
+      "/vault",
+      "/vault/telemetry",
+      "/config",
+      "/logs",
+      "/debug/bundle",
+      "/project",
+      "/memory/explorer"
+    ],
+    "cursor_contract": "durable sequence plus stable event_id, gap/snapshot, no history reannouncement",
+    "status_contract": "observed, applied and verified are distinct; only evidence-backed result supports verified",
+    "note": "Generated method schemas must be confirmed against bridge.py and model validation before wiring mutations."
+  }
+}

@@ -1,0 +1,343 @@
+{
+  "schema": "hermes-upstream-profile-descriptive-v1",
+  "source": "NousResearch/hermes-agent@ffdc7eeb25343df1a7ee84503ba552538db9af72:apps/desktop/src/app/contrib/layout-presets.ts",
+  "warning": "Normalized transcription of source code structure, not serialized DoofusDock LayoutDocument; compare current source and runtime before implementing.",
+  "pane_ids": [
+    "sessions",
+    "workspace",
+    "review",
+    "files",
+    "terminal"
+  ],
+  "source_default": {
+    "type": "split",
+    "axis": "row",
+    "id": "spl-root",
+    "weights": [
+      1,
+      3.4,
+      1.25
+    ],
+    "children": [
+      {
+        "type": "group",
+        "id": "grp-sessions",
+        "panes": [
+          "sessions"
+        ]
+      },
+      {
+        "type": "group",
+        "id": "grp-main",
+        "panes": [
+          "workspace"
+        ]
+      },
+      {
+        "type": "split",
+        "axis": "column",
+        "id": "spl-right",
+        "weights": [
+          1.6,
+          1
+        ],
+        "children": [
+          {
+            "type": "split",
+            "axis": "row",
+            "id": "spl-rail",
+            "weights": [
+              1,
+              1.2
+            ],
+            "children": [
+              {
+                "type": "group",
+                "id": "grp-review",
+                "panes": [
+                  "review"
+                ]
+              },
+              {
+                "type": "group",
+                "id": "grp-files",
+                "panes": [
+                  "files"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "group",
+            "id": "grp-terminal",
+            "panes": [
+              "terminal"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "source_basic": {
+    "type": "split",
+    "axis": "row",
+    "weights": [
+      1,
+      3.4,
+      1.25
+    ],
+    "children": [
+      {
+        "type": "group",
+        "panes": [
+          "sessions"
+        ]
+      },
+      {
+        "type": "split",
+        "axis": "column",
+        "weights": [
+          3,
+          1
+        ],
+        "children": [
+          {
+            "type": "group",
+            "panes": [
+              "workspace"
+            ]
+          },
+          {
+            "type": "group",
+            "panes": [
+              "terminal"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "axis": "row",
+        "weights": [
+          1,
+          1.2
+        ],
+        "children": [
+          {
+            "type": "group",
+            "panes": [
+              "review"
+            ]
+          },
+          {
+            "type": "group",
+            "panes": [
+              "files"
+            ]
+          }
+        ]
+      }
+    ],
+    "resting": [
+      "terminal",
+      "files",
+      "review"
+    ]
+  },
+  "source_focus": {
+    "type": "split",
+    "axis": "row",
+    "weights": [
+      1,
+      4.6
+    ],
+    "children": [
+      {
+        "type": "group",
+        "panes": [
+          "sessions"
+        ]
+      },
+      {
+        "type": "split",
+        "axis": "column",
+        "weights": [
+          3,
+          1
+        ],
+        "children": [
+          {
+            "type": "group",
+            "panes": [
+              "workspace",
+              "files",
+              "review"
+            ]
+          },
+          {
+            "type": "group",
+            "panes": [
+              "terminal"
+            ]
+          }
+        ]
+      }
+    ],
+    "resting": [
+      "terminal"
+    ]
+  },
+  "source_terminal_deck": {
+    "type": "split",
+    "axis": "column",
+    "weights": [
+      3,
+      1
+    ],
+    "children": [
+      {
+        "type": "split",
+        "axis": "row",
+        "weights": [
+          1,
+          3.2,
+          1.2
+        ],
+        "children": [
+          {
+            "type": "group",
+            "panes": [
+              "sessions"
+            ]
+          },
+          {
+            "type": "group",
+            "panes": [
+              "workspace"
+            ]
+          },
+          {
+            "type": "group",
+            "panes": [
+              "files",
+              "review"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "group",
+        "panes": [
+          "terminal"
+        ]
+      }
+    ],
+    "resting": [
+      "terminal",
+      "files",
+      "review"
+    ]
+  },
+  "source_quad": {
+    "type": "split",
+    "axis": "column",
+    "weights": [
+      3,
+      1
+    ],
+    "children": [
+      {
+        "type": "split",
+        "axis": "row",
+        "weights": [
+          1,
+          3
+        ],
+        "children": [
+          {
+            "type": "group",
+            "panes": [
+              "sessions",
+              "files"
+            ]
+          },
+          {
+            "type": "group",
+            "panes": [
+              "workspace"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "split",
+        "axis": "row",
+        "weights": [
+          1.4,
+          1
+        ],
+        "children": [
+          {
+            "type": "group",
+            "panes": [
+              "terminal"
+            ]
+          },
+          {
+            "type": "group",
+            "panes": [
+              "review"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "source_demo": {
+    "type": "group",
+    "panes": [
+      "workspace"
+    ],
+    "tab_strip": "never",
+    "listed": false
+  },
+  "source_sidebar_left": "source_basic",
+  "source_sidebar_right": "horizontal_mirror(source_basic)",
+  "mode_policy": {
+    "default_mode": "advanced",
+    "advanced": "preserve user preference (no override)",
+    "simple": {
+      "fileBrowserOpen": false,
+      "hideCodeDiffs": true,
+      "reasoningCollapsedByDefault": true,
+      "reviewOpen": false,
+      "sidebarRowMeta": [
+        "preview",
+        "updated"
+      ],
+      "terminalOpen": false,
+      "toolViewMode": "product",
+      "statusbarVisible": "true only when sign-in/onboarding requires",
+      "profileRailVisible": "true when multiple profiles/connections"
+    },
+    "effective_precedence": "sessionReveal ?? policy[mode] ?? userPreference"
+  },
+  "geometry_constants": {
+    "SIDEBAR_DEFAULT_WIDTH_PX": 237,
+    "SIDEBAR_MAX_WIDTH_PX": 360,
+    "SIDEBAR_DOCK_MIN_WIDTH_PX": 640,
+    "NOTE": "Source code constants are not a universal fixed-size column width; inspect live CSS min/max and responsive behavior."
+  },
+  "dynamic_panes": {
+    "session_tile": "session-tile:{id}",
+    "preview_tile": "preview-tile:{id}",
+    "route_tile": "route-tile:{id}",
+    "rule": "Never serialize active dynamic IDs into reusable presets; preserve open dynamic panes when applying geometry."
+  },
+  "preservation_rules": [
+    "source default uses display and persisted visibility, not five permanently visible panes",
+    "regular route pages live inside workspace; overlays stay overlays",
+    "hide must not terminate runtime terminal or agent session",
+    "do not persist animation snapshots as layout revisions"
+  ]
+}

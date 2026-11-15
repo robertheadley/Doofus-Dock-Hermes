@@ -1,0 +1,13 @@
+entity,authority,rust_boundary,invariant
+Agent session / transcript,Upstream Hermes Python gateway,GatewayClient,UI never duplicates execution or rewrites sessions independently
+Model/provider selection,Hermes gateway/profile config,GatewayClient,Honor profile and running-session owner
+Open requests/approval,Hermes gateway,RequestRegistry,Respond once per request id; no silent approval
+Workspace geometry,DoofusDock LayoutDocument,DockingService,One canonical revision path; each accepted profile switch one undoable commit
+Visual morph frames,DoofusDock presentation transient snapshot,MorphCoordinator,Never persist per-frame visual positions
+Profile catalog,DoofusDock profile/storage catalog,WorkspaceProfileCatalog,Source default immutable; user-edited profiles versioned
+Active panel content,Application widget state keyed by panel ID,PanelContentRegistry,Morph cannot remount transcript/PTY or steal draft
+Terminal lifetime,Hermes PTY/gateway or negotiated native terminal owner,TerminalAdapter,Hide is not close; process terminal size event is explicit
+Visual fidelity baseline,Pinned upstream Hermes source + live captured UI,ComparisonHarness,No pixel parity claim without controlled side-by-side screenshots
+Plugin installed state,Hermes gateway / plugin host (according to type),ExtensionCompatibilityAdapter,No executing arbitrary JS in native Rust process; preserve official permissions
+Theme/typography,Upstream visual reference; DoofusDock tokens for implementation,ThemeAdapter,"Hermes theme matches source in Hermes preset, alternate skins optional"
+Doofus Hermes plugin,Separate future project,none for v1,No Doofus Hermes code/bridge required to boot or use v1

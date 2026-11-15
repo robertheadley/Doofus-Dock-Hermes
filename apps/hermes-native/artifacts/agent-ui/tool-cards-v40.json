@@ -1,0 +1,23 @@
+{
+  "timestamp_utc": "2026-11-15T00:16:06Z",
+  "request_id": "HUR-001-040-EVIDENCE",
+  "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "build_sha256": "8becfa5147856b06977f9de9365f8740a48303c41cad304813656f0271f2ee98",
+  "process_generation": "one-shot egui_kittest headless",
+  "route": "/sessions/stored-session",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale_factor": 1.0
+  },
+  "profile": "isolated temporary profile; removed after app test",
+  "gateway": "disabled",
+  "actions": [
+    "emit tool.start and tool.complete fixtures for two execution generations using same tool ID",
+    "render app draw path",
+    "inspect AccessKit transcript row groups"
+  ],
+  "screenshot": "tool-cards-v40.png",
+  "screenshot_sha256": "6afaa45dd45812b739cfd8091e297ff6afd7c6a50d5cebfa798278f58db3bc45",
+  "visual_review": "Two completed terminal tool-call cards appear in the transcript, with their respective result text. This is a local event fixture, not live gateway or paired upstream parity evidence."
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "layout_profile_intent": {
+    "profile_id": "hermes-advanced-default",
+    "source_hermes_sha": "ffdc7eeb25343df1a7ee84503ba552538db9af72",
+    "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+    "regions": [
+      "sessions",
+      "workspace",
+      "review",
+      "files",
+      "terminal"
+    ],
+    "dynamic_panes_policy": "preserve existing active pane IDs, never hardcode session IDs"
+  },
+  "morph_intent": {
+    "operation_id": "example-morph-id",
+    "source_revision": 0,
+    "target_profile_id": "ide-inspired",
+    "duration_policy": "provider_bound_and_reduced_motion",
+    "panel_identity_rule": "stable_identifiers_no_widget_reconstruction",
+    "commit_policy": "one validated target canonical transaction; transient samples do not commit",
+    "retarget": "from_current_visual_snapshot",
+    "cancel": "clear transient projection / retain valid committed document"
+  },
+  "backend_compatibility": {
+    "source": "hermes gateway attach --json",
+    "protocol": "hermes-gateway-v1",
+    "client_capabilities": {
+      "server_requests": true
+    },
+    "backend_python_unchanged": true,
+    "doofus_hermes_required": false
+  }
+}

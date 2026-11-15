@@ -1,0 +1,29 @@
+{
+  "source_sha": "5163cc678bf38cb6b9e730716ca665914fccc0ad",
+  "binary_sha256": "255A0114AA6FDC247E443B742E03226A3742ACDF2FE4373A4C6D792993A4AEC7",
+  "scenario": "new-chat composer layout and accessibility state",
+  "route": "/",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "capture_mode": "headless egui_kittest/AccessKit; no native window; Hermes gateway disabled",
+  "temporary_profile": "C:\\Users\\orphe\\AppData\\Local\\Temp\\HermesNative-Agent-43900-1794611766977956300",
+  "temporary_profile_cleaned": true,
+  "composer": {
+    "role": "MultilineTextInput",
+    "name": "Message composer",
+    "disabled": true,
+    "focused": false,
+    "bounds": {
+      "x": 331.625,
+      "y": 669.46875,
+      "width": 1028.375,
+      "height": 33.9375
+    }
+  },
+  "screenshot": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\chat-composer-shell-v4.png",
+  "one_shot_receipt": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\chat-composer-shell-v4.jsonl",
+  "accessibility_receipt": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\chat-composer-accessibility-v4.jsonl",
+  "captured_utc": "2026-11-13T23:16:08.422863+00:00"
+}

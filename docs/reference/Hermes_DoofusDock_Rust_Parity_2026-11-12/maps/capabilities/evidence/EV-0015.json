@@ -1,0 +1,10 @@
+{
+  "uid": "EV-0015",
+  "capability_id": "ucm-method",
+  "kind": "inspection",
+  "outcome": "pass",
+  "locator": "https://github.com/robertheadley/skills/blob/334f6f56a318051e96c5ed85f2708ba7b550a973/Universal Capability Map/SKILL.md",
+  "date": "2026-11-12",
+  "commit": "334f6f56a318051e96c5ed85f2708ba7b550a973",
+  "notes": "Static inspection of repository content or product contract only. NOT a live integration or regression test."
+}

@@ -1,0 +1,87 @@
+# Hermes Native parity backlog
+
+The parity target is the downloaded Hermes snapshot 8783054ef6cbafd86f10892241436862c1171a66 and the 565 in-scope requirements in docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12. The separate 491-item/108-deferred package under the 2026-11-13 reference directory is retained as historical supplemental material and does not define this target. Later upstream changes do not expand scope. All 565 requirements remain pending until tied to this fixed source and accepted with evidence.
+
+## Stage 1 — exact native shell
+
+- [x] Implement source Advanced Default geometry, Basic, Focus, Terminal Deck, Quad and Sidebar left/right trees through `WorkspaceProfile`.
+- [x] Implement independent Simple/Advanced selection and shadowed optional-pane visibility policy.
+- [x] Bundle JetBrains Mono for application UI and Fira Code for monospaced controls, including the message composer; retain OFL 1.1 texts, source versions and archive hashes.
+- [ ] Match the source titlebar, sidebar controls, tabs, welcome/setup content, status bar, dialogs, fonts/icons, hover/focus and native window behavior at matched viewport and DPI.
+- [x] Add route classification for new chat, sessions, reserved workspace routes, overlays and registered contributed routes; keep query/hash out of route matching.
+- [ ] Implement source route content and all overlay workflows. Capabilities has source-style Skills/Plugins/Connectors/Toolsets tabs, searchable Skills/Toolsets reads, and Toolsets enable/disable through a shared UI/agent action with receipt validation and rollback; local HTTP fixtures pass. Plugins/Connectors remain incomplete. Messaging/Artifacts remain honest offline placeholders and overlays have only a generic modal shell.
+- [x] Persist canonical layout via `LayoutStore`; persist bounded UI preferences separately with a validated temp-file replacement.
+- [x] Implement user and agent titlebar drag/drop: center targets create reachable, accessible tabs; edge targets split through revision-checked DockingService transactions; headless fixtures exercise actual pointer events, canonical tab selection, persisted center drops and an edge split.
+- [x] Add accessible DoofusDock split resize handles; preview adjacent weights during pointer movement, clamp each adjacent side to at least 5% of the pair, and commit one canonical `ResizeSplit` transaction on release. Feature protocol test verifies pointer-driven weight change and persisted layout state.
+- [x] Add semantic pointer dragging for same-group DoofusDock tab reorder through canonical `ReorderPanel`; test tab order, active selection and revision persistence with the isolated agent UI protocol.
+- [x] Preserve the panel-docking drag when a tab drag is released outside its own tab strip; cover the handoff state with an app-level regression test.
+- [ ] Verify native-host docking, resize, tab reorder, save/restore, pinned tabs, narrow-width overflow and keyboard/accessibility behavior.
+
+The first shell passed compile and two layout-policy tests and was opened on Windows. A manual Simple → Advanced round trip and Files reveal/hide check passed. The route slice adds four route-classification tests. These checks cover shell contracts only; they do not count as visual parity receipts. The upstream source preview later displayed its backend-start timeout recovery dialog, so its initial setup screen needs to be recaptured in a fresh isolated profile for paired evidence.
+
+## Stage 2 — gateway and core UI
+
+- [x] Implement credential-free `gateway ensure --json` discovery and reject non-ready, non-loopback, wrong-protocol or non-authority endpoints.
+- [x] Mint one-use Windows interactive tickets through the installed Hermes Python bridge; keep credentials out of URLs, logs and persisted state.
+- [x] Validate canonical WebSocket protocol/echo, wait for `gateway.ready`, negotiate `client.capabilities`, and verify `runtime.describe` instance/profile/epoch.
+- [x] Load canonical `session.list`, keep the gateway worker open, and restore a session transcript through `session.resume`.
+- [x] Add the first existing-session composer submit path and basic live message start/delta/complete projection, with runtime session ID kept distinct from the stored route ID.
+- [x] Add the initial fresh-session `session.create` → `prompt.submit` path; fixture-test that navigation uses stored ID while prompt submission uses runtime ID.
+- [x] Implement debounced, profile-scoped upstream `/api/sessions/search` over full stored history; retain backend result order, map highlighted snippets and `last_active`, append loaded-only local matches, fence stale responses, and test the HTTP request through a local fixture. Installed-profile live acceptance and paired source/target screenshots remain open.
+- [x] Load the pinned Desktop session list through a one-use native HTTP ticket and match `last_active || started_at` sidebar recency. Keep the Gateway session list on read failure and merge Gateway-only rows after the HTTP result; local HTTP fixture covers the request and nullable/fractional timestamps.
+- [x] Add session-row Pin/Unpin, persisted Mark unread/Mark read, Archive, and paged cross-profile archived-session browsing with profile-scoped Unarchive; writes use mutation-snapshot revision/generation fencing, fresh tickets, correlated receipts and profile-aware agent locators. Opening/resuming and chat actions for foreign-profile rows, remote connection aggregation, transient unread indicators, rename and confirmed delete remain open.
+- [ ] Reconcile source gateway and Desktop behavior from `8358fc7` through the fixed `8783054` snapshot, preserving recovery/delivery/profile-scoped behavior; the source interval spans 1,070 repository files and is not fully reconciled. Discovery/ticket/WebSocket/session reads and `session.interrupt` are implemented; installed-profile parity acceptance remains open.
+- [ ] Implement typed JSON-RPC contracts, complete interactive server-request handlers, heartbeat, live event projection, bounded replay/reconnect and profile isolation. The idle actor routes `approval` and batch `clarify` to active-session cards; clarify Confirm sends ordered `clarify.lock` RPCs. Other request handlers, in-flight request multiplexing and multiwindow ownership remain incomplete, so capability advertisement stays disabled. Unknown inbound methods still receive `-32601` without blocking an outstanding RPC.
+- [ ] Complete chat parity with upstream create options/retry, retained admission identity/idempotency, drafts/outbox recovery, remaining server-request methods, full tool/reasoning cards, model selection, attachments, Streamdown-specific rendering parity, and full event reconciliation. Approval events render accessible, backend-choice-limited cards and call generation-scoped `approval.respond`; single-question clarify events offer source choices, free text, multi-select, skip and generation-scoped `clarify.respond`; current-session tool start/complete events render generation-scoped transcript groups with AccessKit labels. Local WebSocket and AccessKit fixtures cover these slices. Other server-request methods, live-profile proof, and complete chat coverage remain open. Active-response Stop also has local fixture coverage.
+
+## Stage 3 — semantic control service and development bridge
+
+- [x] Add a headless egui_kittest/AccessKit runner that inspects the semantic tree, clicks by accessible name, and captures a screenshot without opening a native window or starting Hermes.
+- [x] Add an opt-in inherited-stdio v1 child protocol for health, capabilities, state, tree, events/diagnostics, click/type, screenshot, and close with bounded requests, generation checks, structured receipts and idempotent replay protection.
+- [x] Add accessible selector option choice, keypress and bounded wait-for-visible-control methods; expose focused state and nullable bounds in the tree.
+- [x] Expose stable test IDs for fixed first-party controls and dynamic session rows (`session.row.<stored-id>`) alongside role/name locators; headless tests cover click/type/select/wait and dock drag using IDs. Contributed/user content still needs explicit IDs; layout revision and selection metadata are available in state snapshots.
+- [x] Add the versioned typed app-action registry slice for navigation, pane toggles, interface mode, layout profiles, Capabilities, Toolsets, Stop, approval and clarify decisions; normal controls and `app.action.execute` share handlers and expected-generation checks. Remaining Hermes/DoofusDock operations and per-action authorization metadata are still open.
+- [ ] Extend the shared typed registry to all app actions and DoofusDock/Hermes operations, with per-action permission, confirmation, idempotency and revision metadata.
+- [ ] Add a versioned authenticated loopback development bridge for capabilities, bounded state/UI/layout/panel/window snapshots, logs/events, diagnostics, action preview/execute, tests and reload status.
+- [ ] Enforce read/write scopes, operation authorization, schema/size validation, idempotency, revision checks, redaction, audit, revocation and production-disabled packaging.
+- [ ] Run isolated background instances; retain action receipts, accessibility snapshots and screenshots with build/state/viewport metadata.
+- [ ] Verify the agent can complete user-visible workflows and inspect additional state without bypassing normal confirmations.
+
+## Stage 4 — development supervisor and reload
+
+- [ ] Watch relevant sources/resources, debounce, rebuild incrementally, report diagnostics, and retain last-known-good runtime where possible.
+- [ ] Validate and reload supported declarative resources with rollback.
+- [ ] Restart native Rust builds with build/process generation, bridge readiness and client reconnect; restore only state verified to survive.
+- [ ] Confirm reload/reconnect never terminates or double-submits active Hermes work.
+
+## Stage 5 — remaining stock widgets
+
+- [ ] Files, dynamic previews, artifacts, terminal/PTY lifetime, Git review/worktrees and subagents.
+- [ ] Profiles, models, settings, memory graph, skills/MCP/plugins, voice, Quick Entry/HUD, onboarding, scheduling, messaging, notifications, theming and accessibility.
+
+## Stage 6 — source parity evidence
+
+- [ ] Execute docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/planning/ACCEPTANCE_MATRIX.csv (565 requirements) with matched fixed-snapshot/target fixtures, screen captures, protocol receipts and negative paths. Keep the 2026-11-13 package as historical supplemental material only; do not replace the fixed denominator with a later upstream revision.
+- [ ] Keep core/protocol, semantic UI integration and physical Windows host evidence separate.
+- [ ] Verify background agent work does not foreground the native app or touch the installed Hermes profile.
+- [ ] Close all in-scope capability gaps and record limitations; no screenshot-only or test-only completion claims.
+
+## Stage 7 — alternate Morph profiles
+
+- [ ] Add alternate layouts only after Hermes source parity. Preserve panel instances/state/focus; sample Morph transiently and commit canonical geometry once.
+- [ ] Verify interruption, retarget/reverse, reduced motion, restore-to-Hermes and rollback.
+
+## Known risks
+
+- The parity target is the downloaded Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`. Keep implementation and acceptance tied to that commit; re-pin only if the user explicitly selects a different downloaded source.
+- The supplied source map is research evidence, not live visual acceptance; no real-source screenshot has yet been saved to the project.
+- Native viewport behavior and multi-DPI acceptance need physical Windows evidence.
+- Gateway discovery may start or attach to the user's persistent upstream gateway when the native app opens. The installed Hermes CLI does not provide `gateway attach`; Rust uses the installed-runtime ticket bridge. A live gateway list and transcript restore were observed.
+- A live session listing and resume were verified against the existing local gateway. Local protocol fixtures cover fresh-session create then submit and existing-session submissions; the socket worker forwards basic message events. The fresh-session write path has not been exercised against the installed gateway. Disconnect recovery, server requests, replay, heartbeat and full current-source parity remain unverified.
+
+
+## Agent automation
+
+The operator requires unattended, non-disruptive agent navigation and screenshots. The headless runner covers Files-panel reveal, Capabilities-route navigation, accessible panel docking, tab selection/reorder and split resize; the child-process stdio protocol has a documented v1 contract and exercised click/type/select/keypress/wait/drag plus safety/error paths. The typed shared app-action registry covers route/layout controls, Capabilities tab/refresh and Toolsets enable/disable through shared human/agent handlers; a complete registry, external authenticated bridge, supervisor, and broader app/host coverage are still required. See `AGENT_AUTOMATION.md`, `AGENT_AUTOMATION_PROTOCOL.md` and `AGENT_CONTROL_CROSSWALK.md`.
+
+Capabilities progress (HUR-001-034): Skills and Toolsets are read from current upstream API routes with profile-scoped one-use tickets; Toolsets enable/disable uses the upstream PUT route, a shared typed action, FIFO bounded HTTP processing and response-confirmed optimistic state with rollback. Query tab selection and local search are exposed to semantic UI automation. Local mock tests cover reads and mutation success/mismatched receipt; protocol tests cover action registration and disconnected rejection. Plugins, Connectors, live gateway UI evidence, and screenshot comparison against upstream remain open; this does not close the Stage 1 source-route gate.

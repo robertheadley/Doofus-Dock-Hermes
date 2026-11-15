@@ -1,0 +1,13 @@
+flowchart TD
+  U[User input / keyboard / mouse] --> A[Native Rust egui Hermes UI]
+  A --> P[Stable Hermes panel registry]
+  A --> R[Typed UI action router]
+  R --> G[Hermes gateway JSON-RPC]
+  G --> H[Upstream Hermes Python agent]
+  P --> C[DoofusDock Core LayoutDocument]
+  C --> T[Validated target profile commit]
+  T --> M[DoofusDock transient Morph]
+  M --> V[DoofusDock render-egui / native host]
+  V --> P
+  A --> Q[Source screenshot + behavior parity harness]
+  Q --> S[Captured reference Hermes UI]

@@ -1,0 +1,14 @@
+# Rust build output
+**/target/
+
+# Downloaded fixed Hermes source is kept in the local staging area; provenance is recorded in docs/reference.
+.staging/
+
+# Local dependency and environment material
+**/node_modules/
+.env
+.env.*
+!.env.example
+
+# Interrupted atomic-write scratch files are never source artifacts
+**/*.tmp.*

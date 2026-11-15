@@ -1,0 +1,76 @@
+note: Composition intents only, NOT DoofusDock LayoutDocument serialized schema. Instantiate
+  and validate using WorkspaceProfile/public operations in current repository.
+profiles:
+- id: hermes-doofus-quad
+  name: Default four-zone
+  regions:
+    left:
+      stack:
+      - project-explorer
+      - task-tree
+      weight: 0.19
+    center:
+      stack:
+      - chat-transcript
+      - composer
+      weight: 0.56
+    right:
+      tabs:
+      - file-preview
+      - artifact-grid
+      - control-overview
+      - provider-quota
+      weight: 0.25
+    bottom:
+      tabs:
+      - terminal-grid
+      - test-results
+      - log-reader
+      height_fraction: 0.24
+  constraints:
+  - composer anchored bottom of chat
+  - bottom region dockable, detachable, hide-preserves-PTY
+  - right controls compact where width constrained
+- id: focus-chat
+  name: Focused chat
+  regions:
+    primary:
+    - chat-transcript
+    - composer
+    secondary:
+    - control-overview
+  constraints:
+  - hide not close resource owners
+  - restore layout from prior canonical revision
+- id: developer-workbench
+  name: IDE development
+  regions:
+    left:
+    - project-explorer
+    - session-list
+    center:
+    - chat-transcript
+    - diff-viewer
+    - composer
+    right:
+    - activity-inspector
+    - git-review
+    bottom:
+    - terminal-grid
+    - test-results
+    - log-reader
+- id: control-center
+  name: Doofus controls
+  regions:
+    left:
+    - task-tree
+    - hierarchy-inspector
+    center:
+    - control-overview
+    - activity-feed
+    right:
+    - activity-inspector
+    - provider-quota
+    bottom:
+    - test-results
+    - log-reader

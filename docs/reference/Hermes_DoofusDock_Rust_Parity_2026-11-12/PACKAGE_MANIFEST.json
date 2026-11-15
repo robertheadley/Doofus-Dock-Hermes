@@ -1,0 +1,31 @@
+{
+  "title": "Hermes Agent / Hermes-Doofus Native Rust DoofusDock UI research and implementation plan",
+  "as_of": "2026-11-12",
+  "version": "research-spec-1",
+  "complete_software": false,
+  "target_capabilities": 565,
+  "areas": 24,
+  "native_component_specs": 39,
+  "navigation_screen_entries": 50,
+  "test_scenarios": 565,
+  "safety": "No mutations made to any source repository; target implementation not yet built.",
+  "snapshot": {
+    "hermes_upstream": {
+      "repo": "NousResearch/hermes-agent",
+      "sha": "415fa335b4d98ecf00e29e88625bb478dc63fb67"
+    },
+    "hermes_doofus": {
+      "repo": "robertheadley/Hermes-Doofus",
+      "sha": "0278571393b0ae98fd016b67cfd32f66cee986ee"
+    },
+    "doofusdock": {
+      "repo": "robertheadley/doofusdock",
+      "sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba"
+    },
+    "ucm": {
+      "repo": "robertheadley/skills",
+      "sha": "334f6f56a318051e96c5ed85f2708ba7b550a973"
+    }
+  },
+  "source_compatibility_caveat": "Upstream Hermes JS desktop plugin SDK cannot be treated as native Rust-compatible without proven shim."
+}

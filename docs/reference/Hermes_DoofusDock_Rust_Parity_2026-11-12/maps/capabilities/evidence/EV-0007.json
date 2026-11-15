@@ -1,0 +1,10 @@
+{
+  "uid": "EV-0007",
+  "capability_id": "dock-urne",
+  "kind": "inspection",
+  "outcome": "pass",
+  "locator": "https://github.com/robertheadley/doofusdock/blob/f6eb49b9e488f4e851d8d3abe18e95d296201bba/docs/URNE_INTEGRATION.md",
+  "date": "2026-11-12",
+  "commit": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "notes": "Static inspection of repository content or product contract only. NOT a live integration or regression test."
+}

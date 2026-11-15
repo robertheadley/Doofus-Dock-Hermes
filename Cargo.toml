@@ -1,0 +1,28 @@
+[package]
+name = "hermes-doofusdock"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.95"
+
+[dependencies]
+doofusdock-core = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
+doofusdock-presentation = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
+doofusdock-render-egui = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
+egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[workspace]
+members = ["apps/hermes-native"]
+default-members = ["apps/hermes-native"]
+exclude = ["apps/hermes-native-rev1"]
+resolver = "3"
+
+[patch.crates-io]
+egui_commonmark_backend = { path = "apps/hermes-native/vendor/egui_commonmark_backend" }

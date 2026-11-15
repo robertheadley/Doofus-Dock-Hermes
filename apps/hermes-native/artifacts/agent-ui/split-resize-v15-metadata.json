@@ -1,0 +1,64 @@
+{
+  "request_id": "HUR-001",
+  "captured_at": "2026-11-14T00:18:51Z",
+  "source": {
+    "repository": "NousResearch/hermes-agent",
+    "commit": "5163cc678bf38cb6b9e730716ca665914fccc0ad"
+  },
+  "dependency": {
+    "repository": "robertheadley/doofusdock",
+    "commit": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+    "operation": "ResizeSplit"
+  },
+  "target": {
+    "crate": "hermes-native",
+    "feature": "agent-automation",
+    "binary": "hermes-automation",
+    "profile": "debug"
+  },
+  "runner": {
+    "transport": "inherited-stdio",
+    "gateway": "disabled",
+    "native_window": false,
+    "isolated_temporary_profile": true
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "units": "logical pixels",
+    "scale_factor": 1.0
+  },
+  "route": {
+    "path": "/",
+    "title": "New session"
+  },
+  "gesture": {
+    "method": "actions.drag",
+    "source_role": "Button",
+    "source_name": "Resize split profile-container:64656661756c74:73706c2d726f6f74 divider 1",
+    "destination": {
+      "y": 495,
+      "x": 427
+    },
+    "steps": 10,
+    "state_generation": "0 -> 1"
+  },
+  "layout": {
+    "split_id": "profile-container:64656661756c74:73706c2d726f6f74",
+    "orientation": "horizontal",
+    "weights_before": [
+      0.22727272727272727,
+      0.7727272727272726
+    ],
+    "weights_after": [
+      0.2875446646728299,
+      0.71245533532717
+    ],
+    "persistence_error": null
+  },
+  "screenshot": {
+    "file": "split-resize-v15.png",
+    "sha256": "8BD587EEDC51B88A73D50164FAD33A15CDA3DCCA180A8AABB823E59D9AD5E248",
+    "bytes": 77137
+  }
+}

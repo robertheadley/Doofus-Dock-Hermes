@@ -1,0 +1,15 @@
+{
+  "timestamp_utc": "2026-11-14T01:31:47Z",
+  "request_id": "HUR-001-030-EVIDENCE",
+  "source_sha": "5163cc678bf38cb6b9e730716ca665914fccc0ad",
+  "build_id": "0fa547aa39d2bac8bbf22d44e67d8f1393b16b7405cef7a2b98789a1dc6d6a4a",
+  "process_generation": "one-shot-headless",
+  "route": "/capabilities?tab=toolsets",
+  "viewport": { "width": 1440, "height": 900, "scale_factor": 1.0 },
+  "profile": "isolated temporary profile; removed on process exit",
+  "gateway": "disabled",
+  "actions": ["click Capabilities", "click Toolsets", "inspect semantic tree", "capture screenshot"],
+  "screenshot": "capabilities-toolsets-v23.png",
+  "screenshot_sha256": "3d68bec1b892fc66c1fc68ceee8649856bf5431f7bed0dbe44539d86bf66c2f5",
+  "visual_review": "Toolsets tab selected; semantic search control visible; disconnected message expected because gateway was disabled. This is headless UI evidence, not source parity or physical Windows evidence."
+}

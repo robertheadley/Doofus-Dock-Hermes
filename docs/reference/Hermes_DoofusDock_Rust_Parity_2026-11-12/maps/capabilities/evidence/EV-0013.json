@@ -1,0 +1,10 @@
+{
+  "uid": "EV-0013",
+  "capability_id": "doofus-bridge",
+  "kind": "inspection",
+  "outcome": "pass",
+  "locator": "https://github.com/robertheadley/Hermes-Doofus/blob/0278571393b0ae98fd016b67cfd32f66cee986ee/desktop-plugin/plugin.js",
+  "date": "2026-11-12",
+  "commit": "0278571393b0ae98fd016b67cfd32f66cee986ee",
+  "notes": "Static inspection of repository content or product contract only. NOT a live integration or regression test."
+}

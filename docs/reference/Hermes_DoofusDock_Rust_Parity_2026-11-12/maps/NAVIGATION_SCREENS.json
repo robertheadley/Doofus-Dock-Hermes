@@ -1,0 +1,805 @@
+{
+  "status_note": "Exact route strings are only asserted where observed in plugin; generic names are spec labels, not verified routes.",
+  "screens": [
+    {
+      "screen_id": "SCR-001",
+      "name": "Main workspace",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "main-workspace",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-002",
+      "name": "Command palette",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "command-palette",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-003",
+      "name": "Quick entry",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "quick-entry",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-004",
+      "name": "HUD",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "hud",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-005",
+      "name": "Window and layout manager",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "window-and-layout-manager",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-006",
+      "name": "Profile and gateway switcher",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "profile-and-gateway-switcher",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-007",
+      "name": "Onboarding wizard",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "onboarding-wizard",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-008",
+      "name": "Native settings",
+      "area": "shell",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "native-settings",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-009",
+      "name": "Active chat",
+      "area": "chat",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "active-chat",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-010",
+      "name": "Transcript search",
+      "area": "chat",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "transcript-search",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-011",
+      "name": "History and session picker",
+      "area": "chat",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "history-and-session-picker",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-012",
+      "name": "Model picker",
+      "area": "chat",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "model-picker",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-013",
+      "name": "Composer attachments",
+      "area": "chat",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "composer-attachments",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-014",
+      "name": "Agent tool inspector",
+      "area": "chat",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "agent-tool-inspector",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-015",
+      "name": "Previous prompt edit and rewind",
+      "area": "chat",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "previous-prompt-edit-and-rewind",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-016",
+      "name": "Project Explorer",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "project-explorer",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-017",
+      "name": "File Viewer",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "file-viewer",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-018",
+      "name": "Artifact gallery",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "artifact-gallery",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-019",
+      "name": "Interactive Terminal",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "interactive-terminal",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-020",
+      "name": "Git Review",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "git-review",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-021",
+      "name": "Worktrees",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "worktrees",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-022",
+      "name": "Subagent roster",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "subagent-roster",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-023",
+      "name": "Background tasks",
+      "area": "assets",
+      "source_app": "Hermes desktop",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "background-tasks",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-024",
+      "name": "Settings and config",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "settings-and-config",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-025",
+      "name": "Providers and API keys",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "providers-and-api-keys",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-026",
+      "name": "Sessions admin",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "sessions-admin",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-027",
+      "name": "Activity logs",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "activity-logs",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-028",
+      "name": "Usage analytics",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "usage-analytics",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-029",
+      "name": "Cron",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "cron",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-030",
+      "name": "Skills",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "skills",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-031",
+      "name": "Toolsets and MCP",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "toolsets-and-mcp",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-032",
+      "name": "Profiles",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "profiles",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-033",
+      "name": "Webhooks",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "webhooks",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-034",
+      "name": "Channels",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "channels",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-035",
+      "name": "Pairing",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "pairing",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-036",
+      "name": "System status",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "system-status",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-037",
+      "name": "Plugin management",
+      "area": "management",
+      "source_app": "Hermes dashboard + native app",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "plugin-management",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Hermes gateway / source adapter",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-038",
+      "name": "Doofus Control Overview",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "/doofus-control",
+      "target_panel_id": "doofus-control-overview",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-039",
+      "name": "Doofus Control Hierarchy",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "doofus-control-hierarchy",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-040",
+      "name": "Doofus Control Testing",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "doofus-control-testing",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-041",
+      "name": "Doofus Control Tasks",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "doofus-control-tasks",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-042",
+      "name": "Doofus Control Activity",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "doofus-control-activity",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-043",
+      "name": "Doofus Control Vault",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "doofus-control-vault",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-044",
+      "name": "Doofus Control Settings",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "doofus-control-settings",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-045",
+      "name": "Doofus Settings",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "/doofus-settings",
+      "target_panel_id": "doofus-settings",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-046",
+      "name": "Models & Quota",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "models-quota",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-047",
+      "name": "Advanced Diagnostics",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "advanced-diagnostics",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-048",
+      "name": "Intervention inspector",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "intervention-inspector",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-049",
+      "name": "Requirement and evidence ledger",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "requirement-and-evidence-ledger",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    },
+    {
+      "screen_id": "SCR-050",
+      "name": "Memory Explorer",
+      "area": "doofus",
+      "source_app": "Hermes-Doofus plugin",
+      "source_route": "TO_VERIFY_IN_SOURCE",
+      "target_panel_id": "memory-explorer",
+      "entry_points": [
+        "palette",
+        "sidebar",
+        "tab",
+        "deep_link"
+      ],
+      "screen_state_owner": "Doofus bridge",
+      "parity_state": "not_implemented"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "timestamp_utc": "2026-11-14T23:51:52Z",
+  "request_id": "HUR-001-038-EVIDENCE",
+  "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "build_id": "c82abe9c42029c07c082d748e427089b26a15ad80da6c574e2ab5eaa234b39b7",
+  "process_generation": "one-shot-headless",
+  "route": "/",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale_factor": 1.0
+  },
+  "profile": "isolated temporary profile; removed on process exit",
+  "gateway": "disabled",
+  "actions": [
+    "inspect semantic tree",
+    "capture screenshot"
+  ],
+  "screenshot": "chat-approval-v27.png",
+  "screenshot_sha256": "e94f4956ef6673ba6110cf6451fc7c687cbfabab87873db17ffaae84b7d7dcce",
+  "visual_review": "New-chat welcome route shown at 1440x900. JetBrains Mono appears across the UI; Fira Code is configured for monospace composer content. Gateway-disabled state is expected. Approval controls are event-driven and not visible in this capture; their offline accessibility state is covered by the app fixture. Not source-paired or physical Windows parity evidence."
+}

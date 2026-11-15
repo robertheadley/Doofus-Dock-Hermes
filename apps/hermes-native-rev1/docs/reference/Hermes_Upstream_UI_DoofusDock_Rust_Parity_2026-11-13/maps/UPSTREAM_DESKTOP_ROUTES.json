@@ -1,0 +1,22 @@
+{
+  "source": "apps/desktop/src/app/routes.ts at pinned SHA",
+  "native_workspace_routes": [
+    "/ (new chat)",
+    "/:sessionId",
+    "/capabilities",
+    "/messaging",
+    "/artifacts"
+  ],
+  "overlay_routes": [
+    "/session-import",
+    "/agents",
+    "/command-center",
+    "/cron",
+    "/profiles",
+    "/settings",
+    "/starmap",
+    "/webhooks"
+  ],
+  "extension_routes": "contributed /single-segment paths; plugin registry routes must not be parsed as session IDs",
+  "note": "Default desktop routes are visually distinct from the browser dashboard administration routes; neither URL alone proves a component visually complete."
+}

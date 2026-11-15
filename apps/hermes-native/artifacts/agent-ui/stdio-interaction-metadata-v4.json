@@ -1,0 +1,13 @@
+{
+  "result": "passed",
+  "checks": [
+    "disabled composer has accessible name",
+    "type action refuses disabled text input",
+    "fresh screenshot captured"
+  ],
+  "source_sha": "5163cc678bf38cb6b9e730716ca665914fccc0ad",
+  "binary_sha256": "A9A661D87967EBF8BD079C386AC80C437F2F4A3C92E952F932C2D9B993D0C67C",
+  "receipt": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\stdio-interaction-receipts-v4.jsonl",
+  "screenshot": "D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\stdio-interactions-v4.png",
+  "captured_utc": "2026-11-13T23:01:32.153720+00:00"
+}

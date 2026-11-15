@@ -1,0 +1,19 @@
+{
+  "timestamp_utc": "2026-11-14T23:07:10Z",
+  "request_id": "HUR-001-033-EVIDENCE",
+  "source_sha": "a7904dc2fc26cb5f3b9bdd5fc04dd7b1aab47ce5",
+  "build_id": "dca9669e44205bdc71ba5e449e8d292980c670090320db3321107e009000f2df",
+  "process_generation": "one-shot-headless",
+  "route": "/",
+  "viewport": { "width": 1440, "height": 900, "scale_factor": 1.0 },
+  "profile": "isolated temporary profile; removed on process exit",
+  "gateway": "disabled",
+  "typefaces": {
+    "application_ui": { "name": "JetBrains Mono", "release": "v2.304", "regular_sha256": "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f" },
+    "monospace_controls": { "name": "Fira Code", "release": "6.2", "regular_sha256": "5992ab9640e2df491b2f609467b1de60e8bc39b2c28db184342a0592d98f6117" }
+  },
+  "actions": ["inspect semantic tree", "capture screenshot"],
+  "screenshot": "font-choice-v24.png",
+  "screenshot_sha256": "e94f4956ef6673ba6110cf6451fc7c687cbfabab87873db17ffaae84b7d7dcce",
+  "visual_review": "JetBrains Mono is visible across the app shell; the message composer uses the Fira Code monospace family. Disconnected state is expected with the gateway disabled. This is font integration evidence, not source-paired or physical Windows parity evidence."
+}

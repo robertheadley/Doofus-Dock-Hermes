@@ -1,0 +1,50 @@
+# Hermes Native Rust
+
+Independent native Rust/egui implementation of the stock upstream Hermes Desktop GUI. It uses the Hermes Python gateway as the runtime and DoofusDock for canonical workspace layouts, profiles, docking and presentation.
+
+## Source pins
+
+- Hermes Agent parity snapshot: `8783054ef6cbafd86f10892241436862c1171a66` (downloaded and fixed on 2026-11-14)
+- DoofusDock: `f6eb49b9e488f4e851d8d3abe18e95d296201bba`
+
+The source pin and source tree evidence are recorded in `docs/SOURCE_AUDIT.md`. Parity work targets this downloaded snapshot and does not follow later upstream releases unless the target is explicitly changed. The prior Doofus/Hermes prototype remains in the parent workspace and is not part of this crate.
+
+The Sessions sidebar reads the pinned Desktop session-list API with a one-use native HTTP ticket so it can use the same `last_active || started_at` recency rule. The authenticated Gateway session list remains visible if the HTTP read fails.
+
+Session rows expose accessible Pin/Unpin, persisted Mark unread/Mark read, and Archive actions. Writes use the pinned Desktop mutation-snapshot revision and generation, separate one-use tickets for the read and PATCH, and update visible state only after a confirmed receipt. The Sessions pane pages `/api/profiles/sessions?profile=all&archived=only`, keeps same-ID rows distinct by profile, shows profile ownership, and exposes profile-scoped Unarchive. Rows from another profile remain disabled for opening until profile-aware chat routing is complete. Archived search filters loaded rows locally. Agent locators include profile-scoped IDs where needed. The query and mutation are fixture-tested; live-profile behavior remains open.
+
+## Current implementation
+
+The native shell provides DoofusDock-backed layout profiles, route classification, authenticated gateway attach, session listing/transcript restore, and an opt-in headless AccessKit agent runner. The composer supports partial existing-session and fresh-session paths: it can call `session.create`, navigate by the returned stored session ID, submit the initial prompt by runtime session ID, and project basic live message start/delta/complete events. The Sessions pane debounces full-history search through Hermes' profile-scoped native HTTP API, preserves server ranking and snippets, maps `last_active`, and appends local loaded matches; live installed-profile acceptance remains open. The rest of the upstream chat lifecycle remains incomplete. The runner can inspect controls, click/type by accessible name, and save a screenshot without opening a native window or starting Hermes; it uses and cleans a temporary isolated layout profile. Its optional `--stdio` child process protocol adds versioned, bounded NDJSON health/state/tree/diagnostic reads, semantic click/type/select/keypress/drag actions, wait-for-visible-control, generation-checked action receipts, idempotent retry handling, and screenshot capture. The default build excludes the runner and its renderer dependency.
+
+Titlebar drags can center-tab or edge-split panels through canonical DoofusDock transactions. Dock tab groups render accessible switchable tabs; `actions.drag` drives real egui pointer events from an accessible source to either an accessible destination or a bounded coordinate, including same-group tab reorder through `ReorderPanel`. Split resize handles preview bounded adjacent weights and commit through DoofusDock on release. A versioned typed app-action registry shares navigation and layout handlers between first-party UI controls and the agent protocol; extension to all app/DoofusDock/Hermes operations is incomplete. The authenticated bridge, rebuild/restart supervisor, full chat workflow, source-complete widgets, physical Windows behavior, and paired upstream/target acceptance evidence remain incomplete. This is not a 1:1 replacement yet. See [architecture](docs/ARCHITECTURE.md), [agent automation](docs/AGENT_AUTOMATION.md), [protocol](docs/AGENT_AUTOMATION_PROTOCOL.md), and [control crosswalk](docs/AGENT_CONTROL_CROSSWALK.md).
+
+The active transcript uses egui_commonmark 0.26 with pulldown-cmark and syntect for CommonMark/GFM structures, links, tables, and highlighted fenced code. The feature-gated agent runner can load an isolated Markdown fixture for screenshots. Streaming-specific repairs, math/media plugins, transcript directives, artifact conversion, and matched source visual verification remain open.
+
+## Run on Windows
+
+```powershell
+cargo run
+```
+
+The DoofusDock layout document is saved under `%APPDATA%\HermesNative\layouts`. Set `HERMES_NATIVE_PROFILE_DIR` to an isolated directory for acceptance runs.
+
+Run a headless agent navigation and screenshot capture without opening a window:
+
+```powershell
+cargo run --features agent-automation --bin hermes-automation -- --inspect --click Files --screenshot artifacts\agent-ui\files-panel.png
+```
+
+Start a persistent agent-controlled child process using inherited stdin/stdout:
+
+```powershell
+cargo run --features agent-automation --bin hermes-automation -- --stdio
+```
+
+See [the protocol contract](docs/AGENT_AUTOMATION_PROTOCOL.md) for NDJSON methods, bounds and retry behavior.
+
+Use `--viewport 1440x900` to set the capture dimensions. This harness is semantic UI evidence; it does not prove physical Windows window behavior.
+
+The Capabilities route now exposes source-style Skills, Plugins, Connectors and Toolsets tabs. Skills and Toolsets load from the current Hermes gateway's profile-scoped API with local search. Toolsets can be enabled or disabled through the upstream PUT endpoint, with optimistic UI state, serialized HTTP writes, and rollback when the request or receipt fails. Plugins and Connectors are still incomplete. Reads and writes are covered by local HTTP fixtures; live-profile management remains unverified.
+
+Typography uses bundled JetBrains Mono for the application UI and Fira Code for monospaced content, including the message composer. Both typefaces include their OFL 1.1 license text and source/release metadata under `assets/fonts/`; see [font sources](assets/fonts/README.md). During an active response, the composer exposes an accessible Stop action that calls the upstream `session.interrupt` RPC with the active runtime session ID. It handles both `interrupted` and `not_interrupted` receipts and keeps interrupted partial text in the transcript. Canonical `approval.request` events show accessible cards with only choices offered by Hermes; decisions use generation-scoped `approval.respond`. Single-question `clarify.request` events support source choices, free text, multi-select answers and skip through generation-scoped `clarify.respond`. Batch `clarify` server requests render an editable multi-question card; Confirm sends per-question `clarify.lock` RPCs sequentially, replayed answers are staged for editing, and Skip cancels the request with an empty result. Current-session `tool.start` and `tool.complete` events render generation-scoped transcript groups with bounded completion output and a combined AccessKit label; local event/UI fixtures cover reused tool IDs and rendered content. The idle gateway actor routes inbound `approval` and batch `clarify` requests into active-session cards; batch answers use ordered `clarify.lock` calls. The client keeps server-request support disabled while other handlers, pending-RPC multiplexing and request ownership remain incomplete. Unknown methods receive `-32601` and an in-flight RPC continues. These fixtures do not verify live gateway behavior or full interactive request negotiation.

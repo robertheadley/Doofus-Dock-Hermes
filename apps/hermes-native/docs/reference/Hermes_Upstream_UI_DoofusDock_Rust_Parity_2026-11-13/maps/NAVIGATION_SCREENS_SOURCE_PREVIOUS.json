@@ -1,0 +1,7 @@
+{
+  "note": "Previous research navigation taxonomy; only upstream Desktop screens are authoritative for this package; see UPSTREAM_DESKTOP_ROUTES.json",
+  "raw_keys": [
+    "status_note",
+    "screens"
+  ]
+}

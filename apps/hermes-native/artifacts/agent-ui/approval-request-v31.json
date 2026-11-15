@@ -1,0 +1,23 @@
+{
+  "timestamp_utc": "2026-11-15T00:35:10Z",
+  "request_id": "HUR-001-042-EVIDENCE",
+  "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "build_sha256": "3311d508854d7b7bc3a81bee9101ddd2d82419f9d789170f8ff8083857090e21",
+  "process_generation": "one-shot headless egui_kittest",
+  "route": "/sessions/stored-session",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale_factor": 1.0
+  },
+  "profile": "isolated temporary profile; removed by test",
+  "gateway": "disabled",
+  "actions": [
+    "inject approval server-request fixture for active runtime session",
+    "render shared app draw path",
+    "inspect AccessKit choice controls"
+  ],
+  "screenshot": "approval-request-v31.png",
+  "screenshot_sha256": "f1b5673087ee29acb4ab069c914ddb6b0f357c9b2e548283e955f6536a32a797",
+  "visual_review": "Approval server request appears as a Permission required card with command and description; choices honor allow_permanent=false. Controls are disabled because the fixture has no live gateway. No live request or source-paired comparison."
+}

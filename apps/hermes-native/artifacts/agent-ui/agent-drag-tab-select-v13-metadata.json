@@ -1,0 +1,75 @@
+{
+  "request_id": "HUR-001",
+  "captured_at": "2026-11-14T00:06:12Z",
+  "source": {
+    "repository": "NousResearch/hermes-agent",
+    "commit": "5163cc678bf38cb6b9e730716ca665914fccc0ad"
+  },
+  "target": {
+    "crate": "hermes-native",
+    "cargo_feature": "agent-automation",
+    "binary": "hermes-automation",
+    "build": "debug"
+  },
+  "runner": {
+    "transport": "inherited-stdio",
+    "gateway": "disabled",
+    "native_window": false,
+    "isolated_temporary_profile": true
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "units": "logical pixels",
+    "scale_factor": 1.0
+  },
+  "route": "/",
+  "route_title": "New session",
+  "layout": {
+    "active_dock_group": "center-tabs-2-workspace",
+    "active_index": 1,
+    "active_panel": "sessions",
+    "panels": [
+      "workspace",
+      "sessions"
+    ]
+  },
+  "action_trace": [
+    {
+      "method": "actions.drag",
+      "source": {
+        "name": "Sessions",
+        "role": "Group"
+      },
+      "destination": {
+        "y": 480,
+        "x": 880
+      },
+      "state_generation": "0 -> 1",
+      "outcome": "succeeded"
+    },
+    {
+      "method": "actions.click",
+      "target": {
+        "name": "Dock tab New session",
+        "role": "Tab"
+      },
+      "state_generation": "1 -> 2",
+      "outcome": "succeeded"
+    },
+    {
+      "method": "actions.click",
+      "target": {
+        "name": "Dock tab Sessions",
+        "role": "Tab"
+      },
+      "state_generation": "2 -> 3",
+      "outcome": "succeeded"
+    }
+  ],
+  "screenshot": {
+    "file": "agent-drag-tab-select-v13.png",
+    "sha256": "8F64D04F80BD54CAB99E684EB9C8A8F1B0D2E16CC879D255AD2BF3F82DCC7635",
+    "bytes": 57720
+  }
+}

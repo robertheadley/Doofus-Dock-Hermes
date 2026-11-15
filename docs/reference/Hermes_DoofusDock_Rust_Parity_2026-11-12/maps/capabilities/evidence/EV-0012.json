@@ -1,0 +1,10 @@
+{
+  "uid": "EV-0012",
+  "capability_id": "hermes-gateway",
+  "kind": "inspection",
+  "outcome": "pass",
+  "locator": "https://github.com/NousResearch/hermes-agent/blob/415fa335b4d98ecf00e29e88625bb478dc63fb67/website/docs/developer-guide/programmatic-integration.md",
+  "date": "2026-11-12",
+  "commit": "415fa335b4d98ecf00e29e88625bb478dc63fb67",
+  "notes": "Static inspection of repository content or product contract only. NOT a live integration or regression test."
+}

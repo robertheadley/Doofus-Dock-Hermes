@@ -1,0 +1,12 @@
+{
+  "hermes_upstream": {
+    "repo": "NousResearch/hermes-agent",
+    "sha": "ffdc7eeb25343df1a7ee84503ba552538db9af72",
+    "selection": "latest commit surfaced by connected GitHub search on 2026-11-13; re-resolve at implementation start"
+  },
+  "doofusdock": {
+    "repo": "robertheadley/doofusdock",
+    "sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+    "selection": "latest commit surfaced by connected GitHub search on 2026-11-13; private repo"
+  }
+}

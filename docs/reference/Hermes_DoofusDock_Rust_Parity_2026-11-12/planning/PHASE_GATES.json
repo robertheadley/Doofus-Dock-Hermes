@@ -1,0 +1,76 @@
+{
+  "no_time_estimates": true,
+  "all_gates_require_evidence": true,
+  "phases": [
+    {
+      "phase": "00",
+      "name": "Source inventory",
+      "acceptance": "All source routes/components, RPC and secondary dashboard mapped without guessed schemas",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "01",
+      "name": "Native shell",
+      "acceptance": "Canonical Dock operations + native windows + persistence + recovery and UI keyboard tests",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "02",
+      "name": "Gateway adapter",
+      "acceptance": "Handshake, RPC, server-requests, replay/cursor/connection fail-closed tests",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "03",
+      "name": "Chat",
+      "acceptance": "Live transcript, prompt, rewind, interruptions, models, session switching verified against Hermes",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "04",
+      "name": "Files, previews, terminals",
+      "acceptance": "Real backend actions, file/PTY ownership and negative remote tests",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "05",
+      "name": "Git, tasks and subagents",
+      "acceptance": "Backend-confirmed mutation and causal state tests",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "06",
+      "name": "Management, plugins",
+      "acceptance": "Profile-scoped config/skills/MCP and explicit UI SDK compatibility gates",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "07",
+      "name": "Hermes-Doofus parity",
+      "acceptance": "Seven Control views + Vault + quota + token bridge; proof/status integrity",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "08",
+      "name": "OS and accessibility",
+      "acceptance": "Windows live DPI/focus/keyboard/IME/contrast/restart and security probes",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    },
+    {
+      "phase": "09",
+      "name": "Parity signoff",
+      "acceptance": "All P0/P1 test evidence and documented accepted exclusions, rollback succeeds",
+      "entry": "previous gate accepted; plan approved",
+      "state": "not_started"
+    }
+  ]
+}

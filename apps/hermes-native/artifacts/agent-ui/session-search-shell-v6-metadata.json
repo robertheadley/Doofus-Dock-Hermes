@@ -1,0 +1,24 @@
+{
+  "timestamp_utc": "2026-11-13T23:30:09Z",
+  "request_id": "HUR-001",
+  "source_sha": "5163cc678bf38cb6b9e730716ca665914fccc0ad",
+  "executable": "target/debug/hermes-automation.exe",
+  "executable_sha256": "4079D8F419836BBE651133654DDBD0F228C5CFC2866EED99BFB37DD434C7CEB3",
+  "screenshot": "artifacts/agent-ui/session-search-shell-v6.png",
+  "screenshot_sha256": "75A3EEED52E6BF91E89D97CE933FC582A01BC3E34888A5CCDFF4D1F79EE971AE",
+  "route": "/",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "gateway": "isolated",
+  "profile_cleanup_verified": true,
+  "accesskit_tree_checked": true,
+  "accesskit_controls": [
+    "Search sessions",
+    "Message composer",
+    "Send",
+    "New session"
+  ],
+  "validation": "Headless UI tree and screenshot captured; no native window or Hermes gateway started."
+}

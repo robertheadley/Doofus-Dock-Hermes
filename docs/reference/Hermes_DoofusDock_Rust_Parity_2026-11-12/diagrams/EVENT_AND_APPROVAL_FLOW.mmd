@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant E as egui UI
+    participant R as Rust Reducer
+    participant G as Hermes Gateway
+    participant D as Doofus Bridge
+    E->>R: User submits prompt
+    R->>G: prompt.submit with request ID
+    G-->>R: accepted or error (not equivalent to completion)
+    G-->>R: message.delta / tool.start
+    R-->>E: render progress by stable identity
+    G->>R: server request: approval / vault / clarify
+    R->>E: typed modal with permission and scope
+    E->>R: explicit allow or deny
+    R->>G: response with original request ID
+    G-->>R: tool.complete / message.complete
+    D-->>R: canonical event seq + outcome refs
+    R-->>E: update only after canonical proof
+    Note over R,D: Persist cursor; repair gaps from snapshot; never replay mutation automatically

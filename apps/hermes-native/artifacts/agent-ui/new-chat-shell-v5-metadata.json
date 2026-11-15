@@ -1,0 +1,23 @@
+{
+  "timestamp_utc": "2026-11-13T23:22:30Z",
+  "request_id": "HUR-001",
+  "source_sha": "5163cc678bf38cb6b9e730716ca665914fccc0ad",
+  "executable": "target/debug/hermes-automation.exe",
+  "executable_sha256": "CEA2778F642134C2B54130852B60B809F431106C0492CE3F1529D4FBBB0FF571",
+  "screenshot": "artifacts/agent-ui/new-chat-shell-v5.png",
+  "screenshot_sha256": "C71B68D76AA31F9F54A56083ECDFF1580D1E5B333ECE09567EC2C7D5DEA6E6C3",
+  "route": "/",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "gateway": "isolated",
+  "profile_cleanup_verified": true,
+  "accesskit_tree_checked": true,
+  "accesskit_controls": [
+    "Message composer",
+    "Send",
+    "New session"
+  ],
+  "validation": "Headless inspection and screenshot capture completed; no native window or Hermes gateway started."
+}

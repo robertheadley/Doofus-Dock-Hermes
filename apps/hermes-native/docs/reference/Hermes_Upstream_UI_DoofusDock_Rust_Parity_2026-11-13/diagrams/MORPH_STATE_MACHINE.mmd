@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> HermesExact
+  HermesExact --> Morphing: select Codex / Antigravity / IDE / Doofus
+  Morphing --> AlternateLayout: completed transient projection
+  Morphing --> Morphing: retarget
+  Morphing --> HermesExact: reverse / select Hermes
+  AlternateLayout --> Morphing: select another target
+  AlternateLayout --> HermesExact: reduced-motion immediate restore
+  note right of Morphing
+    Canonical LayoutDocument committed once;
+    animation snapshots are never persisted.
+    Live panel content retains its identity.
+  end note
