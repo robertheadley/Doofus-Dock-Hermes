@@ -1326,7 +1326,7 @@ mod tests {
             &app,
         );
         assert_eq!(registry["status"], "succeeded");
-        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 13);
+        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 14);
         assert!(
             registry["result"]["actions"]
                 .as_array()
@@ -1340,6 +1340,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|action| action["type"] == "set_toolset_enabled")
+        );
+        assert!(
+            registry["result"]["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "set_agent_plugin_enabled")
         );
         assert!(
             registry["result"]["actions"]

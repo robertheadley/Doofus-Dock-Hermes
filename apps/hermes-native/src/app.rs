@@ -1,6 +1,7 @@
 use crate::gateway::{
-    CapabilitiesSnapshot, ConnectorsSnapshot, GatewayDiscovery, GatewayEndpoint, GatewayEvent,
-    PromptSubmitReceipt, SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
+    AgentPluginInfo, AgentPluginsSnapshot, CapabilitiesSnapshot, ConnectorsSnapshot,
+    GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt, SessionSearchResult,
+    SessionSummary, SkillInfo, ToolsetInfo,
 };
 use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
@@ -51,6 +52,10 @@ pub enum RegisteredUiAction {
     RefreshPluginCatalog,
     SetToolsetEnabled {
         name: String,
+        enabled: bool,
+    },
+    SetAgentPluginEnabled {
+        key: String,
         enabled: bool,
     },
     StopGeneration,
@@ -125,6 +130,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"refresh_capabilities","permission":"ui_interaction","mutates":false,"schema":{}}
             ,{"type":"refresh_plugin_catalog","permission":"ui_interaction","mutates":false,"schema":{}}
             ,{"type":"set_toolset_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded toolsets, max 128 bytes","enabled":"boolean"}}
+            ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
@@ -203,6 +209,13 @@ struct SplitResizeSession {
 struct PendingToolsetUpdate {
     request_id: String,
     previous_enabled: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PendingAgentPluginUpdate {
+    request_id: String,
+    enabled: bool,
+    profile: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -335,6 +348,12 @@ pub struct HermesNativeApp {
     connectors_request_id: Option<String>,
     connectors_pending: bool,
     connectors_error: Option<String>,
+    agent_plugins: Option<AgentPluginsSnapshot>,
+    agent_plugins_profile: Option<String>,
+    agent_plugins_request_id: Option<String>,
+    agent_plugins_pending: bool,
+    agent_plugins_error: Option<String>,
+    pending_agent_plugin_updates: BTreeMap<String, PendingAgentPluginUpdate>,
     plugin_catalog_worker: PluginCatalogWorker,
     plugin_catalog: Option<Vec<PluginCatalogEntry>>,
     plugin_catalog_request_id: Option<String>,
@@ -558,6 +577,23 @@ fn render_message() -> &'static str {
         self.plugin_catalog_visible_limit = PLUGIN_CATALOG_PAGE_SIZE;
         self.plugin_catalog_pending = false;
         self.plugin_catalog_error = None;
+        self.agent_plugins = Some(AgentPluginsSnapshot {
+            plugins: vec![AgentPluginInfo {
+                name: "Legacy Helper".into(),
+                key: "legacy-helper".into(),
+                version: "1.2.0".into(),
+                description: "A profile-installed Hermes plugin.".into(),
+                source: "user".into(),
+                status: "disabled".into(),
+                update_available: Some(true),
+                update_target: Some("1.3.0".into()),
+                ..AgentPluginInfo::default()
+            }],
+            user_count: 1,
+            bundled_count: 0,
+        });
+        self.agent_plugins_pending = false;
+        self.agent_plugins_error = None;
         self.status = "Plugin catalog fixture · offline sample data".into();
     }
 
@@ -625,6 +661,7 @@ fn render_message() -> &'static str {
         self.connectors_pending = false;
         self.connectors_error = None;
         self.capabilities_query.clear();
+        self.connectors_segment = ConnectorsSegment::All;
         self.status = "Connectors fixture · synthetic profile data".into();
     }
 
@@ -679,6 +716,12 @@ fn render_message() -> &'static str {
             connectors_request_id: None,
             connectors_pending: false,
             connectors_error: None,
+            agent_plugins: None,
+            agent_plugins_profile: None,
+            agent_plugins_request_id: None,
+            agent_plugins_pending: false,
+            agent_plugins_error: None,
+            pending_agent_plugin_updates: BTreeMap::new(),
             plugin_catalog_worker: PluginCatalogWorker::start(),
             plugin_catalog: None,
             plugin_catalog_request_id: None,
@@ -2043,7 +2086,13 @@ fn render_message() -> &'static str {
                     self.execute_registered_action(RegisteredUiAction::SelectCapabilitiesTab {
                         tab,
                     })
-                    .unwrap_or_else(|error| self.capabilities_error = Some(error));
+                    .unwrap_or_else(|error| match tab {
+                        CapabilitiesTab::Plugins => self.agent_plugins_error = Some(error),
+                        CapabilitiesTab::Connectors => self.connectors_error = Some(error),
+                        CapabilitiesTab::Skills | CapabilitiesTab::Toolsets => {
+                            self.capabilities_error = Some(error)
+                        }
+                    });
                 }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -2051,10 +2100,12 @@ fn render_message() -> &'static str {
                     self.gateway_connected
                         && match self.capabilities_tab {
                             CapabilitiesTab::Connectors => !self.connectors_pending,
+                            CapabilitiesTab::Plugins => {
+                                !self.agent_plugins_pending && !self.plugin_catalog_pending
+                            }
                             CapabilitiesTab::Skills | CapabilitiesTab::Toolsets => {
                                 !self.capabilities_pending
                             }
-                            CapabilitiesTab::Plugins => false,
                         },
                     egui::Button::new("Refresh"),
                 );
@@ -2062,6 +2113,7 @@ fn render_message() -> &'static str {
                     self.execute_registered_action(RegisteredUiAction::RefreshCapabilities)
                         .unwrap_or_else(|error| match self.capabilities_tab {
                             CapabilitiesTab::Connectors => self.connectors_error = Some(error),
+                            CapabilitiesTab::Plugins => self.agent_plugins_error = Some(error),
                             _ => self.capabilities_error = Some(error),
                         });
                 }
@@ -2318,6 +2370,166 @@ fn render_message() -> &'static str {
                 });
             }
             CapabilitiesTab::Plugins => {
+                ui.horizontal(|ui| {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("Installed plugins").strong().color(TEXT));
+                    if let Some(snapshot) = &self.agent_plugins {
+                        let manageable_count = snapshot
+                            .plugins
+                            .iter()
+                            .filter(|plugin| agent_plugin_is_manageable(plugin))
+                            .count();
+                        ui.label(
+                            RichText::new(format!("{manageable_count} installed for this profile"))
+                                .color(MUTED),
+                        );
+                    }
+                });
+                if self.agent_plugins_pending && self.agent_plugins.is_none() {
+                    ui.label(
+                        RichText::new("Loading installed plugins…")
+                            .size(12.0)
+                            .color(MUTED),
+                    );
+                } else if let Some(error) = self.agent_plugins_error.clone() {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "Installed plugins could not be loaded: {error}"
+                            ))
+                            .size(11.0)
+                            .color(MUTED),
+                        );
+                        if self.gateway_connected
+                            && ui.small_button("Retry installed plugins").clicked()
+                        {
+                            self.load_agent_plugins()
+                                .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
+                        }
+                    });
+                }
+                if let Some(snapshot) = self.agent_plugins.clone() {
+                    if self.agent_plugins_pending {
+                        ui.label(
+                            RichText::new("Refreshing installed plugins…")
+                                .size(10.0)
+                                .color(MUTED),
+                        );
+                    }
+                    let query = self.capabilities_query.trim().to_lowercase();
+                    let mut installed = snapshot
+                        .plugins
+                        .iter()
+                        .filter(|plugin| agent_plugin_is_manageable(plugin))
+                        .filter(|plugin| {
+                            query.is_empty()
+                                || plugin.name.to_lowercase().contains(&query)
+                                || plugin.key.to_lowercase().contains(&query)
+                                || plugin.description.to_lowercase().contains(&query)
+                        })
+                        .collect::<Vec<_>>();
+                    installed.sort_by(|left, right| {
+                        left.name.to_lowercase().cmp(&right.name.to_lowercase())
+                    });
+                    if installed.is_empty() {
+                        ui.label(
+                            RichText::new(if query.is_empty() {
+                                "No installed agent plugins"
+                            } else {
+                                "No installed plugins match this search"
+                            })
+                            .size(11.0)
+                            .color(MUTED),
+                        );
+                    }
+                    for plugin in installed {
+                        let pending = self.pending_agent_plugin_updates.contains_key(&plugin.key);
+                        egui::Frame::group(ui.style()).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(&plugin.name).strong().color(TEXT));
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    let mut enabled = plugin.status == "enabled";
+                                    let toggle = ui
+                                        .add_enabled(
+                                            self.gateway_connected
+                                                && !pending
+                                                && self.agent_plugins_profile.as_deref()
+                                                    == self.gateway_endpoint.as_ref().map(
+                                                        |endpoint| endpoint.profile_id.as_str(),
+                                                    )
+                                                && !plugin.key.is_empty(),
+                                            egui::Checkbox::new(&mut enabled, "Enabled"),
+                                        )
+                                        .accessible_name(format!("Agent plugin: {}", plugin.name));
+                                    if toggle.changed() {
+                                        self.execute_registered_action(
+                                            RegisteredUiAction::SetAgentPluginEnabled {
+                                                key: plugin.key.clone(),
+                                                enabled,
+                                            },
+                                        )
+                                        .unwrap_or_else(|error| self.status = error);
+                                    }
+                                    if pending {
+                                        ui.label(RichText::new("Saving…").size(10.0).color(MUTED));
+                                    }
+                                });
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "{} · {} · {}",
+                                        plugin.status, plugin.source, plugin.version
+                                    ))
+                                    .size(10.0)
+                                    .color(ACCENT),
+                                );
+                                if plugin.update_available == Some(true) {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "Update available · {}",
+                                            plugin
+                                                .catalog_version
+                                                .as_deref()
+                                                .or(plugin.update_target.as_deref())
+                                                .unwrap_or("new version")
+                                        ))
+                                        .size(10.0)
+                                        .color(ACCENT),
+                                    );
+                                }
+                                if !plugin.key.is_empty() {
+                                    ui.label(
+                                        RichText::new(format!("Key · {}", plugin.key))
+                                            .size(10.0)
+                                            .color(MUTED),
+                                    );
+                                }
+                            });
+                            if !plugin.description.is_empty() {
+                                ui.label(
+                                    RichText::new(&plugin.description).size(11.0).color(MUTED),
+                                );
+                            }
+                            for server in &plugin.servers {
+                                let detail = if server.sentence.is_empty() {
+                                    format!("{} · {}", server.name, server.state)
+                                } else {
+                                    format!("{} · {}", server.name, server.sentence)
+                                };
+                                ui.label(RichText::new(detail).size(10.0).color(MUTED));
+                            }
+                        });
+                    }
+                } else if !self.gateway_connected {
+                    ui.label(
+                        RichText::new("Connect to Hermes to view installed agent plugins.")
+                            .size(11.0)
+                            .color(MUTED),
+                    );
+                }
+                ui.add_space(8.0);
+                ui.separator();
                 ui.horizontal(|ui| {
                     ui.add_space(4.0);
                     ui.label(RichText::new("Plugin catalog").strong().color(TEXT));
@@ -4465,10 +4677,14 @@ fn render_message() -> &'static str {
             self.capabilities_pending = false;
             self.connectors_request_id = None;
             self.connectors_pending = false;
+            self.agent_plugins_request_id = None;
+            self.agent_plugins_pending = false;
         }
     }
 
     pub fn navigate_path(&mut self, target: &str) -> Result<(), String> {
+        let was_plugins_page = self.route == AppRoute::Capabilities
+            && self.capabilities_tab == CapabilitiesTab::Plugins;
         let route = AppRoute::parse(target, &self.contributed_paths);
         if let AppRoute::Session(session_id) = &route {
             // Save before replacing the selected profile so the previous chat
@@ -4519,6 +4735,10 @@ fn render_message() -> &'static str {
                 self.connectors_request_id = None;
                 self.connectors_pending = false;
             }
+            if tab != CapabilitiesTab::Plugins {
+                self.agent_plugins_request_id = None;
+                self.agent_plugins_pending = false;
+            }
             if matches!(tab, CapabilitiesTab::Skills | CapabilitiesTab::Toolsets)
                 && self.gateway_connected
                 && self.skills.is_none()
@@ -4543,6 +4763,14 @@ fn render_message() -> &'static str {
             {
                 self.load_plugin_catalog()
                     .unwrap_or_else(|error| self.plugin_catalog_error = Some(error));
+            }
+            if tab == CapabilitiesTab::Plugins
+                && !was_plugins_page
+                && !self.agent_plugins_pending
+                && self.gateway_connected
+            {
+                self.load_agent_plugins()
+                    .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
             }
         }
         Ok(())
@@ -4625,12 +4853,20 @@ fn render_message() -> &'static str {
             }
             RegisteredUiAction::RefreshCapabilities => match self.capabilities_tab {
                 CapabilitiesTab::Connectors => self.load_connectors()?,
-                CapabilitiesTab::Plugins => self.load_plugin_catalog()?,
+                CapabilitiesTab::Plugins => {
+                    self.load_plugin_catalog()?;
+                    if self.gateway_connected {
+                        self.load_agent_plugins()?;
+                    }
+                }
                 CapabilitiesTab::Skills | CapabilitiesTab::Toolsets => self.load_capabilities()?,
             },
             RegisteredUiAction::RefreshPluginCatalog => self.load_plugin_catalog()?,
             RegisteredUiAction::SetToolsetEnabled { name, enabled } => {
                 self.set_toolset_enabled(name, enabled)?;
+            }
+            RegisteredUiAction::SetAgentPluginEnabled { key, enabled } => {
+                self.set_agent_plugin_enabled(key, enabled)?;
             }
             RegisteredUiAction::StopGeneration => self.stop_generation()?,
             RegisteredUiAction::RespondApproval { prompt_id, choice } => {
@@ -4676,6 +4912,81 @@ fn render_message() -> &'static str {
         self.connectors_request_id = Some(request_id);
         self.connectors_pending = true;
         self.connectors_error = None;
+        Ok(())
+    }
+
+    fn load_agent_plugins(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before loading installed plugins".into());
+        }
+        if self.agent_plugins_pending {
+            return Ok(());
+        }
+        let request_id = operation_id("agent-plugins");
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway reader is unavailable".to_owned())?;
+        gateway.load_agent_plugins(request_id.clone(), profile)?;
+        self.agent_plugins_request_id = Some(request_id);
+        self.agent_plugins_pending = true;
+        self.agent_plugins_error = None;
+        Ok(())
+    }
+
+    fn set_agent_plugin_enabled(&mut self, key: String, enabled: bool) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before changing an installed plugin".into());
+        }
+        if key.is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
+            return Err("Plugin key is invalid".into());
+        }
+        if self.pending_agent_plugin_updates.contains_key(&key) {
+            return Ok(());
+        }
+        let plugin = self
+            .agent_plugins
+            .as_ref()
+            .and_then(|snapshot| snapshot.plugins.iter().find(|plugin| plugin.key == key))
+            .ok_or_else(|| "Plugin is not in the loaded profile inventory".to_owned())?;
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self.agent_plugins_profile != profile {
+            return Err(
+                "Installed plugins belong to a different profile; refresh the inventory".into(),
+            );
+        }
+        if !agent_plugin_is_manageable(plugin) {
+            return Err("This Hermes plugin cannot be toggled from the Plugins page".into());
+        }
+        if plugin.key.is_empty() {
+            return Err("This plugin has no canonical key and is read-only".into());
+        }
+        let request_id = operation_id("agent-plugin-toggle");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?;
+        gateway.set_agent_plugin_enabled(
+            request_id.clone(),
+            key.clone(),
+            enabled,
+            profile.clone(),
+        )?;
+        self.pending_agent_plugin_updates.insert(
+            key,
+            PendingAgentPluginUpdate {
+                request_id,
+                enabled,
+                profile,
+            },
+        );
         Ok(())
     }
 
@@ -5680,6 +5991,7 @@ fn render_message() -> &'static str {
         };
         let mut load_capabilities_after_connect = false;
         let mut load_connectors_after_connect = false;
+        let mut load_agent_plugins_after_connect = false;
         let mut load_archived_after_connect = false;
         if !self.gateway_connected {
             if let Some(result) = discovery.poll() {
@@ -5712,6 +6024,8 @@ fn render_message() -> &'static str {
                             );
                             load_connectors_after_connect =
                                 self.capabilities_tab == CapabilitiesTab::Connectors;
+                            load_agent_plugins_after_connect =
+                                self.capabilities_tab == CapabilitiesTab::Plugins;
                         }
                     }
                     Err(reason) => {
@@ -6231,6 +6545,103 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::AgentPluginsLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    if self.route != AppRoute::Capabilities
+                        || self.capabilities_tab != CapabilitiesTab::Plugins
+                        || self.agent_plugins_request_id.as_deref() != Some(&request_id)
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.agent_plugins_request_id = None;
+                    self.agent_plugins_pending = false;
+                    match result {
+                        Ok(snapshot) => {
+                            self.agent_plugins = Some(snapshot);
+                            self.agent_plugins_profile = profile;
+                            self.agent_plugins_error = None;
+                        }
+                        Err(error) => self.agent_plugins_error = Some(error),
+                    }
+                }
+                GatewayEvent::AgentPluginToggled {
+                    request_id,
+                    key,
+                    enabled,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_agent_plugin_updates.get(&key) else {
+                        continue;
+                    };
+                    if pending.request_id != request_id || pending.enabled != enabled {
+                        continue;
+                    }
+                    let pending = self
+                        .pending_agent_plugin_updates
+                        .remove(&key)
+                        .expect("pending plugin update checked");
+                    if pending.profile != profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) => {
+                            let plugin_name = receipt.plugin.name.clone();
+                            let mut updated = false;
+                            if let Some(plugin) = self.agent_plugins.as_mut().and_then(|snapshot| {
+                                snapshot.plugins.iter_mut().find(|row| row.key == key)
+                            }) {
+                                *plugin = receipt.plugin;
+                                updated = true;
+                            }
+                            if !updated {
+                                self.agent_plugins = None;
+                                self.agent_plugins_profile = None;
+                                if self.route == AppRoute::Capabilities
+                                    && self.capabilities_tab == CapabilitiesTab::Plugins
+                                {
+                                    self.load_agent_plugins().unwrap_or_else(|error| {
+                                        self.agent_plugins_error = Some(error)
+                                    });
+                                }
+                            }
+                            self.agent_plugins_error = None;
+                            self.status = if receipt.restart_required {
+                                format!(
+                                    "{} {plugin_name}; restart required",
+                                    if enabled { "Enabled" } else { "Disabled" }
+                                )
+                            } else if receipt.gateway_reloaded {
+                                format!(
+                                    "{} {plugin_name}; live in Hermes",
+                                    if enabled { "Enabled" } else { "Disabled" }
+                                )
+                            } else {
+                                format!(
+                                    "{} {plugin_name}",
+                                    if enabled { "Enabled" } else { "Disabled" }
+                                )
+                            };
+                        }
+                        Err(error) => {
+                            self.status = error;
+                        }
+                    }
+                }
                 GatewayEvent::ConnectorsLoaded { request_id, result } => {
                     if self.route != AppRoute::Capabilities
                         || self.capabilities_tab != CapabilitiesTab::Connectors
@@ -6271,6 +6682,14 @@ fn render_message() -> &'static str {
                     self.session_search_request_id = None;
                     self.capabilities_pending = false;
                     self.capabilities_request_id = None;
+                    self.agent_plugins_pending = false;
+                    self.agent_plugins_request_id = None;
+                    if !self.pending_agent_plugin_updates.is_empty() {
+                        self.pending_agent_plugin_updates.clear();
+                        self.agent_plugins_error = Some(
+                            "Plugin operation outcome unknown after gateway disconnect; refresh the inventory".into(),
+                        );
+                    }
                     self.status = error;
                 }
             }
@@ -6282,6 +6701,10 @@ fn render_message() -> &'static str {
         if load_connectors_after_connect {
             self.load_connectors()
                 .unwrap_or_else(|error| self.connectors_error = Some(error));
+        }
+        if load_agent_plugins_after_connect {
+            self.load_agent_plugins()
+                .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
         }
         if load_archived_after_connect {
             self.load_archived_sessions();
@@ -7768,6 +8191,76 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn installed_plugin_fixture_exposes_profile_row_and_offline_action_fails_closed() {
+        let (mut app, profile) = isolated_app();
+        app.load_plugin_catalog_fixture_for_automation();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        let toggle = harness
+            .query_by_label("Agent plugin: Legacy Helper")
+            .expect("installed plugin has a semantic toggle");
+        assert_eq!(format!("{:?}", toggle.accesskit_node().role()), "CheckBox");
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref() == Some("Update available · 1.3.0"))
+                .next()
+                .is_some(),
+            "the installed row surfaces the backend-provided update target"
+        );
+        drop(harness);
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::SetAgentPluginEnabled {
+                key: "legacy-helper".into(),
+                enabled: true,
+            })
+            .expect_err("offline plugin mutation must be rejected")
+            .contains("Connect to Hermes")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn installed_plugin_visibility_matches_pinned_desktop_bundled_and_hidden_rules() {
+        let user = AgentPluginInfo {
+            key: "image_gen/legacy".into(),
+            source: "user".into(),
+            ..AgentPluginInfo::default()
+        };
+        let hidden = AgentPluginInfo {
+            key: "platforms/telegram".into(),
+            source: "bundled".into(),
+            ..AgentPluginInfo::default()
+        };
+        let manageable_bundled = AgentPluginInfo {
+            key: "security-guidance".into(),
+            source: "bundled".into(),
+            ..AgentPluginInfo::default()
+        };
+        let unrelated_bundled = AgentPluginInfo {
+            key: "internal-provider".into(),
+            source: "bundled".into(),
+            ..AgentPluginInfo::default()
+        };
+        assert!(agent_plugin_is_manageable(&user));
+        assert!(!agent_plugin_is_manageable(&hidden));
+        assert!(agent_plugin_is_manageable(&manageable_bundled));
+        assert!(!agent_plugin_is_manageable(&unrelated_bundled));
+    }
+
+    #[test]
+    fn registered_action_catalog_exposes_agent_plugin_toggle() {
+        assert!(
+            registered_ui_action_catalog()["actions"]
+                .as_array()
+                .expect("action catalog array")
+                .iter()
+                .any(|action| action["type"] == "set_agent_plugin_enabled")
+        );
     }
     #[test]
     fn older_transcript_page_prepends_and_deduplicates_boundary_overlap() {
@@ -10103,6 +10596,12 @@ impl HermesNativeApp {
                 "plugin_catalog_entry_count": self.plugin_catalog.as_ref().map(Vec::len),
                 "selected_plugin_id": self.selected_plugin_id,
                 "plugin_catalog_visible_limit": self.plugin_catalog_visible_limit,
+                "installed_plugins_pending": self.agent_plugins_pending,
+                "installed_plugins_error": self.agent_plugins_error,
+                "installed_plugin_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.plugins.len()),
+                "installed_plugins_user_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.user_count),
+                "installed_plugins_bundled_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.bundled_count),
+                "plugin_updates_pending": self.pending_agent_plugin_updates.len(),
                 "connectors_pending": self.connectors_pending,
                 "connectors_error": self.connectors_error,
                 "connectors_available": self.connectors.as_ref().map(|value| value.available),
@@ -10205,6 +10704,20 @@ fn connector_segment_label(segment: ConnectorsSegment) -> &'static str {
         ConnectorsSegment::Available => "Available",
         ConnectorsSegment::Off => "Off",
     }
+}
+
+fn agent_plugin_is_manageable(plugin: &AgentPluginInfo) -> bool {
+    if plugin.source == "bundled" {
+        let key = if plugin.key.is_empty() {
+            plugin.name.as_str()
+        } else {
+            plugin.key.as_str()
+        };
+        return matches!(key, "disk-cleanup" | "security-guidance");
+    }
+    !["dashboard_auth/", "model-providers/", "platforms/"]
+        .iter()
+        .any(|prefix| plugin.key.starts_with(prefix))
 }
 
 fn connector_directory_state(

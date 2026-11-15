@@ -202,6 +202,69 @@ pub struct ConnectorsSnapshot {
     pub accounts: Vec<ConnectorAccountEntry>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AgentPluginServerInfo {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub sentence: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AgentPluginInfo {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub key: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub portable: bool,
+    #[serde(default)]
+    pub catalog_name: Option<String>,
+    #[serde(default)]
+    pub catalog_tier: Option<String>,
+    #[serde(default)]
+    pub installed_sha: Option<String>,
+    #[serde(default)]
+    pub catalog_sha: Option<String>,
+    #[serde(default)]
+    pub catalog_version: Option<String>,
+    #[serde(default)]
+    pub update_available: Option<bool>,
+    #[serde(default)]
+    pub update_target: Option<String>,
+    #[serde(default)]
+    pub has_desktop_half: bool,
+    #[serde(default)]
+    pub servers: Vec<AgentPluginServerInfo>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AgentPluginsSnapshot {
+    #[serde(default)]
+    pub plugins: Vec<AgentPluginInfo>,
+    #[serde(default)]
+    pub user_count: usize,
+    #[serde(default)]
+    pub bundled_count: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct AgentPluginToggleReceipt {
+    pub plugin: AgentPluginInfo,
+    pub restart_required: bool,
+    pub gateway_reloaded: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectedGateway {
     pub endpoint: GatewayEndpoint,
@@ -325,6 +388,18 @@ pub enum GatewayEvent {
         request_id: String,
         result: Result<ConnectorsSnapshot, String>,
     },
+    AgentPluginsLoaded {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<AgentPluginsSnapshot, String>,
+    },
+    AgentPluginToggled {
+        request_id: String,
+        key: String,
+        enabled: bool,
+        profile: Option<String>,
+        result: Result<AgentPluginToggleReceipt, String>,
+    },
     ToolsetEnabled {
         request_id: String,
         name: String,
@@ -361,6 +436,16 @@ pub enum GatewayEvent {
 }
 
 enum GatewayCommand {
+    LoadAgentPlugins {
+        request_id: String,
+        profile: Option<String>,
+    },
+    SetAgentPluginEnabled {
+        request_id: String,
+        key: String,
+        enabled: bool,
+        profile: Option<String>,
+    },
     ResumeSession {
         request_id: String,
         session_id: String,
@@ -717,6 +802,36 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
+    pub fn load_agent_plugins(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::LoadAgentPlugins {
+                request_id,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn set_agent_plugin_enabled(
+        &self,
+        request_id: String,
+        key: String,
+        enabled: bool,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::SetAgentPluginEnabled {
+                request_id,
+                key,
+                enabled,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn set_toolset_enabled(
         &self,
         request_id: String,
@@ -959,6 +1074,122 @@ fn gateway_actor(
     let mut retained_renames: HashMap<String, serde_json::Value> = HashMap::new();
     loop {
         match commands.try_recv() {
+            Ok(GatewayCommand::LoadAgentPlugins {
+                request_id,
+                profile,
+            }) => {
+                let params = session_profile_params(
+                    serde_json::json!({"action":"list"}),
+                    profile.as_deref(),
+                );
+                let result = params
+                    .and_then(|params| {
+                        rpc_with_events(
+                            socket,
+                            next_request_id,
+                            "plugins.manage",
+                            params,
+                            Some(&events),
+                        )
+                    })
+                    .and_then(|value| {
+                        let plugins = serde_json::from_value(
+                            value
+                                .get("plugins")
+                                .cloned()
+                                .unwrap_or_else(|| serde_json::json!([])),
+                        )
+                        .map_err(|_| {
+                            "Hermes returned an invalid plugins.manage list response".to_owned()
+                        })?;
+                        Ok(AgentPluginsSnapshot {
+                            plugins,
+                            user_count: value
+                                .get("user_count")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0) as usize,
+                            bundled_count: value
+                                .get("bundled_count")
+                                .and_then(serde_json::Value::as_u64)
+                                .unwrap_or(0) as usize,
+                        })
+                    });
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginsLoaded {
+                        request_id,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::SetAgentPluginEnabled {
+                request_id,
+                key,
+                enabled,
+                profile,
+            }) => {
+                let params = session_profile_params(
+                    serde_json::json!({"action":"toggle","key":key,"enable":enabled}),
+                    profile.as_deref(),
+                );
+                let result = params
+                    .and_then(|params| {
+                        rpc_with_events(
+                            socket,
+                            next_request_id,
+                            "plugins.manage",
+                            params,
+                            Some(&events),
+                        )
+                    })
+                    .and_then(|value| {
+                        if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+                            return Err(value
+                                .get("error")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("Hermes refused the plugin state change")
+                                .to_owned());
+                        }
+                        let plugin: AgentPluginInfo =
+                            serde_json::from_value(value.get("plugin").cloned().ok_or_else(
+                                || "Hermes omitted the updated plugin receipt".to_owned(),
+                            )?)
+                            .map_err(|_| {
+                                "Hermes returned an invalid updated plugin receipt".to_owned()
+                            })?;
+                        if plugin.key != key {
+                            return Err("Hermes updated a different plugin key".into());
+                        }
+                        Ok(AgentPluginToggleReceipt {
+                            plugin,
+                            restart_required: value
+                                .get("restart_required")
+                                .and_then(serde_json::Value::as_bool)
+                                .unwrap_or(false),
+                            gateway_reloaded: value
+                                .get("gateway_reloaded")
+                                .and_then(serde_json::Value::as_bool)
+                                .unwrap_or(false),
+                        })
+                    });
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginToggled {
+                        request_id,
+                        key,
+                        enabled,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::LoadConnectors { request_id }) => {
                 let result = (|| {
                     let listed = rpc_with_events(
@@ -4140,6 +4371,108 @@ mod tests {
         assert_eq!(snapshot.connectors[0].connector, "linear");
         assert_eq!(snapshot.catalog[0].name, "Linear");
         assert_eq!(snapshot.accounts[0].alias.as_deref(), Some("Engineering"));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn agent_plugins_use_profile_scoped_list_and_keyed_toggle_contracts() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let list: serde_json::Value = match socket.read().expect("read plugin list request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse list request"),
+                other => panic!("expected list request, got {other:?}"),
+            };
+            assert_eq!(list["method"], "plugins.manage");
+            assert_eq!(list["params"], json!({"action":"list","profile":"work"}));
+            let list_id = list["id"].as_u64().expect("list RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":list_id,"result":{
+                        "user_count":1,"bundled_count":0,"plugins":[{
+                            "name":"Legacy Helper","key":"legacy/helper","version":"1.2.0",
+                            "description":"Profile plugin","source":"user","status":"disabled",
+                            "portable":false,"has_desktop_half":false,"servers":[]
+                        }]
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send list result");
+
+            let toggle: serde_json::Value = match socket.read().expect("read plugin toggle request")
+            {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse toggle"),
+                other => panic!("expected toggle request, got {other:?}"),
+            };
+            assert_eq!(toggle["method"], "plugins.manage");
+            assert_eq!(
+                toggle["params"],
+                json!({"action":"toggle","key":"legacy/helper","enable":true,"profile":"work"})
+            );
+            let toggle_id = toggle["id"].as_u64().expect("toggle RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":toggle_id,"result":{
+                        "ok":true,"restart_required":false,"gateway_reloaded":true,
+                        "plugin":{"name":"Legacy Helper","key":"legacy/helper","version":"1.2.0",
+                            "description":"Profile plugin","source":"user","status":"enabled",
+                            "portable":false,"has_desktop_half":false,"servers":[]}
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send toggle result");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::LoadAgentPlugins {
+                request_id: "plugin-list-1".into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue plugin list");
+        let loaded = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("plugin inventory result");
+        assert!(matches!(
+            loaded,
+            GatewayEvent::AgentPluginsLoaded { request_id, profile: Some(profile), result: Ok(snapshot) }
+                if request_id == "plugin-list-1"
+                    && profile == "work"
+                    && snapshot.plugins.len() == 1
+                    && snapshot.plugins[0].key == "legacy/helper"
+                    && snapshot.user_count == 1
+        ));
+        command_tx
+            .send(GatewayCommand::SetAgentPluginEnabled {
+                request_id: "plugin-toggle-1".into(),
+                key: "legacy/helper".into(),
+                enabled: true,
+                profile: Some("work".into()),
+            })
+            .expect("queue profile plugin toggle");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("toggle receipt"),
+            GatewayEvent::AgentPluginToggled { request_id, key, enabled: true,
+                profile: Some(profile),
+                result: Ok(AgentPluginToggleReceipt { plugin, restart_required: false, gateway_reloaded: true }) }
+                if request_id == "plugin-toggle-1" && key == "legacy/helper" && profile == "work" && plugin.status == "enabled"
+        ));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

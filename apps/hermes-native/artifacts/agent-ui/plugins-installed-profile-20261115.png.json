@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "request_id": "hermes-ui-parity-20261115-installed-agent-plugins",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "base_head": "949ce8353b9fc624e27eb6b5b7f640945f0f5b8a",
+  "source_diff_sha256": "0134eced1455961023b2154066bff4db4cd05a1f44716574114a31e73ebc614e",
+  "automation_binary_sha256": "56ff10ee6e7506f1a4f854da99bb7ed6eee2a69986b782b0b1b3c12739d40b2f",
+  "screenshot_sha256": "6272ed24df93a7ab64ef84fe2ab2ea1280f193b4229dd57cc244e2f7337c580f",
+  "viewport": { "width": 1440, "height": 900 },
+  "route": "/capabilities?tab=plugins",
+  "fixture": "offline synthetic Legacy Helper installed Agent Plugin plus two synthetic public catalog entries",
+  "state": {
+    "installed_agent_plugin_count": 1,
+    "visible_plugin": "Legacy Helper",
+    "status": "disabled",
+    "update_available": "1.3.0",
+    "gateway_connected": false
+  },
+  "capture_method": "headless egui_kittest / hermes-automation --plugins-catalog-fixture",
+  "access_receipt": "AccessKit fixture locates Agent plugin: Legacy Helper as a CheckBox; the offline action handler rejects changes until the gateway is connected",
+  "limitations": [
+    "synthetic plugin/catalog data only",
+    "no installed Hermes profile or gateway was touched",
+    "Desktop plugin runtime, settings, installation, update and uninstall workflows remain incomplete",
+    "no source-paired Windows visual comparison"
+  ]
+}
