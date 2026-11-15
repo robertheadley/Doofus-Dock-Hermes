@@ -695,7 +695,7 @@ fn render_message() -> &'static str {
         &mut self,
         root: &std::path::Path,
     ) -> Result<(), String> {
-        std::fs::create_dir_all(root.join("src"))
+        std::fs::create_dir_all(root)
             .map_err(|error| format!("create fixture project: {error}"))?;
         std::fs::write(
             root.join("README.md"),
@@ -708,7 +708,7 @@ fn render_message() -> &'static str {
         )
         .map_err(|error| format!("write fixture manifest: {error}"))?;
         std::fs::write(
-            root.join("src/main.rs"),
+            root.join("main.rs"),
             "fn main() {\n    println!(\"Hello from the preview fixture\");\n}\n",
         )
         .map_err(|error| format!("write fixture source: {error}"))?;
@@ -735,7 +735,7 @@ fn render_message() -> &'static str {
         });
         self.transcript = vec![
             json!({"role":"user","content":"Show the project files."}),
-            json!({"role":"assistant","content":"The README is open in a transient preview pane."}),
+            json!({"role":"assistant","content":"The Rust source file is open with syntax highlighting in a transient preview pane."}),
         ];
         self.workspace
             .preferences
@@ -744,7 +744,7 @@ fn render_message() -> &'static str {
         self.workspace.apply_active_profile()?;
         self.files.set_root(Some(root.to_path_buf()));
 
-        let preview_path = root.join("README.md");
+        let preview_path = root.join("main.rs");
         self.workspace.open_file_preview(&preview_path)?;
         self.file_previews.request(&preview_path);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);

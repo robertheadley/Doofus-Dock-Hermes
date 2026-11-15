@@ -682,3 +682,14 @@ HUI-052/HUI-053 publication: `688b6cae39d84e2739df5b23fdc2f33f468e6047` is publi
 - **follow_up:** Continue pinned-source workflow parity and native host evidence.
 
 HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is published on `origin/main`; 123 library and 11 automation tests pass.
+
+- **id:** HUI-056
+- **timestamp:** 2026-11-15T14:05:55Z
+- **what:** Added language-highlighted Rust source previews and changed the isolated Files fixture to open `main.rs`.
+- **why:** The pinned Hermes source renders code with language-aware highlighting; the native preview should display that source content readably.
+- **components:** Hermes Native Files preview, screenshot fixture, feature documentation and validation log.
+- **type:** feature slice and validation.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 129 library + 11 automation tests; `cargo check -p hermes-native --all-targets --features agent-automation`; `git diff --check`; 1440×900 synthetic target capture visually inspected.
+- **performance:** Reuses the existing preview worker and CommonMark renderer; no additional I/O path.
+- **risks:** Preview formats remain partial; target-only capture is not source-paired Hermes parity evidence; PAR-0104 remains pending.
+- **follow_up:** Publish this slice, bind a distinct code-preview capture to the published commit, then continue the next pinned Files requirement.

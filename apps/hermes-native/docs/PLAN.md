@@ -459,4 +459,8 @@ The pinned `preview-file.tsx` sets `TEXT_PREVIEW_MAX_BYTES` to 512 KiB, renders 
 
 Capture review found the synthetic temporary absolute path consumed and clipped the narrow preview and Files headers, and the Markdown viewer's first glyph touched the panel boundary. Use the file name as the preview pane title, remove the redundant full path line, inset preview content, and render the project folder basename with the full path available on hover. Recapture a distinct 1440×900 image with a sidecar bound to the exact source SHA, target commit and binary/image hashes. This remains target-only visual evidence.
 
+### Revision 88 — syntax-highlight recognized source previews
+
+The pinned file preview uses Shiki for recognized source types. For UTF-8 source text, map the existing extension language and render a CommonMark fenced block through the cached syntax-highlighting renderer; choose a safe tilde/backtick fence that cannot terminate on file content, and fall back to bounded plain monospace for pathological fence-only inputs. The Files fixture now opens a small Rust source file so the non-default screenshot demonstrates a source-code preview. This is first syntax-highlight coverage; source line virtualization/numbers, image/PDF/HTML media and source-paired screenshots remain open.
+
 Add `actions.fill` for accessible single- and multiline-text inputs. It validates a unique semantic locator, enabled state, payload length and current UI generation, then sends AccessKit `SetValue` through egui to replace the complete field value (including clearing it). Tests prove fill, replacement, clearing, and the structured action receipt. This complements typed keystrokes while preserving the normal widget path.

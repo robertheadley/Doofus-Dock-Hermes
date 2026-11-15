@@ -117,6 +117,10 @@ impl FilePreviewStore {
                             ui.vertical(|ui| {
                                 if content.language == "markdown" {
                                     CommonMarkViewer::new().show(ui, markdown_cache, &content.text);
+                                } else if let Some(markdown) =
+                                    syntax_highlight_markdown(&content.language, &content.text)
+                                {
+                                    CommonMarkViewer::new().show(ui, markdown_cache, &markdown);
                                 } else {
                                     ui.label(
                                         egui::RichText::new(&content.text)
@@ -228,6 +232,33 @@ impl FilePreviewStore {
             self.result_rx = Some(result_rx);
         }
     }
+}
+
+fn syntax_highlight_markdown(language: &str, source: &str) -> Option<String> {
+    let longest_run = |needle: char| {
+        let mut longest = 0usize;
+        let mut current = 0usize;
+        for character in source.chars() {
+            if character == needle {
+                current += 1;
+                longest = longest.max(current);
+            } else {
+                current = 0;
+            }
+        }
+        longest
+    };
+    let (marker, longest) = if longest_run('`') <= longest_run('~') {
+        ('`', longest_run('`'))
+    } else {
+        ('~', longest_run('~'))
+    };
+    let fence_length = longest.max(2) + 1;
+    if fence_length > 64 {
+        return None;
+    }
+    let fence = marker.to_string().repeat(fence_length);
+    Some(format!("{fence}{language}\n{source}\n{fence}"))
 }
 
 pub struct FileBrowserState {
@@ -688,5 +719,14 @@ mod tests {
         );
         assert!(read_file_preview(&oversized, true).unwrap().truncated);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn syntax_highlight_wrapper_chooses_a_safe_fence_for_source_text() {
+        let wrapped = syntax_highlight_markdown("rust", "let marker = `inline`;\n").unwrap();
+        assert!(wrapped.starts_with("~~~rust\n"));
+        assert!(wrapped.ends_with("\n~~~"));
+        let fence_saturated = format!("{}{}", "~".repeat(65), "`".repeat(65));
+        assert!(syntax_highlight_markdown("text", &fence_saturated).is_none());
     }
 }
