@@ -75,3 +75,5 @@ The `screenshots.capture` stdio method saves each headless PNG with a same-stem 
 Parity acceptance is currently **0/499 in-scope fixed-source requirements (0%)**. All 565 research matrix rows are pending (66 are excluded from scope); there is no weighted partial-implementation percentage.
 
 For a Playwright-shaped JavaScript interface over the same semantic protocol, import `HermesPage` from `agent/hermes-page.mjs`. Run `node --test agent/hermes-page.test.mjs` from this crate directory. The module uses Node built-ins and is designed to run under Node or Bun, while the current tests are verified under Node.
+
+For read-only inspection of the actual Windows app, run `cargo run --features agent-automation --bin hermes-automation -- --native-window`. It opens an isolated off-screen window with `WS_EX_NOACTIVATE`, no Hermes gateway and a temporary profile; Windows UI Automation can inspect the real native accessibility tree. Do not invoke UIA actions on it: Windows activated the window on a tested TogglePattern action. The `HermesPage` stdio client still drives a separate headless app instance; a shared in-process action/screenshot channel is not implemented yet.

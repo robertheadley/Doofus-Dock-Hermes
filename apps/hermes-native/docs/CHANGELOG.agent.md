@@ -1513,3 +1513,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** One isolated startup and framebuffer capture; no normal runtime overhead.
   **risks:** Isolated desktop has no compatible OpenGL config; off-screen one-shot smoke is not a persistent native UI control host. The egui capture is byte-identical to the previous fixed-fixture shell capture and omits WebView2 pixels.
   **follow_up:** Add a persistent agent-controlled native host, user-selected native route actions and source-paired acceptance; retain the 499-row fixed denominator.
+
+- **id:** HUR-001-119
+  **timestamp:** 2026-11-15T19:17:36Z
+  **what:** Added an explicit Windows `--native-window` launch mode for the actual HermesNativeApp using an isolated temporary profile, gateway-disabled constructor, off-screen viewport and `WS_EX_NOACTIVATE` style.
+  **why:** Provide a non-foreground native accessibility inspection target so the future agent controller can inspect actual Windows-rendered control semantics.
+  **components:** apps/hermes-native/src/bin/hermes-automation.rs; apps/hermes-native/README.md; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/AGENT_AUTOMATION.md; apps/hermes-native/docs/BACKLOG.md; apps/hermes-native/docs/ARCHITECTURE.md; docs/ARCHITECTURE.md; docs/BACKLOG.md; docs/CHANGELOG.agent.md; docs/EXECUTION_LOGS.md.
+  **type:** native UI automation groundwork.
+  **validation:** Formatting passed; `cargo test -p hermes-native --all-targets --features agent-automation` passed 139 library and 12 automation tests; all-target feature check/build passed; Node syntax/tests passed 3/3. Actual app window was found by process ID; Windows UI Automation returned its real 32-element tree and `Capabilities` route button; `WS_EX_NOACTIVATE` was present; read-only tree inspection preserved foreground PID 25840.
+  **performance:** No normal runtime overhead; isolated feature launch only.
+  **risks:** UIA's `InvokePattern` is unsupported for egui buttons; `TogglePattern` changed route but activated the off-screen process even with `WS_EX_NOACTIVATE`. Posted mouse messages preserved foreground but did not navigate. Native UIA mutations are therefore intentionally undocumented as an allowed operation; no shared JS protocol or live native screenshot is connected.
+  **follow_up:** Add a process-local semantic action/screenshot channel with generation fencing, then integrate it into `HermesPage` and validate that mutations preserve the user's foreground application.

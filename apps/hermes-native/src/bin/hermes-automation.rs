@@ -68,6 +68,9 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
+    if args.as_slice() == ["--native-window"] {
+        return run_native_window();
+    }
     if args.as_slice() == ["--stdio"] {
         return automation_protocol::run_stdio();
     }
@@ -426,7 +429,129 @@ fn describe_node(node: egui_kittest::Node<'_>) -> Value {
 
 fn print_help() {
     println!("Hermes Native background UI agent runner
-Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --first-run-setup-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT | --type-role ROLE ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
+Usage: hermes-automation [--native-window] [--viewport WIDTHxHEIGHT] [--markdown-fixture | --first-run-setup-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT | --type-role ROLE ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
-Accessible actions use egui's AccessKit UI tree and normal widget input handling.");
+Accessible actions use egui's AccessKit UI tree and normal widget input handling.
+--native-window opens the actual app off-screen and inactive on Windows, with a temporary profile and gateway disabled. Query its native accessibility tree with Windows UI Automation. This mode does not yet expose the stdio protocol.");
+}
+
+#[cfg(windows)]
+fn run_native_window() -> Result<(), String> {
+    let profile = TemporaryProfile::create()?;
+    let profile_dir = profile.0.clone();
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("Hermes Native Agent Window")
+            .with_inner_size([1440.0, 900.0])
+            .with_position(egui::pos2(-32000.0, -32000.0))
+            .with_taskbar(false)
+            .with_active(false)
+            .with_visible(true),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Hermes Native Agent Window",
+        options,
+        Box::new(move |cc| {
+            let hwnd = native_window_handle(cc).map_err(|error| {
+                Box::new(std::io::Error::other(error)) as Box<dyn std::error::Error + Send + Sync>
+            })?;
+            set_window_no_activate(hwnd).map_err(|error| {
+                Box::new(std::io::Error::other(error)) as Box<dyn std::error::Error + Send + Sync>
+            })?;
+            Ok(Box::new(NativeAgentWindow {
+                app: HermesNativeApp::new_for_native_automation(cc, profile_dir),
+                hwnd,
+            }))
+        }),
+    )
+    .map_err(|error| format!("run isolated Hermes Native agent window: {error}"))?;
+    drop(profile);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn run_native_window() -> Result<(), String> {
+    Err("--native-window is currently supported only on Windows".into())
+}
+
+#[cfg(windows)]
+struct NativeAgentWindow {
+    app: HermesNativeApp,
+    hwnd: *mut std::ffi::c_void,
+}
+
+#[cfg(windows)]
+fn native_window_handle(cc: &eframe::CreationContext<'_>) -> Result<*mut std::ffi::c_void, String> {
+    use wry::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let window_handle = cc
+        .window_handle()
+        .map_err(|error| format!("get native window handle: {error}"))?;
+    let hwnd = match window_handle.as_raw() {
+        RawWindowHandle::Win32(handle) => handle.hwnd.get() as *mut std::ffi::c_void,
+        other => return Err(format!("expected Win32 window handle, got {other:?}")),
+    };
+    Ok(hwnd)
+}
+
+#[cfg(windows)]
+fn set_window_no_activate(hwnd: *mut std::ffi::c_void) -> Result<(), String> {
+    const GWL_EXSTYLE: i32 = -20;
+    const WS_EX_NOACTIVATE: isize = 0x0800_0000;
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_FRAMECHANGED: u32 = 0x0020;
+
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetWindowLongPtrW(window: *mut std::ffi::c_void, index: i32) -> isize;
+        fn SetWindowLongPtrW(window: *mut std::ffi::c_void, index: i32, value: isize) -> isize;
+        fn SetWindowPos(
+            window: *mut std::ffi::c_void,
+            insert_after: *mut std::ffi::c_void,
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+            flags: u32,
+        ) -> i32;
+    }
+
+    // SAFETY: eframe supplies the live HWND for the primary Windows viewport.
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if style & WS_EX_NOACTIVATE == 0 {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE);
+            if SetWindowPos(
+                hwnd,
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            ) == 0
+            {
+                return Err("could not apply the non-activating window style".into());
+            }
+            if GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_NOACTIVATE == 0 {
+                return Err("Windows did not retain WS_EX_NOACTIVATE".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+impl eframe::App for NativeAgentWindow {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if let Err(error) = set_window_no_activate(self.hwnd) {
+            eprintln!("hermes-automation: {error}");
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+        self.app.draw(ui);
+    }
 }

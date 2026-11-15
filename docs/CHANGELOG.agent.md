@@ -796,3 +796,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** One isolated UI launch and renderer capture; no app runtime path or normal launch cost changed.
 - **risks:** The isolated Win32 desktop route could not create an OpenGL window config. Off-screen native window actions are not exposed through the agent protocol; live Hermes and source-paired acceptance remain open. The shell screenshot omits the WebView2 child.
 - **follow_up:** Integrate the agent protocol with a persistent isolated native host and capture distinct user-selected native states; keep all 499 in-scope requirements pending until source-paired acceptance.
+
+- **id:** HUI-067
+- **timestamp:** 2026-11-15T19:17:36Z
+- **what:** Added `hermes-automation --native-window`, a Windows-only isolated native app launch that uses a temporary profile, disables Hermes gateway startup, positions the app off-screen and applies `WS_EX_NOACTIVATE`.
+- **why:** Let Windows UI Automation inspect the real HermesNativeApp accessibility tree while leaving the user's foreground window unchanged.
+- **components:** Hermes automation launcher, native Windows accessibility behavior, plan/backlog/architecture and automation documentation.
+- **type:** Windows native accessibility inspection.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 139 library and 12 automation tests; feature check/build passed; Node syntax/tests passed 3/3; launched the actual app, found its HWND and queried 32 UIA descendants. Read-only inspection preserved foreground PID 25840 and confirmed `WS_EX_NOACTIVATE` is set.
+- **performance:** No change to the normal app path; one native window is started only when the explicit option is used.
+- **risks:** UIA TogglePattern action activated the window despite the no-activate style; direct pointer messages kept focus but did not change the route. This mode is inspection-only; no native action or screenshot bridge exists yet.
+- **follow_up:** Implement generation-fenced process-local input and renderer screenshot requests, then repeat UIA/native tests without focus changes before exposing actions to the JS client.

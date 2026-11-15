@@ -31,7 +31,7 @@ The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDo
 ## Current limitations
 
 - Hermes gateway coverage is partial; many RPCs, events, and screens in the fixed snapshot are not implemented. The authenticated Doofus bridge is not connected.
-- The agent UI stdio process is headless and gateway isolated. Native window control and authenticated live-gateway automation still need implementation and verification.
+- The agent UI stdio process is headless and gateway isolated. A separate native launch can be inspected read-only through Windows UI Automation without foregrounding it, but UIA actions focus the window and pointer-message injection did not navigate. A no-focus in-process action/screenshot channel and authenticated live-gateway automation remain unimplemented.
 - Models and Doofus views remain incomplete; only the wired gateway/session slices are operational.
 - Center/tab and edge-split docking commands are wired, but live drag/drop persistence is unverified. Resize, tab picker, float/detach, and hide/close lifecycle remain unavailable.
 - No complete feature crosswalk against current Hermes source, no end-to-end evidence matrix, and no cutover decision.

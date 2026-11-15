@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 110 (implementation in progress).
+- **Working revision:** 111 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -556,3 +556,7 @@ Add a dependency-free Node-compatible client that launches the isolated Rust std
 Run the actual Hermes Native Files/HTML Preview surface in a visible but off-screen, non-activating Windows window on the normal display desktop. Record the foreground process IDs before and after and fail if the smoke process becomes foreground. Preserve write-once screenshot and JSON output, with renderer capture, HTML/JavaScript/relative-SVG load, child WebView bounds, and hide/reopen checks. The separate-desktop experiment could not create a matching OpenGL config, so it is not the background host strategy. This smoke proves one isolated native lifecycle and no activation during the run; it does not provide native-window actions, full desktop UIA control, installed-Hermes/live-gateway acceptance, or source-paired parity. The egui framebuffer omits the WebView2 child and this fixed fixture may reproduce an earlier shell screenshot; use the labeled child capture for visible document pixels.
 
 **Acceptance status snapshot (2026-11-15):** 0 of 499 in-scope fixed-source rows accepted (0%). The matrix contains 565 pending rows total: 499 in-scope stock Hermes Desktop requirements and 66 excluded research rows. This is a strict acceptance percentage, not an estimate of partial implementation effort; no weighted implementation percentage is maintained.
+
+### Revision 111 — isolated native accessibility inspection
+
+Add a Windows-only `hermes-automation --native-window` launch mode for the actual HermesNativeApp, with a temporary profile, gateway disabled, off-screen viewport and `WS_EX_NOACTIVATE`. Validate that Windows UI Automation can read its real window and accessible control tree without changing the foreground process. UIA mutations are not safe for this background mode: a TogglePattern route action focused the window despite the no-activate style, and direct window pointer-message injection did not navigate. Keep native inspection read-only until a process-local semantic action channel can send the same generation-checked UI events/handlers without activating the window. Do not claim the existing Playwright-shaped headless client controls this native window; native screenshot requests and UI state sharing remain open.
