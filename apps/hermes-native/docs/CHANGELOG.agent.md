@@ -816,3 +816,28 @@
 ## HUI-032 follow-up — Escape with Ctrl held
 
 The first Escape regression found that egui’s modifier-exact consume call missed Escape while Ctrl was held. The handler now consumes Escape using the active modifier set. The regression passes, preserving the quick-cycle destination while dismissing the HUD; the full suite passes at 94 library and 7 automation tests.
+
+## HUI-033
+
+- **id:** HUI-033
+- **timestamp:** 2026-11-15T08:23:18Z
+- **what:** Added source-aligned public plugin catalog loading, JSON normalization/search data, single-worker background fetching, local search, selectable entry details, repository navigation, retry control, agent-visible catalog state, typed `refresh_plugin_catalog` action, and a deterministic offline fixture screenshot.
+- **why:** Capabilities → Plugins was a placeholder even though the fixed Desktop exposes its public plugin catalog there.
+- **components:** Hermes Native plugin catalog module, Capabilities Plugins renderer, registered app action, semantic automation fixture, architecture/backlog/plan documentation and screenshots.
+- **type:** fixed-snapshot public catalog discovery parity slice.
+- **validation:** Parser tests cover typed source fields, search text, display-name fallback, duplicate replacement, malformed response shape, and response size. Full Hermes Native suite and agent-automation build pass. Headless AccessKit inspection shows the search field, refresh action, selectable entries, detail fields and repository control; 1440×900 fixture screenshot was visually inspected. The published feed returned HTTP 200, 2,378 entries and 5,092,913 bytes in a separate live endpoint check. No installed plugin management or paired source screenshot was exercised.
+- **performance:** The network request runs on a dedicated serial worker, has a 60-second deadline and returns a bounded 32 MiB response; UI search scans the loaded catalog in memory.
+- **risks:** Feed contents are live because the pinned Desktop fetches the public catalog at runtime; this does not change the fixed Hermes source target. Plugin installation/security review, installed package state and catalog filter/sort/card parity remain incomplete. Synthetic fixture data is not real catalog content.
+- **follow_up:** Implement the installed Desktop/Agent package inventory and source catalog browser interactions, then compare against the pinned source using matched fixtures and UI captures.
+
+### HUI-033 visual follow-up
+
+The first rendered fixture showed the Plugins section title and result count clipped against the Dock divider. Added a 4 px leading inset, preserved loaded entries during a failed refresh, kept refresh on the shared typed handler, and cleared selected details when search changes. Rebuilt and visually rechecked the 1440×900 fixture; all package checks passed again.
+
+### HUI-033 live-feed and bounds follow-up
+
+Live agent navigation exposed a CJK/Thai missing-glyph panic, an unbounded 2,378-row render, and an oversized diagnostic snapshot. Added Windows installed-script fallbacks with a non-panicking tofu policy, source-style 60-row paging, and bounded agent catalog summary state. Through the headless agent's typed route action, `ui.wait_for` observed the real catalog's Show more control in 604 ms; `state.get` then returned `plugin_catalog_entry_count=2378`, `plugin_catalog_visible_limit=60`, no error, and no gateway. The live screenshot is `artifacts/agent-ui/plugin-catalog-live-20261115.png`.
+
+### HUI-033 screenshot evidence follow-up
+
+Root cause for repeated-looking captures: every headless run creates a fresh isolated app, and `--screenshot` without explicit navigation or fixture setup captures the default New session route. Some code-only updates also had no visible change on that route. Documented the navigation/wait requirement and separated the synthetic catalog fixture from a real public-feed capture. The live image visibly differs and its sidecar records route, loaded count, wait receipt, and isolation boundary.

@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-11-15T08:52:00Z",
+  "request_id": "hermes-ui-parity-20261115-plugin-catalog-live-validation",
+  "hermes_snapshot_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "repository_head": "d30a58f5fba17e40ce386154a39dc7345cf00056",
+  "source_diff_sha256": "a31851abf2ac6e3c59f93da7785bd7ab0b7a62ddb3118bfe10f8245b623b77fa",
+  "untracked_source_files_in_digest": [
+    "apps/hermes-native/src/plugin_catalog.rs"
+  ],
+  "executable_sha256": "fe8bcf4ca5f0b93248f2239b3fd59938e3351dd40a335bed3be93930778a90f3",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "screenshot_sha256": "79b35bf435510b482b72f7980d7575bea2973368bdf539793dd5c1069421df6e",
+  "route": "/capabilities?tab=plugins",
+  "fixture": "live-public-plugin-catalog",
+  "fixture_data": "Public plugins.json fetched by Rust background worker; 2,378 records loaded; initial visible page 60; no gateway credentials or Hermes gateway.",
+  "agent_observation": {
+    "navigation": "select_capabilities_tab(plugins)",
+    "wait_target": "Button: Show more plugins · 2318 remaining",
+    "wait_ms": 604,
+    "state": {
+      "plugin_catalog_pending": false,
+      "plugin_catalog_error": null,
+      "plugin_catalog_entry_count": 2378,
+      "plugin_catalog_visible_limit": 60,
+      "gateway": "isolated"
+    }
+  },
+  "visual_review": "Distinct live-content screenshot shows Capabilities → Plugins, 2,378 total and the first live rows.",
+  "limitations": [
+    "Public catalog is live but Hermes gateway/profile is isolated.",
+    "Installed plugin state is not loaded.",
+    "Not paired against Hermes Desktop screenshot.",
+    "Physical Windows desktop rendering was not exercised."
+  ]
+}

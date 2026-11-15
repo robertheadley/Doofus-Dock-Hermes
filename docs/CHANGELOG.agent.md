@@ -412,3 +412,13 @@
 ## HUI-032 follow-up — Escape with Ctrl held
 
 The first Escape regression found that egui’s modifier-exact consume call missed Escape while Ctrl was held. The handler now consumes Escape using the active modifier set. The regression passes, preserving the quick-cycle destination while dismissing the HUD; the full suite passes at 94 library and 7 automation tests.
+
+## HUI-033 — Native Hermes public plugin catalog slice
+
+The native Capabilities → Plugins route now fetches the same public `plugins.json` feed as the pinned Desktop through a bounded background worker. Source-shaped entries support local search, selection/details and repository navigation; catalog refresh is registered through the shared UI/agent action path. Added parser coverage and a synthetic isolated screenshot fixture. Installed package management, catalog filters/cards/install workflows, Connectors and paired Windows/source verification remain incomplete.
+
+HUI-033 visual follow-up: corrected the four-pixel left clipping visible in the first fixture, retained loaded catalog rows during refresh/error, and reset selected details when search changes. Rebuilt and visually inspected the updated fixture; the final complete validation run passed.
+
+HUI-033 live-feed follow-up: the isolated Rust UI agent loaded the actual 2,378-row public feed and exposed the first 60 rows. Added Windows Unicode fallback faces plus tofu for unsupported glyphs, 60-row rendering pages, and bounded diagnostics after live CJK/Thai content revealed panic and oversized-state cases. The live UI wait completed in 604 ms and `state.get` confirmed all rows loaded, 60-row display limit, no catalog error, and gateway isolation. Saved a distinct live catalog screenshot and kept the synthetic fixture separate.
+
+HUI-033 screenshot evidence follow-up: identified that fresh headless processes reset to New session, so captures without route navigation/fixtures repeated the default view. Added an explicit route-or-fixture plus wait requirement, and recorded a visually distinct live public catalog capture separately from the synthetic fixture, with route/state/hash-bound sidecars.

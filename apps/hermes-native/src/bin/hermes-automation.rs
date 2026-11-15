@@ -83,6 +83,7 @@ fn run() -> Result<(), String> {
     let mut long_session_fixture = false;
     let mut session_pane_fixture = false;
     let mut recent_session_switcher_fixture = false;
+    let mut plugins_catalog_fixture = false;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -103,6 +104,7 @@ fn run() -> Result<(), String> {
             "--long-session-fixture" => long_session_fixture = true,
             "--session-pane-fixture" => session_pane_fixture = true,
             "--recent-session-switcher-fixture" => recent_session_switcher_fixture = true,
+            "--plugins-catalog-fixture" => plugins_catalog_fixture = true,
             "--click" => actions.push(Action::Click(take(&args, &mut index, "--click")?)),
             "--type" => {
                 let label = take(&args, &mut index, "--type")?;
@@ -123,6 +125,7 @@ fn run() -> Result<(), String> {
         long_session_fixture,
         session_pane_fixture,
         recent_session_switcher_fixture,
+        plugins_catalog_fixture,
     ]
     .into_iter()
     .filter(|enabled| *enabled)
@@ -145,6 +148,9 @@ fn run() -> Result<(), String> {
     } else if recent_session_switcher_fixture {
         app.borrow_mut()
             .load_recent_session_switcher_fixture_for_automation();
+    } else if plugins_catalog_fixture {
+        app.borrow_mut()
+            .load_plugin_catalog_fixture_for_automation();
     }
     let app_for_frame = app.clone();
     let mut builder = Harness::builder().with_size(Vec2::new(width, height));

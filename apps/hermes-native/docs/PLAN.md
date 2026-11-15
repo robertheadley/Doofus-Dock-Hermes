@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 59 (implementation in progress).
+- **Working revision:** 61 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -344,3 +344,15 @@ Opening another session now appends to the existing workspace tab group instead 
 When the fixed-source session cycling shortcuts find no eligible visible tab strip, a quick chord advances immediately through the active profile's unarchived session list. Holding the chord for 220 ms reveals a compact top-center HUD; repeating the chord advances its highlight, releasing Ctrl commits the highlighted profile-scoped session, and Escape or click-away dismisses the HUD. The same egui shortcut, navigation and accessible row handlers are used by a person and the headless UI agent. Read-only agent state exposes whether the switcher is pending/open and its selected index/session IDs.
 
 Headless tests cover quick activation, profile filtering, hold reveal, repeated-step wrap/commit and accessible row selection. `artifacts/agent-ui/recent-session-switcher-20261115.png` plus its sidecar show a distinct synthetic 1440x900 fixture. Captures without actions or fixtures intentionally show the fresh offline New session route. Physical Windows key hold/focus acceptance and paired source screenshots remain open.
+
+### Revision 60 — pinned-source public plugin catalog browse
+
+When Capabilities → Plugins is opened, fetch the pinned Desktop's public `plugins.json` catalog on a dedicated single-flight background worker, without gateway credentials or UI-thread blocking. Parse source catalog fields and search text with the source's fallback and tier+identifier dedupe rules; expose local search, selectable entry details, repository navigation, load/error/retry states and an isolated offline fixture. The visible refresh button and agent `refresh_plugin_catalog` action share the registered handler. Keep the catalog live-feed behavior independent from the downloaded Hermes code snapshot; do not re-pin source to chase upstream changes.
+
+The installed plugin inventory, desktop/agent package halves, merge/provenance, catalog filters/sort/cards, install review and confirmation, update/uninstall/access grants, and Connectors are still open. Parser tests and an offline 1440×900 UI fixture validate this slice only; the live feed was confirmed reachable, but the Rust worker has not yet been proven in a paired installed-Hermes session and no source-paired screenshot exists.
+
+### Revision 61 — live catalog, bounded agent state and Unicode-safe rendering
+
+The live public feed was exercised through `app.action.execute` and the native worker in the isolated stdio agent process. The catalog returns 2,378 entries; the visible UI pages 60 at a time, while `state.get` reports bounded summary data rather than serializing the full feed beyond the protocol's 256 KiB response cap. `ui.wait_for` can advance app frames and observe this app-local worker completion. Windows uses installed CJK, Thai, Indic and multiscript fonts only as final fallbacks behind JetBrains Mono/Fira Code, with tofu fallback for unsupported code points. This prevents multilingual public catalog labels from panicking the agent renderer.
+
+The live agent screenshot `artifacts/agent-ui/plugin-catalog-live-20261115.png` shows the fetched catalog (first visible rows, 2,378 total). The deterministic synthetic fixture remains separate for repeatable tests. This is still only public discovery: installed plugin reconciliation and management, source filters/sorting/card/detail/install flows, Connectors, paired source screenshots, and physical Windows acceptance remain incomplete.

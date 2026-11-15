@@ -3,6 +3,7 @@ use crate::gateway::{
     SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
 };
 use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
+use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
 use crate::routes::AppRoute;
 use doofusdock_core::{
     CommandId, DragSession, Node, NodeId, NodeKind, Operation, Orientation, PanelId,
@@ -47,6 +48,7 @@ pub enum RegisteredUiAction {
         tab: CapabilitiesTab,
     },
     RefreshCapabilities,
+    RefreshPluginCatalog,
     SetToolsetEnabled {
         name: String,
         enabled: bool,
@@ -112,6 +114,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             {"type":"select_layout_profile","permission":"ui_interaction","mutates":true,"schema":{"profile_id":"one of the profiles available in the selected interface mode"}}
             ,{"type":"select_capabilities_tab","permission":"ui_interaction","mutates":true,"schema":{"tab":["skills","plugins","connectors","toolsets"]}}
             ,{"type":"refresh_capabilities","permission":"ui_interaction","mutates":false,"schema":{}}
+            ,{"type":"refresh_plugin_catalog","permission":"ui_interaction","mutates":false,"schema":{}}
             ,{"type":"set_toolset_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded toolsets, max 128 bytes","enabled":"boolean"}}
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
@@ -274,6 +277,7 @@ struct BatchClarifyPrompt {
 }
 
 const SESSION_SWITCHER_REVEAL_DELAY: std::time::Duration = std::time::Duration::from_millis(220);
+const PLUGIN_CATALOG_PAGE_SIZE: usize = 60;
 
 #[derive(Clone, Debug)]
 struct RecentSessionSwitcher {
@@ -317,6 +321,13 @@ pub struct HermesNativeApp {
     capabilities_error: Option<String>,
     skills: Option<Vec<SkillInfo>>,
     toolsets: Option<Vec<ToolsetInfo>>,
+    plugin_catalog_worker: PluginCatalogWorker,
+    plugin_catalog: Option<Vec<PluginCatalogEntry>>,
+    plugin_catalog_request_id: Option<String>,
+    plugin_catalog_pending: bool,
+    plugin_catalog_error: Option<String>,
+    selected_plugin_id: Option<String>,
+    plugin_catalog_visible_limit: usize,
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
@@ -491,6 +502,51 @@ fn render_message() -> &'static str {
         self.status = "Recent session switcher fixture · gateway isolated".into();
     }
 
+    #[cfg(feature = "agent-automation")]
+    pub fn load_plugin_catalog_fixture_for_automation(&mut self) {
+        self.route = AppRoute::Capabilities;
+        self.capabilities_tab = CapabilitiesTab::Plugins;
+        self.plugin_catalog = Some(vec![
+            PluginCatalogEntry {
+                name: "Research Companion".into(),
+                description: "Search and summarize trusted research sources.".into(),
+                overview: "A demonstration catalog entry for deterministic offline UI review.".into(),
+                category: "research".into(),
+                category_label: "Research".into(),
+                tier: "official".into(),
+                author: "Hermes".into(),
+                identifier: "fixture-research".into(),
+                repo: "https://github.com/nousresearch/hermes-agent".into(),
+                sha: "0123456789012345678901234567890123456789".into(),
+                version: "1.2.0".into(),
+                tags: vec!["web".into(), "citations".into()],
+                tools: vec!["search_sources".into(), "summarize".into()],
+                requirements: vec!["RESEARCH_API_KEY".into()],
+                search: "research companion search summarize trusted research sources research official hermes web citations search_sources".into(),
+                ..PluginCatalogEntry::default()
+            },
+            PluginCatalogEntry {
+                name: "Workspace Helper".into(),
+                description: "Adds focused commands for organizing project work.".into(),
+                category: "productivity".into(),
+                category_label: "Productivity".into(),
+                tier: "verified".into(),
+                author: "DoofusDock Demo".into(),
+                identifier: "fixture-workspace".into(),
+                repo: "https://github.com/robertheadley/Doofus-Dock-Hermes".into(),
+                tags: vec!["workspace".into(), "planning".into()],
+                tools: vec!["organize_tasks".into()],
+                search: "workspace helper adds focused commands organizing project work productivity verified planning".into(),
+                ..PluginCatalogEntry::default()
+            },
+        ]);
+        self.selected_plugin_id = Some("fixture-research".into());
+        self.plugin_catalog_visible_limit = PLUGIN_CATALOG_PAGE_SIZE;
+        self.plugin_catalog_pending = false;
+        self.plugin_catalog_error = None;
+        self.status = "Plugin catalog fixture · offline sample data".into();
+    }
+
     fn from_workspace_result(
         connect_gateway: bool,
         workspace: Result<Workspace, String>,
@@ -537,6 +593,13 @@ fn render_message() -> &'static str {
             capabilities_error: None,
             skills: None,
             toolsets: None,
+            plugin_catalog_worker: PluginCatalogWorker::start(),
+            plugin_catalog: None,
+            plugin_catalog_request_id: None,
+            plugin_catalog_pending: false,
+            plugin_catalog_error: None,
+            selected_plugin_id: None,
+            plugin_catalog_visible_limit: PLUGIN_CATALOG_PAGE_SIZE,
             pending_toolset_updates: BTreeMap::new(),
             fonts_installed: false,
             gateway_connected: false,
@@ -1911,14 +1974,26 @@ fn render_message() -> &'static str {
         ui.separator();
         if matches!(
             self.capabilities_tab,
-            CapabilitiesTab::Skills | CapabilitiesTab::Toolsets
+            CapabilitiesTab::Skills | CapabilitiesTab::Plugins | CapabilitiesTab::Toolsets
         ) {
-            ui.add(
+            let search = ui.add(
                 egui::TextEdit::singleline(&mut self.capabilities_query)
-                    .hint_text("Search capabilities")
+                    .hint_text(if self.capabilities_tab == CapabilitiesTab::Plugins {
+                        "Search plugins"
+                    } else {
+                        "Search capabilities"
+                    })
                     .desired_width(ui.available_width()),
-            )
-            .accessible_name("Search capabilities");
+            );
+            if search.changed() && self.capabilities_tab == CapabilitiesTab::Plugins {
+                self.selected_plugin_id = None;
+                self.plugin_catalog_visible_limit = PLUGIN_CATALOG_PAGE_SIZE;
+            }
+            search.accessible_name(if self.capabilities_tab == CapabilitiesTab::Plugins {
+                "Search plugins"
+            } else {
+                "Search capabilities"
+            });
         } else {
             ui.add_space(28.0);
         }
@@ -2122,10 +2197,181 @@ fn render_message() -> &'static str {
                 });
             }
             CapabilitiesTab::Plugins => {
-                self.route_unavailable(
-                    ui,
-                    "Plugin inventory and package actions are not connected yet.",
-                );
+                ui.horizontal(|ui| {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("Plugin catalog").strong().color(TEXT));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let refresh = ui.add_enabled(
+                            !self.plugin_catalog_pending,
+                            egui::Button::new(if self.plugin_catalog.is_some() {
+                                "Refresh catalog"
+                            } else {
+                                "Load catalog"
+                            }),
+                        );
+                        if refresh.clicked() {
+                            self.execute_registered_action(
+                                RegisteredUiAction::RefreshPluginCatalog,
+                            )
+                            .unwrap_or_else(|error| self.plugin_catalog_error = Some(error));
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+                if self.plugin_catalog_pending && self.plugin_catalog.is_none() {
+                    ui.label(
+                        RichText::new("Loading plugin catalog…")
+                            .size(12.0)
+                            .color(MUTED),
+                    );
+                    return;
+                }
+                if let Some(error) = &self.plugin_catalog_error {
+                    ui.label(
+                        RichText::new(format!("Plugin catalog could not be loaded: {error}"))
+                            .size(12.0)
+                            .color(MUTED),
+                    );
+                    if self.plugin_catalog.is_none() {
+                        return;
+                    }
+                }
+                let Some(entries) = &self.plugin_catalog else {
+                    self.route_unavailable(ui, "Load the public plugin catalog to browse plugins.");
+                    return;
+                };
+                if self.plugin_catalog_pending {
+                    ui.label(RichText::new("Refreshing catalog…").size(11.0).color(MUTED));
+                }
+                let query = self.capabilities_query.trim().to_lowercase();
+                let filtered = entries
+                    .iter()
+                    .filter(|entry| query.is_empty() || entry.search.contains(&query))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                ui.horizontal(|ui| {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("Plugins · {} of {}", filtered.len(), entries.len()))
+                            .strong()
+                            .color(TEXT),
+                    );
+                });
+                if filtered.is_empty() {
+                    self.empty_panel(
+                        ui,
+                        if query.is_empty() {
+                            "No plugins in catalog"
+                        } else {
+                            "No matching plugins"
+                        },
+                    );
+                    return;
+                }
+                let filtered_count = filtered.len();
+                let visible_count = filtered_count.min(self.plugin_catalog_visible_limit);
+                let visible = filtered.into_iter().take(visible_count).collect::<Vec<_>>();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for entry in visible {
+                        let selected =
+                            self.selected_plugin_id.as_deref() == Some(&entry.identifier);
+                        let mut open_repo = false;
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .selectable_label(
+                                        selected,
+                                        RichText::new(&entry.name).strong().color(TEXT),
+                                    )
+                                    .clicked()
+                                {
+                                    self.selected_plugin_id = Some(entry.identifier.clone());
+                                }
+                                ui.label(RichText::new(&entry.tier).color(ACCENT));
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if !entry.repo.is_empty() {
+                                        open_repo = ui.small_button("Repository").clicked();
+                                    }
+                                });
+                            });
+                            if !entry.category_label.is_empty() {
+                                ui.label(
+                                    RichText::new(&entry.category_label)
+                                        .size(11.0)
+                                        .color(ACCENT),
+                                );
+                            }
+                            if !entry.description.is_empty() {
+                                ui.label(RichText::new(&entry.description).size(12.0).color(MUTED));
+                            }
+                            if selected {
+                                if !entry.overview.is_empty() {
+                                    ui.separator();
+                                    ui.label(RichText::new(&entry.overview).size(12.0).color(TEXT));
+                                }
+                                if !entry.author.is_empty() {
+                                    ui.label(
+                                        RichText::new(format!("Maintainer · {}", entry.author))
+                                            .size(11.0)
+                                            .color(MUTED),
+                                    );
+                                }
+                                if !entry.version.is_empty() || !entry.sha.is_empty() {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{}{}",
+                                            entry.version,
+                                            if entry.sha.is_empty() {
+                                                String::new()
+                                            } else {
+                                                format!(
+                                                    " · {}",
+                                                    entry.sha.chars().take(8).collect::<String>()
+                                                )
+                                            }
+                                        ))
+                                        .size(10.0)
+                                        .color(MUTED),
+                                    );
+                                }
+                                for (label, values) in [
+                                    ("Tags", &entry.tags),
+                                    ("Tools", &entry.tools),
+                                    ("Hooks", &entry.hooks),
+                                    ("Requirements", &entry.requirements),
+                                ] {
+                                    if !values.is_empty() {
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{label} · {}",
+                                                values.join(" · ")
+                                            ))
+                                            .size(10.0)
+                                            .color(MUTED),
+                                        );
+                                    }
+                                }
+                            }
+                        });
+                        if open_repo {
+                            if entry.repo.starts_with("https://") {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab(&entry.repo));
+                            }
+                        }
+                        ui.add_space(5.0);
+                    }
+                    if visible_count < filtered_count {
+                        let remaining = filtered_count.saturating_sub(visible_count);
+                        if ui
+                            .button(format!("Show more plugins · {remaining} remaining"))
+                            .clicked()
+                        {
+                            self.plugin_catalog_visible_limit = self
+                                .plugin_catalog_visible_limit
+                                .saturating_add(PLUGIN_CATALOG_PAGE_SIZE);
+                        }
+                    }
+                });
             }
             CapabilitiesTab::Connectors => {
                 self.route_unavailable(
@@ -3947,6 +4193,14 @@ fn render_message() -> &'static str {
                 self.load_capabilities()
                     .unwrap_or_else(|error| self.capabilities_error = Some(error));
             }
+            if tab == CapabilitiesTab::Plugins
+                && self.plugin_catalog.is_none()
+                && !self.plugin_catalog_pending
+                && self.plugin_catalog_error.is_none()
+            {
+                self.load_plugin_catalog()
+                    .unwrap_or_else(|error| self.plugin_catalog_error = Some(error));
+            }
         }
         Ok(())
     }
@@ -4027,6 +4281,7 @@ fn render_message() -> &'static str {
                 self.navigate_path(&format!("/capabilities?tab={}", tab.as_str()))?;
             }
             RegisteredUiAction::RefreshCapabilities => self.load_capabilities()?,
+            RegisteredUiAction::RefreshPluginCatalog => self.load_plugin_catalog()?,
             RegisteredUiAction::SetToolsetEnabled { name, enabled } => {
                 self.set_toolset_enabled(name, enabled)?;
             }
@@ -4056,6 +4311,35 @@ fn render_message() -> &'static str {
         self.capabilities_pending = true;
         self.capabilities_error = None;
         Ok(())
+    }
+
+    fn load_plugin_catalog(&mut self) -> Result<(), String> {
+        if self.plugin_catalog_pending {
+            return Ok(());
+        }
+        let request_id = operation_id("plugin-catalog");
+        self.plugin_catalog_worker.fetch(request_id.clone())?;
+        self.plugin_catalog_request_id = Some(request_id);
+        self.plugin_catalog_pending = true;
+        self.plugin_catalog_error = None;
+        Ok(())
+    }
+
+    fn poll_plugin_catalog(&mut self) {
+        while let Some(result) = self.plugin_catalog_worker.poll() {
+            if self.plugin_catalog_request_id.as_deref() != Some(&result.request_id) {
+                continue;
+            }
+            self.plugin_catalog_request_id = None;
+            self.plugin_catalog_pending = false;
+            match result.result {
+                Ok(entries) => {
+                    self.plugin_catalog = Some(entries);
+                    self.plugin_catalog_error = None;
+                }
+                Err(error) => self.plugin_catalog_error = Some(error),
+            }
+        }
     }
 
     fn set_toolset_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
@@ -8969,6 +9253,7 @@ impl HermesNativeApp {
             crate::fonts::install(&ctx);
             self.fonts_installed = true;
         }
+        self.poll_plugin_catalog();
         self.update_gateway_discovery(&ctx);
         let mut visuals = egui::Visuals::dark();
         visuals.window_fill = BG;
@@ -9347,6 +9632,15 @@ impl HermesNativeApp {
         serde_json::json!({
             "route": self.current_route_path(),
             "route_title": self.route.title(),
+            "capabilities": {
+                "tab": self.capabilities_tab.as_str(),
+                "query": self.capabilities_query,
+                "plugin_catalog_pending": self.plugin_catalog_pending,
+                "plugin_catalog_error": self.plugin_catalog_error,
+                "plugin_catalog_entry_count": self.plugin_catalog.as_ref().map(Vec::len),
+                "selected_plugin_id": self.selected_plugin_id,
+                "plugin_catalog_visible_limit": self.plugin_catalog_visible_limit,
+            },
             "interface_mode": mode,
             "layout_profile": self.workspace.active_profile(),
             "layout_revision": layout.revision,
