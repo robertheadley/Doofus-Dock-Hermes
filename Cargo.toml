@@ -26,3 +26,6 @@ resolver = "3"
 
 [patch.crates-io]
 egui_commonmark_backend = { path = "apps/hermes-native/vendor/egui_commonmark_backend" }
+
+[patch."https://github.com/robertheadley/doofusdock"]
+doofusdock-render-egui = { path = "apps/hermes-native/vendor/doofusdock-render-egui" }

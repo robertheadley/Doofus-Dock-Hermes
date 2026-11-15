@@ -1,0 +1,17 @@
+[package]
+name = "doofusdock-render-egui"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+
+[dependencies]
+doofusdock-core = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
+doofusdock-presentation = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
+egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
+egui-winit = { version = "0.37", default-features = false, features = ["accesskit", "clipboard"] }
+winit = "0.30.13"
+softbuffer = "0.4.8"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["preserve_order"] }

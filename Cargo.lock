@@ -946,7 +946,6 @@ dependencies = [
 [[package]]
 name = "doofusdock-render-egui"
 version = "0.2.0"
-source = "git+https://github.com/robertheadley/doofusdock?rev=f6eb49b9e488f4e851d8d3abe18e95d296201bba#f6eb49b9e488f4e851d8d3abe18e95d296201bba"
 dependencies = [
  "doofusdock-core",
  "doofusdock-presentation",

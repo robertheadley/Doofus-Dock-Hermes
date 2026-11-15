@@ -265,7 +265,7 @@ impl ProtocolState {
                     "native_window": false
                 }),
             ),
-            "actions.click" => {
+            "actions.click" | "actions.right_click" => {
                 let (role, name) = match resolve_locator(harness, &params, "") {
                     Ok(locator) => locator,
                     Err((code, message)) => return failure(id.clone(), code, message),
@@ -294,7 +294,27 @@ impl ProtocolState {
                         format!("{role} named {name:?} is disabled"),
                     );
                 }
-                matches[0].click();
+                if method == "actions.click" {
+                    matches[0].click();
+                } else {
+                    let position = matches[0].rect().center();
+                    harness.event(egui::Event::PointerMoved(position));
+                    harness.run();
+                    harness.event(egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Secondary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::default(),
+                    });
+                    harness.run();
+                    harness.event(egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Secondary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::default(),
+                    });
+                    harness.run();
+                }
                 harness.run();
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
@@ -307,7 +327,7 @@ impl ProtocolState {
                         "trace_id": format!("ui-{request_id}"),
                         "actor": "stdio-peer",
                         "permission_class": "ui-interaction",
-                        "command": "ui.click",
+                        "command": if method == "actions.click" { "ui.click" } else { "ui.right_click" },
                         "target": {"role": role, "name": name},
                         "state_generation_before": before_generation,
                         "state_generation_after": self.generation,
@@ -1076,6 +1096,7 @@ fn capabilities() -> Value {
             {"id":"events.list","method":"events.list","permission":"read_only","implemented":true,"verification":"runtime"},
             {"id":"diagnostics.bundle","method":"diagnostics.bundle","permission":"read_only","implemented":true,"verification":"runtime"},
             {"id":"ui.click","method":"actions.click","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
+            {"id":"ui.right_click","method":"actions.right_click","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.type","method":"actions.type","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
             {"id":"ui.drag","method":"actions.drag","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.select","method":"actions.select","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
@@ -1083,7 +1104,7 @@ fn capabilities() -> Value {
             {"id":"ui.wait_for","method":"ui.wait_for","permission":"read_only","implemented":true,"verification":"headless_semantic"},
             {"id":"screenshot.capture","method":"screenshots.capture","permission":"artifact_write","implemented":true,"verification":"headless_render"},
             {"id":"native_window_control","method":null,"permission":"unsupported","implemented":false,"verification":"not_tested"},
-            {"id":"stable_test_id_locator","method":"actions.click/actions.type/actions.select/actions.drag/ui.wait_for","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"}
+            {"id":"stable_test_id_locator","method":"actions.click/actions.right_click/actions.type/actions.select/actions.drag/ui.wait_for","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"}
         ]
     })
 }
@@ -1669,6 +1690,39 @@ mod tests {
         assert_eq!(
             switched["result"]["after"]["dock_tab_groups"][0]["active_index"],
             1
+        );
+
+        let right_clicked = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "open-dock-tab-menu",
+                "method": "actions.right_click",
+                "params": {
+                    "test_id": "dock.tab.workspace",
+                    "expected_state_generation": 3
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(right_clicked["status"], "succeeded", "{right_clicked}");
+        assert_eq!(right_clicked["result"]["command"], "ui.right_click");
+        assert_eq!(right_clicked["result"]["state_generation_after"], 4);
+        assert!(
+            !matching_labels(&harness, "Close all").is_empty(),
+            "the agent's real secondary-pointer path must open the same DoofusDock context menu"
+        );
+        assert!(
+            protocol.handle(
+                json!({"version":1,"id":"right-click-capability","method":"capabilities.list","params":{}}),
+                &mut harness,
+                &app,
+            )["result"]["capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["id"] == "ui.right_click"),
+            "secondary-pointer interaction must be discoverable"
         );
 
         drop(harness);

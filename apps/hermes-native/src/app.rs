@@ -13,7 +13,7 @@ use doofusdock_render_egui::{
         PanelChromeControl, PanelChromeStyle, ResizeAxis, ResizeHandleStyle, panel_title_bar,
         resize_handle,
     },
-    tabs::{TabStripItem, TabStripState, tab_strip},
+    tabs::{TabStripItem, TabStripState, tab_strip_with_context_menu},
 };
 use egui::{Align, Color32, FontId, Id, Layout, Rect, RichText, Role, Stroke, Ui, Vec2};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
@@ -151,6 +151,21 @@ struct DockTabGroup {
     node: NodeId,
     panels: Vec<PanelId>,
     active_index: usize,
+}
+
+#[derive(Clone, Debug)]
+struct DockTabCloseTargets {
+    closeable: bool,
+    others: Vec<PanelId>,
+    right: Vec<PanelId>,
+    all: Vec<PanelId>,
+}
+
+#[derive(Clone, Debug)]
+enum DockTabContextCommand {
+    Pin(SessionSummary, bool),
+    Close(PanelId),
+    CloseMany(Vec<PanelId>),
 }
 
 #[derive(Clone, Debug)]
@@ -315,7 +330,7 @@ pub struct HermesNativeApp {
     uncertain_session_renames: BTreeSet<String>,
     rename_session: Option<SessionSummary>,
     rename_draft: String,
-    pending_session_close: Option<PanelId>,
+    pending_session_closes: VecDeque<PanelId>,
     approval_prompts: BTreeMap<String, ApprovalPrompt>,
     clarify_prompts: BTreeMap<String, ClarifyPrompt>,
     batch_clarify_prompts: BTreeMap<String, BatchClarifyPrompt>,
@@ -497,7 +512,7 @@ fn render_message() -> &'static str {
             uncertain_session_renames: BTreeSet::new(),
             rename_session: None,
             rename_draft: String::new(),
-            pending_session_close: None,
+            pending_session_closes: VecDeque::new(),
             approval_prompts: BTreeMap::new(),
             clarify_prompts: BTreeMap::new(),
             batch_clarify_prompts: BTreeMap::new(),
@@ -4544,13 +4559,9 @@ fn render_message() -> &'static str {
     fn close_session_pane(&mut self, panel: &PanelId) {
         match self.workspace.close_session_pane(panel) {
             Ok(()) => {
-                self.pending_session_close = None;
-                self.status = "Session tab closed · Hermes continues in the background".into();
+                self.status = "Session tab closed · Hermes continues in the background".into()
             }
-            Err(error) => {
-                self.pending_session_close = None;
-                self.status = error;
-            }
+            Err(error) => self.status = error,
         }
     }
 
@@ -4603,15 +4614,38 @@ fn render_message() -> &'static str {
     }
 
     fn request_close_session_pane(&mut self, panel: &PanelId) {
-        if self.session_pane_is_busy(panel) {
-            self.pending_session_close = Some(panel.clone());
-        } else {
-            self.close_session_pane(panel);
+        self.request_close_session_panes(std::iter::once(panel.clone()));
+    }
+
+    fn request_close_session_panes(&mut self, panels: impl IntoIterator<Item = PanelId>) {
+        let snapshot = self.workspace.dock.snapshot();
+        for panel in panels {
+            if snapshot.document.closed_panels.contains(&panel)
+                || !snapshot
+                    .document
+                    .descriptor(&panel)
+                    .is_some_and(|descriptor| descriptor.role == "hermes_session_tile")
+                || self.pending_session_closes.contains(&panel)
+            {
+                continue;
+            }
+            self.pending_session_closes.push_back(panel);
+        }
+        self.advance_session_close_queue();
+    }
+
+    fn advance_session_close_queue(&mut self) {
+        while let Some(panel) = self.pending_session_closes.front().cloned() {
+            if self.session_pane_is_busy(&panel) {
+                break;
+            }
+            self.pending_session_closes.pop_front();
+            self.close_session_pane(&panel);
         }
     }
 
     fn show_session_close_dialog(&mut self, ctx: &egui::Context) {
-        let Some(panel) = self.pending_session_close.clone() else {
+        let Some(panel) = self.pending_session_closes.front().cloned() else {
             return;
         };
         let title = self
@@ -4637,9 +4671,11 @@ fn render_message() -> &'static str {
                 });
             });
         if confirm {
+            self.pending_session_closes.pop_front();
             self.close_session_pane(&panel);
+            self.advance_session_close_queue();
         } else if cancel {
-            self.pending_session_close = None;
+            self.pending_session_closes.clear();
         }
     }
 
@@ -5796,6 +5832,72 @@ fn close_target_tab_group<'a>(
         })
 }
 
+fn session_identity_for_tab(
+    panel: &PanelId,
+    document: &doofusdock_core::LayoutDocument,
+    primary_route: &AppRoute,
+    primary_profile: Option<&str>,
+) -> Option<(String, Option<String>)> {
+    if panel.0 == WORKSPACE {
+        return match primary_route {
+            AppRoute::Session(session_id) => {
+                Some((session_id.clone(), primary_profile.map(str::to_owned)))
+            }
+            _ => None,
+        };
+    }
+    let descriptor = document.descriptor(panel)?;
+    (descriptor.role == "hermes_session_tile").then(|| {
+        let session_id = descriptor.metadata.get("hermes.session.id")?.clone();
+        let profile = descriptor
+            .metadata
+            .get("hermes.session.profile")
+            .filter(|profile| !profile.is_empty())
+            .cloned();
+        Some((session_id, profile))
+    })?
+}
+
+fn dock_tab_close_targets(
+    document: &doofusdock_core::LayoutDocument,
+    group: &DockTabGroup,
+    index: usize,
+) -> DockTabCloseTargets {
+    let is_open_session_tile = |panel: &PanelId| {
+        !document.closed_panels.contains(panel)
+            && document
+                .descriptor(panel)
+                .is_some_and(|descriptor| descriptor.role == "hermes_session_tile")
+    };
+    let all = group
+        .panels
+        .iter()
+        .filter(|panel| is_open_session_tile(panel))
+        .cloned()
+        .collect::<Vec<_>>();
+    let others = group
+        .panels
+        .iter()
+        .enumerate()
+        .filter(|(candidate, panel)| *candidate != index && is_open_session_tile(panel))
+        .map(|(_, panel)| panel.clone())
+        .collect();
+    let right = group
+        .panels
+        .iter()
+        .enumerate()
+        .filter(|(candidate, panel)| *candidate > index && is_open_session_tile(panel))
+        .map(|(_, panel)| panel.clone())
+        .collect();
+    let closeable = group.panels.get(index).is_some_and(is_open_session_tile);
+    DockTabCloseTargets {
+        closeable,
+        others,
+        right,
+        all,
+    }
+}
+
 struct DockSplit {
     node: NodeId,
     orientation: Orientation,
@@ -5945,6 +6047,133 @@ fn panel_drop_operation(source: PanelId, target: PanelDropTarget) -> Operation {
 mod tests {
     use super::*;
     use egui_kittest::kittest::{NodeT, Queryable};
+
+    #[test]
+    fn session_tab_context_targets_close_only_sessions_and_preserve_workspace_order() {
+        let mut document = Workspace::load_fallback().dock.snapshot().document;
+        let workspace = PanelId::from(WORKSPACE);
+        let first = PanelId::from("session-first");
+        let second = PanelId::from("session-second");
+        let third = PanelId::from("session-third");
+        for panel in [&first, &second, &third] {
+            let mut descriptor = doofusdock_core::PanelDescriptor::new(
+                panel.0.clone(),
+                format!("Session {}", panel.0),
+            );
+            descriptor.role = "hermes_session_tile".into();
+            Arc::make_mut(&mut document.panels).push(descriptor);
+        }
+        let group = DockTabGroup {
+            node: NodeId::from("session-context-targets"),
+            panels: vec![
+                workspace.clone(),
+                first.clone(),
+                second.clone(),
+                third.clone(),
+            ],
+            active_index: 0,
+        };
+
+        let workspace_targets = dock_tab_close_targets(&document, &group, 0);
+        assert!(!workspace_targets.closeable);
+        assert_eq!(
+            workspace_targets.others,
+            vec![first.clone(), second.clone(), third.clone()]
+        );
+        assert_eq!(
+            workspace_targets.right,
+            vec![first.clone(), second.clone(), third.clone()]
+        );
+        assert_eq!(
+            workspace_targets.all,
+            vec![first.clone(), second.clone(), third.clone()]
+        );
+
+        let first_targets = dock_tab_close_targets(&document, &group, 1);
+        assert!(first_targets.closeable);
+        assert_eq!(first_targets.others, vec![second.clone(), third.clone()]);
+        assert_eq!(first_targets.right, vec![second.clone(), third.clone()]);
+        assert_eq!(first_targets.all, vec![first, second, third]);
+    }
+
+    #[test]
+    fn close_many_serializes_busy_session_confirmations_and_filters_duplicates() {
+        let (mut app, profile_dir) = isolated_app();
+        let first = app
+            .workspace
+            .open_session_pane(Some("work"), "busy-first", "Busy first")
+            .expect("open first session tab");
+        let second = app
+            .workspace
+            .open_session_pane(Some("personal"), "busy-second", "Busy second")
+            .expect("open second session tab");
+        for (panel, session_id, runtime_id, profile) in [
+            (&first, "busy-first", "runtime-first", "work"),
+            (&second, "busy-second", "runtime-second", "personal"),
+        ] {
+            app.session_chat_views.insert(
+                session_identity_key(session_id, Some(profile)),
+                SessionChatViewState {
+                    profile: Some(profile.into()),
+                    runtime_session_id: Some(runtime_id.into()),
+                    ..SessionChatViewState::default()
+                },
+            );
+            app.pending_submissions.insert(
+                session_identity_key(runtime_id, Some(profile)),
+                PendingPrompt {
+                    session_id: runtime_id.into(),
+                    profile: Some(profile.into()),
+                    submission_id: format!("submission-{session_id}"),
+                    text: "active prompt".into(),
+                    uncertain: false,
+                    admission_id: None,
+                    execution_generation: Some(1),
+                    resolving_unknown: false,
+                },
+            );
+            assert!(
+                app.workspace
+                    .dock
+                    .snapshot()
+                    .document
+                    .descriptor(panel)
+                    .is_some()
+            );
+        }
+
+        app.request_close_session_panes([
+            first.clone(),
+            second.clone(),
+            first.clone(),
+            PanelId::from(WORKSPACE),
+        ]);
+        assert_eq!(
+            app.pending_session_closes,
+            VecDeque::from([first.clone(), second.clone()])
+        );
+        let document = app.workspace.dock.snapshot().document;
+        assert!(!document.closed_panels.contains(&first));
+        assert!(!document.closed_panels.contains(&second));
+
+        app.pending_submissions
+            .remove(&session_identity_key("runtime-first", Some("work")));
+        app.advance_session_close_queue();
+        assert_eq!(app.pending_session_closes, VecDeque::from([second.clone()]));
+        let document = app.workspace.dock.snapshot().document;
+        assert!(document.closed_panels.contains(&first));
+        assert!(!document.closed_panels.contains(&second));
+
+        app.pending_submissions
+            .remove(&session_identity_key("runtime-second", Some("personal")));
+        app.advance_session_close_queue();
+        assert!(app.pending_session_closes.is_empty());
+        let document = app.workspace.dock.snapshot().document;
+        assert!(document.closed_panels.contains(&first));
+        assert!(document.closed_panels.contains(&second));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
 
     #[test]
     fn close_active_tab_target_uses_hover_focus_then_workspace_ladder() {
@@ -6478,7 +6707,7 @@ mod tests {
         );
         assert!(app.session_pane_is_busy(&panel));
         app.request_close_session_pane(&panel);
-        assert_eq!(app.pending_session_close.as_ref(), Some(&panel));
+        assert_eq!(app.pending_session_closes.front(), Some(&panel));
         assert!(
             !app.workspace
                 .dock
@@ -6601,7 +6830,7 @@ mod tests {
         app.execute_registered_action(RegisteredUiAction::CloseActiveTab)
             .expect("close action should request confirmation");
 
-        assert_eq!(app.pending_session_close.as_ref(), Some(&panel));
+        assert_eq!(app.pending_session_closes.front(), Some(&panel));
         assert!(
             !app.workspace
                 .dock
@@ -8107,6 +8336,17 @@ impl HermesNativeApp {
                 }
             };
             let tab_groups = collect_dock_tab_groups(layout.root.as_deref());
+            let sessions_by_identity = self
+                .sessions
+                .iter()
+                .cloned()
+                .map(|session| {
+                    (
+                        session_identity_key(&session.id, session.profile.as_deref()),
+                        session,
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
             let mut panels = snapshot
                 .panels
                 .iter()
@@ -8185,28 +8425,54 @@ impl HermesNativeApp {
                     .iter()
                     .map(|title| format!("Dock tab {title}"))
                     .collect::<Vec<_>>();
+                let tab_summaries = group
+                    .panels
+                    .iter()
+                    .map(|panel| {
+                        session_identity_for_tab(
+                            panel,
+                            &layout,
+                            &self.route,
+                            self.active_session_profile.as_deref(),
+                        )
+                        .and_then(|(session_id, profile)| {
+                            sessions_by_identity
+                                .get(&session_identity_key(&session_id, profile.as_deref()))
+                                .cloned()
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let close_targets = group
+                    .panels
+                    .iter()
+                    .enumerate()
+                    .map(|(index, _)| dock_tab_close_targets(&layout, group, index))
+                    .collect::<Vec<_>>();
                 let items = titles
                     .iter()
                     .zip(&labels)
                     .zip(&group.panels)
-                    .map(|((title, label), panel)| TabStripItem {
-                        title,
-                        accessible_label: label,
-                        icon: None,
-                        modified: false,
-                        pinned: false,
-                        closable: layout
-                            .descriptor(panel)
-                            .is_some_and(|descriptor| descriptor.role == "hermes_session_tile"),
-                        multi_selected: false,
-                    })
+                    .zip(&tab_summaries)
+                    .zip(&close_targets)
+                    .map(
+                        |((((title, label), _panel), summary), targets)| TabStripItem {
+                            title,
+                            accessible_label: label,
+                            icon: None,
+                            modified: false,
+                            pinned: summary.as_ref().is_some_and(|session| session.pinned),
+                            closable: targets.closeable,
+                            multi_selected: false,
+                        },
+                    )
                     .collect::<Vec<_>>();
                 if items.len() < 2 {
                     continue;
                 }
+                let mut context_command = None;
                 let response = {
                     let state = self.dock_tabs.entry(group.node.0.clone()).or_default();
-                    tab_strip(
+                    tab_strip_with_context_menu(
                         ui,
                         Id::unique(("dock-tabs", &group.node.0)),
                         tab_rect,
@@ -8214,8 +8480,84 @@ impl HermesNativeApp {
                         group.active_index,
                         state,
                         &Self::chrome_style(),
+                        |menu_ui, index, item| {
+                            if let Some(summary) = tab_summaries.get(index).and_then(Option::as_ref)
+                            {
+                                let label = if summary.pinned {
+                                    format!("Unpin session {}", summary.id)
+                                } else {
+                                    format!("Pin session {}", summary.id)
+                                };
+                                if menu_ui.button(label).clicked() {
+                                    context_command = Some(DockTabContextCommand::Pin(
+                                        summary.clone(),
+                                        !summary.pinned,
+                                    ));
+                                    menu_ui.close();
+                                }
+                                menu_ui.separator();
+                            }
+                            if item.closable
+                                && menu_ui.button("Close tab").clicked()
+                                && let Some(panel) = group.panels.get(index)
+                            {
+                                context_command = Some(DockTabContextCommand::Close(panel.clone()));
+                                menu_ui.close();
+                            }
+                            if let Some(targets) = close_targets.get(index) {
+                                if menu_ui
+                                    .add_enabled(
+                                        !targets.others.is_empty(),
+                                        egui::Button::new("Close others"),
+                                    )
+                                    .clicked()
+                                {
+                                    context_command = Some(DockTabContextCommand::CloseMany(
+                                        targets.others.clone(),
+                                    ));
+                                    menu_ui.close();
+                                }
+                                if menu_ui
+                                    .add_enabled(
+                                        !targets.right.is_empty(),
+                                        egui::Button::new("Close tabs to the right"),
+                                    )
+                                    .clicked()
+                                {
+                                    context_command = Some(DockTabContextCommand::CloseMany(
+                                        targets.right.clone(),
+                                    ));
+                                    menu_ui.close();
+                                }
+                                if menu_ui
+                                    .add_enabled(
+                                        !targets.all.is_empty(),
+                                        egui::Button::new("Close all"),
+                                    )
+                                    .clicked()
+                                {
+                                    context_command =
+                                        Some(DockTabContextCommand::CloseMany(targets.all.clone()));
+                                    menu_ui.close();
+                                }
+                            }
+                        },
                     )
                 };
+                if let Some(command) = context_command {
+                    match command {
+                        DockTabContextCommand::Pin(session, pinned) => {
+                            self.start_session_pin_update(session, pinned);
+                        }
+                        DockTabContextCommand::Close(panel) => {
+                            self.request_close_session_pane(&panel);
+                        }
+                        DockTabContextCommand::CloseMany(panels) => {
+                            self.request_close_session_panes(panels);
+                        }
+                    }
+                    break;
+                }
                 if let Some(index) = response.drag_started
                     && let Some(panel) = group.panels.get(index)
                 {

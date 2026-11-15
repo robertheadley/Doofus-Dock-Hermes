@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 54 (published canonical workspace to the user-provided repository).
+- **Working revision:** 56 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -311,3 +311,17 @@ A latched resume failure now renders its pane-local error and Retry action even 
 Session-tab close targeting now follows the pinned Desktop's eligible-group ladder: the currently hovered tab group containing the workspace or a session tile, then the last clicked eligible group, then the workspace group. A focused session tile in another Dock group closes through the existing busy-session confirmation and canonical Dock close path, leaving the workspace chat untouched. The registered agent action and Ctrl+W still share the same handler.
 
 Local tests cover hover/focus/workspace target resolution, stale group fallback, and closing a profile-scoped session pane that shares a Files tab group. Physical pointer/keyboard acceptance is not established. Egui keyboard traversal does not yet update the focused-group marker, and generic tool-tab close/visibility-store handoff remains open; this revision therefore closes one source gap without claiming complete close-target precedence.
+
+
+### Revision 55 — DoofusDock tab context actions
+
+Extend the exact pinned DoofusDock egui renderer tab-strip context API inside the Hermes repository, preserving the pinned crate source and MIT attribution. Add Close tab, Close others, Close tabs to the right, and Close all commands with per-tab enablement. Hermes Native will map those menu receipts to canonical Dock operations, preserve the uncloseable workspace tab, keep session profile ownership, and serialize busy-session close confirmations. Human right-click and semantic UI interaction must use the same menu controls and app handlers.
+
+The directly pinned DoofusDock checkout is dirty in unrelated projects, so it will remain untouched. The implementation will vendor only the unchanged doofusdock-render-egui crate from the exact pinned commit f6eb49b9e488f4e851d8d3abe18e95d296201bba and patch that renderer locally, leaving DoofusDock core/presentation/host crates pinned. Tests will cover menu visibility/counts, menu action mapping, mixed workspace/session tab groups, busy-close confirmation queueing, and profile-preserving canonical close results. This remains a partial tab-menu slice; complete terminal/tool closer synchronization and source-paired Windows interactions remain open.
+
+
+### Revision 56 — complete pinned-source session tab context actions
+
+The exact pinned `doofusdock-render-egui` crate is now vendored under the Hermes Native workspace with its MIT license, and Cargo patches only that renderer package to the local source. Its existing `tab_strip` API remains compatible; a callback-based `tab_strip_with_context_menu` API exposes the pinned renderer's actual context menu to Hermes. Tabs provide Pin/Unpin, Close tab, Close others, Close tabs to the right, and Close all. Bulk actions target open session panes only and preserve the workspace tab. Idle panes close through canonical Dock transactions; active panes enter the existing serialized confirmation queue. The agent protocol adds `actions.right_click`, emitting real egui secondary-pointer events so the agent opens the same context menu as a person.
+
+Tests verify real secondary-pointer access to the shared Dock menu and discoverable capability reporting. The full package suite, pinned-source validator and all-target build must pass before publication. Direct app tests cover session-only close target ordering, workspace preservation, duplicate filtering and serialized busy-pane close queue advancement. The protocol fixture verifies a real secondary-pointer menu open. Physical Windows menu interaction and source-paired screenshot evidence remain open. This does not complete tab/tool parity or the full 1:1 replacement.

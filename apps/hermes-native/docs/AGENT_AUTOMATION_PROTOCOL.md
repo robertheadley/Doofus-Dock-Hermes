@@ -19,6 +19,7 @@ The protocol is `hermes-native-agent-ui/1`. The first output line is a `ready` e
 | `events.list` | Read only | Bounded recent event receipts |
 | `diagnostics.bundle` | Read only | State, bounded events, process and protocol health counters |
 | `actions.click` | UI interaction | Either `test_id` or `role` + `name`, with `expected_state_generation`; requires one exact accessible match |
+| `actions.right_click` | UI interaction | Same locator and generation contract as click; emits secondary-pointer press/release at the exact accessible target center, opening the same egui context menu used by a person |
 | `actions.drag` | UI interaction | Source either `test_id` or `role` + `name`; destination either `to_test_id`, `to_role` + `to_name`, or logical `to_x` + `to_y`; optional `steps` (1–32) and `expected_state_generation`; emits egui pointer events |
 | `actions.type` | UI interaction | Either `test_id` or `role` + `name`, plus `text` and `expected_state_generation`; requires one exact accessible match |
 | `actions.select` | UI interaction | Either `test_id` or `role` + `name`, plus `option` and `expected_state_generation`; opens the accessible selector and clicks the unique visible option |
