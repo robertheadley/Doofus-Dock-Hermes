@@ -4,16 +4,18 @@
 //! directory cannot stall egui. The tree is lazy: only the root and expanded
 //! directories are enumerated.
 
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, Sender, TryRecvError},
     thread,
 };
 
 const MAX_DIRECTORY_ENTRIES: usize = 1_000;
-const MAX_PREVIEW_BYTES: u64 = 1_048_576;
+const MAX_PREVIEW_BYTES: u64 = 512 * 1024;
 const EXCLUDED_NAMES: &[&str] = &[
     ".git",
     ".hg",
@@ -54,6 +56,7 @@ struct DirectoryResult {
 
 struct PreviewRequest {
     path: PathBuf,
+    force: bool,
 }
 
 struct PreviewResult {
@@ -65,6 +68,7 @@ struct PreviewResult {
 pub struct FilePreviewContent {
     pub text: String,
     pub language: String,
+    pub truncated: bool,
 }
 
 #[derive(Default)]
@@ -85,6 +89,7 @@ impl FilePreviewStore {
                 let sent = self.request_tx.as_ref().is_some_and(|tx| {
                     tx.send(PreviewRequest {
                         path: path.to_path_buf(),
+                        force: false,
                     })
                     .is_ok()
                 });
@@ -99,9 +104,9 @@ impl FilePreviewStore {
         }
     }
 
-    pub fn open(&mut self, ui: &mut egui::Ui, path: &Path) {
+    pub fn open(&mut self, ui: &mut egui::Ui, path: &Path, markdown_cache: &mut CommonMarkCache) {
         self.request(path);
-        match self.contents.get(path) {
+        match self.contents.get(path).cloned() {
             Some(Ok(content)) => {
                 ui.label(
                     egui::RichText::new(path.display().to_string())
@@ -113,18 +118,27 @@ impl FilePreviewStore {
                     .id_salt(("hermes-file-preview", path))
                     .show(ui, |ui| {
                         if content.language == "markdown" {
-                            ui.label(egui::RichText::new(&content.text).size(13.0));
+                            CommonMarkViewer::new().show(ui, markdown_cache, &content.text);
                         } else {
                             ui.label(
                                 egui::RichText::new(&content.text)
                                     .font(egui::FontId::monospace(12.0)),
                             );
                         }
+                        if content.truncated {
+                            ui.label("Preview is truncated at 512 KiB.");
+                        }
                     });
             }
             Some(Err(error)) => {
-                ui.centered_and_justified(|ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(32.0);
                     ui.label(format!("Unable to preview this file: {error}"));
+                    if error.contains("preview limit") || error.contains("binary") {
+                        if ui.button("Preview anyway").clicked() {
+                            self.request_force(path);
+                        }
+                    }
                 });
             }
             None if self.pending.contains(path) => {
@@ -137,6 +151,32 @@ impl FilePreviewStore {
                     ui.label("Preview queue is full. Close an unused preview and retry.");
                 });
             }
+        }
+    }
+
+    fn request_force(&mut self, path: &Path) {
+        self.contents.remove(path);
+        self.pending.remove(path);
+        self.ensure_worker();
+        if self.pending.len() >= 8 {
+            self.contents
+                .insert(path.to_path_buf(), Err("Preview queue is full".into()));
+            return;
+        }
+        self.pending.insert(path.to_path_buf());
+        let sent = self.request_tx.as_ref().is_some_and(|tx| {
+            tx.send(PreviewRequest {
+                path: path.to_path_buf(),
+                force: true,
+            })
+            .is_ok()
+        });
+        if !sent {
+            self.pending.remove(path);
+            self.contents.insert(
+                path.to_path_buf(),
+                Err("File preview worker stopped".into()),
+            );
         }
     }
 
@@ -168,7 +208,7 @@ impl FilePreviewStore {
             .name("hermes-file-preview".into())
             .spawn(move || {
                 while let Ok(request) = request_rx.recv() {
-                    let result = read_file_preview(&request.path);
+                    let result = read_file_preview(&request.path, request.force);
                     if result_tx
                         .send(PreviewResult {
                             path: request.path,
@@ -452,24 +492,33 @@ impl FileBrowserState {
     }
 }
 
-fn read_file_preview(path: &Path) -> Result<FilePreviewContent, String> {
+fn read_file_preview(path: &Path, force: bool) -> Result<FilePreviewContent, String> {
     let metadata = fs::metadata(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
     if !metadata.is_file() {
         return Err("Only regular files can be previewed".into());
     }
-    if metadata.len() > MAX_PREVIEW_BYTES {
+    if metadata.len() > MAX_PREVIEW_BYTES && !force {
         return Err(format!(
             "File exceeds the {MAX_PREVIEW_BYTES}-byte preview limit"
         ));
     }
-    let bytes = fs::read(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
-    if bytes.len() as u64 > MAX_PREVIEW_BYTES {
+    let file = fs::File::open(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
+    let mut bytes = Vec::with_capacity(MAX_PREVIEW_BYTES as usize + 1);
+    file.take(MAX_PREVIEW_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("{} ({})", error, error.kind()))?;
+    if bytes.len() as u64 > MAX_PREVIEW_BYTES && !force {
         return Err(format!(
             "File exceeds the {MAX_PREVIEW_BYTES}-byte preview limit"
         ));
     }
-    let text =
-        String::from_utf8(bytes).map_err(|_| "File is binary or not valid UTF-8".to_owned())?;
+    let truncated = bytes.len() as u64 > MAX_PREVIEW_BYTES;
+    bytes.truncate(MAX_PREVIEW_BYTES as usize);
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) if force => String::from_utf8_lossy(error.as_bytes()).into_owned(),
+        Err(_) => return Err("File is binary or not valid UTF-8".into()),
+    };
     let language = match path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -490,7 +539,11 @@ fn read_file_preview(path: &Path) -> Result<FilePreviewContent, String> {
         _ => "text",
     }
     .to_owned();
-    Ok(FilePreviewContent { text, language })
+    Ok(FilePreviewContent {
+        text,
+        language,
+        truncated,
+    })
 }
 
 fn read_directory(path: &Path) -> Result<Vec<FileEntry>, String> {
@@ -609,22 +662,28 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let text = root.join("sample.rs");
         fs::write(&text, "fn main() {}\n").unwrap();
-        let preview = read_file_preview(&text).unwrap();
+        let preview = read_file_preview(&text, false).unwrap();
         assert_eq!(preview.language, "rust");
         assert!(preview.text.contains("fn main"));
 
         let binary = root.join("image.bin");
         fs::write(&binary, [0, 159, 146, 150]).unwrap();
-        assert!(read_file_preview(&binary).unwrap_err().contains("binary"));
+        assert!(
+            read_file_preview(&binary, false)
+                .unwrap_err()
+                .contains("binary")
+        );
+        assert!(read_file_preview(&binary, true).unwrap().text.contains('�'));
 
         let oversized = root.join("large.txt");
         let file = fs::File::create(&oversized).unwrap();
         file.set_len(MAX_PREVIEW_BYTES + 1).unwrap();
         assert!(
-            read_file_preview(&oversized)
+            read_file_preview(&oversized, false)
                 .unwrap_err()
                 .contains("preview limit")
         );
+        assert!(read_file_preview(&oversized, true).unwrap().truncated);
         fs::remove_dir_all(root).unwrap();
     }
 }

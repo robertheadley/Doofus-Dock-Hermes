@@ -1399,8 +1399,9 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .and_then(|descriptor| descriptor.metadata.get("hermes.file.path"))
                 {
+                    let markdown_cache = &mut self.markdown_cache;
                     self.file_previews
-                        .open(&mut child, std::path::Path::new(path));
+                        .open(&mut child, std::path::Path::new(path), markdown_cache);
                 } else {
                     self.empty_panel(&mut child, "File preview path is missing");
                 }

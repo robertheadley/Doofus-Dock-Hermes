@@ -1199,3 +1199,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No benchmark performed.
   **risks:** Automated target fixture is not source-paired visual acceptance.
   **follow_up:** Continue source-based parity implementation and record distinct scenario receipts.
+
+- **id:** HUR-001-090
+  **timestamp:** 2026-11-15T13:53:44Z
+  **what:** Matched the pinned file-preview text threshold and Markdown default more closely.
+  **why:** The downloaded source defaults to rendered Markdown and a 512 KiB read ceiling with an explicit Preview anyway action.
+  **components:** src/files.rs, src/app.rs, README, docs/ARCHITECTURE.md, docs/BACKLOG.md, docs/PLAN.md.
+  **type:** fidelity
+  **validation:** Tests cover normal UTF-8 text, default binary/oversized refusal, explicit lossy binary preview and forced oversized truncation. Full automation-feature suite and check passed.
+  **performance:** Worker reads are bounded to 512 KiB plus a one-byte limit sentinel; no benchmark performed.
+  **risks:** Image, PDF, rendered HTML, diff/edit mode, source styling and source-paired Windows evidence remain open.
+  **follow_up:** Continue the fixed-source preview variants and compare the native fixture to the same pinned source scenario.
+
+- **id:** HUR-001-091
+  **timestamp:** 2026-11-15T13:53:44Z
+  **what:** Recorded full feature-enabled validation for source-aligned Markdown and bounded preview behavior.
+  **why:** Confirm the preview fidelity changes preserve the existing app and agent harness.
+  **components:** src/files.rs, src/app.rs, docs/EXECUTION_LOGS.md.
+  **type:** validation
+  **validation:** cargo fmt --all -- --check, cargo test -p hermes-native --all-targets --features agent-automation (128 + 11 passed), cargo check -p hermes-native --all-targets --features agent-automation and git diff --check passed.
+  **performance:** No benchmark performed.
+  **risks:** Unit/protocol validation does not prove visual parity.
+  **follow_up:** Capture the updated fixture and keep all Files acceptance IDs pending pending review.
