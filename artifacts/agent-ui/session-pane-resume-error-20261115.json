@@ -1,0 +1,21 @@
+{
+  "captured_at": "2026-11-15T06:41:00Z",
+  "hermes_parity_source": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_source": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "repository_base_commit": "52baaf3",
+  "working_tree_diff_sha256": "98c30809f16459deb4ce81c106c98fbe6262b1cb4bbf3c4e224a94149e48299d",
+  "executable_sha256": "7786645e736f09b680726dcba2ae78c9fa666f319f7ae1155391c37f7f6cc6cd",
+  "fixture": "session-pane-fixture",
+  "fixture_profile": "temporary isolated Hermes Native automation profile",
+  "process_generation": "one-shot isolated headless harness",
+  "app_route": "/",
+  "active_dock_pane": "Native session pane",
+  "viewport_px": "1440x900",
+  "dpi": "headless egui logical scale 1.0; Windows DPI not measured",
+  "state_revision": null,
+  "layout_revision": null,
+  "interaction_receipts": [],
+  "screenshot": "session-pane-resume-error-20261115.png",
+  "screenshot_sha256": "64b0933fbb7c1fe39be437aa6bc46d660ddaf374c91ba6a93612735373f2a01c",
+  "evidence_limit": "Shows the standard session pane only. The error and accessible Retry state are covered by isolated app tests; no authenticated Hermes gateway or physical Windows host was used."
+}

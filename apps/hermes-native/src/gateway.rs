@@ -194,7 +194,12 @@ pub enum PromptSubmitReceipt {
 
 #[derive(Debug)]
 pub enum GatewayEvent {
-    SessionResumed(Result<SessionTranscript, String>),
+    SessionResumed {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        result: Result<SessionTranscript, String>,
+    },
     OlderTranscriptLoaded {
         request_id: String,
         session_id: String,
@@ -299,6 +304,7 @@ pub enum GatewayEvent {
 
 enum GatewayCommand {
     ResumeSession {
+        request_id: String,
         session_id: String,
         profile: Option<String>,
     },
@@ -466,11 +472,13 @@ impl GatewayDiscovery {
 
     pub fn resume_session(
         &self,
+        request_id: String,
         session_id: String,
         profile: Option<String>,
     ) -> Result<(), String> {
         self.command_sender
             .send(GatewayCommand::ResumeSession {
+                request_id,
                 session_id,
                 profile,
             })
@@ -885,11 +893,21 @@ fn gateway_actor(
     loop {
         match commands.try_recv() {
             Ok(GatewayCommand::ResumeSession {
+                request_id,
                 session_id,
                 profile,
             }) => {
+                let event_profile = profile.clone();
                 let result = resume_session(socket, &session_id, profile, &events);
-                if events.send(GatewayEvent::SessionResumed(result)).is_err() {
+                if events
+                    .send(GatewayEvent::SessionResumed {
+                        request_id,
+                        session_id,
+                        profile: event_profile,
+                        result,
+                    })
+                    .is_err()
+                {
                     return;
                 }
             }

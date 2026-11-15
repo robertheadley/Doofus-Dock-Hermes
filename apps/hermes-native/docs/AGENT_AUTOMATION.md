@@ -58,3 +58,5 @@ The current 1440×900 new-chat capture is `artifacts/agent-ui/chat-approval-v27.
 `artifacts/agent-ui/approval-request-v31.png` shows an inbound `approval` server-request fixture rendered through the permission card. Its sidecar records the offline profile and confirms that the offered choices honor `allow_permanent=false`; it is not live-gateway evidence, and server-request negotiation remains disabled.
 
 Typography evidence: `artifacts/agent-ui/font-choice-v24.png` and its JSON sidecar capture the chosen JetBrains Mono UI and Fira Code composer family at 1440×900. This is an isolated, gateway-disabled headless run; it does not establish physical Windows font rasterization or source-paired parity.
+
+The session-pane fixture is artifacts/agent-ui/session-pane-resume-error-20261115.png. Resume-error and Retry accessibility are verified by isolated AccessKit app tests; this screenshot shows the normal pane fixture, not the error card. No authenticated gateway or physical Windows evidence is implied.

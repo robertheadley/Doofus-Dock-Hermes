@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 51 (published canonical workspace to the user-provided repository).
+- **Working revision:** 53 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -292,3 +292,15 @@ Local tests cover profile-preserving promotion, primary reset, selected busy-tab
 The New session action now follows the pinned `frontUntouchedDraftTab` rules for the surfaces supported by this native workspace. It first fronts the primary New session draft only when that route has no active session, no pending creation, no typed draft, and its selected profile matches the gateway's current default owner. Otherwise it can front the tracked blank session tile only when its Dock pane is still open, the runtime view is known and idle, transcript/message count and composer are empty, the session is unlisted, and the pane owner matches the current profile. If no candidate qualifies, it starts one new blank session creation; repeated clicks during `session.create` stay single-flight. A typed main draft and an edited tile remain intact.
 
 Local tests cover clean-main reuse, typed-main preservation, exact-profile tile reuse and edited-tile non-reuse. Hermes Bot Mode's exact owner-route ladder, attachment-aware drafts and composer debounce flushing do not exist in this native surface and remain outside this slice.
+
+
+### Revision 52 — correlated session resume errors and retry
+
+Session resume requests now carry a request ID, stored session ID, and profile through the gateway actor and back in the result event. Only the matching pending request can update its owning cached session view; stale results are ignored, and successful snapshots are checked against both session and profile before hydration. Resume errors stay on the originating tile and render an accessible “Couldn't open this session” message with a Retry action. Retry clears that tile's error and issues a fresh correlated request. A gateway disconnect releases pending request ownership so the pane can resume after reconnect; latched errors are cleared on reconnect for automatic recovery.
+
+Local tests cover matching and stale failures, owner-scoped error rendering and retry locator availability, successful profile-scoped hydration with draft preservation, and stale failure after success. `artifacts/agent-ui/session-pane-resume-error-20261115.png` records the normal isolated pane fixture; it does not depict the error state. No authenticated gateway or physical Windows interaction was used. The source's additional authoritative not-found/removal recovery and paired source screenshot remain open; this slice is not full session-tab parity.
+
+
+### Revision 53 — resume failure takes precedence over cached transcript
+
+A latched resume failure now renders its pane-local error and Retry action even when that cached pane still has transcript messages from an earlier visit. This matches the source tile's failed-open state instead of leaving the user looking at cached conversation with no visible recovery action. The AccessKit test now seeds cached history before delivering the correlated failure. The headless standard-pane screenshot is unchanged and does not depict this error state. Live gateway and source-paired host evidence remain open.

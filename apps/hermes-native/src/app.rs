@@ -182,6 +182,8 @@ struct PendingToolsetUpdate {
 struct SessionChatViewState {
     profile: Option<String>,
     runtime_session_id: Option<String>,
+    resume_request_id: Option<String>,
+    resume_error: Option<String>,
     transcript: Vec<serde_json::Value>,
     transcript_message_count: usize,
     transcript_has_more: bool,
@@ -1391,7 +1393,24 @@ fn render_message() -> &'static str {
     }
 
     fn session_content(&mut self, ui: &mut Ui, session_id: &str) {
-        if self.transcript.is_empty() {
+        let resume_error = self
+            .session_chat_views
+            .get(&session_identity_key(
+                session_id,
+                self.active_session_profile.as_deref(),
+            ))
+            .and_then(|view| view.resume_error.clone());
+        if let Some(error) = resume_error {
+            ui.label(RichText::new("Couldn't open this session").color(Color32::LIGHT_RED));
+            ui.label(RichText::new(error).size(12.0).color(MUTED));
+            if ui
+                .add_enabled(self.gateway_connected, egui::Button::new("Retry"))
+                .accessible_name(format!("Retry opening session {session_id}"))
+                .clicked()
+            {
+                self.retry_session_resume(session_id, self.active_session_profile.clone());
+            }
+        } else if self.transcript.is_empty() {
             if !self.gateway_connected {
                 self.route_unavailable(ui, "Connect to Hermes to open this session.");
             } else if self.transcript_has_more {
@@ -3606,11 +3625,14 @@ fn render_message() -> &'static str {
         match &self.route {
             AppRoute::Session(session_id) => {
                 let key = session_identity_key(session_id, self.active_session_profile.as_deref());
+                let previous = self.session_chat_views.get(&key);
                 self.cache_session_chat_view(
                     key,
                     SessionChatViewState {
                         profile: self.active_session_profile.clone(),
                         runtime_session_id: self.active_runtime_session_id.clone(),
+                        resume_request_id: previous.and_then(|view| view.resume_request_id.clone()),
+                        resume_error: previous.and_then(|view| view.resume_error.clone()),
                         transcript: self.transcript.clone(),
                         transcript_message_count: self.transcript_message_count,
                         transcript_has_more: self.transcript_has_more,
@@ -3625,6 +3647,123 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn ensure_session_resume(&mut self, session_id: &str, profile: Option<String>) {
+        if !self.gateway_connected {
+            return;
+        }
+        let key = session_identity_key(session_id, profile.as_deref());
+        let mut view = self
+            .session_chat_views
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| SessionChatViewState {
+                profile: profile.clone(),
+                ..SessionChatViewState::default()
+            });
+        if view.runtime_session_id.is_some()
+            || view.resume_request_id.is_some()
+            || view.resume_error.is_some()
+        {
+            return;
+        }
+        let request_id = operation_id("resume");
+        match self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway reader is unavailable".to_owned())
+            .and_then(|gateway| {
+                gateway.resume_session(request_id.clone(), session_id.to_owned(), profile.clone())
+            }) {
+            Ok(()) => view.resume_request_id = Some(request_id),
+            Err(error) => {
+                view.resume_error = Some(error.clone());
+                if self.route == AppRoute::Session(session_id.to_owned())
+                    && self.active_session_profile == profile
+                {
+                    self.status = error;
+                }
+            }
+        }
+        self.cache_session_chat_view(key, view);
+    }
+
+    fn retry_session_resume(&mut self, session_id: &str, profile: Option<String>) {
+        let key = session_identity_key(session_id, profile.as_deref());
+        let mut view = self
+            .session_chat_views
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| SessionChatViewState {
+                profile: profile.clone(),
+                ..SessionChatViewState::default()
+            });
+        view.resume_request_id = None;
+        view.resume_error = None;
+        self.cache_session_chat_view(key, view);
+        self.ensure_session_resume(session_id, profile);
+    }
+
+    fn settle_session_resume(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        profile: Option<String>,
+        result: Result<crate::gateway::SessionTranscript, String>,
+    ) {
+        let key = session_identity_key(session_id, profile.as_deref());
+        let Some(mut view) = self.session_chat_views.get(&key).cloned() else {
+            return;
+        };
+        if view.resume_request_id.as_deref() != Some(request_id) {
+            return;
+        }
+        view.resume_request_id = None;
+        match result {
+            Ok(snapshot) if snapshot.session_id == session_id && snapshot.profile == profile => {
+                view.profile = snapshot.profile.clone();
+                view.transcript = snapshot.messages;
+                view.transcript_message_count = snapshot.message_count.max(view.transcript.len());
+                view.transcript_has_more = view.transcript.len() < view.transcript_message_count;
+                view.older_transcript_request = None;
+                view.older_transcript_error = None;
+                view.runtime_session_id = Some(snapshot.runtime_session_id.clone());
+                view.resume_error = None;
+                self.cache_session_chat_view(key, view.clone());
+                if self.route == AppRoute::Session(session_id.to_owned())
+                    && self.active_session_profile == profile
+                {
+                    self.transcript = view.transcript;
+                    self.transcript_message_count = view.transcript_message_count;
+                    self.transcript_has_more = view.transcript_has_more;
+                    self.older_transcript_request = None;
+                    self.older_transcript_error = None;
+                    self.active_runtime_session_id = view.runtime_session_id;
+                    self.draft = view.draft;
+                    self.status =
+                        format!("Session open · {} messages", view.transcript_message_count);
+                }
+            }
+            Ok(_) => {
+                view.resume_error = Some("Hermes returned a different session owner".into());
+                self.cache_session_chat_view(key, view.clone());
+                if self.route == AppRoute::Session(session_id.to_owned())
+                    && self.active_session_profile == profile
+                {
+                    self.status = view.resume_error.unwrap_or_default();
+                }
+            }
+            Err(error) => {
+                view.resume_error = Some(error.clone());
+                self.cache_session_chat_view(key, view);
+                if self.route == AppRoute::Session(session_id.to_owned())
+                    && self.active_session_profile == profile
+                {
+                    self.status = error;
+                }
+            }
+        }
+    }
+
     fn navigate(&mut self, route: AppRoute) {
         self.save_active_chat_view();
         self.navigate_after_save(route);
@@ -3635,6 +3774,7 @@ fn render_message() -> &'static str {
         if route.is_overlay() && !self.route.is_overlay() {
             self.overlay_return = self.route.clone();
         }
+        self.route = route.clone();
         match &route {
             AppRoute::Session(session_id) => {
                 let key = session_identity_key(session_id, self.active_session_profile.as_deref());
@@ -3655,12 +3795,8 @@ fn render_message() -> &'static str {
                     self.active_runtime_session_id = None;
                     self.draft.clear();
                 }
-                if self.active_runtime_session_id.is_none()
-                    && let Some(gateway) = &self.gateway_discovery
-                    && let Err(error) = gateway
-                        .resume_session(session_id.clone(), self.active_session_profile.clone())
-                {
-                    self.status = error;
+                if self.active_runtime_session_id.is_none() {
+                    self.ensure_session_resume(session_id, self.active_session_profile.clone());
                 }
             }
             AppRoute::NewChat => {
@@ -3682,7 +3818,6 @@ fn render_message() -> &'static str {
             self.capabilities_request_id = None;
             self.capabilities_pending = false;
         }
-        self.route = route;
     }
 
     pub fn navigate_path(&mut self, target: &str) -> Result<(), String> {
@@ -4334,6 +4469,10 @@ fn render_message() -> &'static str {
         self.older_transcript_error = view.older_transcript_error;
         self.draft = view.draft;
 
+        if self.active_runtime_session_id.is_none() {
+            self.ensure_session_resume(&session_id, self.active_session_profile.clone());
+        }
+
         self.session_content(ui, &session_id);
         self.approval_cards(ui);
         self.clarify_cards(ui);
@@ -4509,6 +4648,12 @@ fn render_message() -> &'static str {
                         self.status =
                             format!("Gateway connected · {} sessions", connection.sessions.len());
                         self.gateway_endpoint = Some(connection.endpoint);
+                        for view in self.session_chat_views.values_mut() {
+                            if view.resume_error.is_some() {
+                                view.resume_error = None;
+                                view.resume_request_id = None;
+                            }
+                        }
                         if self.route == AppRoute::NewChat {
                             self.active_session_profile = self
                                 .gateway_endpoint
@@ -4618,37 +4763,12 @@ fn render_message() -> &'static str {
                         self.status = error;
                     }
                 },
-                GatewayEvent::SessionResumed(Ok(snapshot)) => {
-                    let key =
-                        session_identity_key(&snapshot.session_id, snapshot.profile.as_deref());
-                    let mut view = self
-                        .session_chat_views
-                        .get(&key)
-                        .cloned()
-                        .unwrap_or_default();
-                    view.profile = snapshot.profile.clone();
-                    view.transcript = snapshot.messages;
-                    view.transcript_message_count =
-                        snapshot.message_count.max(view.transcript.len());
-                    view.transcript_has_more =
-                        view.transcript.len() < view.transcript_message_count;
-                    view.older_transcript_request = None;
-                    view.older_transcript_error = None;
-                    view.runtime_session_id = Some(snapshot.runtime_session_id.clone());
-                    self.cache_session_chat_view(key, view.clone());
-                    if self.route == AppRoute::Session(snapshot.session_id.clone())
-                        && self.active_session_profile == snapshot.profile
-                    {
-                        self.transcript = view.transcript.clone();
-                        self.transcript_message_count = view.transcript_message_count;
-                        self.transcript_has_more = view.transcript_has_more;
-                        self.older_transcript_request = None;
-                        self.older_transcript_error = None;
-                        self.active_runtime_session_id = Some(snapshot.runtime_session_id);
-                        self.status = format!("Session open · {} messages", snapshot.message_count);
-                    }
-                }
-                GatewayEvent::SessionResumed(Err(error)) => self.status = error,
+                GatewayEvent::SessionResumed {
+                    request_id,
+                    session_id,
+                    profile,
+                    result,
+                } => self.settle_session_resume(&request_id, &session_id, profile, result),
                 GatewayEvent::OlderTranscriptLoaded {
                     request_id,
                     session_id,
@@ -5065,6 +5185,9 @@ fn render_message() -> &'static str {
                 }
                 GatewayEvent::Disconnected(error) => {
                     self.gateway_connected = false;
+                    for view in self.session_chat_views.values_mut() {
+                        view.resume_request_id = None;
+                    }
                     self.archived_sessions_request_id = None;
                     self.archived_sessions_loading = false;
                     self.pending_interrupt = None;
@@ -5967,6 +6090,119 @@ mod tests {
             .expect_err("path-only navigation must not choose a profile silently");
         assert!(error.contains("multiple profiles"));
         assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn session_resume_errors_are_correlated_and_render_on_the_owning_tile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.workspace
+            .open_session_pane(Some("work"), "resume-error-session", "Resume error")
+            .expect("open the session tile");
+        let key = session_identity_key("resume-error-session", Some("work"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                resume_request_id: Some("resume-request-current".into()),
+                transcript: vec![json!({"role":"assistant","content":"Cached history"})],
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.settle_session_resume(
+            "resume-request-stale",
+            "resume-error-session",
+            Some("work".into()),
+            Err("stale failure".into()),
+        );
+        assert!(app.session_chat_views[&key].resume_error.is_none());
+        assert_eq!(
+            app.session_chat_views[&key].resume_request_id.as_deref(),
+            Some("resume-request-current")
+        );
+
+        app.settle_session_resume(
+            "resume-request-current",
+            "resume-error-session",
+            Some("work".into()),
+            Err("session resume failed".into()),
+        );
+        assert_eq!(
+            app.session_chat_views[&key].resume_error.as_deref(),
+            Some("session resume failed")
+        );
+        assert!(app.session_chat_views[&key].resume_request_id.is_none());
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref() == Some("Retry opening session resume-error-session")
+                })
+                .next()
+                .is_some(),
+            "the failing session pane exposes its own retry action"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn session_resume_success_updates_only_the_matching_pending_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("resume-session".into());
+        app.active_session_profile = Some("work".into());
+        let key = session_identity_key("resume-session", Some("work"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                resume_request_id: Some("resume-request-1".into()),
+                draft: "preserve the draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.settle_session_resume(
+            "resume-request-1",
+            "resume-session",
+            Some("work".into()),
+            Ok(crate::gateway::SessionTranscript {
+                session_id: "resume-session".into(),
+                profile: Some("work".into()),
+                runtime_session_id: "runtime-resumed".into(),
+                message_count: 1,
+                messages: vec![json!({"role":"assistant","content":"Resumed"})],
+            }),
+        );
+
+        assert_eq!(
+            app.session_chat_views[&key].runtime_session_id.as_deref(),
+            Some("runtime-resumed")
+        );
+        assert_eq!(app.session_chat_views[&key].draft, "preserve the draft");
+        assert_eq!(app.transcript[0]["content"], "Resumed");
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-resumed")
+        );
+        app.settle_session_resume(
+            "resume-request-stale",
+            "resume-session",
+            Some("work".into()),
+            Err("late failure".into()),
+        );
+        assert_eq!(
+            app.session_chat_views[&key].runtime_session_id.as_deref(),
+            Some("runtime-resumed")
+        );
+        assert!(app.session_chat_views[&key].resume_error.is_none());
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

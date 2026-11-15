@@ -30,6 +30,8 @@ The WebSocket reader recognizes server→client JSON-RPC request frames and retu
 
 For idle inbound `approval` requests, the actor forwards the request ID and params to the app event loop. The app scopes the card to the uniquely matching runtime/profile session pane, renders only supported backend choices, and returns the selected `{choice}` as the JSON-RPC result on that same request ID. The prompt retains its profile so a response can be sent while another pane is active. Requests without a unique owner are declined. The local actor and AccessKit fixtures cover approval and batch clarify routing, with a separate RPC fixture for ordered `clarify.lock` receipts. Active-session ownership across windows and other server-request methods remain open, so capability negotiation stays disabled.
 
+Session-resume commands carry a generated request ID plus stored session ID and profile. The actor echoes that owner tuple in `SessionResumed`; the UI applies a result only when the same profile-scoped cached view still owns that pending request. Success validates the returned session/profile before hydration; errors latch to that view and expose Retry. Disconnect clears pending ownership, while reconnect allows a fresh resume. Authenticated live recovery, authoritative not-found handling and multiwindow ownership remain open.
+
 Read-only diagnostics have narrower scope than mutating actions. Every mutation validates schema, actor, permission, expected state/layout revision and idempotency key. Asynchronous acceptance is not success; report terminal outcomes. The bridge must not be an arbitrary shell/filesystem proxy or bypass Hermes approval.
 
 ## Security and lifecycle

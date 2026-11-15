@@ -319,3 +319,29 @@
 - **performance:** Reuse checks inspect the existing in-memory view, session list and canonical Dock snapshot; no request is added for a reused draft.
 - **risks:** Bot Mode owner routes, attachment-aware emptiness, live composer debounce flush and authenticated create behavior remain unverified or unsupported.
 - **follow_up:** Continue close-other/right/all/focus precedence and session resume error correlation against the fixed source.
+
+## HUI-026
+
+- **id:** HUI-026
+- **timestamp:** 2026-11-15T06:40:00Z
+- **what:** Correlated each session resume request and result by request ID, stored session ID and profile. Matching snapshots hydrate only the owning view; stale results are ignored. Errors latch to the owning pane and expose an accessible Retry action; disconnect/reconnect permits recovery.
+- **why:** A global resume error could be shown on the wrong chat, and an uncorrelated late response could affect the wrong tab after navigation or retry.
+- **components:** Hermes Native gateway actor, app session-view cache, session-pane error state, AccessKit tests, agent automation fixture, parity docs.
+- **type:** session lifecycle correctness and recovery.
+- **validation:** cargo fmt --all -- --check passed after formatting; cargo check -p hermes-native --all-targets --features agent-automation passed; cargo test -p hermes-native --features agent-automation passed (83 library + 5 automation). The isolated 1440x900 pane screenshot was rendered and inspected; it shows the standard pane, while the error/retry path is covered by an app test. No live gateway or Windows host acceptance.
+- **performance:** Resume result handling remains an in-memory keyed lookup plus bounded transcript state update; no benchmark was run because this does not claim a performance change.
+- **risks:** Authoritative not-found/removal recovery, live gateway reconnect acceptance, source-paired screenshots, persistent scroll and complete tab parity remain open.
+- **follow_up:** Continue remaining pinned-source session-tab behaviors and broader fixed-snapshot UI coverage without moving the Hermes source pin.
+
+## HUI-027
+
+- **id:** HUI-027
+- **timestamp:** 2026-11-15T06:44:00Z
+- **what:** Prioritized a latched resume failure over any cached transcript in the pane renderer, so Retry remains visible after a failed reopen even when older messages are cached.
+- **why:** Cached history must not hide the source tile's failed-open state or its recovery action.
+- **components:** Hermes Native session content renderer, profile-scoped resume error state, AccessKit fixture and parity plan.
+- **type:** session resume error-state correctness.
+- **validation:** cargo fmt --all -- --check and cargo check -p hermes-native --all-targets --features agent-automation passed; full cargo test -p hermes-native --features agent-automation passed (83 library + 5 automation). The error renderer test now includes cached history.
+- **performance:** No new work beyond a keyed cached-view lookup; no performance claim or benchmark.
+- **risks:** The test is isolated; authenticated gateway behavior and physical Windows rendering remain unverified.
+- **follow_up:** Continue fixed-snapshot parity work and verify the source paired session lifecycle on the isolated live profile.
