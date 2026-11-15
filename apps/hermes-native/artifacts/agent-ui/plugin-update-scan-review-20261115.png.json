@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "request_id": "hermes-ui-parity-20261115-agent-plugin-update-review",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "base_head": "2be5378ec6960a3f864eafec50562d6f966e18a0",
+  "source_diff_sha256": "9a08724846ccd6a5f29f8d3a98a14d64a2ed106b15a77f99c41873a3e97a8e2a",
+  "automation_binary_sha256": "a565ef0e70fffab4c2afce7f319b08c99347f27df606c4137e12de2206496e52",
+  "screenshot_sha256": "b82c3c9b037c1edee811f5ba8ceac5fba6acee117ae9e0c07280b481996c5e5d",
+  "viewport": { "width": 1440, "height": 900 },
+  "route": "/capabilities?tab=plugins",
+  "fixture": "synthetic caution scan review for installed Legacy Helper; isolated offline automation fixture",
+  "state": {
+    "profile": "research",
+    "plugin": "Legacy Helper",
+    "verdict": "caution",
+    "findings": [{ "severity": "high", "file": "plugin.py", "line": 7, "summary": "dynamic execution requires explicit review" }],
+    "update_target": "1.3.0",
+    "gateway_transport": "absent",
+    "gateway_connected_ui_flag": true
+  },
+  "capture_method": "hermes-automation --plugin-update-scan-review-fixture --screenshot",
+  "access_receipt": "AccessKit test asserts caution finding and accessible Update anyway/Cancel controls; gateway fixture verifies accepted consent is carried through caution override.",
+  "visual_review": "1440x900 screenshot visually inspected; modal shows selected profile, caution verdict, sorted HIGH finding, explicit Update anyway/Cancel and installed row update target.",
+  "limitations": [
+    "synthetic fixture only; connected UI state is seeded to render the CTA and no update action was activated",
+    "no Hermes gateway, installed profile or plugin repository was accessed",
+    "Desktop-half reconciliation, uncertain live update resolution, update-all and source-paired Windows acceptance remain incomplete"
+  ]
+}

@@ -285,6 +285,35 @@ pub struct AgentPluginInstallReceipt {
     pub skills: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AgentPluginScanFinding {
+    #[serde(default)]
+    pub severity: String,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub file: String,
+    #[serde(default)]
+    pub line: u64,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum AgentPluginUpdateOutcome {
+    Applied {
+        unchanged: bool,
+    },
+    Consent {
+        sha: String,
+        delta_lines: Vec<String>,
+    },
+    Scan {
+        verdict: String,
+        findings: Vec<AgentPluginScanFinding>,
+    },
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectedGateway {
     pub endpoint: GatewayEndpoint,
@@ -438,6 +467,14 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<AgentPluginInstallReceipt, String>,
     },
+    AgentPluginUpdated {
+        request_id: String,
+        name: String,
+        profile: Option<String>,
+        accept_capabilities: bool,
+        force: bool,
+        result: Result<AgentPluginUpdateOutcome, String>,
+    },
     ToolsetEnabled {
         request_id: String,
         name: String,
@@ -501,6 +538,13 @@ enum GatewayCommand {
         identifier: String,
         inspected_sha: String,
         profile: Option<String>,
+    },
+    UpdateAgentPlugin {
+        request_id: String,
+        name: String,
+        profile: Option<String>,
+        accept_capabilities: bool,
+        force: bool,
     },
     ResumeSession {
         request_id: String,
@@ -935,6 +979,25 @@ impl GatewayDiscovery {
                 identifier,
                 inspected_sha,
                 profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn update_agent_plugin(
+        &self,
+        request_id: String,
+        name: String,
+        profile: Option<String>,
+        accept_capabilities: bool,
+        force: bool,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::UpdateAgentPlugin {
+                request_id,
+                name,
+                profile,
+                accept_capabilities,
+                force,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -1430,6 +1493,108 @@ fn gateway_actor(
                         request_id,
                         catalog_name,
                         profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::UpdateAgentPlugin {
+                request_id,
+                name,
+                profile,
+                accept_capabilities,
+                force,
+            }) => {
+                let mut update_params = serde_json::json!({"action":"update","name":name});
+                if accept_capabilities {
+                    update_params["accept_capabilities"] = serde_json::Value::Bool(true);
+                }
+                if force {
+                    update_params["force"] = serde_json::Value::Bool(true);
+                }
+                let result = session_profile_params(update_params, profile.as_deref())
+                    .and_then(|params| {
+                        rpc_with_events(
+                            socket,
+                            next_request_id,
+                            "plugins.manage",
+                            params,
+                            Some(&events),
+                        )
+                    })
+                    .and_then(|value| {
+                        if value
+                            .get("consent_required")
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(true)
+                        {
+                            return Ok(AgentPluginUpdateOutcome::Consent {
+                                sha: value
+                                    .get("sha")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("")
+                                    .chars()
+                                    .take(8)
+                                    .collect(),
+                                delta_lines: value
+                                    .get("delta_lines")
+                                    .and_then(serde_json::Value::as_array)
+                                    .map(|rows| {
+                                        rows.iter()
+                                            .filter_map(serde_json::Value::as_str)
+                                            .map(str::to_owned)
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                            });
+                        }
+                        if value
+                            .get("scan_blocked")
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(true)
+                        {
+                            let findings = serde_json::from_value(
+                                value
+                                    .get("scan_findings")
+                                    .cloned()
+                                    .unwrap_or_else(|| serde_json::json!([])),
+                            )
+                            .map_err(|_| {
+                                "Hermes returned invalid plugin security scan findings".to_owned()
+                            })?;
+                            return Ok(AgentPluginUpdateOutcome::Scan {
+                                verdict: value
+                                    .get("scan_verdict")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("dangerous")
+                                    .to_owned(),
+                                findings,
+                            });
+                        }
+                        if value.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+                            return Ok(AgentPluginUpdateOutcome::Applied {
+                                unchanged: value
+                                    .get("unchanged")
+                                    .and_then(serde_json::Value::as_bool)
+                                    .unwrap_or(false),
+                            });
+                        }
+                        Err(value
+                            .get("error")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("Hermes refused to update the plugin")
+                            .to_owned())
+                    });
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginUpdated {
+                        request_id,
+                        name,
+                        profile,
+                        accept_capabilities,
+                        force,
                         result,
                     })
                     .is_err()
@@ -4813,6 +4978,97 @@ mod tests {
                 result:Ok(AgentPluginInstallReceipt { plugin_name, enabled:true, skills, .. }) }
                 if request_id == "install-1" && catalog_name == "sample-plugin" && profile == "work"
                     && plugin_name == "sample-plugin" && skills == vec!["sample:lookup"])
+        );
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn agent_plugin_update_preserves_consent_and_scan_override_sequence() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let expected = [
+                (
+                    json!({"action":"update","name":"Weather","profile":"work"}),
+                    json!({"consent_required":true,"sha":"abcdef0123456789","delta_lines":["+ tool: weather.alerts"]}),
+                ),
+                (
+                    json!({"action":"update","name":"Weather","accept_capabilities":true,"profile":"work"}),
+                    json!({"scan_blocked":true,"scan_verdict":"caution","scan_findings":[{"severity":"high","category":"execution","file":"plugin.py","line":7,"description":"dynamic execution"}]}),
+                ),
+                (
+                    json!({"action":"update","name":"Weather","accept_capabilities":true,"force":true,"profile":"work"}),
+                    json!({"ok":true,"unchanged":false}),
+                ),
+            ];
+            for (expected_params, result) in expected {
+                let request: serde_json::Value = match socket.read().expect("read update request") {
+                    Message::Text(text) => {
+                        serde_json::from_str(&text).expect("parse update request")
+                    }
+                    other => panic!("expected update request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "plugins.manage");
+                assert_eq!(request["params"], expected_params);
+                let id = request["id"].as_u64().expect("update RPC id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":result})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("reply to update");
+            }
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let issue = |request_id: &str, accept_capabilities: bool, force: bool| {
+            GatewayCommand::UpdateAgentPlugin {
+                request_id: request_id.into(),
+                name: "Weather".into(),
+                profile: Some("work".into()),
+                accept_capabilities,
+                force,
+            }
+        };
+        command_tx
+            .send(issue("update-1", false, false))
+            .expect("queue initial update");
+        assert!(
+            matches!(event_rx.recv_timeout(Duration::from_secs(3)).expect("consent review"),
+            GatewayEvent::AgentPluginUpdated { request_id, accept_capabilities:false, force:false,
+                result:Ok(AgentPluginUpdateOutcome::Consent { sha, delta_lines, .. }), .. }
+                if request_id == "update-1" && sha == "abcdef01" && delta_lines == vec!["+ tool: weather.alerts"])
+        );
+        command_tx
+            .send(issue("update-2", true, false))
+            .expect("queue consented update");
+        assert!(
+            matches!(event_rx.recv_timeout(Duration::from_secs(3)).expect("scan review"),
+            GatewayEvent::AgentPluginUpdated { request_id, accept_capabilities:true, force:false,
+                result:Ok(AgentPluginUpdateOutcome::Scan { verdict, findings }), .. }
+                if request_id == "update-2" && verdict == "caution" && findings.len() == 1 && findings[0].file == "plugin.py")
+        );
+        command_tx
+            .send(issue("update-3", true, true))
+            .expect("queue explicit scan override");
+        assert!(
+            matches!(event_rx.recv_timeout(Duration::from_secs(3)).expect("update receipt"),
+            GatewayEvent::AgentPluginUpdated { request_id, accept_capabilities:true, force:true,
+                result:Ok(AgentPluginUpdateOutcome::Applied { unchanged:false }), .. } if request_id == "update-3")
         );
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");

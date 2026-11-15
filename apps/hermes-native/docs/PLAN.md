@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 68 (implementation in progress).
+- **Working revision:** 69 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -384,3 +384,7 @@ Merge the profile-installed Agent Plugin list into the public Plugins catalog by
 ### Revision 68 — reviewed curated Agent Plugin installation
 
 Add catalog-row Install actions and a registered agent action that share one path. The path performs the pinned `plugins.manage inspect` against the selected profile, shows the repository, inspected commit, component types and warnings, and requires an explicit confirmation. Installation sends `catalog_name`, profile and the exact inspected SHA to `plugins.manage install`; insecure/non-Agent sources and pin mismatches fail closed. Correlated install receipts expose activation, missing environment and warnings, then invalidate and refresh the installed inventory. Disconnect during install reports an unknown result and requires inventory refresh before retry. An isolated WebSocket fixture proves inspect→pinned install RPC parameters; AccessKit/UI tests and a distinct synthetic review screenshot validate the surface. This slice handles the Agent Plugin component only: Desktop plugin installation, scan-finding-specific force/review, catalog updates, custom-repository install, actual live-profile use and paired source visual acceptance remain open.
+
+### Revision 69 — Agent Plugin update consent and scan review
+
+Add an Update-to-target control to eligible installed Agent Plugin rows and a shared registered agent action. Issue profile-scoped `plugins.manage action=update` requests. When Hermes returns `consent_required`, show the target pin and bounded capability-delta lines and resubmit only after explicit acceptance using `accept_capabilities=true`. When Hermes returns a scan block, surface severity-sorted findings; only `caution` allows a confirmation that resubmits with `force=true`, while `dangerous` remains non-overridable. Preserve already accepted options across subsequent backend gates, correlate every outcome to name/profile/options, and reload the inventory after applied updates. An isolated WebSocket fixture covers consent → caution → explicit override → applied; AccessKit fixtures cover the caution review and dangerous disabled state. Desktop-half reconciliation, uncertain live update resolution, update-all, paired source visuals and live profile acceptance remain open.

@@ -1326,7 +1326,7 @@ mod tests {
             &app,
         );
         assert_eq!(registry["status"], "succeeded");
-        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 16);
+        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 17);
         assert!(
             registry["result"]["actions"]
                 .as_array()
@@ -1361,6 +1361,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|action| action["type"] == "request_agent_plugin_removal")
+        );
+        assert!(
+            registry["result"]["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "request_agent_plugin_update")
         );
         assert!(
             registry["result"]["actions"]

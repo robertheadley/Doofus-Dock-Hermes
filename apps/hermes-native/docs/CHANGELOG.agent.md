@@ -922,3 +922,11 @@ Validation: 109 library tests and 7 automation tests passed; formatter, default/
 Change record: id `HUI-039`; type `feature`; components `Plugins catalog, gateway actor, agent action registry, headless fixture`; performance `no benchmarked runtime change`; risks `backend install runs up to a minute and disconnect/timeout result is uncertain`; follow-up `implement scan finding consent and remaining package/update workflows against pinned Desktop source`.
 
 HUI-039 publication: implementation commit `c9cd13d` was pushed to `main` after fetching and confirming its parent `6ff7dc0`; this docs-only commit records publication.
+
+### HUI-040 — Agent Plugin update consent and scan review
+
+Added profile-scoped Agent Plugin updates to installed eligible rows and the shared agent-action registry. The flow retains accepted capability consent across subsequent Hermes scan gates, sorts and bounds displayed findings, permits an explicit force retry only for caution verdicts, and leaves dangerous verdicts non-overridable. Correlated applied updates refresh the profile inventory. Isolated WebSocket and AccessKit tests cover the consent-to-caution-to-override sequence and dangerous review state. Desktop plugin-half reconciliation, uncertain live-update resolution, update-all and live/source-paired acceptance remain open.
+
+Validation: 111 library tests and 7 automation tests passed; formatting, default/all-target builds, fixed-source package validation and diff check passed. The validator still reports all 565 inventory rows pending; optional PyYAML parsing was skipped. A synthetic caution review screenshot was visually inspected; no Hermes gateway/profile was used. No runtime performance benchmark was taken.
+
+Change record: id `HUI-040`; type `feature`; components `Plugins catalog, gateway actor, agent action registry, headless fixture`; performance `no benchmarked runtime change`; risks `backend update may produce an unknown outcome after disconnect and requires fresh inventory reconciliation`; follow-up `implement Desktop-half reconciliation and uncertain update handling, then pursue remaining pinned-source workflows and paired acceptance`.

@@ -1,7 +1,8 @@
 use crate::gateway::{
-    AgentPluginInfo, AgentPluginInspection, AgentPluginsSnapshot, CapabilitiesSnapshot,
-    ConnectorsSnapshot, GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt,
-    SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
+    AgentPluginInfo, AgentPluginInspection, AgentPluginScanFinding, AgentPluginUpdateOutcome,
+    AgentPluginsSnapshot, CapabilitiesSnapshot, ConnectorsSnapshot, GatewayDiscovery,
+    GatewayEndpoint, GatewayEvent, PromptSubmitReceipt, SessionSearchResult, SessionSummary,
+    SkillInfo, ToolsetInfo,
 };
 use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
@@ -59,6 +60,9 @@ pub enum RegisteredUiAction {
         enabled: bool,
     },
     RequestAgentPluginRemoval {
+        name: String,
+    },
+    RequestAgentPluginUpdate {
         name: String,
     },
     RequestCatalogPluginInstall {
@@ -163,6 +167,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
+            ,{"type":"request_agent_plugin_update","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded manageable plugin with an available update"}}
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
@@ -273,6 +278,35 @@ struct PendingCatalogPluginInstall {
     request_id: String,
     catalog_name: String,
     profile: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingAgentPluginCatalogUpdate {
+    request_id: String,
+    profile: Option<String>,
+    accept_capabilities: bool,
+    force: bool,
+}
+
+#[derive(Clone, Debug)]
+enum AgentPluginUpdateReview {
+    Consent {
+        sha: String,
+        delta_lines: Vec<String>,
+    },
+    Scan {
+        verdict: String,
+        findings: Vec<AgentPluginScanFinding>,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct AgentPluginUpdateDialog {
+    name: String,
+    profile: Option<String>,
+    accept_capabilities: bool,
+    force: bool,
+    review: AgentPluginUpdateReview,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -411,6 +445,8 @@ pub struct HermesNativeApp {
     agent_plugins_pending: bool,
     agent_plugins_error: Option<String>,
     pending_agent_plugin_updates: BTreeMap<String, PendingAgentPluginUpdate>,
+    pending_agent_plugin_catalog_updates: BTreeMap<String, PendingAgentPluginCatalogUpdate>,
+    agent_plugin_update_dialog: Option<AgentPluginUpdateDialog>,
     agent_plugin_removal_confirmation: Option<String>,
     pending_agent_plugin_removals: BTreeMap<String, PendingAgentPluginRemoval>,
     catalog_plugin_install_dialog: Option<CatalogPluginInstallDialog>,
@@ -694,6 +730,29 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_plugin_update_scan_review_fixture_for_automation(&mut self) {
+        self.load_plugin_catalog_fixture_for_automation();
+        self.gateway_connected = true;
+        self.agent_plugin_update_dialog = Some(AgentPluginUpdateDialog {
+            name: "Legacy Helper".into(),
+            profile: Some("research".into()),
+            accept_capabilities: false,
+            force: false,
+            review: AgentPluginUpdateReview::Scan {
+                verdict: "caution".into(),
+                findings: vec![AgentPluginScanFinding {
+                    severity: "high".into(),
+                    category: "execution".into(),
+                    file: "plugin.py".into(),
+                    line: 7,
+                    description: "dynamic execution requires explicit review".into(),
+                }],
+            },
+        });
+        self.status = "Plugin update scan review fixture · synthetic offline data".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_connectors_fixture_for_automation(&mut self) {
         self.route = AppRoute::Capabilities;
         self.capabilities_tab = CapabilitiesTab::Connectors;
@@ -818,6 +877,8 @@ fn render_message() -> &'static str {
             agent_plugins_pending: false,
             agent_plugins_error: None,
             pending_agent_plugin_updates: BTreeMap::new(),
+            pending_agent_plugin_catalog_updates: BTreeMap::new(),
+            agent_plugin_update_dialog: None,
             agent_plugin_removal_confirmation: None,
             pending_agent_plugin_removals: BTreeMap::new(),
             catalog_plugin_install_dialog: None,
@@ -2548,6 +2609,9 @@ fn render_message() -> &'static str {
                     }
                     for plugin in installed {
                         let pending = self.pending_agent_plugin_updates.contains_key(&plugin.key);
+                        let update_pending = self
+                            .pending_agent_plugin_catalog_updates
+                            .contains_key(&plugin.name);
                         egui::Frame::group(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(&plugin.name).strong().color(TEXT));
@@ -2557,6 +2621,7 @@ fn render_message() -> &'static str {
                                         .add_enabled(
                                             self.gateway_connected
                                                 && !pending
+                                                && !update_pending
                                                 && self.agent_plugins_profile.as_deref()
                                                     == self.gateway_endpoint.as_ref().map(
                                                         |endpoint| endpoint.profile_id.as_str(),
@@ -2577,11 +2642,50 @@ fn render_message() -> &'static str {
                                     if pending {
                                         ui.label(RichText::new("Saving…").size(10.0).color(MUTED));
                                     }
+                                    if plugin.update_available == Some(true) {
+                                        let update = ui
+                                            .add_enabled(
+                                                self.gateway_connected
+                                                    && !pending
+                                                    && !update_pending
+                                                    && self.agent_plugins_profile.as_deref()
+                                                        == self.gateway_endpoint.as_ref().map(
+                                                            |endpoint| endpoint.profile_id.as_str(),
+                                                        )
+                                                    && agent_plugin_is_manageable(plugin),
+                                                egui::Button::new(format!(
+                                                    "Update to {}",
+                                                    plugin
+                                                        .catalog_version
+                                                        .as_deref()
+                                                        .or(plugin.update_target.as_deref())
+                                                        .unwrap_or("latest")
+                                                )),
+                                            )
+                                            .accessible_name(format!(
+                                                "Update agent plugin: {}",
+                                                plugin.name
+                                            ));
+                                        if update.clicked() {
+                                            self.execute_registered_action(
+                                                RegisteredUiAction::RequestAgentPluginUpdate {
+                                                    name: plugin.name.clone(),
+                                                },
+                                            )
+                                            .unwrap_or_else(|error| self.status = error);
+                                        }
+                                    }
+                                    if update_pending {
+                                        ui.label(
+                                            RichText::new("Updating…").size(10.0).color(MUTED),
+                                        );
+                                    }
                                     if matches!(plugin.source.as_str(), "user" | "git") {
                                         let uninstall = ui
                                             .add_enabled(
                                                 self.gateway_connected
                                                     && !pending
+                                                    && !update_pending
                                                     && self.agent_plugins_profile.as_deref()
                                                         == self.gateway_endpoint.as_ref().map(
                                                             |endpoint| endpoint.profile_id.as_str(),
@@ -5275,6 +5379,9 @@ fn render_message() -> &'static str {
             RegisteredUiAction::RequestAgentPluginRemoval { name } => {
                 self.request_agent_plugin_removal(name)?;
             }
+            RegisteredUiAction::RequestAgentPluginUpdate { name } => {
+                self.request_agent_plugin_update(name)?;
+            }
             RegisteredUiAction::RequestCatalogPluginInstall { name } => {
                 self.request_catalog_plugin_install(name)?;
             }
@@ -5400,6 +5507,98 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
+    fn request_agent_plugin_update(&mut self, name: String) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before updating a plugin".into());
+        }
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err("Plugin name is invalid".into());
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self.agent_plugins_profile != profile {
+            return Err(
+                "Installed plugins belong to a different profile; refresh the inventory".into(),
+            );
+        }
+        let plugin = self
+            .agent_plugins
+            .as_ref()
+            .and_then(|snapshot| snapshot.plugins.iter().find(|plugin| plugin.name == name))
+            .ok_or_else(|| "Plugin is not in the loaded profile inventory".to_owned())?;
+        if !agent_plugin_is_manageable(plugin) || plugin.update_available != Some(true) {
+            return Err("This plugin does not have a manageable update available".into());
+        }
+        if self
+            .pending_agent_plugin_catalog_updates
+            .contains_key(&name)
+        {
+            return Ok(());
+        }
+        self.send_agent_plugin_update(name, false, false)
+    }
+
+    fn send_agent_plugin_update(
+        &mut self,
+        name: String,
+        accept_capabilities: bool,
+        force: bool,
+    ) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Reconnect to Hermes before continuing the plugin update".into());
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self.agent_plugins_profile != profile {
+            return Err(
+                "Installed plugins belong to a different profile; refresh the inventory".into(),
+            );
+        }
+        let eligible = self
+            .agent_plugins
+            .as_ref()
+            .and_then(|snapshot| snapshot.plugins.iter().find(|plugin| plugin.name == name))
+            .is_some_and(|plugin| {
+                agent_plugin_is_manageable(plugin) && plugin.update_available == Some(true)
+            });
+        if !eligible {
+            return Err(
+                "Plugin update is no longer available in the loaded profile inventory".into(),
+            );
+        }
+        if self
+            .pending_agent_plugin_catalog_updates
+            .contains_key(&name)
+        {
+            return Err("This plugin already has an update in progress".into());
+        }
+        let request_id = operation_id("agent-plugin-update");
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
+            .update_agent_plugin(
+                request_id.clone(),
+                name.clone(),
+                profile.clone(),
+                accept_capabilities,
+                force,
+            )?;
+        self.pending_agent_plugin_catalog_updates.insert(
+            name,
+            PendingAgentPluginCatalogUpdate {
+                request_id,
+                profile,
+                accept_capabilities,
+                force,
+            },
+        );
+        Ok(())
+    }
+
     fn request_agent_plugin_removal(&mut self, name: String) -> Result<(), String> {
         if !self.gateway_connected {
             return Err("Connect to Hermes before uninstalling a plugin".into());
@@ -5509,6 +5708,85 @@ fn render_message() -> &'static str {
                 .unwrap_or_else(|error| self.status = error);
         } else if cancel {
             self.agent_plugin_removal_confirmation = None;
+        }
+    }
+
+    fn show_agent_plugin_update_dialog(&mut self, ctx: &egui::Context) {
+        let Some(dialog) = self.agent_plugin_update_dialog.clone() else {
+            return;
+        };
+        let mut confirm = false;
+        let mut cancel = false;
+        let (title, confirm_label, can_confirm) = match &dialog.review {
+            AgentPluginUpdateReview::Consent { sha, .. } => (
+                format!("Review plugin capability changes · {}", dialog.name),
+                format!("Accept changes and update to {sha}"),
+                true,
+            ),
+            AgentPluginUpdateReview::Scan { verdict, .. } => (
+                format!("Security scan · {}", dialog.name),
+                "Update anyway".to_owned(),
+                verdict.eq_ignore_ascii_case("caution"),
+            ),
+        };
+        egui::Window::new(title.clone())
+            .id(Id::NULL.with(("agent-plugin-update-review", &dialog.name)))
+            .collapsible(false)
+            .resizable(true)
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                ui.label(format!("Profile · {}", dialog.profile.as_deref().unwrap_or("Default")));
+                match &dialog.review {
+                    AgentPluginUpdateReview::Consent { sha, delta_lines } => {
+                        ui.label(format!("The catalog pin changed to {sha} and requests new capabilities."));
+                        ui.label("Hermes has not applied the update. Review each change before accepting.");
+                        for line in delta_lines.iter().take(20) {
+                            ui.label(RichText::new(line).size(11.0).color(MUTED));
+                        }
+                        if delta_lines.len() > 20 {
+                            ui.label(format!("{} more changes omitted", delta_lines.len() - 20));
+                        }
+                    }
+                    AgentPluginUpdateReview::Scan { verdict, findings } => {
+                        ui.colored_label(if can_confirm { Color32::YELLOW } else { Color32::LIGHT_RED },
+                            format!("Hermes security scan verdict · {verdict}"));
+                        ui.label(if can_confirm {
+                            "A caution scan blocked the update. Hermes changed nothing; continuing is an explicit override."
+                        } else {
+                            "This verdict cannot be overridden from the Desktop. Hermes changed nothing."
+                        });
+                        let mut sorted = findings.clone();
+                        sorted.sort_by_key(|finding| match finding.severity.to_ascii_lowercase().as_str() {
+                            "critical" => 0, "high" => 1, "medium" => 2, "low" => 3, _ => 4,
+                        });
+                        for finding in sorted.iter().take(8) {
+                            ui.colored_label(Color32::YELLOW, format!("{} · {}:{} · {}",
+                                finding.severity.to_uppercase(), finding.file, finding.line,
+                                if finding.description.is_empty() { &finding.category } else { &finding.description }));
+                        }
+                        if sorted.len() > 8 {
+                            ui.label(format!("{} additional findings", sorted.len() - 8));
+                        }
+                    }
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    confirm = ui.add_enabled(can_confirm, egui::Button::new(confirm_label))
+                        .accessible_name(format!("Confirm plugin update: {}", dialog.name)).clicked();
+                    cancel = ui.button("Cancel").accessible_name("Cancel plugin update review").clicked();
+                });
+            });
+        if confirm {
+            let (accept_capabilities, force) = match dialog.review {
+                AgentPluginUpdateReview::Consent { .. } => (true, dialog.force),
+                AgentPluginUpdateReview::Scan { .. } => (dialog.accept_capabilities, true),
+            };
+            match self.send_agent_plugin_update(dialog.name.clone(), accept_capabilities, force) {
+                Ok(()) => self.agent_plugin_update_dialog = None,
+                Err(error) => self.status = error,
+            }
+        } else if cancel {
+            self.agent_plugin_update_dialog = None;
         }
     }
 
@@ -7462,6 +7740,93 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::AgentPluginUpdated {
+                    request_id,
+                    name,
+                    profile,
+                    accept_capabilities,
+                    force,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_agent_plugin_catalog_updates.get(&name) else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile != profile
+                        || pending.accept_capabilities != accept_capabilities
+                        || pending.force != force
+                        || profile
+                            != self
+                                .gateway_endpoint
+                                .as_ref()
+                                .map(|endpoint| endpoint.profile_id.clone())
+                    {
+                        continue;
+                    }
+                    self.pending_agent_plugin_catalog_updates.remove(&name);
+                    match result {
+                        Ok(AgentPluginUpdateOutcome::Applied { unchanged }) => {
+                            self.status = if unchanged {
+                                format!("{name} is already up to date")
+                            } else {
+                                format!("Updated {name}; refreshing installed inventory")
+                            };
+                            self.agent_plugins = None;
+                            self.agent_plugins_profile = None;
+                            if self.route == AppRoute::Capabilities
+                                && self.capabilities_tab == CapabilitiesTab::Plugins
+                            {
+                                self.load_agent_plugins()
+                                    .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
+                            }
+                        }
+                        Ok(AgentPluginUpdateOutcome::Consent { sha, delta_lines }) => {
+                            self.agent_plugin_update_dialog = Some(AgentPluginUpdateDialog {
+                                name,
+                                profile,
+                                accept_capabilities,
+                                force,
+                                review: AgentPluginUpdateReview::Consent { sha, delta_lines },
+                            });
+                        }
+                        Ok(AgentPluginUpdateOutcome::Scan { verdict, findings }) => {
+                            if !verdict.eq_ignore_ascii_case("caution") {
+                                self.status = format!(
+                                    "Hermes security scan blocked the {name} update ({verdict}); no changes were applied"
+                                );
+                            }
+                            self.agent_plugin_update_dialog = Some(AgentPluginUpdateDialog {
+                                name,
+                                profile,
+                                accept_capabilities,
+                                force,
+                                review: AgentPluginUpdateReview::Scan { verdict, findings },
+                            });
+                        }
+                        Err(error) => {
+                            let uncertain = error.to_ascii_lowercase().contains("timed out")
+                                || error.to_ascii_lowercase().contains("disconnected");
+                            self.status = if uncertain {
+                                format!(
+                                    "Update outcome unknown for {name}; refresh the installed inventory before acting again. {error}"
+                                )
+                            } else {
+                                error
+                            };
+                            if uncertain {
+                                self.agent_plugins = None;
+                                self.agent_plugins_profile = None;
+                                if self.route == AppRoute::Capabilities
+                                    && self.capabilities_tab == CapabilitiesTab::Plugins
+                                {
+                                    self.load_agent_plugins().unwrap_or_else(|error| {
+                                        self.agent_plugins_error = Some(error)
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
                 GatewayEvent::AgentPluginToggled {
                     request_id,
                     key,
@@ -7634,6 +7999,14 @@ fn render_message() -> &'static str {
                         self.pending_agent_plugin_updates.clear();
                         self.agent_plugins_error = Some(
                             "Plugin operation outcome unknown after gateway disconnect; refresh the inventory".into(),
+                        );
+                    }
+                    if !self.pending_agent_plugin_catalog_updates.is_empty() {
+                        self.pending_agent_plugin_catalog_updates.clear();
+                        self.agent_plugins = None;
+                        self.agent_plugins_profile = None;
+                        self.agent_plugins_error = Some(
+                            "Plugin update outcome unknown after gateway disconnect; refresh the inventory before acting again".into(),
                         );
                     }
                     if !self.pending_agent_plugin_removals.is_empty() {
@@ -9216,6 +9589,14 @@ mod tests {
                 .is_some(),
             "the installed row surfaces the backend-provided update target"
         );
+        assert!(
+            harness
+                .query_by_label("Update agent plugin: Legacy Helper")
+                .expect("available update action is accessible")
+                .accesskit_node()
+                .is_disabled(),
+            "update action stays disabled while the gateway is disconnected"
+        );
         drop(harness);
         assert!(
             app.execute_registered_action(RegisteredUiAction::SetAgentPluginEnabled {
@@ -9236,6 +9617,59 @@ mod tests {
             app.catalog_plugin_install_dialog.is_none(),
             "offline install request does not open an actionable review"
         );
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::RequestAgentPluginUpdate {
+                name: "Legacy Helper".into(),
+            })
+            .expect_err("plugin update must fail closed offline")
+            .contains("Connect to Hermes")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_plugin_scan_review_surfaces_findings_and_explicit_override() {
+        let (mut app, profile) = isolated_app();
+        app.load_plugin_update_scan_review_fixture_for_automation();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_by_label("Security scan · Legacy Helper")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Confirm plugin update: Legacy Helper")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("HIGH · plugin.py:7 · dynamic execution requires explicit review"))
+                .next()
+                .is_some()
+        );
+        drop(harness);
+        if let Some(dialog) = app.agent_plugin_update_dialog.as_mut()
+            && let AgentPluginUpdateReview::Scan { verdict, .. } = &mut dialog.review
+        {
+            *verdict = "dangerous".into();
+        }
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_by_label("Confirm plugin update: Legacy Helper")
+                .expect("dangerous scan keeps an accessible control visible")
+                .accesskit_node()
+                .is_disabled(),
+            "dangerous verdict never exposes an update override"
+        );
+        drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
     }
@@ -9482,6 +9916,13 @@ mod tests {
                 .expect("action catalog array")
                 .iter()
                 .any(|action| action["type"] == "request_agent_plugin_removal")
+        );
+        assert!(
+            registered_ui_action_catalog()["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "request_agent_plugin_update")
         );
     }
     #[test]
@@ -11796,6 +12237,7 @@ impl HermesNativeApp {
         }
         self.show_route_overlay(&ctx);
         self.show_catalog_plugin_install_dialog(&ctx);
+        self.show_agent_plugin_update_dialog(&ctx);
         self.show_agent_plugin_removal_dialog(&ctx);
         self.show_rename_dialog(&ctx);
         self.show_session_close_dialog(&ctx);
@@ -11842,6 +12284,11 @@ impl HermesNativeApp {
                 "installed_plugins_user_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.user_count),
                 "installed_plugins_bundled_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.bundled_count),
                 "plugin_updates_pending": self.pending_agent_plugin_updates.len(),
+                "plugin_catalog_updates_pending": self.pending_agent_plugin_catalog_updates.len(),
+                "plugin_update_review": self.agent_plugin_update_dialog.as_ref().map(|dialog| match &dialog.review {
+                    AgentPluginUpdateReview::Consent { .. } => json!({"name":dialog.name,"kind":"consent","profile":dialog.profile}),
+                    AgentPluginUpdateReview::Scan { verdict, findings } => json!({"name":dialog.name,"kind":"scan","verdict":verdict,"finding_count":findings.len(),"profile":dialog.profile}),
+                }),
                 "plugin_removals_pending": self.pending_agent_plugin_removals.len(),
                 "connectors_pending": self.connectors_pending,
                 "connectors_error": self.connectors_error,
