@@ -1133,3 +1133,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No benchmark performed.
   **risks:** Passing local fixtures does not establish visual parity, remote Files behavior, or Windows host acceptance.
   **follow_up:** Continue with filesystem source behavior and dynamic preview panes; keep Files acceptance pending until paired runtime evidence exists.
+
+- **id:** HUR-001-084
+  **timestamp:** 2026-11-15T13:27:24Z
+  **what:** Published the validated Files tree implementation to the configured `origin/main` repository.
+  **why:** Keep approved parity work delivered in small reviewable increments on the user's chosen repository.
+  **components:** `Doofus-Dock-Hermes` repository, `main` branch.
+  **type:** publication
+  **validation:** Commit `4edd2bf` pushed; remote accepted `9896f8f..4edd2bf`.
+  **performance:** Not applicable.
+  **risks:** Publication does not close the 1:1 parity objective; Files remote/preview/ignore behavior and all source-paired acceptance remain open.
+  **follow_up:** Continue the fixed-source parity backlog from the new published `main` revision.
