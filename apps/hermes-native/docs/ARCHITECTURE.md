@@ -60,3 +60,8 @@ The transcript delegates CommonMark/GFM parsing and code syntax highlighting to 
 ### Background prompt ownership
 
 Approval and batch clarification requests are assigned by runtime session ID plus profile to exactly one open native session pane. Prompt state retains that profile, and both human controls and registered semantic actions respond through the same handler using the stored owner scope, even while another pane is selected. Requests with missing/ambiguous ownership or a profile conflicting with the attached gateway endpoint fail closed. Local tests verify routing and UI actions; live authenticated gateway receipts remain unverified.
+
+
+### Primary tab close behavior
+
+`Ctrl+W` (Command+W on macOS) and agent action `close_active_tab` share one app handler. Closing the selected session tile uses its existing busy confirmation. Closing an occupied primary workspace promotes the nearest valid profile-scoped session tile from the workspace group, or from another Dock zone when the group has none, using canonical DoofusDock close/selection transactions before loading that cached view into primary. If there is no tile, primary returns to a clean New session draft. Blank drafts and full-page routes are no-ops. Other source close precedence, including focused terminal and tool tabs, remains incomplete.

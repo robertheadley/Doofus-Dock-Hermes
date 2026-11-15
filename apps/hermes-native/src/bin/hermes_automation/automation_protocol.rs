@@ -1249,7 +1249,7 @@ mod tests {
             &app,
         );
         assert_eq!(registry["status"], "succeeded");
-        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 11);
+        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 12);
         assert!(
             registry["result"]["actions"]
                 .as_array()
@@ -1284,6 +1284,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|action| action["type"] == "respond_clarify")
+        );
+        assert!(
+            registry["result"]["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "close_active_tab")
         );
 
         let capability_response = protocol.handle(

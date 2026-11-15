@@ -60,6 +60,7 @@ pub enum RegisteredUiAction {
         prompt_id: String,
         answer: String,
     },
+    CloseActiveTab,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -115,6 +116,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
+            ,{"type":"close_active_tab","permission":"ui_interaction","mutates":true,"schema":{}}
         ]
     })
 }
@@ -3780,6 +3782,7 @@ fn render_message() -> &'static str {
             RegisteredUiAction::RespondClarify { prompt_id, answer } => {
                 self.respond_to_clarify(prompt_id, answer)?;
             }
+            RegisteredUiAction::CloseActiveTab => self.close_active_tab()?,
         }
         Ok(())
     }
@@ -4362,6 +4365,49 @@ fn render_message() -> &'static str {
                 self.status = error;
             }
         }
+    }
+
+    fn close_active_tab(&mut self) -> Result<(), String> {
+        let snapshot = self.workspace.dock.snapshot();
+        let groups = collect_dock_tab_groups(snapshot.document.root.as_deref());
+        let workspace_group = groups
+            .iter()
+            .find(|group| group.panels.contains(&PanelId::from(WORKSPACE)));
+        let active_panel = workspace_group
+            .and_then(|group| group.panels.get(group.active_index))
+            .cloned()
+            .unwrap_or_else(|| PanelId::from(WORKSPACE));
+
+        if active_panel != PanelId::from(WORKSPACE) {
+            if snapshot
+                .document
+                .descriptor(&active_panel)
+                .is_some_and(|descriptor| descriptor.role == "hermes_session_tile")
+            {
+                self.request_close_session_pane(&active_panel);
+            }
+            return Ok(());
+        }
+
+        let AppRoute::Session(current_session_id) = self.route.clone() else {
+            return Ok(());
+        };
+        if let Some((panel, session_id, profile)) =
+            next_session_pane_for_workspace(&snapshot.document)
+        {
+            self.save_active_chat_view();
+            self.workspace.close_session_pane(&panel)?;
+            self.workspace.select_panel(&PanelId::from(WORKSPACE))?;
+            self.active_session_profile = profile;
+            self.navigate_after_save(AppRoute::Session(session_id));
+            self.status = format!("Promoted the next session tab from {current_session_id}");
+            return Ok(());
+        }
+
+        self.new_chat_draft.clear();
+        self.navigate(AppRoute::NewChat);
+        self.status = "Closed the workspace chat · New session".into();
+        Ok(())
     }
 
     fn request_close_session_pane(&mut self, panel: &PanelId) {
@@ -5447,6 +5493,48 @@ fn find_panel_node(root: Option<&Node>, panel_id: &str) -> Option<NodeId> {
     }
 }
 
+fn next_session_pane_for_workspace(
+    document: &doofusdock_core::LayoutDocument,
+) -> Option<(PanelId, String, Option<String>)> {
+    let workspace = PanelId::from(WORKSPACE);
+    let mut candidates = Vec::new();
+    if let Some(group) = collect_dock_tab_groups(document.root.as_deref())
+        .into_iter()
+        .find(|group| group.panels.contains(&workspace))
+        && let Some(workspace_index) = group.panels.iter().position(|panel| panel == &workspace)
+    {
+        candidates.extend(group.panels.iter().skip(workspace_index + 1).cloned());
+        candidates.extend(group.panels.iter().take(workspace_index).rev().cloned());
+    }
+    candidates.extend(
+        document
+            .panels
+            .iter()
+            .filter(|descriptor| descriptor.role == "hermes_session_tile")
+            .map(|descriptor| descriptor.id.clone()),
+    );
+
+    let mut seen = BTreeSet::new();
+    candidates.into_iter().find_map(|panel| {
+        if !seen.insert(panel.clone()) || document.closed_panels.contains(&panel) {
+            return None;
+        }
+        let descriptor = document.descriptor(&panel)?;
+        if descriptor.role != "hermes_session_tile"
+            || find_panel_node(document.root.as_deref(), &panel.0).is_none()
+        {
+            return None;
+        }
+        let session_id = descriptor.metadata.get("hermes.session.id")?.clone();
+        let profile = descriptor
+            .metadata
+            .get("hermes.session.profile")
+            .filter(|profile| !profile.is_empty())
+            .cloned();
+        Some((panel, session_id, profile))
+    })
+}
+
 fn collect_dock_tab_groups(root: Option<&Node>) -> Vec<DockTabGroup> {
     fn first_panel(node: &Node) -> Option<PanelId> {
         match &node.kind {
@@ -5937,6 +6025,129 @@ mod tests {
         );
         assert!(app.session_pane_is_busy(&panel));
         app.request_close_session_pane(&panel);
+        assert_eq!(app.pending_session_close.as_ref(), Some(&panel));
+        assert!(
+            !app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+        assert!(
+            app.pending_submissions
+                .contains_key(&session_identity_key("runtime-busy", Some("work")))
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn close_primary_workspace_promotes_nearest_session_pane_by_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("main-session".into());
+        app.active_session_profile = Some("personal".into());
+        app.active_runtime_session_id = Some("main-runtime".into());
+        app.transcript = vec![json!({"role":"assistant","content":"Main transcript"})];
+        app.draft = "Main draft".into();
+        let next_panel = app
+            .workspace
+            .open_session_pane(Some("work"), "next-session", "Next session")
+            .expect("open the next canonical tab");
+        app.workspace
+            .select_panel(&PanelId::from(WORKSPACE))
+            .expect("activate the primary workspace tab");
+        app.session_chat_views.insert(
+            session_identity_key("next-session", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("next-runtime".into()),
+                transcript: vec![json!({"role":"assistant","content":"Promoted transcript"})],
+                draft: "Promoted draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.execute_registered_action(RegisteredUiAction::CloseActiveTab)
+            .expect("close the primary workspace tab");
+
+        let document = app.workspace.dock.snapshot().document;
+        assert!(document.closed_panels.contains(&next_panel));
+        assert_eq!(app.route, AppRoute::Session("next-session".into()));
+        assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("next-runtime")
+        );
+        assert_eq!(app.transcript[0]["content"], "Promoted transcript");
+        assert_eq!(app.draft, "Promoted draft");
+        assert!(
+            app.session_chat_views
+                .contains_key(&session_identity_key("main-session", Some("personal")))
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn close_occupied_primary_without_other_tabs_returns_to_new_draft() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("main-session".into());
+        app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("main-runtime".into());
+        app.transcript = vec![json!({"role":"assistant","content":"Main transcript"})];
+        app.new_chat_draft = "stale draft".into();
+
+        app.execute_registered_action(RegisteredUiAction::CloseActiveTab)
+            .expect("close the occupied workspace chat");
+
+        assert_eq!(app.route, AppRoute::NewChat);
+        assert!(app.new_chat_draft.is_empty());
+        assert!(app.active_runtime_session_id.is_none());
+        assert!(app.transcript.is_empty());
+        assert!(
+            app.session_chat_views
+                .contains_key(&session_identity_key("main-session", Some("work")))
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn close_selected_busy_session_tab_uses_existing_confirmation() {
+        let (mut app, profile_dir) = isolated_app();
+        let panel = app
+            .workspace
+            .open_session_pane(Some("work"), "busy-session", "Busy session")
+            .expect("open session tab");
+        app.session_chat_views.insert(
+            session_identity_key("busy-session", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-busy".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.pending_submissions.insert(
+            session_identity_key("runtime-busy", Some("work")),
+            PendingPrompt {
+                session_id: "runtime-busy".into(),
+                profile: Some("work".into()),
+                submission_id: "submission-busy".into(),
+                text: "working".into(),
+                uncertain: false,
+                admission_id: None,
+                execution_generation: Some(1),
+                resolving_unknown: false,
+            },
+        );
+        app.workspace
+            .select_panel(&panel)
+            .expect("select the busy tab");
+
+        app.execute_registered_action(RegisteredUiAction::CloseActiveTab)
+            .expect("close action should request confirmation");
+
         assert_eq!(app.pending_session_close.as_ref(), Some(&panel));
         assert!(
             !app.workspace
@@ -7312,6 +7523,16 @@ mod tests {
 impl HermesNativeApp {
     pub fn draw(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        let close_active_tab = ctx.input_mut(|input| {
+            input.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND,
+                egui::Key::W,
+            ))
+        });
+        if close_active_tab {
+            self.execute_registered_action(RegisteredUiAction::CloseActiveTab)
+                .unwrap_or_else(|error| self.status = error);
+        }
         if !self.fonts_installed {
             crate::fonts::install(&ctx);
             self.fonts_installed = true;

@@ -697,3 +697,16 @@
 - **performance:** No added per-frame or network work; owner lookup scans the bounded in-memory session view cache.
 - **risks:** Live authenticated gateway response receipts, cross-window ownership and runtime reconnect are not proven.
 - **follow_up:** Continue the pinned session lifecycle gaps and then proceed through the remaining fixed-snapshot acceptance matrix.
+
+## HUI-024
+
+- **id:** HUI-024
+- **timestamp:** 2026-11-15T06:23:40Z
+- **what:** Implemented primary workspace close/promotion and a shared `Ctrl+W`/Command+W and agent `close_active_tab` path. The nearest valid session tile is promoted into primary with its profile-scoped cached view; otherwise an occupied primary route resets to New session. A selected busy tile still requires confirmation.
+- **why:** The pinned Desktop makes its uncloseable workspace tab behave as a closeable chat context by promoting a neighboring session tile or returning to a fresh draft.
+- **components:** Hermes Native Dock tab state, route/view restoration, UI keyboard handling, semantic action catalog, tests and parity ledger.
+- **type:** tab lifecycle parity increment.
+- **validation:** Formatting and all-target feature check passed; full feature test suite passed (79 library + 5 automation). App tests cover nearest profile-scoped promotion, fresh draft reset and busy tile confirmation; automation catalog verifies the action.
+- **performance:** Close selection reads the current Dock snapshot and bounded descriptor/view cache; no network call is added.
+- **risks:** Full focused-zone precedence, terminal/tool close behavior, secondary chat groups, physical keyboard/focus and Windows host acceptance remain open.
+- **follow_up:** Continue remaining close commands/focus/overflow semantics, draft reuse and resume error correlation before broader UI routes.
