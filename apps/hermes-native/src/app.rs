@@ -1,6 +1,6 @@
 use crate::gateway::{
-    CapabilitiesSnapshot, GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt,
-    SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
+    CapabilitiesSnapshot, ConnectorsSnapshot, GatewayDiscovery, GatewayEndpoint, GatewayEvent,
+    PromptSubmitReceipt, SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
 };
 use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
@@ -321,6 +321,10 @@ pub struct HermesNativeApp {
     capabilities_error: Option<String>,
     skills: Option<Vec<SkillInfo>>,
     toolsets: Option<Vec<ToolsetInfo>>,
+    connectors: Option<ConnectorsSnapshot>,
+    connectors_request_id: Option<String>,
+    connectors_pending: bool,
+    connectors_error: Option<String>,
     plugin_catalog_worker: PluginCatalogWorker,
     plugin_catalog: Option<Vec<PluginCatalogEntry>>,
     plugin_catalog_request_id: Option<String>,
@@ -547,6 +551,57 @@ fn render_message() -> &'static str {
         self.status = "Plugin catalog fixture · offline sample data".into();
     }
 
+    #[cfg(feature = "agent-automation")]
+    pub fn load_connectors_fixture_for_automation(&mut self) {
+        self.route = AppRoute::Capabilities;
+        self.capabilities_tab = CapabilitiesTab::Connectors;
+        self.connectors = Some(ConnectorsSnapshot {
+            available: true,
+            catalog: vec![
+                crate::gateway::ConnectorCatalogEntry {
+                    slug: "linear".into(),
+                    name: "Linear".into(),
+                    description: "Track issues and project work in Linear.".into(),
+                    category: "Project management".into(),
+                },
+                crate::gateway::ConnectorCatalogEntry {
+                    slug: "github".into(),
+                    name: "GitHub".into(),
+                    description: "Browse repositories, issues, and pull requests.".into(),
+                    category: "Development".into(),
+                },
+                crate::gateway::ConnectorCatalogEntry {
+                    slug: "notion".into(),
+                    name: "Notion".into(),
+                    description: "Search and update workspace pages.".into(),
+                    category: "Knowledge".into(),
+                },
+            ],
+            connectors: vec![crate::gateway::ConnectorListEntry {
+                connector: "linear".into(),
+                enabled: true,
+                connected: true,
+                connection_status: Some("active".into()),
+                status_reason: None,
+            }],
+            accounts: vec![crate::gateway::ConnectorAccountEntry {
+                connection_id: "fixture-linear-account".into(),
+                connector: "linear".into(),
+                status: "active".into(),
+                label: "Linear workspace".into(),
+                alias: Some("Engineering".into()),
+                active: true,
+                disabled: false,
+                created_at: "2026-11-15T00:00:00Z".into(),
+            }],
+        });
+        self.connectors_request_id = None;
+        self.connectors_pending = false;
+        self.connectors_error = None;
+        self.capabilities_query.clear();
+        self.status = "Connectors fixture · synthetic profile data".into();
+    }
+
     fn from_workspace_result(
         connect_gateway: bool,
         workspace: Result<Workspace, String>,
@@ -593,6 +648,10 @@ fn render_message() -> &'static str {
             capabilities_error: None,
             skills: None,
             toolsets: None,
+            connectors: None,
+            connectors_request_id: None,
+            connectors_pending: false,
+            connectors_error: None,
             plugin_catalog_worker: PluginCatalogWorker::start(),
             plugin_catalog: None,
             plugin_catalog_request_id: None,
@@ -1962,24 +2021,39 @@ fn render_message() -> &'static str {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let refresh = ui.add_enabled(
-                    self.gateway_connected && !self.capabilities_pending,
+                    self.gateway_connected
+                        && match self.capabilities_tab {
+                            CapabilitiesTab::Connectors => !self.connectors_pending,
+                            CapabilitiesTab::Skills | CapabilitiesTab::Toolsets => {
+                                !self.capabilities_pending
+                            }
+                            CapabilitiesTab::Plugins => false,
+                        },
                     egui::Button::new("Refresh"),
                 );
                 if refresh.clicked() {
                     self.execute_registered_action(RegisteredUiAction::RefreshCapabilities)
-                        .unwrap_or_else(|error| self.capabilities_error = Some(error));
+                        .unwrap_or_else(|error| match self.capabilities_tab {
+                            CapabilitiesTab::Connectors => self.connectors_error = Some(error),
+                            _ => self.capabilities_error = Some(error),
+                        });
                 }
             });
         });
         ui.separator();
         if matches!(
             self.capabilities_tab,
-            CapabilitiesTab::Skills | CapabilitiesTab::Plugins | CapabilitiesTab::Toolsets
+            CapabilitiesTab::Skills
+                | CapabilitiesTab::Plugins
+                | CapabilitiesTab::Connectors
+                | CapabilitiesTab::Toolsets
         ) {
             let search = ui.add(
                 egui::TextEdit::singleline(&mut self.capabilities_query)
                     .hint_text(if self.capabilities_tab == CapabilitiesTab::Plugins {
                         "Search plugins"
+                    } else if self.capabilities_tab == CapabilitiesTab::Connectors {
+                        "Search connectors"
                     } else {
                         "Search capabilities"
                     })
@@ -1991,6 +2065,8 @@ fn render_message() -> &'static str {
             }
             search.accessible_name(if self.capabilities_tab == CapabilitiesTab::Plugins {
                 "Search plugins"
+            } else if self.capabilities_tab == CapabilitiesTab::Connectors {
+                "Search connectors"
             } else {
                 "Search capabilities"
             });
@@ -1998,7 +2074,23 @@ fn render_message() -> &'static str {
             ui.add_space(28.0);
         }
         ui.add_space(12.0);
-        if self.capabilities_pending {
+        if self.capabilities_tab == CapabilitiesTab::Connectors {
+            if self.connectors_pending && self.connectors.is_none() {
+                ui.label(RichText::new("Loading connectors…").size(12.0).color(MUTED));
+                return;
+            }
+            if let Some(error) = &self.connectors_error {
+                ui.label(
+                    RichText::new(format!("Connectors could not be loaded: {error}"))
+                        .size(12.0)
+                        .color(MUTED),
+                );
+                if self.connectors.is_none() {
+                    return;
+                }
+            }
+        }
+        if self.capabilities_tab != CapabilitiesTab::Connectors && self.capabilities_pending {
             ui.label(
                 RichText::new("Loading capabilities…")
                     .size(12.0)
@@ -2006,7 +2098,9 @@ fn render_message() -> &'static str {
             );
             return;
         }
-        if let Some(error) = &self.capabilities_error {
+        if self.capabilities_tab != CapabilitiesTab::Connectors
+            && let Some(error) = &self.capabilities_error
+        {
             ui.label(
                 RichText::new(format!("Capabilities could not be loaded: {error}"))
                     .size(12.0)
@@ -2374,10 +2468,114 @@ fn render_message() -> &'static str {
                 });
             }
             CapabilitiesTab::Connectors => {
-                self.route_unavailable(
-                    ui,
-                    "Connector inventory and account actions are not connected yet.",
-                );
+                let Some(snapshot) = self.connectors.clone() else {
+                    self.route_unavailable(ui, "Connect to Hermes to browse available connectors.");
+                    return;
+                };
+                if self.connectors_pending {
+                    ui.label(
+                        RichText::new("Refreshing connectors…")
+                            .size(11.0)
+                            .color(MUTED),
+                    );
+                }
+                if !snapshot.available {
+                    ui.label(
+                        RichText::new("Hosted connectors are unavailable for this profile.")
+                            .size(12.0)
+                            .color(MUTED),
+                    );
+                }
+                let query = self.capabilities_query.trim().to_lowercase();
+                let rows = snapshot
+                    .catalog
+                    .iter()
+                    .filter(|row| {
+                        query.is_empty()
+                            || row.name.to_lowercase().contains(&query)
+                            || row.slug.to_lowercase().contains(&query)
+                            || row.category.to_lowercase().contains(&query)
+                            || row.description.to_lowercase().contains(&query)
+                    })
+                    .collect::<Vec<_>>();
+                ui.horizontal(|ui| {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!(
+                            "Connectors · {} of {}",
+                            rows.len(),
+                            snapshot.catalog.len()
+                        ))
+                        .strong()
+                        .color(TEXT),
+                    );
+                });
+                if rows.is_empty() {
+                    self.empty_panel(
+                        ui,
+                        if query.is_empty() {
+                            "No connectors available"
+                        } else {
+                            "No matching connectors"
+                        },
+                    );
+                    return;
+                }
+                let statuses = snapshot
+                    .connectors
+                    .iter()
+                    .map(|row| (row.connector.as_str(), row))
+                    .collect::<BTreeMap<_, _>>();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for row in rows {
+                        let state = statuses.get(row.slug.as_str()).copied();
+                        let accounts = snapshot
+                            .accounts
+                            .iter()
+                            .filter(|account| account.connector == row.slug && !account.disabled)
+                            .collect::<Vec<_>>();
+                        let state_text = match state {
+                            Some(item) if item.connected => "Connected",
+                            Some(item) if !item.enabled => "Off",
+                            Some(item) => item.connection_status.as_deref().unwrap_or("Available"),
+                            None => "Available",
+                        };
+                        egui::CollapsingHeader::new(
+                            RichText::new(format!("{} · {state_text}", row.name))
+                                .strong()
+                                .color(TEXT),
+                        )
+                        .id_salt(("connector-row", &row.slug))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(state_text).color(ACCENT));
+                                if !row.category.is_empty() {
+                                    ui.label(RichText::new(&row.category).color(MUTED));
+                                }
+                            });
+                            ui.label(RichText::new(&row.description).size(12.0).color(MUTED));
+                            if let Some(item) = state
+                                && let Some(reason) = item.status_reason.as_deref()
+                                && !reason.trim().is_empty()
+                            {
+                                ui.label(RichText::new(reason).size(11.0).color(MUTED));
+                            }
+                            for account in accounts {
+                                let name = account
+                                    .alias
+                                    .as_deref()
+                                    .filter(|v| !v.trim().is_empty())
+                                    .unwrap_or(&account.label);
+                                ui.label(
+                                    RichText::new(format!("Account · {name} · {}", account.status))
+                                        .size(11.0)
+                                        .color(MUTED),
+                                );
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+                });
             }
         }
     }
@@ -4139,6 +4337,8 @@ fn render_message() -> &'static str {
         if route != AppRoute::Capabilities {
             self.capabilities_request_id = None;
             self.capabilities_pending = false;
+            self.connectors_request_id = None;
+            self.connectors_pending = false;
         }
     }
 
@@ -4189,9 +4389,26 @@ fn render_message() -> &'static str {
             (route == AppRoute::Capabilities).then(|| CapabilitiesTab::from_query(target));
         if let Some(tab) = capabilities_tab {
             self.capabilities_tab = tab;
-            if self.gateway_connected && self.skills.is_none() && !self.capabilities_pending {
+            if tab != CapabilitiesTab::Connectors {
+                self.connectors_request_id = None;
+                self.connectors_pending = false;
+            }
+            if matches!(tab, CapabilitiesTab::Skills | CapabilitiesTab::Toolsets)
+                && self.gateway_connected
+                && self.skills.is_none()
+                && !self.capabilities_pending
+            {
                 self.load_capabilities()
                     .unwrap_or_else(|error| self.capabilities_error = Some(error));
+            }
+            if tab == CapabilitiesTab::Connectors
+                && self.connectors.is_none()
+                && !self.connectors_pending
+                && self.connectors_error.is_none()
+                && self.gateway_connected
+            {
+                self.load_connectors()
+                    .unwrap_or_else(|error| self.connectors_error = Some(error));
             }
             if tab == CapabilitiesTab::Plugins
                 && self.plugin_catalog.is_none()
@@ -4280,7 +4497,11 @@ fn render_message() -> &'static str {
             RegisteredUiAction::SelectCapabilitiesTab { tab } => {
                 self.navigate_path(&format!("/capabilities?tab={}", tab.as_str()))?;
             }
-            RegisteredUiAction::RefreshCapabilities => self.load_capabilities()?,
+            RegisteredUiAction::RefreshCapabilities => match self.capabilities_tab {
+                CapabilitiesTab::Connectors => self.load_connectors()?,
+                CapabilitiesTab::Plugins => self.load_plugin_catalog()?,
+                CapabilitiesTab::Skills | CapabilitiesTab::Toolsets => self.load_capabilities()?,
+            },
             RegisteredUiAction::RefreshPluginCatalog => self.load_plugin_catalog()?,
             RegisteredUiAction::SetToolsetEnabled { name, enabled } => {
                 self.set_toolset_enabled(name, enabled)?;
@@ -4310,6 +4531,25 @@ fn render_message() -> &'static str {
         self.capabilities_request_id = Some(request_id);
         self.capabilities_pending = true;
         self.capabilities_error = None;
+        Ok(())
+    }
+
+    fn load_connectors(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before loading Connectors".into());
+        }
+        if self.connectors_pending {
+            return Ok(());
+        }
+        let request_id = operation_id("connectors");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway reader is unavailable".to_owned())?;
+        gateway.load_connectors(request_id.clone())?;
+        self.connectors_request_id = Some(request_id);
+        self.connectors_pending = true;
+        self.connectors_error = None;
         Ok(())
     }
 
@@ -5313,6 +5553,7 @@ fn render_message() -> &'static str {
             return;
         };
         let mut load_capabilities_after_connect = false;
+        let mut load_connectors_after_connect = false;
         let mut load_archived_after_connect = false;
         if !self.gateway_connected {
             if let Some(result) = discovery.poll() {
@@ -5339,7 +5580,12 @@ fn render_message() -> &'static str {
                             load_archived_after_connect = true;
                         }
                         if self.route == AppRoute::Capabilities {
-                            load_capabilities_after_connect = true;
+                            load_capabilities_after_connect = matches!(
+                                self.capabilities_tab,
+                                CapabilitiesTab::Skills | CapabilitiesTab::Toolsets
+                            );
+                            load_connectors_after_connect =
+                                self.capabilities_tab == CapabilitiesTab::Connectors;
                         }
                     }
                     Err(reason) => {
@@ -5859,6 +6105,23 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::ConnectorsLoaded { request_id, result } => {
+                    if self.route != AppRoute::Capabilities
+                        || self.capabilities_tab != CapabilitiesTab::Connectors
+                        || self.connectors_request_id.as_deref() != Some(&request_id)
+                    {
+                        continue;
+                    }
+                    self.connectors_request_id = None;
+                    self.connectors_pending = false;
+                    match result {
+                        Ok(snapshot) => {
+                            self.connectors = Some(snapshot);
+                            self.connectors_error = None;
+                        }
+                        Err(error) => self.connectors_error = Some(error),
+                    }
+                }
                 GatewayEvent::Disconnected(error) => {
                     self.gateway_connected = false;
                     for view in self.session_chat_views.values_mut() {
@@ -5889,6 +6152,10 @@ fn render_message() -> &'static str {
         if load_capabilities_after_connect {
             self.load_capabilities()
                 .unwrap_or_else(|error| self.capabilities_error = Some(error));
+        }
+        if load_connectors_after_connect {
+            self.load_connectors()
+                .unwrap_or_else(|error| self.connectors_error = Some(error));
         }
         if load_archived_after_connect {
             self.load_archived_sessions();
@@ -7302,6 +7569,36 @@ mod tests {
             "GitHub-style table cells remain visible to agent locators"
         );
 
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn connectors_directory_shows_connected_state_and_account_details() {
+        let (mut app, profile) = isolated_app();
+        app.load_connectors_fixture_for_automation();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness.query_by_label("Linear · Connected").is_some(),
+            "directory shows the live connection state in its row"
+        );
+        harness
+            .query_by_label("Linear · Connected")
+            .expect("Linear connector row")
+            .click();
+        harness.run();
+        assert!(
+            harness
+                .query_all_by(
+                    |node| node.value().as_deref() == Some("Account · Engineering · active")
+                )
+                .next()
+                .is_some(),
+            "expanding a connector reveals its active account alias and status"
+        );
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
@@ -9640,6 +9937,11 @@ impl HermesNativeApp {
                 "plugin_catalog_entry_count": self.plugin_catalog.as_ref().map(Vec::len),
                 "selected_plugin_id": self.selected_plugin_id,
                 "plugin_catalog_visible_limit": self.plugin_catalog_visible_limit,
+                "connectors_pending": self.connectors_pending,
+                "connectors_error": self.connectors_error,
+                "connectors_available": self.connectors.as_ref().map(|value| value.available),
+                "connectors_catalog_count": self.connectors.as_ref().map(|value| value.catalog.len()),
+                "connectors_account_count": self.connectors.as_ref().map(|value| value.accounts.len()),
             },
             "interface_mode": mode,
             "layout_profile": self.workspace.active_profile(),

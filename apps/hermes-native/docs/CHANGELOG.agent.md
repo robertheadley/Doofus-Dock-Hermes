@@ -841,3 +841,9 @@ Live agent navigation exposed a CJK/Thai missing-glyph panic, an unbounded 2,378
 ### HUI-033 screenshot evidence follow-up
 
 Root cause for repeated-looking captures: every headless run creates a fresh isolated app, and `--screenshot` without explicit navigation or fixture setup captures the default New session route. Some code-only updates also had no visible change on that route. Documented the navigation/wait requirement and separated the synthetic catalog fixture from a real public-feed capture. The live image visibly differs and its sidecar records route, loaded count, wait receipt, and isolation boundary.
+
+### HUI-034 — source Connectors directory read slice
+
+Replaced the Connectors unavailable notice with a profile-bound read flow for the pinned Desktop's `connectors.list`, `connectors.catalog` and `connectors.accounts` RPCs. The serialized gateway actor returns typed connector/catalog/account records under a correlated event. The view now supports search, connection status and expanded account alias/status; refresh shares the human/agent app-action handler. Added a synthetic fixture for review, a WebSocket protocol test for method order/owner params/decoding and an AccessKit test for visible state/details. The 1440×900 capture is `artifacts/agent-ui/connectors-directory-20261115.png`.
+
+This does not complete Connectors parity. Sign-in/connect, local MCP/plugin server reconciliation, tool/policy editors, hosted account operations, source card/dialog details, live profile behavior and source-paired Windows screenshots remain open.

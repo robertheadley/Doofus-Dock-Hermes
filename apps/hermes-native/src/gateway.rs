@@ -148,6 +148,60 @@ pub struct CapabilitiesSnapshot {
     pub toolsets: Vec<ToolsetInfo>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConnectorCatalogEntry {
+    pub slug: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub category: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConnectorListEntry {
+    pub connector: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub connected: bool,
+    #[serde(default)]
+    pub connection_status: Option<String>,
+    #[serde(default)]
+    pub status_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConnectorAccountEntry {
+    pub connection_id: String,
+    pub connector: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub alias: Option<String>,
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
+    pub disabled: bool,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConnectorsSnapshot {
+    #[serde(default)]
+    pub available: bool,
+    #[serde(default)]
+    pub connectors: Vec<ConnectorListEntry>,
+    #[serde(default)]
+    pub catalog: Vec<ConnectorCatalogEntry>,
+    #[serde(default)]
+    pub accounts: Vec<ConnectorAccountEntry>,
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectedGateway {
     pub endpoint: GatewayEndpoint,
@@ -267,6 +321,10 @@ pub enum GatewayEvent {
         request_id: String,
         result: Result<CapabilitiesSnapshot, String>,
     },
+    ConnectorsLoaded {
+        request_id: String,
+        result: Result<ConnectorsSnapshot, String>,
+    },
     ToolsetEnabled {
         request_id: String,
         name: String,
@@ -363,6 +421,9 @@ enum GatewayCommand {
     RespondServerRequest {
         id: String,
         response: Result<serde_json::Value, (i64, String)>,
+    },
+    LoadConnectors {
+        request_id: String,
     },
 }
 
@@ -650,6 +711,12 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
 
+    pub fn load_connectors(&self, request_id: String) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::LoadConnectors { request_id })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn set_toolset_enabled(
         &self,
         request_id: String,
@@ -892,6 +959,82 @@ fn gateway_actor(
     let mut retained_renames: HashMap<String, serde_json::Value> = HashMap::new();
     loop {
         match commands.try_recv() {
+            Ok(GatewayCommand::LoadConnectors { request_id }) => {
+                let result = (|| {
+                    let listed = rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "connectors.list",
+                        serde_json::json!({"owner":{"type":"account"}}),
+                        Some(&events),
+                    );
+                    next_request_id = next_request_id.saturating_add(1);
+                    let listed = listed?;
+                    let available = listed
+                        .get("available")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false);
+                    let connectors = serde_json::from_value(
+                        listed
+                            .get("connectors")
+                            .cloned()
+                            .unwrap_or_else(|| serde_json::json!([])),
+                    )
+                    .map_err(|_| {
+                        "Hermes returned an invalid connectors.list response".to_owned()
+                    })?;
+
+                    let catalog_response = rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "connectors.catalog",
+                        serde_json::json!({}),
+                        Some(&events),
+                    );
+                    next_request_id = next_request_id.saturating_add(1);
+                    let catalog_response = catalog_response?;
+                    let catalog = serde_json::from_value(
+                        catalog_response
+                            .get("connectors")
+                            .cloned()
+                            .unwrap_or_else(|| serde_json::json!([])),
+                    )
+                    .map_err(|_| {
+                        "Hermes returned an invalid connectors.catalog response".to_owned()
+                    })?;
+
+                    let accounts_response = rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "connectors.accounts",
+                        serde_json::json!({}),
+                        Some(&events),
+                    );
+                    next_request_id = next_request_id.saturating_add(1);
+                    let accounts_response = accounts_response?;
+                    let accounts = serde_json::from_value(
+                        accounts_response
+                            .get("accounts")
+                            .cloned()
+                            .unwrap_or_else(|| serde_json::json!([])),
+                    )
+                    .map_err(|_| {
+                        "Hermes returned an invalid connectors.accounts response".to_owned()
+                    })?;
+                    Ok(ConnectorsSnapshot {
+                        available,
+                        connectors,
+                        catalog,
+                        accounts,
+                    })
+                })();
+                if events
+                    .send(GatewayEvent::ConnectorsLoaded { request_id, result })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::ResumeSession {
                 request_id,
                 session_id,
@@ -3911,6 +4054,92 @@ mod tests {
                 if session_id == "runtime-1" && submission_id == "submit-1" && admission_id == "admission-1" && status == "started"
         ));
 
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn connectors_read_uses_the_pinned_catalog_list_and_accounts_rpc_contracts() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for (expected_method, response) in [
+                (
+                    "connectors.list",
+                    json!({"available":true,"connectors":[{
+                        "connector":"linear","enabled":true,"connected":true,
+                        "connection_status":"active","status_reason":null,"gateway_disabled_tools":[]
+                    }]}),
+                ),
+                (
+                    "connectors.catalog",
+                    json!({"connectors":[{
+                        "slug":"linear","name":"Linear","description":"Project work","category":"Productivity"
+                    }]}),
+                ),
+                (
+                    "connectors.accounts",
+                    json!({"accounts":[{
+                        "connection_id":"connection-1","connector":"linear","status":"active",
+                        "label":"Linear workspace","alias":"Engineering","active":true,
+                        "disabled":false,"created_at":"2026-11-15T00:00:00Z","updated_at":"2026-11-15T00:00:00Z"
+                    }]}),
+                ),
+            ] {
+                let request: serde_json::Value =
+                    match socket.read().expect("read connector request") {
+                        Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                        other => panic!("expected connector request, got {other:?}"),
+                    };
+                assert_eq!(request["method"], expected_method);
+                if expected_method == "connectors.list" {
+                    assert_eq!(request["params"]["owner"], json!({"type":"account"}));
+                }
+                let id = request["id"].as_u64().expect("numeric RPC id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":response})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send connector response");
+            }
+            socket.close(None).expect("close fixture WebSocket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::LoadConnectors {
+                request_id: "connectors-1".into(),
+            })
+            .expect("queue connector inventory read");
+        let event = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("connector inventory result");
+        let GatewayEvent::ConnectorsLoaded {
+            request_id,
+            result: Ok(snapshot),
+        } = event
+        else {
+            panic!("expected successful connector snapshot");
+        };
+        assert_eq!(request_id, "connectors-1");
+        assert!(snapshot.available);
+        assert_eq!(snapshot.connectors[0].connector, "linear");
+        assert_eq!(snapshot.catalog[0].name, "Linear");
+        assert_eq!(snapshot.accounts[0].alias.as_deref(), Some("Engineering"));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-11-15T09:05:15Z",
+  "request_id": "hermes-ui-parity-20261115-connectors-read-slice",
+  "hermes_snapshot_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "repository_head": "d4c2a3b8b6a0789140d1eac80b226af1b3d020ea",
+  "source_diff_sha256": "d4f390eb90f63f3c648be6ad1f400428847eae289877960e80a3ad5b319fbdc2",
+  "untracked_source_files_in_digest": [],
+  "executable_sha256": "09be1ccf18514b7e3b360d6b6d6f62b3a72e7f42507670fd3fd56d32856ef2ee",
+  "screenshot_sha256": "2067b278da34508a02f4e2399e440a8760e3f1c92d0d3c5184aa691f108ba93f",
+  "route": "/capabilities?tab=connectors",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "fixture": "connectors-fixture",
+  "fixture_data": "Synthetic Linear, GitHub and Notion catalog rows; Linear has one active Engineering account. No Hermes gateway or account mutation.",
+  "visual_review": "Distinct 1440x900 Connectors page with explicit search field, 3/3 row count, Linear Connected, GitHub Available and Notion Available; heading inset was corrected before this final capture.",
+  "accessibility_receipt": {
+    "fixture_test": "connectors_directory_shows_connected_state_and_account_details",
+    "visible_locator": "DisclosureTriangle: Linear · Connected",
+    "expanded_detail": "Account · Engineering · active"
+  },
+  "protocol_receipt": {
+    "fixture_test": "connectors_read_uses_the_pinned_catalog_list_and_accounts_rpc_contracts",
+    "methods": [
+      "connectors.list",
+      "connectors.catalog",
+      "connectors.accounts"
+    ],
+    "owner_param": {
+      "type": "account"
+    }
+  },
+  "limitations": [
+    "Synthetic fixture; no live user profile.",
+    "Connector sign-in, local MCP reconciliation, policy/tools and hosted-account operations are not implemented in this slice.",
+    "No source-paired Hermes Desktop screenshot or physical Windows window evidence."
+  ]
+}
