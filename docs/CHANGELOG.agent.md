@@ -652,3 +652,5 @@ HUI-050/HUI-051 publication: `cdeffe3b2e2dac737b8c463aea01d19bd73a866c` (impleme
 - **performance:** One bounded wheel event and one frame per action; no performance benchmark required.
 - **risks:** Headless semantic evidence does not prove native Windows wheel-device or DPI behavior.
 - **follow_up:** Continue app-wide route workflows and physical host parity.
+
+HUI-052/HUI-053 publication: `688b6cae39d84e2739df5b23fdc2f33f468e6047` is published on `origin/main`; 123 library and 10 automation tests pass.
