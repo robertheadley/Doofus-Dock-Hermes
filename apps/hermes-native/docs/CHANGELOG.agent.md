@@ -1025,3 +1025,5 @@ HUI-041 publication: implementation commit 88206d5 was pushed to main after fetc
 - **performance:** No runtime behavior changed.
 - **risks:** The optional PyYAML parse is unavailable in this Python environment; source-paired acceptance remains open.
 - **follow_up:** Continue filling the fixed 499-row stock Desktop scope and preserve strict source-paired acceptance gates.
+
+HUI-048/HUI-049 publication: implementation commit `4d247d7ccbee6f31604923e52fc37a799100aa3d` and evidence/validator commit `27504e9c55f31a6cdcc8e47ee075ba712ca87dac` were pushed to `origin/main`. PAR-0065 remains pending.

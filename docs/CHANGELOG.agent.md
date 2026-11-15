@@ -596,3 +596,5 @@ HUI-041 publication: implementation commit 88206d5 is published on main after co
 - **performance:** No runtime behavior changed.
 - **risks:** Optional YAML parser was unavailable in the environment; PAR-0065 remains pending.
 - **follow_up:** Continue the fixed-source parity work and close only requirements with source-paired evidence.
+
+HUI-048/HUI-049 publication: commits `4d247d7ccbee6f31604923e52fc37a799100aa3d` (implementation) and `27504e9c55f31a6cdcc8e47ee075ba712ca87dac` (partial evidence + validator) were pushed to `origin/main`. PAR-0065 remains pending.
