@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-11-15T14:51:27Z",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "70c9d33384e1e73542c8d8f42680a6924d230e2b",
+  "target_binary_sha256": "0ca7930e28f882f619ccf9cb8717de0beddf0871de7ee1d66bbbbf8be8becb46",
+  "screenshot_sha256": "53db88b300ff4cceb3b57ef6572eaf70bd8df2a4c56a0379657421d1ab3a26ae",
+  "viewport": {
+    "width": 1440,
+    "scale": "headless logical pixels",
+    "height": 900
+  },
+  "route": "/files-preview-fixture?showIgnored=true",
+  "actions": [
+    "Click Show gitignored files"
+  ],
+  "fixture": "Temporary isolated Git repository with ignored-preview.txt; gateway disabled",
+  "visible_state": [
+    "Files pane with compact refresh and eye controls",
+    "Show gitignored files activated",
+    "ignored-preview.txt appears in the tree",
+    "main.rs transient syntax-highlighted preview"
+  ],
+  "verification": "AccessKit located and clicked the accessible Show gitignored files button; screenshot visually inspected at 1440x900",
+  "limitations": [
+    "Synthetic target-only screenshot; no paired Hermes source capture",
+    "No physical Windows host evidence",
+    "This capture does not verify remote filesystem semantics"
+  ]
+}

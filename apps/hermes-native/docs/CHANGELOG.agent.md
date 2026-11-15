@@ -1298,3 +1298,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Directory enumeration and matching run on the Files worker; reveal mode skips Gitignore matching; each listing is bounded to 1,000 entries.
   **risks:** Ignore matchers are rebuilt per directory request rather than cached; remote filesystem semantics and live/source-paired Windows acceptance remain open. Synthetic screenshots do not close parity rows.
   **follow_up:** Add cache invalidation and source-paired acceptance while progressing remaining Files features.
+
+- **id:** HUR-001-099
+  **timestamp:** 2026-11-15T14:54:33Z
+  **what:** Captured the Files tree after the accessible Show gitignored files action and added an exact-build sidecar.
+  **why:** Verify the filter interaction and ignored-file reveal visually, with a route-specific artifact distinct from the default preview capture.
+  **components:** artifacts/agent-ui/files-show-ignored-20261115.png, artifacts/agent-ui/files-show-ignored-20261115.json.
+  **type:** evidence
+  **validation:** AccessKit action succeeded; `ignored-preview.txt` is visible; the PNG is 1440×900 and SHA-256 metadata is bound to the screenshot, automation binary, pinned Hermes/DoofusDock SHAs, and implementation commit `70c9d33384e1e73542c8d8f42680a6924d230e2b`.
+  **performance:** Capture completed in the isolated local runner.
+  **risks:** Synthetic target-only screenshot; no paired Hermes source or installed Windows host acceptance.
+  **follow_up:** Publish the artifact and continue source-paired Files review.
