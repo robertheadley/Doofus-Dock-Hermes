@@ -530,3 +530,13 @@ HUI-041 publication: implementation commit 88206d5 is published on main after co
 - **performance:** Local loopback fixture measured primary plugin-list latency 64.323 ms while update-all was held; update RPC completed in 0.325 ms after release. See docs/BENCHMARKS.md; this is not a live Hermes timing or resource benchmark.
 - **risks:** Separate authenticated socket handshake and live endpoint loss/recovery still need installed-Hermes validation; source-paired visual acceptance remains open.
 - **follow_up:** Exercise update-all against a live profile in a controlled isolated Hermes profile, validate cancellation/disconnect recovery, continue all remaining in-scope UI ledger rows.
+- **id:** HUI-044
+- **timestamp:** 2026-11-15T11:36:21Z
+- **what:** Advanced the active implementation plan header to revision 72 and added the explicit HUI-043 concurrency revision.
+- **why:** Keep the authoritative plan revision synchronized with the verified gateway-worker implementation already published.
+- **components:** apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/CHANGELOG.agent.md, apps/hermes-native/docs/EXECUTION_LOGS.md, docs/CHANGELOG.agent.md, docs/EXECUTION_LOGS.md.
+- **type:** plan traceability correction.
+- **validation:** Confirmed revision 71 describes update-all and revision 72 describes its isolated authenticated worker; git diff --check passed.
+- **performance:** No runtime behavior changed; the HUI-043 concurrency benchmark remains in docs/BENCHMARKS.md.
+- **risks:** None beyond the recorded live-gateway acceptance gaps.
+- **follow_up:** Continue implementation against the fixed 499-row Hermes Desktop scope; do not mark acceptance from local fixtures alone.

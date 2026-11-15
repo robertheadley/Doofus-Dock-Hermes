@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 70 (implementation in progress).
+- **Working revision:** 72 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -396,3 +396,7 @@ Revision 70 implementation note: the downloaded source contract provides check_h
 ### Revision 71 — profile-scoped Agent Plugin Update all
 
 Implement the pinned Desktop `plugins.manage action=update_all` flow using the selected profile and shared agent/UI action registry. Parse bounded typed result rows (`updated`, `current`, `failed`, `needs_review`), render the visible action and correlated summary, preserve review-required plugins without accepting consent, and invalidate/reload inventory after updates. Fail closed when disconnected, stale-profile, another plugin mutation is active, or an earlier outcome is uncertain. WebSocket fixture verifies exact method/profile and per-row summary; app tests cover offline action and registered action availability. The distinct expanded visual fixture is `artifacts/agent-ui/plugin-update-all-report-20261115.png`. A separate authenticated connection and worker now isolate the ten-minute operation; a concurrency fixture holds update-all while confirming the primary gateway completes a plugin-list RPC. Live-profile and source-paired acceptance remain open.
+
+### Revision 72 — isolate long Agent Plugin RPC from primary gateway
+
+Mint a separate one-use interactive ticket for Agent Plugin Update all, authenticate a dedicated connection against the exact attached Hermes runtime identity, and execute `plugins.manage action=update_all` on its own worker with the source 600-second timeout. Keep UI/agent action correlation and result delivery on the shared event channel while allowing the primary actor to serve other requests. A local two-socket fixture intentionally holds update-all, completes a profile-scoped plugin-list RPC before releasing it, and records the observed latency. The feature suite, default/all-target builds, and fixed-source validator pass. The automated fixture does not replace live-profile handshake, disconnect/recovery, or source-paired acceptance.
