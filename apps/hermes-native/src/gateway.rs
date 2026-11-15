@@ -556,10 +556,6 @@ enum GatewayCommand {
         profile: Option<String>,
         enabled: bool,
     },
-    UpdateAllAgentPlugins {
-        request_id: String,
-        profile: Option<String>,
-    },
     SetAgentPluginEnabled {
         request_id: String,
         key: String,
@@ -712,7 +708,13 @@ pub struct GatewayDiscovery {
     status_receiver: Receiver<Result<ConnectedGateway, String>>,
     event_receiver: Receiver<GatewayEvent>,
     command_sender: mpsc::Sender<GatewayCommand>,
+    plugin_update_all_sender: mpsc::Sender<AgentPluginUpdateAllCommand>,
     http_sender: mpsc::Sender<GatewayHttpCommand>,
+}
+
+struct AgentPluginUpdateAllCommand {
+    request_id: String,
+    profile: Option<String>,
 }
 
 impl GatewayDiscovery {
@@ -720,6 +722,7 @@ impl GatewayDiscovery {
         let (status_sender, status_receiver) = mpsc::channel();
         let (event_sender, event_receiver) = mpsc::channel();
         let (command_sender, command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, plugin_update_all_receiver) = mpsc::channel();
         let (http_sender, http_receiver) = mpsc::channel();
         thread::Builder::new()
             .name("hermes-gateway-session-list".into())
@@ -727,7 +730,19 @@ impl GatewayDiscovery {
                 Ok((connected, mut socket)) => {
                     let search_endpoint = connected.endpoint.clone();
                     let search_events = event_sender.clone();
+                    let plugin_update_all_endpoint = connected.endpoint.clone();
+                    let plugin_update_all_events = event_sender.clone();
                     let _ = status_sender.send(Ok(connected));
+                    thread::Builder::new()
+                        .name("hermes-plugin-update-all".into())
+                        .spawn(move || {
+                            agent_plugin_update_all_actor(
+                                plugin_update_all_endpoint,
+                                plugin_update_all_receiver,
+                                plugin_update_all_events,
+                            )
+                        })
+                        .expect("failed to start Agent Plugin update-all worker");
                     thread::Builder::new()
                         .name("hermes-profile-http".into())
                         .spawn(move || {
@@ -746,6 +761,7 @@ impl GatewayDiscovery {
             status_receiver,
             event_receiver,
             command_sender,
+            plugin_update_all_sender,
             http_sender,
         }
     }
@@ -993,8 +1009,8 @@ impl GatewayDiscovery {
         request_id: String,
         profile: Option<String>,
     ) -> Result<(), String> {
-        self.command_sender
-            .send(GatewayCommand::UpdateAllAgentPlugins {
+        self.plugin_update_all_sender
+            .send(AgentPluginUpdateAllCommand {
                 request_id,
                 profile,
             })
@@ -1244,7 +1260,30 @@ fn attach_gateway() -> Result<(ConnectedGateway, GatewaySocket), String> {
     let endpoint = reply
         .endpoint
         .ok_or_else(|| "Hermes reported ready without a gateway endpoint".to_owned())?;
-    validate_endpoint(&endpoint)?;
+    let mut socket = connect_gateway_endpoint(&endpoint)?;
+    let rows = rpc(
+        &mut socket,
+        3,
+        "session.list",
+        serde_json::json!({ "limit": 200, "include_hidden": false }),
+    )?;
+    let sessions: Vec<SessionSummary> = serde_json::from_value(
+        rows.get("sessions")
+            .cloned()
+            .ok_or_else(|| "Hermes session list response omitted sessions".to_owned())?,
+    )
+    .map_err(|_| "Hermes returned an invalid session list".to_owned())?;
+    let mut sessions = sessions;
+    for session in &mut sessions {
+        if session.profile.is_none() {
+            session.profile = Some(endpoint.profile_id.clone());
+        }
+    }
+    Ok((ConnectedGateway { endpoint, sessions }, socket))
+}
+
+fn connect_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<GatewaySocket, String> {
+    validate_endpoint(endpoint)?;
     let ticket = mint_windows_ticket(&endpoint, "interactive", Some("host"))?;
     if ticket.is_empty() || ticket.len() > 2048 || !ticket.bytes().all(is_http_token_byte) {
         return Err("Hermes returned an invalid one-use gateway ticket".into());
@@ -1300,25 +1339,70 @@ fn attach_gateway() -> Result<(ConnectedGateway, GatewaySocket), String> {
         let _ = socket.close(None);
         return Err("Hermes gateway runtime identity did not match its attach receipt".into());
     }
-    let rows = rpc(
-        &mut socket,
-        3,
-        "session.list",
-        serde_json::json!({ "limit": 200, "include_hidden": false }),
-    )?;
-    let sessions: Vec<SessionSummary> = serde_json::from_value(
-        rows.get("sessions")
-            .cloned()
-            .ok_or_else(|| "Hermes session list response omitted sessions".to_owned())?,
-    )
-    .map_err(|_| "Hermes returned an invalid session list".to_owned())?;
-    let mut sessions = sessions;
-    for session in &mut sessions {
-        if session.profile.is_none() {
-            session.profile = Some(endpoint.profile_id.clone());
+    Ok(socket)
+}
+
+fn agent_plugin_update_all_actor(
+    endpoint: GatewayEndpoint,
+    commands: Receiver<AgentPluginUpdateAllCommand>,
+    events: mpsc::Sender<GatewayEvent>,
+) {
+    agent_plugin_update_all_worker(commands, events, || connect_gateway_endpoint(&endpoint));
+}
+
+fn agent_plugin_update_all_worker<C>(
+    commands: Receiver<AgentPluginUpdateAllCommand>,
+    events: mpsc::Sender<GatewayEvent>,
+    mut connect: C,
+) where
+    C: FnMut() -> Result<GatewaySocket, String>,
+{
+    let mut next_request_id = 3_u64;
+    while let Ok(AgentPluginUpdateAllCommand {
+        request_id,
+        profile,
+    }) = commands.recv()
+    {
+        let result = connect().and_then(|mut socket| {
+            let result = update_all_agent_plugins_rpc(
+                &mut socket,
+                next_request_id,
+                profile.as_deref(),
+                Some(&events),
+            );
+            let _ = socket.close(None);
+            result
+        });
+        next_request_id = next_request_id.saturating_add(1);
+        if events
+            .send(GatewayEvent::AgentPluginUpdateAll {
+                request_id,
+                profile,
+                result,
+            })
+            .is_err()
+        {
+            return;
         }
     }
-    Ok((ConnectedGateway { endpoint, sessions }, socket))
+}
+
+fn update_all_agent_plugins_rpc(
+    socket: &mut GatewaySocket,
+    request_id: u64,
+    profile: Option<&str>,
+    events: Option<&mpsc::Sender<GatewayEvent>>,
+) -> Result<Vec<AgentPluginUpdateAllRow>, String> {
+    let params = session_profile_params(serde_json::json!({"action":"update_all"}), profile)?;
+    let value = rpc_with_events_timeout(
+        socket,
+        request_id,
+        "plugins.manage",
+        params,
+        Duration::from_secs(600),
+        events,
+    )?;
+    parse_agent_plugin_update_all(value)
 }
 
 fn gateway_actor(
@@ -1437,37 +1521,6 @@ fn gateway_actor(
                         request_id,
                         profile,
                         enabled,
-                        result,
-                    })
-                    .is_err()
-                {
-                    return;
-                }
-            }
-            Ok(GatewayCommand::UpdateAllAgentPlugins {
-                request_id,
-                profile,
-            }) => {
-                let result = session_profile_params(
-                    serde_json::json!({"action":"update_all"}),
-                    profile.as_deref(),
-                )
-                .and_then(|params| {
-                    rpc_with_events_timeout(
-                        socket,
-                        next_request_id,
-                        "plugins.manage",
-                        params,
-                        Duration::from_secs(600),
-                        Some(&events),
-                    )
-                })
-                .and_then(parse_agent_plugin_update_all);
-                next_request_id = next_request_id.saturating_add(1);
-                if events
-                    .send(GatewayEvent::AgentPluginUpdateAll {
-                        request_id,
-                        profile,
                         result,
                     })
                     .is_err()
@@ -5156,18 +5209,18 @@ mod tests {
                 .expect("send update-all result");
             socket.close(None).expect("close fixture WebSocket");
         });
-        let (mut socket, _) =
-            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
-        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
-            stream
-                .set_read_timeout(Some(Duration::from_millis(50)))
-                .expect("configure fixture client read timeout");
-        }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let fixture_url = format!("ws://{address}/api/ws");
+        let actor = thread::spawn(move || {
+            agent_plugin_update_all_worker(command_rx, event_tx, || {
+                tungstenite::connect(&fixture_url)
+                    .map(|(socket, _)| socket)
+                    .map_err(|error| format!("fixture connect failed: {error}"))
+            })
+        });
         command_tx
-            .send(GatewayCommand::UpdateAllAgentPlugins {
+            .send(AgentPluginUpdateAllCommand {
                 request_id: "update-all-1".into(),
                 profile: Some("fixture-profile".into()),
             })
@@ -5180,7 +5233,141 @@ mod tests {
                     && rows[2].detail.as_deref() == Some("Repository unavailable")
         ));
         drop(command_tx);
-        actor.join().expect("gateway actor exits after peer close");
+        actor.join().expect("update-all actor exits");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn long_plugin_update_all_does_not_block_primary_gateway_actor() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let (update_started_tx, update_started_rx) = mpsc::channel();
+        let (release_update_tx, release_update_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (main_stream, _) = listener.accept().expect("accept primary connection");
+            let main_socket = tungstenite::accept(main_stream).expect("accept primary WebSocket");
+            let (update_stream, _) = listener.accept().expect("accept update connection");
+            let update_socket =
+                tungstenite::accept(update_stream).expect("accept update WebSocket");
+
+            let main = thread::spawn(move || {
+                let mut socket = main_socket;
+                let request: serde_json::Value = match socket.read().expect("read list request") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse list request"),
+                    other => panic!("expected list request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "plugins.manage");
+                assert_eq!(request["params"], json!({"action":"list","profile":"work"}));
+                let id = request["id"].as_u64().expect("list RPC id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":{"plugins":[],"user_count":0,"bundled_count":0}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send list result");
+                socket.close(None).expect("close primary connection");
+            });
+
+            let update = thread::spawn(move || {
+                let mut socket = update_socket;
+                let request: serde_json::Value = match socket.read().expect("read update request") {
+                    Message::Text(text) => {
+                        serde_json::from_str(&text).expect("parse update request")
+                    }
+                    other => panic!("expected update request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "plugins.manage");
+                assert_eq!(
+                    request["params"],
+                    json!({"action":"update_all","profile":"work"})
+                );
+                update_started_tx
+                    .send(())
+                    .expect("signal long update started");
+                release_update_rx.recv().expect("release long update");
+                let id = request["id"].as_u64().expect("update RPC id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":{"results":[]}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send update result");
+                socket.close(None).expect("close update connection");
+            });
+
+            main.join().expect("primary fixture handler exits");
+            update.join().expect("update fixture handler exits");
+        });
+
+        let fixture_url = format!("ws://{address}/api/ws");
+        let (mut primary_socket, _) =
+            tungstenite::connect(&fixture_url).expect("connect primary fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = primary_socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure primary fixture read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (update_tx, update_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let primary_events = event_tx.clone();
+        let primary_actor =
+            thread::spawn(move || gateway_actor(&mut primary_socket, command_rx, primary_events));
+        let update_url = fixture_url.clone();
+        let update_events = event_tx;
+        let update_actor = thread::spawn(move || {
+            agent_plugin_update_all_worker(update_rx, update_events, || {
+                tungstenite::connect(&update_url)
+                    .map(|(socket, _)| socket)
+                    .map_err(|error| format!("fixture connect failed: {error}"))
+            })
+        });
+
+        update_tx
+            .send(AgentPluginUpdateAllCommand {
+                request_id: "long-update".into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue long update");
+        update_started_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("long update entered server handler");
+
+        let primary_request_started = Instant::now();
+        command_tx
+            .send(GatewayCommand::LoadAgentPlugins {
+                request_id: "parallel-list".into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue primary plugin list");
+        let primary_result = event_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("primary list result arrives while update is held");
+        let primary_latency_ms = primary_request_started.elapsed().as_secs_f64() * 1000.0;
+        println!("primary_plugin_list_latency_ms={primary_latency_ms:.3}");
+        assert!(matches!(
+            primary_result,
+            GatewayEvent::AgentPluginsLoaded { request_id, profile:Some(profile), result:Ok(snapshot) }
+                if request_id == "parallel-list" && profile == "work" && snapshot.plugins.is_empty()
+        ));
+
+        let update_job_started = Instant::now();
+        release_update_tx.send(()).expect("release held update");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(2)).expect("update result arrives"),
+            GatewayEvent::AgentPluginUpdateAll { request_id, profile:Some(profile), result:Ok(rows) }
+                if request_id == "long-update" && profile == "work" && rows.is_empty()
+        ));
+        println!(
+            "held_update_rpc_duration_ms={:.3}",
+            update_job_started.elapsed().as_secs_f64() * 1000.0
+        );
+        drop(command_tx);
+        drop(update_tx);
+        primary_actor.join().expect("primary actor exits");
+        update_actor.join().expect("update actor exits");
         server.join().expect("fixture server exits");
     }
 

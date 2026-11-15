@@ -955,3 +955,13 @@ HUI-041 publication: implementation commit 88206d5 was pushed to main after fetc
 - **performance:** No benchmark run. The 600-second RPC uses the serialized WebSocket actor and blocks other WebSocket commands; this remains a known limitation.
 - **risks:** Gateway RPC congestion during update-all; synthetic screenshot is not live Hermes acceptance; full pinned-source parity remains open.
 - **follow_up:** Add RPC multiplexing or a dedicated authenticated socket, add live profile/source-paired validation, then continue remaining 499 in-scope acceptance rows.
+- **id:** HUI-043
+- **timestamp:** 2026-11-15T11:33:09Z
+- **what:** Moved profile-scoped Agent Plugin Update all onto a dedicated authenticated WebSocket worker; primary gateway RPCs continue while update-all is pending. Added a concurrency fixture and recorded local latency evidence.
+- **why:** The previous implementation occupied the serialized gateway actor for as long as ten minutes, preventing unrelated Hermes UI work from completing.
+- **components:** apps/hermes-native/src/gateway.rs, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/BACKLOG.md, apps/hermes-native/docs/ARCHITECTURE.md, apps/hermes-native/artifacts/agent-ui/plugin-update-all-report-20261115.png.json, docs/ARCHITECTURE.md, docs/BENCHMARKS.md.
+- **type:** gateway concurrency and validation.
+- **validation:** cargo fmt --all -- --check; full feature suite passed (115 library and 7 automation tests); default and all-target checks passed; fixed-source package validator passed 565 inventory rows (all remain pending); long-RPC concurrency fixture passed while the list RPC completed before update-all release.
+- **performance:** Local loopback fixture measured primary plugin-list latency 64.323 ms while update-all was held; update RPC completed in 0.325 ms after release. See docs/BENCHMARKS.md; this is not a live Hermes timing or resource benchmark.
+- **risks:** Separate authenticated socket handshake and live endpoint loss/recovery still need installed-Hermes validation; source-paired visual acceptance remains open.
+- **follow_up:** Exercise update-all against a live profile in a controlled isolated Hermes profile, validate cancellation/disconnect recovery, continue all remaining in-scope UI ledger rows.

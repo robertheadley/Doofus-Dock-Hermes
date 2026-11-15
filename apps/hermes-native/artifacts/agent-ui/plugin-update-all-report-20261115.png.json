@@ -3,9 +3,9 @@
   "request_id": "hermes-ui-parity-20261115-plugin-update-all",
   "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
   "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
-  "base_head": "f9dfaca318eaaf6a1aca3ff03073d580aa53747b",
-  "source_diff_sha256": "55d51146f7a87d425f2623579e3811fac4c6dacb8cf308e3d4a8aba3bdb96f56",
-  "automation_binary_sha256": "9c697005bce1430ef928b08de185c10b94091cdd20b6a3d6dd71af2c6102445a",
+  "base_head": "f19cbce0812ab614cdb46d22bcf6b0b01a511842",
+  "source_diff_sha256": "4217e76c7ecd828e55fc22f49be34bfc6af456b7d7ea621f845b579fc8c2af4a",
+  "automation_binary_sha256": "ce2ba7f9741b52dc4d01870608efe57d6eb9d514001532bdf09be68a9a8f1ef8",
   "screenshot_sha256": "fa004285096c5a80fdf280bc12045b5380dc7558d0889870b7703b79bfa55746",
   "viewport": {
     "height": 900,
@@ -44,7 +44,13 @@
   "visual_review": "Distinct expanded update-all report shows updated, needs-review, and failed rows with details above installed inventory; 1440x900 PNG visually inspected.",
   "limitations": [
     "synthetic report; no Hermes gateway or installed profile accessed",
-    "long-running plugins.manage RPC uses the serialized WebSocket actor, so other WebSocket work waits for completion or its 600-second timeout",
+    "live authenticated update-all and endpoint-loss behavior remain open",
     "source-paired Windows visual comparison and live profile acceptance remain open"
-  ]
+  ],
+  "concurrency_validation": {
+    "held_update_rpc_duration_ms": 0.325,
+    "test": "gateway::tests::long_plugin_update_all_does_not_block_primary_gateway_actor",
+    "measurement": "local loopback fixture, update held until primary list response",
+    "primary_plugin_list_latency_ms": 64.323
+  }
 }
