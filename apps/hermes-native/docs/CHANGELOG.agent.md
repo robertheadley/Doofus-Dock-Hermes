@@ -920,3 +920,5 @@ Added an accessible install entry point to uninstalled catalog rows plus the sha
 Validation: 109 library tests and 7 automation tests passed; formatter, default/all-target builds, `git diff --check`, and fixed-source package validator passed. The validator still reports all 565 inventory rows pending; optional PyYAML UCM parsing was skipped. No Hermes gateway/profile was used for install validation. The synthetic review screenshot is 1440×900 and visually inspected. Desktop-half installation, scan-finding force review, update/custom-repository flows, and live profile/source-paired acceptance remain open.
 
 Change record: id `HUI-039`; type `feature`; components `Plugins catalog, gateway actor, agent action registry, headless fixture`; performance `no benchmarked runtime change`; risks `backend install runs up to a minute and disconnect/timeout result is uncertain`; follow-up `implement scan finding consent and remaining package/update workflows against pinned Desktop source`.
+
+HUI-039 publication: implementation commit `c9cd13d` was pushed to `main` after fetching and confirming its parent `6ff7dc0`; this docs-only commit records publication.
