@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 63 (implementation in progress).
+- **Working revision:** 68 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -380,3 +380,7 @@ Match the pinned Desktop's `removeAgentPlugin` workflow for manageable `user` an
 ### Revision 67 — source-style plugin package merge and catalog facets
 
 Merge the profile-installed Agent Plugin list into the public Plugins catalog by `catalog_name`, carrying the installed canonical key, source/version, update target/status and search tokens into the catalog row; append installed-only rows. Keep the existing inventory controls and let catalog rows show installed/update state. Add source-normalized trust-tier chips, alphabetic category facets with Other last, common tag counts with selected tags retained, installed-only and updates-only facets, result counts, clear filters, and conditional stars/newest/updated sorting. Tier/category groups combine with AND, selections within a group use OR, and tags use OR as in the pinned catalog query module. Stars preserves source feed order; date sorting places the newest/recently updated first and missing dates last. A unit fixture covers matching/append behavior and combined filters; the headless 1440×900 screenshot records the distinct filtered catalog surface. Live catalog-to-profile matching, package control parity, install/update workflows and source-paired Windows acceptance remain open.
+
+### Revision 68 — reviewed curated Agent Plugin installation
+
+Add catalog-row Install actions and a registered agent action that share one path. The path performs the pinned `plugins.manage inspect` against the selected profile, shows the repository, inspected commit, component types and warnings, and requires an explicit confirmation. Installation sends `catalog_name`, profile and the exact inspected SHA to `plugins.manage install`; insecure/non-Agent sources and pin mismatches fail closed. Correlated install receipts expose activation, missing environment and warnings, then invalidate and refresh the installed inventory. Disconnect during install reports an unknown result and requires inventory refresh before retry. An isolated WebSocket fixture proves inspect→pinned install RPC parameters; AccessKit/UI tests and a distinct synthetic review screenshot validate the surface. This slice handles the Agent Plugin component only: Desktop plugin installation, scan-finding-specific force/review, catalog updates, custom-repository install, actual live-profile use and paired source visual acceptance remain open.

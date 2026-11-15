@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "request_id": "hermes-ui-parity-20261115-catalog-agent-plugin-install",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "base_head": "6ff7dc05398a95b56ef2cd2379117a31062d22c3",
+  "source_diff_sha256": "34c27d6ba703991a879ffc12cc29f41f7ebfe9da6607405757fd7467883dde58",
+  "automation_binary_sha256": "80b923364a1881d89f254b1a8717e155f0f32a4f6bfc4ec960e41b315a9768e1",
+  "screenshot_sha256": "02e52749d64a7f0fe9275ca7d0880410ef952fcfd9b673ea6f35361c50c66c00",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "route": "/capabilities?tab=plugins",
+  "fixture": "synthetic inspected catalog install review for Research Companion; seeded offline UI state; no gateway started",
+  "state": {
+    "profile": "research",
+    "reviewed_sha": "0123456789012345678901234567890123456789",
+    "gateway_transport": "absent",
+    "gateway_connected_ui_flag": true,
+    "entry": "Research Companion",
+    "desktop_component": false,
+    "agent_component": true,
+    "warning": "Requires RESEARCH_API_KEY for live searches"
+  },
+  "capture_method": "hermes-automation --plugin-install-review-fixture --screenshot",
+  "access_receipt": "App test asserts dialog title, full reviewed commit, warning, accessible install control and unknown-outcome disabling; gateway fixture asserts profile-scoped inspect/install requests and exact inspected SHA.",
+  "visual_review": "Distinct 1440x900 review modal shows repository, selected profile, full commit, Agent Plugin component, warning and explicit Install/Cancel actions; visually inspected.",
+  "limitations": [
+    "synthetic visual fixture only; its connected flag is seeded to render the confirmation button and no action is activated",
+    "no Hermes gateway, installed profile or actual plugin repository was touched",
+    "Desktop-half installation, scan-finding force review, catalog update and custom repository flows remain incomplete",
+    "no source-paired Hermes Desktop screenshot or live Windows runtime acceptance"
+  ]
+}

@@ -483,3 +483,9 @@ Validation: all 107 library and 7 automation tests passed; default and all-targe
 
 
 HUI-038 publication: implementation commit `8c1996f` was pushed to `main` after verifying parent `cdde57e`; the separate publication log follows.
+
+### HUI-039 — inspected, commit-pinned Agent Plugin install
+
+Added catalog and agent-action entry points to a profile-scoped Hermes inspection and explicit commit review flow. Installs submit the catalog name and inspected SHA; mismatched pins, insecure sources and non-Agent entries fail closed. Receipt correlation refreshes installed inventory and reports missing environment/warnings; disconnects leave an unknown outcome, disable resubmission and block a new dialog until the profile inventory reconciles it. The isolated RPC fixture and review UI were validated without touching the installed Hermes gateway/profile. Desktop components, scan finding consent/force, updates, custom repositories and live parity remain incomplete.
+
+Validation: 109 library and 7 automation tests passed; formatting, builds and fixed-source package validator passed. All 565 inventory rows remain pending, with optional PyYAML parsing skipped. The 1440×900 synthetic review dialog has a visually inspected screenshot. No runtime performance benchmark was taken. See the app-level HUI-039 entry and execution record for details.

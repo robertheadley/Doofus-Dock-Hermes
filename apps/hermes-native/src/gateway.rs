@@ -265,6 +265,26 @@ pub struct AgentPluginToggleReceipt {
     pub gateway_reloaded: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct AgentPluginInspection {
+    pub agent: bool,
+    pub desktop: bool,
+    pub agent_name: Option<String>,
+    pub desktop_name: Option<String>,
+    pub sha: Option<String>,
+    pub warnings: Vec<String>,
+    pub insecure: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct AgentPluginInstallReceipt {
+    pub plugin_name: String,
+    pub enabled: bool,
+    pub warnings: Vec<String>,
+    pub missing_env: Vec<String>,
+    pub skills: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectedGateway {
     pub endpoint: GatewayEndpoint,
@@ -406,6 +426,18 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<(), String>,
     },
+    AgentPluginInspected {
+        request_id: String,
+        catalog_name: String,
+        profile: Option<String>,
+        result: Result<AgentPluginInspection, String>,
+    },
+    AgentPluginInstalled {
+        request_id: String,
+        catalog_name: String,
+        profile: Option<String>,
+        result: Result<AgentPluginInstallReceipt, String>,
+    },
     ToolsetEnabled {
         request_id: String,
         name: String,
@@ -455,6 +487,19 @@ enum GatewayCommand {
     RemoveAgentPlugin {
         request_id: String,
         name: String,
+        profile: Option<String>,
+    },
+    InspectCatalogPlugin {
+        request_id: String,
+        catalog_name: String,
+        identifier: String,
+        profile: Option<String>,
+    },
+    InstallCatalogPlugin {
+        request_id: String,
+        catalog_name: String,
+        identifier: String,
+        inspected_sha: String,
         profile: Option<String>,
     },
     ResumeSession {
@@ -858,6 +903,42 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
+    pub fn inspect_catalog_plugin(
+        &self,
+        request_id: String,
+        catalog_name: String,
+        identifier: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::InspectCatalogPlugin {
+                request_id,
+                catalog_name,
+                identifier,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn install_catalog_plugin(
+        &self,
+        request_id: String,
+        catalog_name: String,
+        identifier: String,
+        inspected_sha: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::InstallCatalogPlugin {
+                request_id,
+                catalog_name,
+                identifier,
+                inspected_sha,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn set_toolset_enabled(
         &self,
         request_id: String,
@@ -1250,6 +1331,104 @@ fn gateway_actor(
                     .send(GatewayEvent::AgentPluginRemoved {
                         request_id,
                         name,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::InspectCatalogPlugin {
+                request_id,
+                catalog_name,
+                identifier,
+                profile,
+            }) => {
+                let result = session_profile_params(
+                    serde_json::json!({"action":"inspect","catalog_name":catalog_name,"identifier":identifier}),
+                    profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events(socket, next_request_id, "plugins.manage", params, Some(&events))
+                })
+                .and_then(|value| {
+                    if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+                        return Err(value.get("error").and_then(serde_json::Value::as_str)
+                            .unwrap_or("Hermes could not inspect this plugin source").to_owned());
+                    }
+                    let sha = value.get("sha").and_then(serde_json::Value::as_str)
+                        .filter(|sha| sha.len() == 40 && sha.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                        .map(str::to_ascii_lowercase);
+                    Ok(AgentPluginInspection {
+                        agent: value.get("agent").and_then(serde_json::Value::as_bool).unwrap_or(false),
+                        desktop: value.get("desktop").and_then(serde_json::Value::as_bool).unwrap_or(false),
+                        agent_name: value.get("agent_name").and_then(serde_json::Value::as_str).map(str::to_owned),
+                        desktop_name: value.get("desktop_name").and_then(serde_json::Value::as_str).map(str::to_owned),
+                        sha,
+                        warnings: value.get("warnings").and_then(serde_json::Value::as_array)
+                            .map(|rows| rows.iter().filter_map(serde_json::Value::as_str).map(str::to_owned).collect())
+                            .unwrap_or_default(),
+                        insecure: value.get("insecure").and_then(serde_json::Value::as_bool).unwrap_or(false),
+                    })
+                });
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginInspected {
+                        request_id,
+                        catalog_name,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::InstallCatalogPlugin {
+                request_id,
+                catalog_name,
+                identifier,
+                inspected_sha,
+                profile,
+            }) => {
+                let result = session_profile_params(
+                    serde_json::json!({"action":"install","catalog_name":catalog_name,"identifier":identifier,
+                        "enable":true,"force":false,"inspected_sha":inspected_sha}),
+                    profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events(socket, next_request_id, "plugins.manage", params, Some(&events))
+                })
+                .and_then(|value| {
+                    if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+                        return Err(value.get("error").and_then(serde_json::Value::as_str)
+                            .unwrap_or("Hermes refused to install this plugin").to_owned());
+                    }
+                    let plugin_name = value.get("plugin_name").and_then(serde_json::Value::as_str)
+                        .filter(|name| !name.trim().is_empty())
+                        .ok_or_else(|| "Hermes omitted the installed plugin name".to_owned())?.to_owned();
+                    let skills = value.pointer("/activation/live_now/skills")
+                        .and_then(serde_json::Value::as_array)
+                        .map(|rows| rows.iter().filter_map(|row| row.get("name").and_then(serde_json::Value::as_str))
+                            .map(str::to_owned).collect()).unwrap_or_default();
+                    Ok(AgentPluginInstallReceipt {
+                        plugin_name,
+                        enabled: value.get("enabled").and_then(serde_json::Value::as_bool).unwrap_or(true),
+                        warnings: value.get("warnings").and_then(serde_json::Value::as_array)
+                            .map(|rows| rows.iter().filter_map(serde_json::Value::as_str).map(str::to_owned).collect())
+                            .unwrap_or_default(),
+                        missing_env: value.get("missing_env").and_then(serde_json::Value::as_array)
+                            .map(|rows| rows.iter().filter_map(serde_json::Value::as_str).map(str::to_owned).collect())
+                            .unwrap_or_default(),
+                        skills,
+                    })
+                });
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginInstalled {
+                        request_id,
+                        catalog_name,
                         profile,
                         result,
                     })
@@ -4541,6 +4720,100 @@ mod tests {
                 result: Ok(AgentPluginToggleReceipt { plugin, restart_required: false, gateway_reloaded: true }) }
                 if request_id == "plugin-toggle-1" && key == "legacy/helper" && profile == "work" && plugin.status == "enabled"
         ));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn catalog_plugin_install_is_pinned_to_the_inspected_commit_and_profile() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let inspected_sha = "e404b6816b20237a82f6fbe2749b5a576cf75dba";
+        let server_sha = inspected_sha.to_owned();
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let inspect: serde_json::Value = match socket.read().expect("read inspect") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse inspect"),
+                other => panic!("expected inspect request, got {other:?}"),
+            };
+            assert_eq!(inspect["method"], "plugins.manage");
+            assert_eq!(
+                inspect["params"],
+                json!({
+                    "action":"inspect","catalog_name":"sample-plugin",
+                    "identifier":"https://github.com/example/sample#plugin",
+                    "profile":"work"
+                })
+            );
+            let id = inspect["id"].as_u64().expect("inspect RPC id");
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":id,"result":{
+                "ok":true,"agent":true,"desktop":false,"agent_name":"sample-plugin",
+                "sha":server_sha,"warnings":["Review requested permissions"],"insecure":false
+            }}).to_string().into())).expect("reply to inspect");
+
+            let install: serde_json::Value = match socket.read().expect("read install") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse install"),
+                other => panic!("expected install request, got {other:?}"),
+            };
+            assert_eq!(install["method"], "plugins.manage");
+            assert_eq!(
+                install["params"],
+                json!({
+                    "action":"install","catalog_name":"sample-plugin",
+                    "identifier":"https://github.com/example/sample#plugin",
+                    "enable":true,"force":false,"inspected_sha":inspected_sha,"profile":"work"
+                })
+            );
+            let id = install["id"].as_u64().expect("install RPC id");
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":id,"result":{
+                "ok":true,"plugin_name":"sample-plugin","enabled":true,
+                "warnings":[],"missing_env":[],"activation":{"live_now":{"skills":[{"name":"sample:lookup"}]}}
+            }}).to_string().into())).expect("reply to install");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::InspectCatalogPlugin {
+                request_id: "inspect-1".into(),
+                catalog_name: "sample-plugin".into(),
+                identifier: "https://github.com/example/sample#plugin".into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue inspect");
+        assert!(
+            matches!(event_rx.recv_timeout(Duration::from_secs(3)).expect("inspection result"),
+            GatewayEvent::AgentPluginInspected { request_id, catalog_name, profile:Some(profile),
+                result:Ok(AgentPluginInspection { agent:true, desktop:false, sha:Some(sha), insecure:false, .. }) }
+                if request_id == "inspect-1" && catalog_name == "sample-plugin" && profile == "work" && sha == inspected_sha)
+        );
+        command_tx
+            .send(GatewayCommand::InstallCatalogPlugin {
+                request_id: "install-1".into(),
+                catalog_name: "sample-plugin".into(),
+                identifier: "https://github.com/example/sample#plugin".into(),
+                inspected_sha: inspected_sha.into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue install");
+        assert!(
+            matches!(event_rx.recv_timeout(Duration::from_secs(3)).expect("install result"),
+            GatewayEvent::AgentPluginInstalled { request_id, catalog_name, profile:Some(profile),
+                result:Ok(AgentPluginInstallReceipt { plugin_name, enabled:true, skills, .. }) }
+                if request_id == "install-1" && catalog_name == "sample-plugin" && profile == "work"
+                    && plugin_name == "sample-plugin" && skills == vec!["sample:lookup"])
+        );
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

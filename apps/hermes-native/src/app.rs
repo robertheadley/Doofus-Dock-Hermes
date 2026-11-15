@@ -1,7 +1,7 @@
 use crate::gateway::{
-    AgentPluginInfo, AgentPluginsSnapshot, CapabilitiesSnapshot, ConnectorsSnapshot,
-    GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt, SessionSearchResult,
-    SessionSummary, SkillInfo, ToolsetInfo,
+    AgentPluginInfo, AgentPluginInspection, AgentPluginsSnapshot, CapabilitiesSnapshot,
+    ConnectorsSnapshot, GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt,
+    SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
 };
 use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
@@ -59,6 +59,9 @@ pub enum RegisteredUiAction {
         enabled: bool,
     },
     RequestAgentPluginRemoval {
+        name: String,
+    },
+    RequestCatalogPluginInstall {
         name: String,
     },
     StopGeneration,
@@ -159,6 +162,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"set_toolset_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded toolsets, max 128 bytes","enabled":"boolean"}}
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
+            ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
@@ -249,6 +253,25 @@ struct PendingAgentPluginUpdate {
 #[derive(Clone, Debug)]
 struct PendingAgentPluginRemoval {
     request_id: String,
+    profile: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct CatalogPluginInstallDialog {
+    entry: PluginCatalogEntry,
+    profile: Option<String>,
+    request_id: String,
+    inspecting: bool,
+    installing: bool,
+    uncertain: bool,
+    inspection: Option<AgentPluginInspection>,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingCatalogPluginInstall {
+    request_id: String,
+    catalog_name: String,
     profile: Option<String>,
 }
 
@@ -390,6 +413,9 @@ pub struct HermesNativeApp {
     pending_agent_plugin_updates: BTreeMap<String, PendingAgentPluginUpdate>,
     agent_plugin_removal_confirmation: Option<String>,
     pending_agent_plugin_removals: BTreeMap<String, PendingAgentPluginRemoval>,
+    catalog_plugin_install_dialog: Option<CatalogPluginInstallDialog>,
+    pending_catalog_plugin_install: Option<PendingCatalogPluginInstall>,
+    uncertain_catalog_plugin_installs: BTreeSet<String>,
     plugin_catalog_worker: PluginCatalogWorker,
     plugin_catalog: Option<Vec<PluginCatalogEntry>>,
     plugin_catalog_request_id: Option<String>,
@@ -637,6 +663,37 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_catalog_plugin_install_review_fixture_for_automation(&mut self) {
+        self.load_plugin_catalog_fixture_for_automation();
+        self.gateway_connected = true;
+        let entry = self
+            .plugin_catalog
+            .as_ref()
+            .and_then(|entries| entries.first())
+            .cloned();
+        if let Some(entry) = entry {
+            self.catalog_plugin_install_dialog = Some(CatalogPluginInstallDialog {
+                entry,
+                profile: Some("research".into()),
+                request_id: "fixture-inspection".into(),
+                inspecting: false,
+                installing: false,
+                uncertain: false,
+                inspection: Some(AgentPluginInspection {
+                    agent: true,
+                    desktop: false,
+                    agent_name: Some("research-companion".into()),
+                    sha: Some("0123456789012345678901234567890123456789".into()),
+                    warnings: vec!["Requires RESEARCH_API_KEY for live searches".into()],
+                    ..AgentPluginInspection::default()
+                }),
+                error: None,
+            });
+        }
+        self.status = "Plugin install review fixture · synthetic offline data".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_connectors_fixture_for_automation(&mut self) {
         self.route = AppRoute::Capabilities;
         self.capabilities_tab = CapabilitiesTab::Connectors;
@@ -763,6 +820,9 @@ fn render_message() -> &'static str {
             pending_agent_plugin_updates: BTreeMap::new(),
             agent_plugin_removal_confirmation: None,
             pending_agent_plugin_removals: BTreeMap::new(),
+            catalog_plugin_install_dialog: None,
+            pending_catalog_plugin_install: None,
+            uncertain_catalog_plugin_installs: BTreeSet::new(),
             plugin_catalog_worker: PluginCatalogWorker::start(),
             plugin_catalog: None,
             plugin_catalog_request_id: None,
@@ -2915,6 +2975,7 @@ fn render_message() -> &'static str {
                         let entry_id = plugin_catalog_entry_id(&entry);
                         let selected = self.selected_plugin_id.as_deref() == Some(&entry_id);
                         let mut open_repo = false;
+                        let mut install_plugin = false;
                         ui.group(|ui| {
                             ui.horizontal(|ui| {
                                 if ui
@@ -2940,6 +3001,18 @@ fn render_message() -> &'static str {
                                     );
                                 }
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if entry.installed_key.is_none() {
+                                        install_plugin = ui
+                                            .add_enabled(
+                                                self.gateway_connected,
+                                                egui::Button::new("Install"),
+                                            )
+                                            .accessible_name(format!(
+                                                "Install catalog plugin: {}",
+                                                entry.name
+                                            ))
+                                            .clicked();
+                                    }
                                     if !entry.repo.is_empty() {
                                         open_repo = ui.small_button("Repository").clicked();
                                     }
@@ -3009,6 +3082,14 @@ fn render_message() -> &'static str {
                                 }
                             }
                         });
+                        if install_plugin {
+                            self.execute_registered_action(
+                                RegisteredUiAction::RequestCatalogPluginInstall {
+                                    name: entry.name.clone(),
+                                },
+                            )
+                            .unwrap_or_else(|error| self.status = error);
+                        }
                         if open_repo {
                             if entry.repo.starts_with("https://") {
                                 ui.ctx().open_url(egui::OpenUrl::new_tab(&entry.repo));
@@ -5194,6 +5275,9 @@ fn render_message() -> &'static str {
             RegisteredUiAction::RequestAgentPluginRemoval { name } => {
                 self.request_agent_plugin_removal(name)?;
             }
+            RegisteredUiAction::RequestCatalogPluginInstall { name } => {
+                self.request_catalog_plugin_install(name)?;
+            }
             RegisteredUiAction::StopGeneration => self.stop_generation()?,
             RegisteredUiAction::RespondApproval { prompt_id, choice } => {
                 self.respond_to_approval(prompt_id, choice)?;
@@ -5425,6 +5509,234 @@ fn render_message() -> &'static str {
                 .unwrap_or_else(|error| self.status = error);
         } else if cancel {
             self.agent_plugin_removal_confirmation = None;
+        }
+    }
+
+    fn request_catalog_plugin_install(&mut self, name: String) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before installing a catalog plugin".into());
+        }
+        if self.uncertain_catalog_plugin_installs.contains(&name) {
+            return Err("A prior install for this catalog entry has an unknown outcome; refresh the installed inventory before opening another install request".into());
+        }
+        let entry = self
+            .plugin_catalog
+            .as_ref()
+            .and_then(|entries| entries.iter().find(|entry| entry.name == name))
+            .cloned()
+            .ok_or_else(|| "Plugin is not in the loaded Hermes catalog".to_owned())?;
+        if entry.installed_key.is_some() {
+            return Err(
+                "This catalog plugin is already installed; refresh its profile inventory".into(),
+            );
+        }
+        if entry.repo.is_empty() || entry.name.is_empty() {
+            return Err("Catalog entry is missing its repository or canonical name".into());
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("catalog-plugin-inspect");
+        let identifier = if entry.subdir.is_empty() {
+            entry.repo.clone()
+        } else {
+            format!("{}#{}", entry.repo, entry.subdir)
+        };
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway reader is unavailable".to_owned())?
+            .inspect_catalog_plugin(
+                request_id.clone(),
+                entry.name.clone(),
+                identifier,
+                profile.clone(),
+            )?;
+        self.catalog_plugin_install_dialog = Some(CatalogPluginInstallDialog {
+            entry,
+            profile,
+            request_id,
+            inspecting: true,
+            installing: false,
+            uncertain: false,
+            inspection: None,
+            error: None,
+        });
+        Ok(())
+    }
+
+    fn install_reviewed_catalog_plugin(&mut self) -> Result<(), String> {
+        let dialog = self
+            .catalog_plugin_install_dialog
+            .as_ref()
+            .ok_or_else(|| "Plugin review dialog is no longer open".to_owned())?;
+        if !self.gateway_connected {
+            return Err("Reconnect to Hermes before installing this plugin".into());
+        }
+        if dialog.uncertain {
+            return Err("This install outcome is unknown; do not submit it again".into());
+        }
+        if dialog.profile
+            != self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        {
+            return Err(
+                "Hermes profile changed during plugin review; inspect the plugin again".into(),
+            );
+        }
+        let inspection = dialog
+            .inspection
+            .as_ref()
+            .ok_or_else(|| "Inspect the repository before installing".to_owned())?;
+        if !inspection.agent || inspection.insecure {
+            return Err("This native install path requires an Agent Plugin without an insecure-source finding".into());
+        }
+        let inspected_sha = inspection.sha.clone().ok_or_else(|| {
+            "Hermes did not return a full reviewed commit; installation is disabled".to_owned()
+        })?;
+        if !dialog.entry.sha.is_empty() && !dialog.entry.sha.eq_ignore_ascii_case(&inspected_sha) {
+            return Err("The inspected commit does not match the pinned catalog revision; refresh the catalog and inspect again".into());
+        }
+        if dialog.installing {
+            return Ok(());
+        }
+        let request_id = operation_id("catalog-plugin-install");
+        let identifier = if dialog.entry.subdir.is_empty() {
+            dialog.entry.repo.clone()
+        } else {
+            format!("{}#{}", dialog.entry.repo, dialog.entry.subdir)
+        };
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
+            .install_catalog_plugin(
+                request_id.clone(),
+                dialog.entry.name.clone(),
+                identifier,
+                inspected_sha,
+                dialog.profile.clone(),
+            )?;
+        let profile = dialog.profile.clone();
+        let dialog = self
+            .catalog_plugin_install_dialog
+            .as_mut()
+            .expect("dialog checked");
+        dialog.installing = true;
+        dialog.error = None;
+        self.pending_catalog_plugin_install = Some(PendingCatalogPluginInstall {
+            request_id,
+            catalog_name: dialog.entry.name.clone(),
+            profile,
+        });
+        Ok(())
+    }
+
+    fn show_catalog_plugin_install_dialog(&mut self, ctx: &egui::Context) {
+        let Some(snapshot) = self.catalog_plugin_install_dialog.clone() else {
+            return;
+        };
+        let mut cancel = false;
+        let mut install = false;
+        egui::Window::new(format!("Review plugin · {}", snapshot.entry.name))
+            .id(Id::NULL.with(("catalog-plugin-install", &snapshot.entry.name)))
+            .collapsible(false)
+            .resizable(true)
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                ui.label(RichText::new(&snapshot.entry.description).color(MUTED));
+                ui.label(format!(
+                    "Repository · {}{}",
+                    snapshot.entry.repo,
+                    if snapshot.entry.subdir.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" · {}", snapshot.entry.subdir)
+                    }
+                ));
+                ui.label(format!(
+                    "Profile · {}",
+                    snapshot.profile.as_deref().unwrap_or("Default")
+                ));
+                ui.separator();
+                if snapshot.inspecting {
+                    ui.spinner();
+                    ui.label("Hermes is inspecting the repository. Nothing has been installed.");
+                } else if let Some(review) = &snapshot.inspection {
+                    ui.label(format!(
+                        "Reviewed commit · {}",
+                        review.sha.as_deref().unwrap_or("unavailable")
+                    ));
+                    ui.label(format!(
+                        "Components · {}",
+                        match (review.agent, review.desktop) {
+                            (true, true) =>
+                                "Agent Plugin and Desktop Plugin (native installs the Agent half)",
+                            (true, false) => "Agent Plugin",
+                            (false, true) =>
+                                "Desktop Plugin only (not installable from this native flow)",
+                            (false, false) => "No installable plugin components",
+                        }
+                    ));
+                    if review.insecure {
+                        ui.colored_label(
+                            Color32::LIGHT_RED,
+                            "Hermes marked this source insecure. Installation is blocked here.",
+                        );
+                    }
+                    for warning in &review.warnings {
+                        ui.colored_label(Color32::YELLOW, format!("Review warning · {warning}"));
+                    }
+                    if !review.agent {
+                        ui.label("This entry does not contain an Agent Plugin.");
+                    }
+                }
+                if let Some(error) = &snapshot.error {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    cancel = ui
+                        .add_enabled(!snapshot.installing, egui::Button::new("Cancel"))
+                        .accessible_name("Cancel catalog plugin install")
+                        .clicked();
+                    if snapshot.installing {
+                        ui.spinner();
+                        ui.label("Installing reviewed plugin…");
+                    } else {
+                        let can_install = self.gateway_connected
+                            && !snapshot.uncertain
+                            && snapshot.inspection.as_ref().is_some_and(|review| {
+                                review.agent
+                                    && !review.insecure
+                                    && review.sha.is_some()
+                                    && (snapshot.entry.sha.is_empty()
+                                        || review.sha.as_deref().is_some_and(|sha| {
+                                            snapshot.entry.sha.eq_ignore_ascii_case(sha)
+                                        }))
+                            });
+                        install = ui
+                            .add_enabled(
+                                can_install,
+                                egui::Button::new("Install reviewed Agent Plugin"),
+                            )
+                            .accessible_name(format!(
+                                "Install reviewed Agent Plugin: {}",
+                                snapshot.entry.name
+                            ))
+                            .clicked();
+                    }
+                });
+            });
+        if install {
+            if let Err(error) = self.install_reviewed_catalog_plugin() {
+                if let Some(dialog) = self.catalog_plugin_install_dialog.as_mut() {
+                    dialog.error = Some(error);
+                }
+            }
+        } else if cancel {
+            self.catalog_plugin_install_dialog = None;
         }
     }
 
@@ -7003,11 +7315,151 @@ fn render_message() -> &'static str {
                     self.agent_plugins_pending = false;
                     match result {
                         Ok(snapshot) => {
+                            let uncertain_names = self
+                                .uncertain_catalog_plugin_installs
+                                .iter()
+                                .cloned()
+                                .collect::<Vec<_>>();
+                            for name in uncertain_names {
+                                let installed = snapshot.plugins.iter().any(|plugin| {
+                                    plugin.catalog_name.as_deref() == Some(name.as_str())
+                                        || plugin.name == name
+                                });
+                                self.uncertain_catalog_plugin_installs.remove(&name);
+                                if let Some(dialog) = self.catalog_plugin_install_dialog.as_mut()
+                                    && dialog.entry.name == name
+                                {
+                                    dialog.uncertain = false;
+                                    dialog.installing = false;
+                                    dialog.error = Some(if installed {
+                                        "Hermes inventory confirms this plugin is installed; close this review and refresh the catalog".into()
+                                    } else {
+                                        "Inventory refreshed and the plugin is not installed; inspect again before retrying".into()
+                                    });
+                                    if installed {
+                                        self.catalog_plugin_install_dialog = None;
+                                    }
+                                }
+                            }
                             self.agent_plugins = Some(snapshot);
                             self.agent_plugins_profile = profile;
                             self.agent_plugins_error = None;
                         }
                         Err(error) => self.agent_plugins_error = Some(error),
+                    }
+                }
+                GatewayEvent::AgentPluginInspected {
+                    request_id,
+                    catalog_name,
+                    profile,
+                    result,
+                } => {
+                    let Some(dialog) = self.catalog_plugin_install_dialog.as_mut() else {
+                        continue;
+                    };
+                    if dialog.request_id != request_id
+                        || dialog.entry.name != catalog_name
+                        || dialog.profile != profile
+                        || profile
+                            != self
+                                .gateway_endpoint
+                                .as_ref()
+                                .map(|endpoint| endpoint.profile_id.clone())
+                    {
+                        continue;
+                    }
+                    dialog.inspecting = false;
+                    match result {
+                        Ok(inspection) => {
+                            if !dialog.entry.sha.is_empty()
+                                && inspection
+                                    .sha
+                                    .as_deref()
+                                    .is_some_and(|sha| !dialog.entry.sha.eq_ignore_ascii_case(sha))
+                            {
+                                dialog.error = Some("Inspected commit differs from the catalog pin. Refresh the catalog and review again.".into());
+                            }
+                            dialog.inspection = Some(inspection);
+                        }
+                        Err(error) => dialog.error = Some(error),
+                    }
+                }
+                GatewayEvent::AgentPluginInstalled {
+                    request_id,
+                    catalog_name,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_catalog_plugin_install.take() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.catalog_name != catalog_name
+                        || pending.profile != profile
+                        || profile
+                            != self
+                                .gateway_endpoint
+                                .as_ref()
+                                .map(|endpoint| endpoint.profile_id.clone())
+                    {
+                        self.pending_catalog_plugin_install = Some(pending);
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) => {
+                            self.uncertain_catalog_plugin_installs.remove(&catalog_name);
+                            self.catalog_plugin_install_dialog = None;
+                            self.status = format!(
+                                "Installed {}{}",
+                                receipt.plugin_name,
+                                if receipt.enabled { " and enabled" } else { "" }
+                            );
+                            if !receipt.missing_env.is_empty() {
+                                self.status.push_str(&format!(
+                                    "; missing environment: {}",
+                                    receipt.missing_env.join(", ")
+                                ));
+                            }
+                            if !receipt.warnings.is_empty() {
+                                self.status.push_str(&format!(
+                                    "; {} install warning(s)",
+                                    receipt.warnings.len()
+                                ));
+                            }
+                            if !receipt.skills.is_empty() {
+                                self.status.push_str(&format!(
+                                    "; skills available: {}",
+                                    receipt.skills.join(", ")
+                                ));
+                            }
+                            self.agent_plugins = None;
+                            self.agent_plugins_profile = None;
+                            if self.route == AppRoute::Capabilities
+                                && self.capabilities_tab == CapabilitiesTab::Plugins
+                            {
+                                self.load_agent_plugins()
+                                    .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
+                            }
+                        }
+                        Err(error) => {
+                            let uncertain = error.to_ascii_lowercase().contains("timed out")
+                                || error.to_ascii_lowercase().contains("disconnected");
+                            if uncertain {
+                                self.uncertain_catalog_plugin_installs
+                                    .insert(catalog_name.clone());
+                            }
+                            if let Some(dialog) = self.catalog_plugin_install_dialog.as_mut() {
+                                dialog.installing = false;
+                                dialog.uncertain = uncertain;
+                                dialog.error = Some(if uncertain {
+                                    format!(
+                                        "Install outcome is unknown. Refresh the installed profile inventory before retrying. {error}"
+                                    )
+                                } else {
+                                    error
+                                });
+                            }
+                        }
                     }
                 }
                 GatewayEvent::AgentPluginToggled {
@@ -7138,6 +7590,23 @@ fn render_message() -> &'static str {
                 }
                 GatewayEvent::Disconnected(error) => {
                     self.gateway_connected = false;
+                    if let Some(pending) = self.pending_catalog_plugin_install.take() {
+                        self.uncertain_catalog_plugin_installs
+                            .insert(pending.catalog_name.clone());
+                        if let Some(dialog) = self.catalog_plugin_install_dialog.as_mut() {
+                            dialog.installing = false;
+                            dialog.uncertain = true;
+                            dialog.error = Some("Install outcome unknown after gateway disconnect; refresh the profile inventory before retrying".into());
+                        }
+                    }
+                    if let Some(dialog) = self.catalog_plugin_install_dialog.as_mut()
+                        && dialog.inspecting
+                    {
+                        dialog.inspecting = false;
+                        dialog.error = Some(
+                            "Repository inspection was interrupted by a gateway disconnect".into(),
+                        );
+                    }
                     for view in self.session_chat_views.values_mut() {
                         view.resume_request_id = None;
                     }
@@ -8678,6 +9147,58 @@ mod tests {
     }
 
     #[test]
+    fn catalog_install_review_surfaces_commit_components_and_warnings() {
+        let (mut app, profile) = isolated_app();
+        app.load_catalog_plugin_install_review_fixture_for_automation();
+        app.uncertain_catalog_plugin_installs
+            .insert("Research Companion".into());
+        app.catalog_plugin_install_dialog
+            .as_mut()
+            .expect("review fixture dialog")
+            .uncertain = true;
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_by_label("Review plugin · Research Companion")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Install reviewed Agent Plugin: Research Companion")
+                .expect("install control is present")
+                .accesskit_node()
+                .is_disabled(),
+            "an unknown install outcome disables re-submission"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("Reviewed commit · 0123456789012345678901234567890123456789"))
+                .next()
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("Review warning · Requires RESEARCH_API_KEY for live searches"))
+                .next()
+                .is_some()
+        );
+        drop(harness);
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::RequestCatalogPluginInstall {
+                name: "Research Companion".into(),
+            })
+            .expect_err("uncertain catalog entry is not resubmitted")
+            .contains("unknown outcome")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn installed_plugin_fixture_exposes_profile_row_and_offline_action_fails_closed() {
         let (mut app, profile) = isolated_app();
         app.load_plugin_catalog_fixture_for_automation();
@@ -8704,6 +9225,17 @@ mod tests {
             .expect_err("offline plugin mutation must be rejected")
             .contains("Connect to Hermes")
         );
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::RequestCatalogPluginInstall {
+                name: "Research Companion".into(),
+            })
+            .expect_err("catalog installs must be rejected while disconnected")
+            .contains("Connect to Hermes")
+        );
+        assert!(
+            app.catalog_plugin_install_dialog.is_none(),
+            "offline install request does not open an actionable review"
+        );
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
     }
@@ -8715,6 +9247,14 @@ mod tests {
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1440.0, 900.0))
             .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_by_label("Install catalog plugin: Research Companion")
+                .expect("catalog entry offers install action")
+                .accesskit_node()
+                .is_disabled(),
+            "catalog install action stays disabled while the gateway is offline"
+        );
         harness.get_by_label("Tier").click();
         harness.run();
         harness
@@ -11255,6 +11795,7 @@ impl HermesNativeApp {
             }
         }
         self.show_route_overlay(&ctx);
+        self.show_catalog_plugin_install_dialog(&ctx);
         self.show_agent_plugin_removal_dialog(&ctx);
         self.show_rename_dialog(&ctx);
         self.show_session_close_dialog(&ctx);

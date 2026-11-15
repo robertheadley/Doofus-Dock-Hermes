@@ -912,3 +912,11 @@ Validation: all 107 library and 7 automation tests passed; default and all-targe
 
 
 HUI-038 publication: implementation commit `8c1996f` was pushed to `main` after verifying parent `cdde57e`; the separate publication log follows.
+
+### HUI-039 — reviewed curated Agent Plugin install
+
+Added an accessible install entry point to uninstalled catalog rows plus the shared `request_catalog_plugin_install` agent action. The native flow asks the selected Hermes profile to inspect the repository, renders its repository URL, full reviewed commit, Agent/Desktop component flags and warnings, and requires explicit confirmation. Installation submits the catalog name and inspected SHA with the same profile; insecure/non-Agent entries and pin mismatches fail closed. Correlated receipts expose activation, missing environment and warnings before refreshing the installed inventory. A timeout/disconnect leaves the result unknown, disables resubmission, and blocks reopening until a fresh profile inventory reconciles the outcome. Isolated WebSocket/AccessKit tests pass, and the review-state screenshot is separate from the former catalog/browser captures.
+
+Validation: 109 library tests and 7 automation tests passed; formatter, default/all-target builds, `git diff --check`, and fixed-source package validator passed. The validator still reports all 565 inventory rows pending; optional PyYAML UCM parsing was skipped. No Hermes gateway/profile was used for install validation. The synthetic review screenshot is 1440×900 and visually inspected. Desktop-half installation, scan-finding force review, update/custom-repository flows, and live profile/source-paired acceptance remain open.
+
+Change record: id `HUI-039`; type `feature`; components `Plugins catalog, gateway actor, agent action registry, headless fixture`; performance `no benchmarked runtime change`; risks `backend install runs up to a minute and disconnect/timeout result is uncertain`; follow-up `implement scan finding consent and remaining package/update workflows against pinned Desktop source`.
