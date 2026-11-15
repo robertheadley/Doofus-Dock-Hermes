@@ -1852,6 +1852,134 @@ mod tests {
     }
 
     #[test]
+    fn modifier_keypress_cycles_session_tabs_with_wraparound() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        for session_id in ["cycle-session-one", "cycle-session-two"] {
+            app.borrow_mut()
+                .execute_registered_action(RegisteredUiAction::OpenSession {
+                    session_id: session_id.into(),
+                    profile: Some("work".into()),
+                })
+                .expect("open profile-scoped session tab");
+        }
+        app.borrow_mut()
+            .execute_registered_action(RegisteredUiAction::Navigate {
+                path: "/capabilities".into(),
+            })
+            .expect("open a full-page route over the workspace");
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+        let state = app.borrow().automation_state();
+        let workspace_group = state["dock_tab_groups"]
+            .as_array()
+            .expect("Dock tab groups")
+            .iter()
+            .find(|group| {
+                group["panels"]
+                    .as_array()
+                    .is_some_and(|panels| panels.iter().any(|panel| panel == "workspace"))
+            })
+            .expect("workspace and session tabs share a main group");
+        assert_eq!(
+            workspace_group["panels"].as_array().unwrap().len(),
+            3,
+            "{state}"
+        );
+        // Navigating to a full-page route focuses the workspace tab, while
+        // preserving the other session tiles for keyboard navigation.
+        assert_eq!(workspace_group["active_index"], 0, "{state}");
+
+        let next = protocol.handle(
+            json!({"version":1,"id":"cycle-next","method":"actions.keypress","params":{"key":"TAB","modifiers":["CTRL"],"expected_state_generation":0}}),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(next["status"], "succeeded", "{next}");
+        assert_eq!(
+            next["result"]["after"]["route"], "/cycle-session-one",
+            "Ctrl+Tab advances from the workspace to the first session tile"
+        );
+        let next_group = next["result"]["after"]["dock_tab_groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|group| {
+                group["panels"]
+                    .as_array()
+                    .is_some_and(|panels| panels.iter().any(|panel| panel == "workspace"))
+            })
+            .expect("workspace tab group after next");
+        assert_eq!(
+            next_group["active_index"], 1,
+            "Ctrl+Tab selects first session"
+        );
+
+        let previous = protocol.handle(
+            json!({"version":1,"id":"cycle-previous","method":"actions.keypress","params":{"key":"TAB","modifiers":["CTRL","SHIFT"],"expected_state_generation":1}}),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(previous["status"], "succeeded", "{previous}");
+        let previous_group = previous["result"]["after"]["dock_tab_groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|group| {
+                group["panels"]
+                    .as_array()
+                    .is_some_and(|panels| panels.iter().any(|panel| panel == "workspace"))
+            })
+            .expect("workspace tab group after previous");
+        assert_eq!(
+            previous_group["active_index"], 0,
+            "Ctrl+Shift+Tab returns to the workspace tab"
+        );
+        assert_eq!(
+            previous["result"]["after"]["route"], "/cycle-session-one",
+            "returning to workspace retains the selected chat route"
+        );
+
+        let previous_to_first = protocol.handle(
+            json!({"version":1,"id":"cycle-previous-to-first","method":"actions.keypress","params":{"key":"TAB","modifiers":["CTRL","SHIFT"],"expected_state_generation":2}}),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(
+            previous_to_first["status"], "succeeded",
+            "{previous_to_first}"
+        );
+        assert_eq!(
+            previous_to_first["result"]["after"]["route"],
+            "/cycle-session-two"
+        );
+
+        let page_down = protocol.handle(
+            json!({"version":1,"id":"cycle-pagedown","method":"actions.keypress","params":{"key":"PAGEDOWN","modifiers":["CTRL"],"expected_state_generation":3}}),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(page_down["status"], "succeeded", "{page_down}");
+        assert_eq!(page_down["result"]["after"]["route"], "/cycle-session-two");
+
+        let page_up = protocol.handle(
+            json!({"version":1,"id":"cycle-pageup","method":"actions.keypress","params":{"key":"PAGEUP","modifiers":["CTRL"],"expected_state_generation":4}}),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(page_up["status"], "succeeded", "{page_up}");
+        assert_eq!(page_up["result"]["after"]["route"], "/cycle-session-two");
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
     fn pointer_drag_edge_drop_commits_a_canonical_split() {
         let profile = super::super::TemporaryProfile::create().expect("isolated profile");
         let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(

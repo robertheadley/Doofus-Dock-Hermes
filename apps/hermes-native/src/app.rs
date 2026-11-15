@@ -278,6 +278,8 @@ pub struct HermesNativeApp {
     load_error: Option<String>,
     status: String,
     route: AppRoute,
+    last_chat_route: AppRoute,
+    last_chat_profile: Option<String>,
     overlay_return: AppRoute,
     contributed_paths: BTreeSet<String>,
     gateway_discovery: Option<GatewayDiscovery>,
@@ -460,6 +462,8 @@ fn render_message() -> &'static str {
             }
             .into(),
             route: AppRoute::NewChat,
+            last_chat_route: AppRoute::NewChat,
+            last_chat_profile: None,
             overlay_return: AppRoute::NewChat,
             contributed_paths: BTreeSet::new(),
             gateway_discovery: connect_gateway.then(GatewayDiscovery::start),
@@ -3793,6 +3797,10 @@ fn render_message() -> &'static str {
         if route.is_overlay() && !self.route.is_overlay() {
             self.overlay_return = self.route.clone();
         }
+        if matches!(route, AppRoute::NewChat | AppRoute::Session(_)) {
+            self.last_chat_route = route.clone();
+            self.last_chat_profile = self.active_session_profile.clone();
+        }
         self.route = route.clone();
         match &route {
             AppRoute::Session(session_id) => {
@@ -4613,6 +4621,63 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
+    fn cycle_active_dock_tab(&mut self, direction: isize) {
+        let snapshot = self.workspace.dock.snapshot();
+        let groups = collect_dock_tab_groups(snapshot.document.root.as_deref());
+        let Some(group) = cycle_target_tab_group(
+            &groups,
+            self.hovered_dock_group.as_ref(),
+            self.focused_dock_group.as_ref(),
+            &snapshot.document,
+            &PanelId::from(WORKSPACE),
+        ) else {
+            return;
+        };
+        let group_node = group.node.clone();
+        let panels = group.panels.clone();
+        let active_index = group.active_index.min(panels.len().saturating_sub(1));
+        let next_index = cycle_tab_index(active_index, panels.len(), direction);
+        let target = panels[next_index].clone();
+        self.focused_dock_group = Some(group_node.clone());
+        if next_index != active_index {
+            match self.workspace.dock.transact(
+                snapshot.revision,
+                CommandId::from(format!("cycle-dock-tab-{}-{next_index}", group_node.0)),
+                [Operation::SelectTab {
+                    tabs: group_node,
+                    index: next_index,
+                }],
+            ) {
+                Ok(_) => self.workspace.save_layout(),
+                Err(error) => {
+                    self.status = error.to_string();
+                    return;
+                }
+            }
+        }
+
+        if target.0 == WORKSPACE {
+            if !matches!(self.route, AppRoute::NewChat | AppRoute::Session(_)) {
+                self.save_active_chat_view();
+                self.active_session_profile = self.last_chat_profile.clone();
+                self.navigate_after_save(self.last_chat_route.clone());
+            }
+        } else if let Some(descriptor) = snapshot.document.descriptor(&target)
+            && descriptor.role == "hermes_session_tile"
+            && let Some(session_id) = descriptor.metadata.get("hermes.session.id")
+        {
+            let session_id = session_id.clone();
+            let profile = descriptor
+                .metadata
+                .get("hermes.session.profile")
+                .filter(|profile| !profile.is_empty())
+                .cloned();
+            self.save_active_chat_view();
+            self.active_session_profile = profile;
+            self.navigate_after_save(AppRoute::Session(session_id));
+        }
+    }
+
     fn request_close_session_pane(&mut self, panel: &PanelId) {
         self.request_close_session_panes(std::iter::once(panel.clone()));
     }
@@ -4784,6 +4849,8 @@ fn render_message() -> &'static str {
                             .gateway_endpoint
                             .as_ref()
                             .map(|endpoint| endpoint.profile_id.clone());
+                        self.last_chat_route = self.route.clone();
+                        self.last_chat_profile = self.active_session_profile.clone();
                         let blank_session = text.is_empty();
                         if blank_session {
                             self.untouched_blank_session = Some((
@@ -5832,6 +5899,46 @@ fn close_target_tab_group<'a>(
         })
 }
 
+fn cycle_target_tab_group<'a>(
+    groups: &'a [DockTabGroup],
+    hovered_group: Option<&NodeId>,
+    focused_group: Option<&NodeId>,
+    document: &doofusdock_core::LayoutDocument,
+    workspace_panel: &PanelId,
+) -> Option<&'a DockTabGroup> {
+    let eligible = |group: &&DockTabGroup| {
+        group.panels.len() >= 2
+            && group.panels.iter().any(|panel| {
+                panel == workspace_panel
+                    || document
+                        .descriptor(panel)
+                        .is_some_and(|descriptor| descriptor.role == "hermes_session_tile")
+            })
+    };
+    hovered_group
+        .and_then(|hovered| groups.iter().find(|group| &group.node == hovered))
+        .filter(eligible)
+        .or_else(|| {
+            focused_group
+                .and_then(|focused| groups.iter().find(|group| &group.node == focused))
+                .filter(eligible)
+        })
+        .or_else(|| {
+            groups
+                .iter()
+                .find(|group| group.panels.contains(workspace_panel))
+                .filter(eligible)
+        })
+}
+
+fn cycle_tab_index(active: usize, len: usize, direction: isize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let active = active.min(len - 1) as isize;
+    (active + direction.signum()).rem_euclid(len as isize) as usize
+}
+
 fn session_identity_for_tab(
     panel: &PanelId,
     document: &doofusdock_core::LayoutDocument,
@@ -6256,6 +6363,65 @@ mod tests {
         )
         .expect("a removed focus group falls back to workspace");
         assert_eq!(stale_focus.panels[stale_focus.active_index], workspace);
+    }
+
+    #[test]
+    fn cycle_tab_target_uses_hover_focus_then_workspace_and_wraps() {
+        let workspace = PanelId::from(WORKSPACE);
+        let first_session = PanelId::from("cycle-session-first");
+        let tool_session = PanelId::from("cycle-session-tool-zone");
+        let workspace_group = DockTabGroup {
+            node: NodeId::from("cycle-tabs-workspace"),
+            panels: vec![workspace.clone(), first_session],
+            active_index: 0,
+        };
+        let mut document = Workspace::load_fallback().dock.snapshot().document;
+        let mut descriptor =
+            doofusdock_core::PanelDescriptor::new(tool_session.0.clone(), "Tool zone session");
+        descriptor.role = "hermes_session_tile".into();
+        Arc::make_mut(&mut document.panels).push(descriptor);
+        let tool_group = DockTabGroup {
+            node: NodeId::from("cycle-tabs-tool-zone"),
+            panels: vec![PanelId::from(FILES), tool_session.clone()],
+            active_index: 1,
+        };
+        let ineligible_group = DockTabGroup {
+            node: NodeId::from("cycle-tabs-plain-tools"),
+            panels: vec![PanelId::from(FILES), PanelId::from(TERMINAL)],
+            active_index: 1,
+        };
+        let groups = vec![
+            workspace_group,
+            tool_group.clone(),
+            ineligible_group.clone(),
+        ];
+
+        let hovered = cycle_target_tab_group(
+            &groups,
+            Some(&tool_group.node),
+            Some(&groups[0].node),
+            &document,
+            &workspace,
+        )
+        .expect("hovered eligible group takes precedence");
+        assert_eq!(hovered.node, tool_group.node);
+
+        let focus_fallback = cycle_target_tab_group(
+            &groups,
+            Some(&ineligible_group.node),
+            Some(&tool_group.node),
+            &document,
+            &workspace,
+        )
+        .expect("ineligible hover falls through to focused group");
+        assert_eq!(focus_fallback.node, tool_group.node);
+
+        let workspace_fallback = cycle_target_tab_group(&groups, None, None, &document, &workspace)
+            .expect("workspace group is the final eligible rung");
+        assert_eq!(workspace_fallback.node, groups[0].node);
+        assert_eq!(cycle_tab_index(0, 3, -1), 2);
+        assert_eq!(cycle_tab_index(2, 3, 1), 0);
+        assert_eq!(cycle_tab_index(7, 0, 1), 0);
     }
 
     #[test]
@@ -8260,6 +8426,29 @@ mod tests {
 impl HermesNativeApp {
     pub fn draw(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        let previous_tab = ctx.input_mut(|input| {
+            input.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
+                egui::Key::Tab,
+            )) || input.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL,
+                egui::Key::PageUp,
+            ))
+        });
+        let next_tab = ctx.input_mut(|input| {
+            input.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL,
+                egui::Key::Tab,
+            )) || input.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL,
+                egui::Key::PageDown,
+            ))
+        });
+        if previous_tab {
+            self.cycle_active_dock_tab(-1);
+        } else if next_tab {
+            self.cycle_active_dock_tab(1);
+        }
         let close_active_tab = ctx.input_mut(|input| {
             input.consume_shortcut(&egui::KeyboardShortcut::new(
                 egui::Modifiers::COMMAND,
@@ -8544,6 +8733,9 @@ impl HermesNativeApp {
                         },
                     )
                 };
+                if response.focused.is_some() {
+                    self.focused_dock_group = Some(group.node.clone());
+                }
                 if let Some(command) = context_command {
                     match command {
                         DockTabContextCommand::Pin(session, pinned) => {

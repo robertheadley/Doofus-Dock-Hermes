@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 57 (implementation in progress).
+- **Working revision:** 58 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -332,3 +332,10 @@ Tests verify real secondary-pointer access to the shared Dock menu and discovera
 Extend `actions.keypress` with an optional bounded list of explicit modifiers (`ALT`, `CTRL`, `SHIFT`, `COMMAND`, `META`). The agent injects the same egui modifier/key event path used by the app, returns the normalized modifier receipt, and rejects malformed, duplicate or unsupported values before input. `COMMAND` represents the platform shortcut modifier (Ctrl on Windows/Linux, Command on macOS); `CTRL` remains the physical Control key. An isolated end-to-end test opens a profile-scoped Hermes session tile, invokes `COMMAND+W` through the protocol and verifies the canonical close handler closes that same tile; unsupported modifier rejection is also covered.
 
 This removes one automation limitation, not the broader native keyboard parity gate. Shortcut coverage, focus ownership across tool panes, physical Windows acceptance and source-paired keyboard evidence remain open.
+
+
+### Revision 58 — source-aligned tab cycling and flat session tabs
+
+Implement the fixed Desktop `session.next` and `session.prev` shortcuts: `Ctrl+Tab` / `Ctrl+PageDown` advance, and `Ctrl+Shift+Tab` / `Ctrl+PageUp` reverse. The target ladder is hovered eligible main/session strip, focused strip, then workspace. The active tab wraps, selects through a canonical `SelectTab` transaction, and restores the selected profile-scoped session route. Keyboard focus on a rendered tab now updates the focused-group marker. The agent modifier-keypress path exercises the same shortcuts.
+
+Opening another session now appends to the existing workspace tab group instead of nesting a new group around the workspace panel. On open, old session tiles left in nested ancestor groups by earlier builds are moved into the workspace tab group with canonical `TabPanel` transactions; other Dock zones are left alone. Tests cover flat group structure, legacy nested layout repair, hover/focus/workspace target choice, wraparound, route identity and both shortcut aliases. When no eligible tab strip exists, the pinned source falls back to its recent-session switcher; that fallback, broader shortcut coverage and physical Windows keyboard acceptance remain open.

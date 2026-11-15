@@ -140,6 +140,7 @@ impl Workspace {
         title: &str,
     ) -> Result<PanelId, String> {
         validate_session_pane_identity(profile_id, stored_session_id, title)?;
+        self.normalize_nested_workspace_session_tabs()?;
         let panel = session_pane_id(profile_id, stored_session_id);
         let observed = self.dock.snapshot();
         if let Some(descriptor) = observed.document.descriptor(&panel) {
@@ -187,10 +188,13 @@ impl Workspace {
             return Ok(panel);
         }
 
-        let workspace_node = find_panel_node(observed.document.root.as_deref(), WORKSPACE)
-            .ok_or_else(|| {
-                "The Hermes workspace pane is not present in the Dock layout".to_owned()
-            })?;
+        let workspace_target =
+            find_tab_for_panel(observed.document.root.as_deref(), &PanelId::from(WORKSPACE))
+                .map(|(tabs, _)| tabs)
+                .or_else(|| find_panel_node(observed.document.root.as_deref(), WORKSPACE))
+                .ok_or_else(|| {
+                    "The Hermes workspace pane is not present in the Dock layout".to_owned()
+                })?;
         let mut descriptor = PanelDescriptor::new(panel.0.clone(), bounded_session_title(title));
         descriptor.role = "hermes_session_tile".into();
         descriptor.minimum = doofusdock_core::Size::new(180, 140);
@@ -214,12 +218,69 @@ impl Workspace {
                 )),
                 [Operation::AddPanel {
                     descriptor,
-                    target: Some(workspace_node),
+                    target: Some(workspace_target),
                 }],
             )
             .map_err(|error| error.to_string())?;
         self.save_layout();
         Ok(panel)
+    }
+
+    fn normalize_nested_workspace_session_tabs(&mut self) -> Result<(), String> {
+        let observed = self.dock.snapshot();
+        let Some((workspace_tabs, _)) =
+            find_tab_for_panel(observed.document.root.as_deref(), &PanelId::from(WORKSPACE))
+        else {
+            return Ok(());
+        };
+        let group_path =
+            tab_group_path_for_panel(observed.document.root.as_deref(), &PanelId::from(WORKSPACE));
+        let Some((_, workspace_group_len)) =
+            find_tab_group(observed.document.root.as_deref(), &workspace_tabs)
+        else {
+            return Ok(());
+        };
+        let ancestor_groups = group_path
+            .iter()
+            .take(group_path.len().saturating_sub(1))
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
+        if ancestor_groups.is_empty() {
+            return Ok(());
+        }
+        let moving = self
+            .session_pane_ids()
+            .into_iter()
+            .filter(|panel| !observed.document.closed_panels.contains(panel))
+            .filter(|panel| {
+                find_tab_for_panel(observed.document.root.as_deref(), panel)
+                    .is_some_and(|(tabs, _)| ancestor_groups.contains(&tabs))
+            })
+            .collect::<Vec<_>>();
+        if moving.is_empty() {
+            return Ok(());
+        }
+        let operations = moving
+            .iter()
+            .enumerate()
+            .map(|(offset, panel)| Operation::TabPanel {
+                panel: panel.clone(),
+                target_tabs: workspace_tabs.clone(),
+                index: workspace_group_len + offset,
+            })
+            .collect::<Vec<_>>();
+        self.dock
+            .transact(
+                observed.revision,
+                CommandId::from(format!(
+                    "flatten-session-tabs-{}-{}",
+                    observed.revision, workspace_tabs.0
+                )),
+                operations,
+            )
+            .map_err(|error| error.to_string())?;
+        self.save_layout();
+        Ok(())
     }
 
     /// Close a session pane through the canonical Dock operation. Busy-session
@@ -525,6 +586,73 @@ fn find_tab_for_panel(root: Option<&Node>, panel: &PanelId) -> Option<(NodeId, u
         }
     }
     root.and_then(|root| walk(root, panel))
+}
+
+fn tab_group_path_for_panel(root: Option<&Node>, panel: &PanelId) -> Vec<NodeId> {
+    fn contains_panel(node: &Node, panel: &PanelId) -> bool {
+        match &node.kind {
+            NodeKind::Panel { panel: candidate } => candidate == panel,
+            NodeKind::Tabs { items, .. }
+            | NodeKind::DocumentWell { groups: items, .. }
+            | NodeKind::Split {
+                children: items, ..
+            }
+            | NodeKind::Extension {
+                children: items, ..
+            } => items.iter().any(|child| contains_panel(child, panel)),
+            NodeKind::Placeholder { .. } => false,
+        }
+    }
+    fn walk(node: &Node, panel: &PanelId, path: &mut Vec<NodeId>) -> bool {
+        if !contains_panel(node, panel) {
+            return false;
+        }
+        if matches!(node.kind, NodeKind::Tabs { .. }) {
+            path.push(node.id.clone());
+        }
+        match &node.kind {
+            NodeKind::Tabs { items, .. }
+            | NodeKind::DocumentWell { groups: items, .. }
+            | NodeKind::Split {
+                children: items, ..
+            }
+            | NodeKind::Extension {
+                children: items, ..
+            } => items.iter().any(|child| walk(child, panel, path)),
+            NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => true,
+        }
+    }
+    let mut path = Vec::new();
+    if let Some(root) = root {
+        walk(root, panel, &mut path);
+    }
+    path
+}
+
+fn find_tab_group(root: Option<&Node>, tabs: &NodeId) -> Option<(usize, usize)> {
+    fn walk(node: &Node, tabs: &NodeId) -> Option<(usize, usize)> {
+        if &node.id == tabs {
+            return match &node.kind {
+                NodeKind::Tabs {
+                    items,
+                    active_index,
+                } => Some((items.len(), *active_index)),
+                _ => None,
+            };
+        }
+        match &node.kind {
+            NodeKind::Tabs { items, .. }
+            | NodeKind::DocumentWell { groups: items, .. }
+            | NodeKind::Split {
+                children: items, ..
+            }
+            | NodeKind::Extension {
+                children: items, ..
+            } => items.iter().find_map(|child| walk(child, tabs)),
+            NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => None,
+        }
+    }
+    root.and_then(|root| walk(root, tabs))
 }
 
 fn find_tabs_active_index(root: Option<&Node>, tabs: &NodeId) -> Option<usize> {
@@ -945,6 +1073,121 @@ mod tests {
         let revision = selected.revision;
         workspace.select_panel(&PanelId::from(WORKSPACE)).unwrap();
         assert_eq!(workspace.dock.snapshot().revision, revision);
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn opening_a_session_flattens_legacy_nested_workspace_session_tabs() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-flatten-session-tabs-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let first = workspace
+            .open_session_pane(Some("work"), "session-first", "First")
+            .unwrap();
+
+        let before_legacy_add = workspace.dock.snapshot();
+        let second = session_pane_id(Some("work"), "session-legacy");
+        let mut descriptor = PanelDescriptor::new(second.0.clone(), "Legacy session");
+        descriptor.role = "hermes_session_tile".into();
+        descriptor
+            .metadata
+            .insert("hermes.session.id".into(), "session-legacy".into());
+        descriptor
+            .metadata
+            .insert("hermes.session.profile".into(), "work".into());
+        descriptor
+            .metadata
+            .insert("hermes.session.tile".into(), "1".into());
+        let workspace_node = find_panel_node(before_legacy_add.document.root.as_deref(), WORKSPACE)
+            .expect("workspace leaf for the previous nested insertion behavior");
+        workspace
+            .dock
+            .transact(
+                before_legacy_add.revision,
+                CommandId::from("simulate-legacy-nested-session-tab"),
+                [Operation::AddPanel {
+                    descriptor,
+                    target: Some(workspace_node),
+                }],
+            )
+            .unwrap();
+
+        let before_second_legacy_add = workspace.dock.snapshot();
+        let third_legacy = session_pane_id(Some("work"), "session-legacy-third");
+        let mut legacy_descriptor = PanelDescriptor::new(third_legacy.0.clone(), "Legacy third");
+        legacy_descriptor.role = "hermes_session_tile".into();
+        legacy_descriptor
+            .metadata
+            .insert("hermes.session.id".into(), "session-legacy-third".into());
+        legacy_descriptor
+            .metadata
+            .insert("hermes.session.profile".into(), "work".into());
+        legacy_descriptor
+            .metadata
+            .insert("hermes.session.tile".into(), "1".into());
+        let workspace_node =
+            find_panel_node(before_second_legacy_add.document.root.as_deref(), WORKSPACE)
+                .expect("workspace leaf for a second previous-version insertion");
+        workspace
+            .dock
+            .transact(
+                before_second_legacy_add.revision,
+                CommandId::from("simulate-second-legacy-nested-session-tab"),
+                [Operation::AddPanel {
+                    descriptor: legacy_descriptor,
+                    target: Some(workspace_node),
+                }],
+            )
+            .unwrap();
+
+        let before_migration = workspace.dock.snapshot();
+        let workspace_tabs = find_tab_for_panel(
+            before_migration.document.root.as_deref(),
+            &PanelId::from(WORKSPACE),
+        )
+        .unwrap()
+        .0;
+        assert_ne!(
+            find_tab_for_panel(before_migration.document.root.as_deref(), &first)
+                .unwrap()
+                .0,
+            workspace_tabs,
+            "fixture starts in the nested layout emitted by the previous app build"
+        );
+        assert_ne!(
+            find_tab_for_panel(before_migration.document.root.as_deref(), &second)
+                .unwrap()
+                .0,
+            workspace_tabs,
+            "two older nested ancestor groups must be migrated in order"
+        );
+
+        let fourth = workspace
+            .open_session_pane(Some("work"), "session-fourth", "Fourth")
+            .unwrap();
+        let normalized = workspace.dock.snapshot();
+        let workspace_tabs = find_tab_for_panel(
+            normalized.document.root.as_deref(),
+            &PanelId::from(WORKSPACE),
+        )
+        .unwrap()
+        .0;
+        for session in [first, second, third_legacy, fourth] {
+            assert_eq!(
+                find_tab_for_panel(normalized.document.root.as_deref(), &session)
+                    .unwrap()
+                    .0,
+                workspace_tabs,
+                "all workspace session tiles must share one canonical tab group"
+            );
+        }
         drop(workspace);
         std::fs::remove_dir_all(directory).unwrap();
     }

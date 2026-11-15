@@ -35,6 +35,8 @@ pub struct TabStripResponse {
     pub hovered: Option<(usize, Rect)>,
     /// Canonical item indices and clipped-to-strip tab rectangles drawn this frame.
     pub visible_bounds: Vec<(usize, Rect)>,
+    /// Canonical item index holding keyboard focus, when any tab is focused.
+    pub focused: Option<usize>,
 }
 
 /// Paint a bounded, keyboard-navigable tab strip. Overflow is exposed through
@@ -277,6 +279,7 @@ pub fn tab_strip_with_context_menu(
             output.hovered = Some((index, tab_rect));
         }
         if response.has_focus() {
+            output.focused = Some(index);
             let direction = ui.input(|input| {
                 if input.key_pressed(egui::Key::ArrowRight) {
                     1_i8
