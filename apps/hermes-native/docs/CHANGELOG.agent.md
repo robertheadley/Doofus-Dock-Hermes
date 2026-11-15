@@ -985,3 +985,23 @@ HUI-041 publication: implementation commit 88206d5 was pushed to main after fetc
 - **performance:** Bounded stack retains at most 64 closed session panes per profile; no network or gateway work added.
 - **risks:** Stack is in memory and does not survive app restart, matching the pinned source. Live installed-Hermes acceptance remains open.
 - **follow_up:** Continue the fixed 499-row source-paired acceptance scope; do not claim full replacement parity.
+- **id:** HUI-046
+- **timestamp:** 2026-11-15T12:12:41Z
+- **what:** Added native transcript find-in-page with accessible query/count controls, keyboard stepping, message-card highlight, and scroll-to-match.
+- **why:** Close fixed-source chat requirement PAR-0058 and provide a usable transcript navigation path for both people and the UI agent.
+- **components:** apps/hermes-native/src/app.rs, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md, docs/ARCHITECTURE.md, docs/BACKLOG.md.
+- **type:** source-parity behavior slice.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --features agent-automation` (118 library + 8 automation tests); `cargo check -p hermes-native --all-targets --features agent-automation`.
+- **performance:** Search scans the currently loaded transcript in memory; no gateway requests or background workers are added.
+- **risks:** Search is limited to loaded transcript messages and highlights whole message cards. Exact rendered-text highlighting, non-transcript panes, and source-paired Windows acceptance remain open; PAR-0058 is not accepted.
+- **follow_up:** Continue fixed-snapshot chat parity and source-paired UI acceptance; preserve the 499-row gate.
+- **id:** HUI-047
+- **timestamp:** 2026-11-15T12:15:14Z
+- **what:** Added an isolated transcript-find visual fixture and saved a distinct 1440×900 search-state capture.
+- **why:** Make the new interaction reviewable and give the automation runner a reproducible non-default screen for visual checks.
+- **components:** apps/hermes-native/src/app.rs, apps/hermes-native/src/bin/hermes-automation.rs, artifacts/agent-ui/transcript-find-in-page-20261115.png, apps/hermes-native/docs/PLAN.md, docs/ARCHITECTURE.md.
+- **type:** automation fixture and visual evidence.
+- **validation:** One-shot runner rendered the fixture at 1440×900; screenshot visually inspected. `cargo fmt --all -- --check`, 118 library tests, 8 automation tests, and all-target feature compile passed.
+- **performance:** Fixture is local and offline; no gateway or installed profile is opened.
+- **risks:** The image demonstrates a synthetic native state and is not source-paired parity acceptance.
+- **follow_up:** Continue implementing and visually validating the fixed Hermes snapshot; keep PAR-0058 unaccepted until source-paired checks pass.

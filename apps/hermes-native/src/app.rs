@@ -447,6 +447,13 @@ pub struct HermesNativeApp {
     archived_sessions_request_id: Option<String>,
     archived_sessions_loading: bool,
     archived_sessions_error: Option<String>,
+    find_in_page_open: bool,
+    find_in_page_query: String,
+    find_in_page_match: usize,
+    find_in_page_target: Option<usize>,
+    find_in_page_scroll_pending: bool,
+    find_in_page_focus_pending: bool,
+    find_in_page_route: Option<String>,
     session_filter: String,
     session_search_changed_at: Option<std::time::Instant>,
     session_search_request_id: Option<String>,
@@ -590,6 +597,26 @@ fn render_message() -> &'static str {
         self.transcript_message_count = 240;
         self.transcript_has_more = true;
         self.status = "Long transcript fixture · gateway isolated".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn load_transcript_find_fixture_for_automation(&mut self) {
+        self.route = AppRoute::Session("find-in-page-fixture".into());
+        self.active_session_profile = Some("fixture-profile".into());
+        self.active_runtime_session_id = Some("runtime-find-in-page-fixture".into());
+        self.transcript = vec![
+            json!({"role":"user","content":"Why did the local gateway retry after reconnect?"}),
+            json!({"role":"assistant","content":"The first connection closed before the attach receipt arrived."}),
+            json!({"role":"user","content":"Please explain the retry behavior."}),
+            json!({"role":"assistant","content":"The retry keeps the original request identity and waits for a matching receipt."}),
+        ];
+        self.find_in_page_open = true;
+        self.find_in_page_query = "retry".into();
+        self.find_in_page_match = 0;
+        self.find_in_page_target = Some(0);
+        self.find_in_page_scroll_pending = true;
+        self.find_in_page_route = Some(self.route.path());
+        self.status = "Transcript find fixture · gateway isolated".into();
     }
 
     #[cfg(feature = "agent-automation")]
@@ -932,6 +959,13 @@ fn render_message() -> &'static str {
             archived_sessions_request_id: None,
             archived_sessions_loading: false,
             archived_sessions_error: None,
+            find_in_page_open: false,
+            find_in_page_query: String::new(),
+            find_in_page_match: 0,
+            find_in_page_target: None,
+            find_in_page_scroll_pending: false,
+            find_in_page_focus_pending: false,
+            find_in_page_route: None,
             session_filter: String::new(),
             session_search_changed_at: None,
             session_search_request_id: None,
@@ -1906,7 +1940,112 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn step_transcript_find(&mut self, direction: isize) {
+        let matches = transcript_search_matches(&self.transcript, &self.find_in_page_query);
+        if matches.is_empty() {
+            self.find_in_page_match = 0;
+            self.find_in_page_target = None;
+            self.find_in_page_scroll_pending = false;
+            return;
+        }
+        let count = matches.len();
+        self.find_in_page_match = if direction >= 0 {
+            (self.find_in_page_match + 1) % count
+        } else {
+            (self.find_in_page_match + count - 1) % count
+        };
+        self.find_in_page_target = Some(matches[self.find_in_page_match]);
+        self.find_in_page_scroll_pending = true;
+    }
+
+    fn transcript_find_bar(&mut self, ui: &mut Ui) {
+        if !self.find_in_page_open {
+            return;
+        }
+
+        let mut changed = false;
+        let mut next = false;
+        let mut previous = false;
+        let mut close = false;
+        ui.horizontal(|ui| {
+            let response = ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.find_in_page_query)
+                        .id_salt("chat.find.query")
+                        .desired_width(240.0)
+                        .hint_text("Find in transcript"),
+                )
+                .accessible_name("Find in transcript");
+            if self.find_in_page_focus_pending {
+                response.request_focus();
+                self.find_in_page_focus_pending = false;
+            }
+            changed = response.changed();
+            let matches = transcript_search_matches(&self.transcript, &self.find_in_page_query);
+            let label = if matches.is_empty() {
+                "0/0".to_owned()
+            } else {
+                format!(
+                    "{}/{}",
+                    self.find_in_page_match.min(matches.len() - 1) + 1,
+                    matches.len()
+                )
+            };
+            ui.label(label)
+                .on_hover_text("Matching messages in the loaded transcript");
+            previous = ui
+                .button("Previous")
+                .on_hover_text("Previous match · Shift+Enter")
+                .clicked();
+            next = ui
+                .button("Next")
+                .on_hover_text("Next match · Enter")
+                .clicked();
+            close = ui
+                .button("×")
+                .on_hover_text("Close transcript search · Escape")
+                .clicked();
+            let enter =
+                response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            if enter {
+                if ui.input(|input| input.modifiers.shift) {
+                    previous = true;
+                } else {
+                    next = true;
+                }
+            }
+        });
+
+        if changed {
+            self.find_in_page_match = 0;
+            self.find_in_page_target =
+                transcript_search_matches(&self.transcript, &self.find_in_page_query)
+                    .first()
+                    .copied();
+            self.find_in_page_scroll_pending = self.find_in_page_target.is_some();
+        }
+        if close {
+            self.find_in_page_open = false;
+            self.find_in_page_query.clear();
+            self.find_in_page_match = 0;
+            self.find_in_page_target = None;
+            self.find_in_page_scroll_pending = false;
+            self.find_in_page_route = None;
+            return;
+        }
+
+        if next || previous {
+            self.step_transcript_find(if next { 1 } else { -1 });
+        } else if transcript_search_matches(&self.transcript, &self.find_in_page_query).is_empty() {
+            self.find_in_page_match = 0;
+            self.find_in_page_target = None;
+            self.find_in_page_scroll_pending = false;
+        }
+        ui.add_space(6.0);
+    }
+
     fn session_content(&mut self, ui: &mut Ui, session_id: &str) {
+        self.transcript_find_bar(ui);
         let resume_error = self
             .session_chat_views
             .get(&session_identity_key(
@@ -1979,14 +2118,39 @@ fn render_message() -> &'static str {
                 ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
             }
             let messages = self.transcript.clone();
+            let search_matches = transcript_search_matches(&messages, &self.find_in_page_query);
+            let find_target = self.find_in_page_target;
+            let scroll_target = self
+                .find_in_page_scroll_pending
+                .then_some(find_target)
+                .flatten();
+            if scroll_target.is_some_and(|index| index < messages.len()) {
+                self.find_in_page_scroll_pending = false;
+            }
             let markdown_cache = &mut self.markdown_cache;
             egui::ScrollArea::vertical()
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
                     ui.set_max_width(ui.available_width().min(860.0));
-                    for message in messages {
+                    for (index, message) in messages.into_iter().enumerate() {
                         let (speaker, body) = transcript_message(&message);
-                        let entry = ui.group(|ui| {
+                        let matched = search_matches.contains(&index);
+                        let selected_match = find_target == Some(index) && matched;
+                        let frame = if matched {
+                            egui::Frame::group(ui.style()).fill(if selected_match {
+                                Color32::from_rgb(68, 57, 28)
+                            } else {
+                                Color32::from_rgb(43, 40, 31)
+                            })
+                        } else {
+                            egui::Frame::group(ui.style())
+                        };
+                        let frame = if selected_match {
+                            frame.stroke(egui::Stroke::new(1.0, Color32::from_rgb(236, 190, 82)))
+                        } else {
+                            frame
+                        };
+                        let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
                             render_transcript_markdown(ui, markdown_cache, &body);
                         });
@@ -1997,6 +2161,9 @@ fn render_message() -> &'static str {
                                 format!("{speaker}: {body}"),
                             )
                         });
+                        if selected_match && scroll_target == Some(index) {
+                            entry.response.scroll_to_me(Some(egui::Align::Center));
+                        }
                         ui.add_space(8.0);
                     }
                 });
@@ -8672,6 +8839,22 @@ fn transcript_message(message: &serde_json::Value) -> (String, String) {
     (role.to_owned(), body)
 }
 
+fn transcript_search_matches(messages: &[serde_json::Value], query: &str) -> Vec<usize> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    messages
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            let (speaker, body) = transcript_message(message);
+            (speaker.to_lowercase().contains(&query) || body.to_lowercase().contains(&query))
+                .then_some(index)
+        })
+        .collect()
+}
+
 fn render_transcript_markdown(ui: &mut Ui, cache: &mut CommonMarkCache, markdown: &str) {
     CommonMarkViewer::new().show(ui, cache, markdown);
 }
@@ -9932,6 +10115,47 @@ mod tests {
             harness.query_by_label("Show earlier messages").is_some(),
             "history remains reachable when resume supplied no tail rows"
         );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn transcript_find_opens_searches_cycles_highlights_and_closes_from_keyboard() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("find-session".into());
+        app.transcript = vec![
+            json!({"role":"user","content":"needle in the first turn"}),
+            json!({"role":"assistant","content":"a separate response"}),
+            json!({"role":"user","content":"the second needle"}),
+        ];
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::F);
+        harness.run();
+        assert!(app.borrow().find_in_page_open);
+        harness
+            .get_by_label("Find in transcript")
+            .type_text("needle");
+        harness.run();
+        assert_eq!(app.borrow().find_in_page_query, "needle");
+        assert_eq!(app.borrow().find_in_page_target, Some(0));
+        assert_eq!(
+            transcript_search_matches(&app.borrow().transcript, "NEEDLE"),
+            vec![0, 2],
+            "matching is case-insensitive and indexes source message order"
+        );
+
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::G);
+        harness.run();
+        assert_eq!(app.borrow().find_in_page_target, Some(2));
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+        assert!(!app.borrow().find_in_page_open);
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
@@ -12434,6 +12658,62 @@ mod tests {
 impl HermesNativeApp {
     pub fn draw(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        if self.find_in_page_open
+            && self.find_in_page_route.as_deref() != Some(self.route.path().as_str())
+        {
+            self.find_in_page_open = false;
+            self.find_in_page_query.clear();
+            self.find_in_page_target = None;
+            self.find_in_page_scroll_pending = false;
+            self.find_in_page_route = None;
+        }
+        let open_find = ctx.input_mut(|input| {
+            #[cfg(target_os = "macos")]
+            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::F);
+            #[cfg(not(target_os = "macos"))]
+            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F);
+            input.consume_shortcut(&shortcut)
+        });
+        if open_find && matches!(self.route, AppRoute::Session(_)) {
+            self.find_in_page_open = true;
+            self.find_in_page_focus_pending = true;
+            self.find_in_page_route = Some(self.route.path());
+        }
+        if self.find_in_page_open {
+            let close_find = ctx.input_mut(|input| input.key_pressed(egui::Key::Escape));
+            let next_find = ctx.input_mut(|input| {
+                #[cfg(target_os = "macos")]
+                let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::G);
+                #[cfg(not(target_os = "macos"))]
+                let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::G);
+                input.consume_shortcut(&shortcut)
+            });
+            let previous_find = ctx.input_mut(|input| {
+                #[cfg(target_os = "macos")]
+                let shortcut = egui::KeyboardShortcut::new(
+                    egui::Modifiers::COMMAND.plus(egui::Modifiers::SHIFT),
+                    egui::Key::G,
+                );
+                #[cfg(not(target_os = "macos"))]
+                let shortcut = egui::KeyboardShortcut::new(
+                    egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
+                    egui::Key::G,
+                );
+                input.consume_shortcut(&shortcut)
+            });
+            if close_find {
+                self.find_in_page_open = false;
+                self.find_in_page_query.clear();
+                self.find_in_page_match = 0;
+                self.find_in_page_target = None;
+                self.find_in_page_scroll_pending = false;
+                self.find_in_page_route = None;
+            } else if next_find {
+                self.step_transcript_find(1);
+            } else if previous_find {
+                self.step_transcript_find(-1);
+            }
+        }
         let previous_tab = ctx.input_mut(|input| {
             input.consume_shortcut(&egui::KeyboardShortcut::new(
                 egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),

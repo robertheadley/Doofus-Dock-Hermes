@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 73 (implementation in progress).
+- **Working revision:** 75 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -404,3 +404,11 @@ Mint a separate one-use interactive ticket for Agent Plugin Update all, authenti
 ### Revision 73 — restore the last closed session tab
 
 Match the pinned Desktop `view.reopenTab` behavior with a bounded in-memory LIFO stack scoped per profile. Closing a selected session tile advances the route to the neighboring selected session or New session while preserving profile scope. Restore through canonical DoofusDock pane reopening and focus, skipping the current primary session and stale descriptors. Bind Ctrl+Shift+T on Windows/Linux and Command+Ctrl+Shift+T on macOS, and expose the same behavior as the registered `restore_closed_session_tab` UI-agent action. Layout/app tests cover profile isolation, LIFO order, focus, route handoff, the shortcut path and registry exposure. Local evidence does not satisfy the remaining source-paired Windows visual and live acceptance gates.
+
+### Revision 74 — transcript find-in-page interaction slice
+
+Implement the pinned Desktop `view.findInPage` interaction for the active native transcript: Ctrl+F on Windows/Linux and Command+F on macOS opens an accessible search bar; matching is case-insensitive across loaded message text and speaker labels, with match count, previous/next, Ctrl/Command+G stepping, Escape close, and message-card highlight plus scroll-to-match. The accessible UI-agent input path exercises open, type, step, and close. This first native slice searches loaded transcript rows only and highlights matching message cards rather than browser-rendered substrings; searching other rendered panes and source-paired visual/interaction acceptance remain open. PAR-0058 stays unaccepted until those gates are met.
+
+### Revision 75 — distinct find-in-page visual evidence
+
+Add a dedicated offline `--transcript-find-fixture` to the one-shot automation runner and capture `artifacts/agent-ui/transcript-find-in-page-20261115.png` at 1440×900. The fixture contains synthetic retry-related turns, opens the search bar with a visible `1/3` count, and selects a matching message card. This produces a reproducible non-default state for visual review; it is evidence of the native UI surface, not a source-matched acceptance screenshot.

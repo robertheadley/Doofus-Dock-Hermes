@@ -13,6 +13,7 @@ The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDo
 - Prompt submission includes stable submission identity, validates the canonical admission receipt, correlates completion by admission ID, and exposes an accessible exact retry after uncertain transport outcomes.
 - Explicit disconnected/empty states; no fabricated domain data.
 - Bounded older-transcript pagination with a profile-scoped one-use ticket, exact session/order/offset validation, stale-session response fencing, overlap-safe chronological merge, and an accessible “Show earlier messages” control. Local HTTP and AccessKit fixtures cover success and negative paths; live gateway acceptance and source scroll-window parity remain open.
+- Transcript find-in-page: accessible native search bar, case-insensitive matching over loaded transcript rows, match count, previous/next and keyboard stepping, Escape close, message-card highlight and scroll-to-match. The fixed-source PAR-0058 acceptance remains open for exact rendered-text highlights, other rendered panes, and paired Windows evidence.
 
 ## Remaining, in dependency order
 
