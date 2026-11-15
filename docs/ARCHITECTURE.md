@@ -30,6 +30,6 @@ The app uses the DoofusDock crates at pinned revision `f6eb49b9e488f4e851d8d3abe
 
 ## Compatibility and evidence
 
-The Hermes Desktop Plugin SDK is JavaScript/React; DoofusDock extensions are Rust contracts. Existing plugins are not automatically compatible. A sandboxed compatibility path or per-plugin native migration decision remains open. The package's 565 requirements remain the parity denominator; capability states are not promoted without current evidence.
+The Hermes Desktop Plugin SDK is JavaScript/React; DoofusDock extensions are Rust contracts. Existing plugins are not automatically compatible. A sandboxed compatibility path or per-plugin native migration decision remains open. The preserved package contains 565 research rows: 499 stock Hermes Desktop requirements are in scope and 66 Hermes-Doofus requirements are excluded. Capability states are not promoted without current evidence.
 
 - The active transcript uses egui_commonmark with GitHub-style tables/task lists and syntect highlighting. A small vendored backend change replaces an unsupported emoji copy glyph with a sized, accessible Copy/Copied button. The current slice covers CommonMark structure and common inline/block features; Streamdown streaming repair, media, math plugins, transcript directives, rich artifacts/cards, and exact source typography are still incomplete.

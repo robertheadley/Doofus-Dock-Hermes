@@ -1,6 +1,6 @@
 # Hermes Native parity backlog
 
-The parity target is the downloaded Hermes snapshot 8783054ef6cbafd86f10892241436862c1171a66 and the 565 in-scope requirements in docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12. The separate 491-item/108-deferred package under the 2026-11-13 reference directory is retained as historical supplemental material and does not define this target. Later upstream changes do not expand scope. All 565 requirements remain pending until tied to this fixed source and accepted with evidence.
+The fixed parity target is downloaded Hermes snapshot 8783054ef6cbafd86f10892241436862c1171a66. The preserved 565-row research package contains 499 in-scope stock Desktop requirements and 66 excluded Hermes-Doofus rows. The separate 491-item/108-deferred package remains historical supplemental material. Later upstream changes do not expand scope. The 499 in-scope requirements remain pending until source-paired evidence is accepted.
 
 ## Stage 1 — exact native shell
 
@@ -61,7 +61,7 @@ The first shell passed compile and two layout-policy tests and was opened on Win
 
 ## Stage 6 — source parity evidence
 
-- [ ] Execute docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/planning/ACCEPTANCE_MATRIX.csv (565 requirements) with matched fixed-snapshot/target fixtures, screen captures, protocol receipts and negative paths. Keep the 2026-11-13 package as historical supplemental material only; do not replace the fixed denominator with a later upstream revision.
+- [ ] Execute the 499 in-scope Hermes Desktop rows from docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/planning/ACCEPTANCE_MATRIX.csv with matched fixed-snapshot/target fixtures, screen captures, protocol receipts and negative paths. Keep 66 Hermes-Doofus rows excluded and pending; do not replace the fixed target with later upstream revisions.
 - [ ] Keep core/protocol, semantic UI integration and physical Windows host evidence separate.
 - [ ] Verify background agent work does not foreground the native app or touch the installed Hermes profile.
 - [ ] Close all in-scope capability gaps and record limitations; no screenshot-only or test-only completion claims.

@@ -1,7 +1,7 @@
 {
   "hermes_upstream": {
     "repo": "NousResearch/hermes-agent",
-    "sha": "415fa335b4d98ecf00e29e88625bb478dc63fb67"
+    "sha": "8783054ef6cbafd86f10892241436862c1171a66"
   },
   "hermes_doofus": {
     "repo": "robertheadley/Hermes-Doofus",

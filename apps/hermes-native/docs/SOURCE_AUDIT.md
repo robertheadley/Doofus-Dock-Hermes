@@ -68,3 +68,10 @@ Current DoofusDock APIs selected: `LayoutDocument` + `DockingService` for the on
 ## Source preview setup
 
 The preview at `8358fc7` was installed/launched from the isolated source checkout with Node 26.12.1 and pnpm 12.15.0, a temporary `HERMES_HOME`, `HERMES_DESKTOP_USER_DATA_DIR`, `APPDATA`, and `LOCALAPPDATA`. Initial observation showed the Sessions sidebar, New session workspace and Setup Hermes Desktop overlay with Backend offline. Later the isolated backend start timed out and the source displayed its recovery dialog. The isolated checkout needed a declaration-only `.d.mts` shim because its electron TypeScript build did not resolve an imported test `.mjs` helper; no runtime source file was changed. The shim remains untracked in that isolated preview checkout after local command policy rejected cleanup. No saved first-run/source screenshots or matched target/source captures are in the project; physical parity remains open.
+
+
+### Fixed-snapshot acceptance inventory classification — 2026-11-15
+
+The preserved 565-row research package combines 499 stock Hermes Desktop rows and 66 Hermes-Doofus rows. The approved HUR-001 scope excludes the Hermes-Doofus plugin UI/backend, so only the 499 Desktop rows define the 1:1 Hermes UI acceptance target. The 66 rows remain preserved and pending as historical supplemental material. Their research source pin remains `0278571393b0ae98fd016b67cfd32f66cee986ee`.
+
+The 499 Hermes Desktop acceptance rows were authored against `415fa335b4d98ecf00e29e88625bb478dc63fb67`; their matrix `source_snapshot` field and package target manifest now identify the selected fixed implementation target `8783054ef6cbafd86f10892241436862c1171a66`. All rows remain pending. This records the intended test target, not per-row source verification. Detailed provenance and limitations are in `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/planning/TARGET_SNAPSHOT_RECONCILIATION.md`.

@@ -1,6 +1,6 @@
 # Hermes DoofusDock backlog
 
-The complete target is the 565 capability inventory in `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/`, scoped to the downloaded Hermes source snapshot `8783054ef6cbafd86f10892241436862c1171a66`. That snapshot is the fixed parity target; later upstream updates do not expand scope. The reference package passes its offline consistency check. Completion requires source-paired validation for every in-scope behavior.
+The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/`: 499 stock Hermes Desktop requirements are in scope and 66 Hermes-Doofus requirements are excluded by the approved scope. The fixed target is downloaded Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`; later upstream updates do not expand scope. The reference package passes its offline consistency check. Completion requires source-paired validation for every in-scope behavior.
 
 ## Delivered in this slice
 
@@ -20,7 +20,7 @@ The complete target is the 565 capability inventory in `docs/reference/Hermes_Do
 4. Implement the authenticated Doofus Control and Models & Quota views while preserving Python truth/evidence ownership and vault secrecy.
 5. Finish DoofusDock parity: tab selection/reorder, resize, float/re-dock, custom profiles, recovery, accessibility and native-window lifecycle.
 6. Resolve plugin compatibility and remaining keyboard, focus, accessibility, localization, high contrast, reduced motion, stale/offline/retry, and large-data behaviors.
-7. Complete all 565 source-to-target acceptance cases, negative-path and permission probes, Windows visual/interaction checks, rollback and provenance review. Only then consider a cutover.
+7. Complete source-to-target acceptance for the 499 in-scope Hermes Desktop requirements, including negative-path and permission probes, Windows visual/interaction checks, rollback and provenance review. Keep the 66 excluded research rows pending and out of the cutover gate.
 
 ## Current limitations
 

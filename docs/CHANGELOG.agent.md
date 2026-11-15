@@ -196,3 +196,17 @@
 - **performance:** Not applicable.
 - **risks:** The GitHub repository is public as created by the user. It contains the fixed acceptance package and historical prototype/reference files; the downloaded Hermes source checkout remains in ignored local staging and is not published.
 - **follow_up:** Continue from this canonical main checkout and keep the parity target fixed at 8783054ef6cbafd86f10892241436862c1171a66.
+
+
+## HUI-017
+
+- **id:** HUI-017
+- **timestamp:** 2026-11-15T04:44:53Z
+- **what:** Reconciled acceptance target metadata with the fixed Hermes snapshot and classified the preserved inventory: 499 Hermes Desktop rows are in scope; 66 Hermes-Doofus rows remain excluded and pending.
+- **why:** The 565-row package had mixed source SHAs, while the approved replacement scope is stock Hermes Desktop and the target is the downloaded `8783054ef6cbafd86f10892241436862c1171a66` snapshot.
+- **components:** fixed 565-row reference package, acceptance matrix, source audit, active plan/backlog, root README, architecture and backlog.
+- **type:** scope accounting and snapshot metadata.
+- **validation:** Package validator passed with 565 consistent behaviors and all 565 statuses pending. A dedicated reconciliation note documents original research pins and clarifies that changing the matrix test target is not per-row source verification.
+- **performance:** Not measured; no runtime behavior changed.
+- **risks:** Individual requirement/source pairings and matched UI evidence remain incomplete. The 66 excluded records stay in the research package and may be mistaken for active requirements if callers ignore the scope note.
+- **follow_up:** Continue source review and implementation for the 499 fixed-snapshot Hermes Desktop requirements; do not query newer upstream commits.
