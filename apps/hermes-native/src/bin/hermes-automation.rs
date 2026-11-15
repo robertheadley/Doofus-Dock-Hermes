@@ -80,6 +80,7 @@ fn run() -> Result<(), String> {
     let mut height = 900.0_f32;
     let mut actions = Vec::new();
     let mut markdown_fixture = false;
+    let mut long_session_fixture = false;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -97,6 +98,7 @@ fn run() -> Result<(), String> {
             }
             "--inspect" => actions.push(Action::Inspect),
             "--markdown-fixture" => markdown_fixture = true,
+            "--long-session-fixture" => long_session_fixture = true,
             "--click" => actions.push(Action::Click(take(&args, &mut index, "--click")?)),
             "--type" => {
                 let label = take(&args, &mut index, "--type")?;
@@ -112,6 +114,9 @@ fn run() -> Result<(), String> {
         }
         index += 1;
     }
+    if markdown_fixture && long_session_fixture {
+        return Err("UI fixtures are mutually exclusive".into());
+    }
     let profile = TemporaryProfile::create()?;
     let profile_path = profile.0.clone();
     let app = std::rc::Rc::new(std::cell::RefCell::new(
@@ -119,6 +124,8 @@ fn run() -> Result<(), String> {
     ));
     if markdown_fixture {
         app.borrow_mut().load_markdown_fixture_for_automation();
+    } else if long_session_fixture {
+        app.borrow_mut().load_long_session_fixture_for_automation();
     }
     let app_for_frame = app.clone();
     let mut harness = Harness::builder()
@@ -194,7 +201,7 @@ fn describe_node(node: egui_kittest::Node<'_>) -> Value {
 
 fn print_help() {
     println!("Hermes Native background UI agent runner
-Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
+Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
 Accessible actions use egui's AccessKit UI tree and normal widget input handling.");
 }

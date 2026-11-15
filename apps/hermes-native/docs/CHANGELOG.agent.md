@@ -589,3 +589,48 @@
 - **performance:** Not applicable.
 - **risks:** The GitHub repository is public. The exact Hermes source tree is intentionally local-only; the snapshot SHA and acceptance evidence are tracked.
 - **follow_up:** Continue source-paired implementation in this checkout without periodic upstream refreshes.
+
+
+
+## HUR-001-054
+
+- **id:** HUR-001-054
+- **timestamp:** 2026-11-15T04:57:17Z
+- **what:** Added bounded older-transcript pagination, profile/session/order validation, stale-response fencing, overlap-safe prepend, an accessible history action, and a headless visual fixture with stable agent locator.
+- **why:** Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66` hydrates a 120-message tail and fetches earlier messages on demand.
+- **components:** apps/hermes-native/src/gateway.rs, app.rs, automation runner/protocol, long-session screenshot, active plan/backlog/source audit, README, architecture, execution log.
+- **type:** transcript history feature; local protocol and visual evidence.
+- **validation:** `cargo fmt --all`; `cargo check -p hermes-native --all-targets --features agent-automation`; `cargo test -p hermes-native --all-targets --features agent-automation` passed (62 library + 5 automation tests). A headless 1440×900 screenshot was rendered and visually inspected.
+- **performance:** No benchmark; each page is capped at 120 messages and the existing HTTP response limit is 512 KiB.
+- **risks:** Live gateway acceptance is open. Transcript virtualization, source scroll-window and scroll-anchor behavior, and retention remain incomplete.
+- **follow_up:** Implement the source-equivalent transcript window and scroll-driven “Show earlier” behavior, then validate against isolated fixed-snapshot gateway data.
+
+
+
+## HUR-001-055
+
+- **id:** HUR-001-055
+- **timestamp:** 2026-11-15T05:01:08Z
+- **what:** Normalized the isolated long-session screenshot from RGBA to RGB after Codex preview showed black; retained the correctly rendered artifact at `apps/hermes-native/artifacts/agent-ui/long-session-history-20261115-visible.png`.
+- **why:** Keep visual evidence inspectable and prevent an invalid black preview from being treated as the UI result.
+- **components:** long-session agent UI screenshot and execution/change journals.
+- **type:** artifact verification.
+- **validation:** `ffprobe` reports 1440×900 RGB24; the image was visually inspected and shows the app shell, fixture transcript and disabled offline history action.
+- **performance:** Not applicable.
+- **risks:** Headless fixture only; it does not prove live gateway behavior.
+- **follow_up:** Continue source-driven implementation and matched fixed-snapshot visual checks.
+
+
+
+## HUR-001-056
+
+- **id:** HUR-001-056
+- **timestamp:** 2026-11-15T05:04:36Z
+- **what:** Adjusted transcript history compatibility so the 120-row cap applies only to responses that confirm pagination; legacy complete transcripts may exceed one page under explicit payload and row limits.
+- **why:** The pinned Hermes Desktop supports legacy backends that return the entire transcript without pagination metadata.
+- **components:** apps/hermes-native/src/gateway.rs, active plan/backlog/source audit, execution log.
+- **type:** compatibility fix and negative-path fixture.
+- **validation:** `cargo fmt --all`; feature test suite passed (63 library + 5 automation tests); a local HTTP fixture returns 121 complete legacy rows and confirms whole-transcript replacement.
+- **performance:** Complete response bounded by 512 KiB and 10,000 rows; normal paginated reads remain 120 rows.
+- **risks:** Live source gateway compatibility remains unverified.
+- **follow_up:** Exercise current and legacy page shapes against an isolated gateway from the pinned snapshot.

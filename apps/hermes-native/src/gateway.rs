@@ -164,6 +164,13 @@ pub struct SessionTranscript {
 }
 
 #[derive(Clone, Debug)]
+pub struct OlderTranscriptPage {
+    pub messages: Vec<serde_json::Value>,
+    pub has_more: bool,
+    pub replace_all: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct CreatedSession {
     pub request_id: String,
     pub runtime_session_id: String,
@@ -188,6 +195,13 @@ pub enum PromptSubmitReceipt {
 #[derive(Debug)]
 pub enum GatewayEvent {
     SessionResumed(Result<SessionTranscript, String>),
+    OlderTranscriptLoaded {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        offset: usize,
+        result: Result<OlderTranscriptPage, String>,
+    },
     PromptSubmitted {
         session_id: String,
         submission_id: String,
@@ -347,6 +361,12 @@ enum GatewayCommand {
 }
 
 enum GatewayHttpCommand {
+    LoadOlderTranscript {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        offset: usize,
+    },
     LoadSessions,
     LoadArchivedSessions {
         request_id: String,
@@ -455,6 +475,23 @@ impl GatewayDiscovery {
                 profile,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn load_older_transcript(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        offset: usize,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadOlderTranscript {
+                request_id,
+                session_id,
+                profile,
+                offset,
+            })
+            .map_err(|_| "Hermes transcript reader has closed".to_owned())
     }
 
     pub fn submit_prompt(
@@ -1590,6 +1627,25 @@ struct SessionSearchResponse {
     results: Vec<SessionSearchResult>,
 }
 
+#[derive(Deserialize)]
+struct SessionMessagesPageResponse {
+    session_id: String,
+    #[serde(default)]
+    profile: Option<String>,
+    messages: Vec<serde_json::Value>,
+    #[serde(default)]
+    pagination: Option<SessionMessagesPagination>,
+}
+
+#[derive(Deserialize)]
+struct SessionMessagesPagination {
+    limit: usize,
+    offset: usize,
+    #[serde(default)]
+    order: Option<String>,
+    returned: usize,
+}
+
 fn gateway_http_actor(
     endpoint: GatewayEndpoint,
     commands: Receiver<GatewayHttpCommand>,
@@ -1599,6 +1655,23 @@ fn gateway_http_actor(
         // Preserve FIFO and never coalesce a write. Search is already debounced
         // by the UI; each accepted mutation must produce its own receipt.
         let event = match command {
+            GatewayHttpCommand::LoadOlderTranscript {
+                request_id,
+                session_id,
+                profile,
+                offset,
+            } => GatewayEvent::OlderTranscriptLoaded {
+                result: load_older_transcript_http(
+                    &endpoint,
+                    &session_id,
+                    profile.as_deref(),
+                    offset,
+                ),
+                request_id,
+                session_id,
+                profile,
+                offset,
+            },
             GatewayHttpCommand::LoadSessions => {
                 GatewayEvent::SessionsLoaded(load_sessions_http(&endpoint))
             }
@@ -1895,6 +1968,100 @@ fn request_all_profile_archived_session_page(
                 archived: session.archived,
             })
             .collect(),
+    })
+}
+
+const TRANSCRIPT_PAGE_SIZE: usize = 120;
+
+fn load_older_transcript_http(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+    profile: Option<&str>,
+    offset: usize,
+) -> Result<OlderTranscriptPage, String> {
+    if !is_bare_loopback_origin(&endpoint.api_origin) {
+        return Err("Hermes transcript reads require the verified loopback API origin".into());
+    }
+    if session_id.is_empty() || session_id.len() > 256 || session_id.chars().any(char::is_control) {
+        return Err("Hermes transcript session id is invalid".into());
+    }
+    if profile.is_some_and(|value| {
+        value.is_empty() || value.len() > 128 || value.chars().any(char::is_control)
+    }) {
+        return Err("Hermes transcript profile scope is invalid".into());
+    }
+    if offset > 10_000_000 {
+        return Err("Hermes transcript page offset exceeds the safe limit".into());
+    }
+    let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+    validate_http_ticket(&ticket)?;
+    request_older_transcript_page(
+        &endpoint.api_origin,
+        ticket.as_str(),
+        session_id,
+        profile,
+        offset,
+    )
+}
+
+fn request_older_transcript_page(
+    api_origin: &str,
+    ticket: &str,
+    session_id: &str,
+    profile: Option<&str>,
+    offset: usize,
+) -> Result<OlderTranscriptPage, String> {
+    const PAGE_SIZE: usize = TRANSCRIPT_PAGE_SIZE;
+    let mut url = format!(
+        "{}/api/sessions/{}/messages?",
+        api_origin.trim_end_matches('/'),
+        encode_query_component(session_id)
+    );
+    if let Some(profile) = profile {
+        url.push_str(&format!("profile={}&", encode_query_component(profile)));
+    }
+    url.push_str(&format!(
+        "limit={PAGE_SIZE}&offset={offset}&order=latest&include_compacted=true"
+    ));
+    let page: SessionMessagesPageResponse = request_gateway_json(api_origin, ticket, &url)?;
+    if page.session_id != session_id {
+        return Err("Hermes transcript response belongs to a different session".into());
+    }
+    if page
+        .profile
+        .as_deref()
+        .is_some_and(|returned| Some(returned) != profile)
+    {
+        return Err("Hermes transcript response belongs to a different profile".into());
+    }
+    let Some(pagination) = page.pagination else {
+        // Legacy servers return the complete transcript and omit pagination.
+        // The shared 512 KiB HTTP cap bounds payload size; this row cap also
+        // prevents a tiny-row response from creating unbounded UI work.
+        if page.messages.len() > 10_000 {
+            return Err("Hermes returned too many legacy transcript messages".into());
+        }
+        return Ok(OlderTranscriptPage {
+            messages: page.messages,
+            has_more: false,
+            replace_all: true,
+        });
+    };
+    if page.messages.len() > PAGE_SIZE {
+        return Err("Hermes returned too many transcript messages".into());
+    }
+    if pagination.limit != PAGE_SIZE
+        || pagination.offset != offset
+        || pagination.order.as_deref() != Some("latest")
+        || pagination.returned != page.messages.len()
+    {
+        return Err("Hermes did not confirm the requested latest transcript page".into());
+    }
+    let has_more = page.messages.len() == PAGE_SIZE;
+    Ok(OlderTranscriptPage {
+        messages: page.messages,
+        has_more,
+        replace_all: false,
     })
 }
 
@@ -3282,6 +3449,139 @@ mod tests {
             "work",
         )
         .expect("confirm archive mutation");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn older_transcript_page_uses_profile_scope_and_validates_latest_offset() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept transcript read");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with(
+                "GET /api/sessions/session%2F42/messages?profile=work%20profile&limit=120&offset=120&order=latest&include_compacted=true HTTP/1.1\r\n"
+            ));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-transcript-ticket\r\n")
+            );
+            let body = json!({
+                "session_id":"session/42",
+                "profile":"work profile",
+                "messages":[{"role":"assistant","content":"older"}],
+                "pagination":{"limit":120,"offset":120,"order":"latest","returned":1}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write transcript page");
+        });
+        let page = request_older_transcript_page(
+            &format!("http://{address}"),
+            "fixture-transcript-ticket",
+            "session/42",
+            Some("work profile"),
+            120,
+        )
+        .expect("validate older transcript page");
+        assert_eq!(
+            page.messages,
+            vec![json!({"role":"assistant","content":"older"})]
+        );
+        assert!(!page.has_more);
+        assert!(!page.replace_all);
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn older_transcript_page_rejects_a_different_profile_receipt() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept transcript read");
+            let _request = read_http_fixture_request(&mut stream);
+            let body = json!({
+                "session_id":"session-42",
+                "profile":"personal",
+                "messages":[],
+                "pagination":{"limit":120,"offset":120,"order":"latest","returned":0}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write transcript page");
+        });
+        let result = request_older_transcript_page(
+            &format!("http://{address}"),
+            "fixture-transcript-ticket",
+            "session-42",
+            Some("work"),
+            120,
+        );
+        assert!(result.unwrap_err().contains("different profile"));
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn older_transcript_page_rejects_backend_that_did_not_apply_latest_order() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept transcript read");
+            let _request = read_http_fixture_request(&mut stream);
+            let body = json!({
+                "session_id":"session-42",
+                "messages":[{"role":"user","content":"wrong page"}],
+                "pagination":{"limit":120,"offset":120,"order":"oldest","returned":1}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write transcript page");
+        });
+        let result = request_older_transcript_page(
+            &format!("http://{address}"),
+            "fixture-transcript-ticket",
+            "session-42",
+            None,
+            120,
+        );
+        assert!(result.unwrap_err().contains("did not confirm"));
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn legacy_transcript_response_without_pagination_replaces_with_full_history() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept transcript read");
+            let _request = read_http_fixture_request(&mut stream);
+            let messages = (0..121)
+                .map(|index| json!({"role":"user","content":format!("legacy row {index}")}))
+                .collect::<Vec<_>>();
+            let body = json!({
+                "session_id":"session-42",
+                "messages":messages
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write legacy transcript");
+        });
+        let page = request_older_transcript_page(
+            &format!("http://{address}"),
+            "fixture-transcript-ticket",
+            "session-42",
+            None,
+            120,
+        )
+        .expect("accept legacy complete transcript");
+        assert!(page.replace_all);
+        assert!(!page.has_more);
+        assert_eq!(
+            page.messages.len(),
+            121,
+            "legacy complete response may exceed one page"
+        );
         server.join().expect("fixture server exits");
     }
 

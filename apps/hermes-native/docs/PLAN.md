@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 42 (published canonical workspace to the user-provided repository).
+- **Working revision:** 44 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -43,6 +43,7 @@ The selected and downloaded target is commit `8783054ef6cbafd86f10892241436862c1
 - [ ] Handle upstream server→client JSON-RPC requests. Rust now recognizes a request frame during another RPC and returns `-32601` for an unsupported method, then continues the original call. The integration fixture covers the request/reply correlation and continued RPC; capability advertisement remains false until the supported request set, in-flight response routing and request ownership are complete.
 - [x] Route the upstream `approval` request into the existing accessible permission card for the active runtime session and return `{choice}` on the original request ID. Unsupported choices and unshown sessions fail closed. Local actor and AccessKit fixtures cover same-socket response, disabled offline controls, and `allow_permanent=false`; capability advertisement remains disabled until remaining request handling is implemented.
 - [x] Add first existing-session submit/event support and partial fresh-session create → initial submit flow. Local protocol fixture verifies create params and distinct runtime/stored session ID roles. This slice does not provide the full upstream create option/retry behavior, submission-ID server idempotency, server requests, reconnect, or full event reconciliation; keep the full bullet/gate open.
+- [x] Add profile-scoped, bounded older-transcript page reads using `/api/sessions/{id}/messages?limit=120&offset=…&order=latest&include_compacted=true`. The accessible “Show earlier messages” control prepends verified pages, handles legacy complete-transcript responses, rejects wrong-order receipts, and ignores stale session/profile responses. Headless AccessKit and HTTP fixtures cover the control, profile query, offset/order contract and legacy fallback. Full scrolling/virtualization parity, scroll-anchor preservation, transcript retention, and live-gateway acceptance remain open.
 - Never launch a duplicate Python owner, double-submit an uncertain prompt, echo credentials, or project stale events as live.
 
 **Gate:** protocol fixture tests cover correct and adversarial/negative receipts, replay, unsupported capabilities, disconnect, restored delivery and profile scope; a live isolated gateway session passes before UI capability claims are updated.
@@ -229,3 +230,13 @@ The archived view now follows the fixed Desktop's `/api/profiles/sessions?profil
 ### Revision 42 — acceptance target and scope reconciliation
 
 The acceptance package preserves all 565 research rows. Scope audit identified 499 stock Hermes Desktop rows and 66 Hermes-Doofus rows. Only the 499 stock Desktop rows define the approved 1:1 target; the other rows remain excluded and pending. The 499 matrix source targets now name the fixed downloaded Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`, while historical evidence locators retain their original SHA. This is metadata/scope accounting only: all acceptance results remain pending and no row-level source verification is claimed.
+
+
+### Revision 43 — bounded transcript history
+
+Added an accessible earlier-history action for long sessions. The native HTTP actor requests at most 120 stored messages with the session profile, `offset`, `order=latest`, and compacted history included. It checks session identity, optional returned profile, and echoed pagination before accepting a page; orderless legacy responses are treated as complete transcripts. The UI fences results to the exact pending request and currently active session/profile, merges overlapping page boundaries, and retains a page error for retry. A headless `--long-session-fixture` emits an AccessKit tree and screenshot. Tests cover the request query, ticket, wrong-order rejection, legacy full transcript, merge overlap, and accessible control. This slice does not provide upstream transcript virtualization, scroll-boundary-triggered expansion, retention, or scroll-anchor restoration; no live gateway has been exercised.
+
+
+### Revision 44 — legacy transcript page compatibility
+
+Corrected the bounded-read response guard: current paginated responses remain limited to 120 and must echo `latest`, offset and returned count; a legacy response with no pagination metadata may contain the complete transcript (subject to the existing 512 KiB transport limit and an additional 10,000-row cap) and replaces the loaded transcript. A regression fixture returns 121 legacy rows to prove it is not mistaken for an oversized current page. The fixed-source target and live-gateway acceptance remain unchanged.

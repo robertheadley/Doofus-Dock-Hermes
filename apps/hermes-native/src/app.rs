@@ -273,6 +273,10 @@ pub struct HermesNativeApp {
     fonts_installed: bool,
     gateway_connected: bool,
     transcript: Vec<serde_json::Value>,
+    transcript_message_count: usize,
+    transcript_has_more: bool,
+    older_transcript_request: Option<(String, String, Option<String>, usize)>,
+    older_transcript_error: Option<String>,
     markdown_cache: CommonMarkCache,
     active_runtime_session_id: Option<String>,
     active_session_profile: Option<String>,
@@ -342,6 +346,20 @@ fn render_message() -> &'static str {
         self.transcript = vec![json!({"role":"assistant","content":markdown})];
         self.status = "Markdown fixture · gateway isolated".into();
     }
+    #[cfg(feature = "agent-automation")]
+    pub fn load_long_session_fixture_for_automation(&mut self) {
+        self.route = AppRoute::Session("long-session-fixture".into());
+        self.active_session_profile = Some("fixture-profile".into());
+        self.active_runtime_session_id = Some("runtime-long-session-fixture".into());
+        self.transcript = vec![
+            json!({"role":"user","content":"Show me the most recent part of a long conversation."}),
+            json!({"role":"assistant","content":"Earlier turns can be loaded from the transcript history."}),
+        ];
+        self.transcript_message_count = 240;
+        self.transcript_has_more = true;
+        self.status = "Long transcript fixture · gateway isolated".into();
+    }
+
     fn from_workspace_result(
         connect_gateway: bool,
         workspace: Result<Workspace, String>,
@@ -390,6 +408,10 @@ fn render_message() -> &'static str {
             fonts_installed: false,
             gateway_connected: false,
             transcript: Vec::new(),
+            transcript_message_count: 0,
+            transcript_has_more: false,
+            older_transcript_request: None,
+            older_transcript_error: None,
             markdown_cache: CommonMarkCache::default(),
             active_runtime_session_id: None,
             active_session_profile: None,
@@ -1270,12 +1292,57 @@ fn render_message() -> &'static str {
                 if self.transcript.is_empty() {
                     if !self.gateway_connected {
                         self.route_unavailable(ui, "Connect to Hermes to open this session.");
+                    } else if self.transcript_has_more {
+                        let loading = self.older_transcript_request.is_some();
+                        let load_older = ui
+                            .add_enabled(
+                                !loading,
+                                egui::Button::new(if loading {
+                                    "Loading earlier messages…"
+                                } else {
+                                    "Show earlier messages"
+                                }),
+                            )
+                            .accessible_name(if loading {
+                                "Loading earlier messages"
+                            } else {
+                                "Show earlier messages"
+                            });
+                        if load_older.clicked() {
+                            self.load_older_transcript(session_id.clone());
+                        }
+                        if let Some(error) = &self.older_transcript_error {
+                            ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+                        }
                     } else if self.active_runtime_session_id.is_some() {
                         self.route_unavailable(ui, "This session has no messages yet.");
                     } else {
                         self.route_unavailable(ui, &format!("Loading session {session_id}…"));
                     }
                 } else {
+                    if self.transcript_has_more {
+                        let loading = self.older_transcript_request.is_some();
+                        let load_older = ui
+                            .add_enabled(
+                                self.gateway_connected && !loading,
+                                egui::Button::new(if loading {
+                                    "Loading earlier messages…"
+                                } else {
+                                    "Show earlier messages"
+                                }),
+                            )
+                            .accessible_name(if loading {
+                                "Loading earlier messages"
+                            } else {
+                                "Show earlier messages"
+                            });
+                        if load_older.clicked() {
+                            self.load_older_transcript(session_id.clone());
+                        }
+                    }
+                    if let Some(error) = &self.older_transcript_error {
+                        ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+                    }
                     let messages = self.transcript.clone();
                     let markdown_cache = &mut self.markdown_cache;
                     egui::ScrollArea::vertical()
@@ -2018,6 +2085,34 @@ fn render_message() -> &'static str {
         if waiting_for_this_session || waiting_for_new_session {
             ui.label(RichText::new("Waiting for Hermes…").size(11.0).color(MUTED));
         }
+    }
+
+    fn load_older_transcript(&mut self, session_id: String) {
+        if self.older_transcript_request.is_some()
+            || !self.transcript_has_more
+            || self.route != AppRoute::Session(session_id.clone())
+        {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            self.older_transcript_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("transcript-older");
+        let profile = self.active_session_profile.clone();
+        let offset = self.transcript.len();
+        if let Err(error) = gateway.load_older_transcript(
+            request_id.clone(),
+            session_id.clone(),
+            profile.clone(),
+            offset,
+        ) {
+            self.older_transcript_error = Some(error.clone());
+            self.status = error;
+            return;
+        }
+        self.older_transcript_error = None;
+        self.older_transcript_request = Some((request_id, session_id, profile, offset));
     }
 
     fn create_session_from_draft(&mut self) {
@@ -3087,6 +3182,10 @@ fn render_message() -> &'static str {
         match &route {
             AppRoute::Session(session_id) => {
                 self.transcript.clear();
+                self.transcript_message_count = 0;
+                self.transcript_has_more = false;
+                self.older_transcript_request = None;
+                self.older_transcript_error = None;
                 self.active_runtime_session_id = None;
                 if let Some(gateway) = &self.gateway_discovery {
                     if let Err(error) = gateway
@@ -3098,6 +3197,10 @@ fn render_message() -> &'static str {
             }
             AppRoute::NewChat => {
                 self.transcript.clear();
+                self.transcript_message_count = 0;
+                self.transcript_has_more = false;
+                self.older_transcript_request = None;
+                self.older_transcript_error = None;
                 self.active_runtime_session_id = None;
                 self.active_session_profile = self
                     .gateway_endpoint
@@ -3779,6 +3882,10 @@ fn render_message() -> &'static str {
                         );
                         self.route = AppRoute::Session(created.stored_session_id);
                         self.transcript.clear();
+                        self.transcript_message_count = 0;
+                        self.transcript_has_more = false;
+                        self.older_transcript_request = None;
+                        self.older_transcript_error = None;
                         self.active_runtime_session_id = Some(created.runtime_session_id.clone());
                         self.active_session_profile = self
                             .gateway_endpoint
@@ -3797,12 +3904,65 @@ fn render_message() -> &'static str {
                         && self.active_session_profile == snapshot.profile
                     {
                         self.transcript = snapshot.messages;
+                        self.transcript_message_count =
+                            snapshot.message_count.max(self.transcript.len());
+                        self.transcript_has_more =
+                            self.transcript.len() < self.transcript_message_count;
+                        self.older_transcript_request = None;
+                        self.older_transcript_error = None;
                         self.active_session_profile = snapshot.profile;
                         self.active_runtime_session_id = Some(snapshot.runtime_session_id);
                         self.status = format!("Session open · {} messages", snapshot.message_count);
                     }
                 }
                 GatewayEvent::SessionResumed(Err(error)) => self.status = error,
+                GatewayEvent::OlderTranscriptLoaded {
+                    request_id,
+                    session_id,
+                    profile,
+                    offset,
+                    result,
+                } => {
+                    let expected = self.older_transcript_request.as_ref().is_some_and(
+                        |(pending_id, pending_session, pending_profile, pending_offset)| {
+                            pending_id == &request_id
+                                && pending_session == &session_id
+                                && pending_profile == &profile
+                                && pending_offset == &offset
+                        },
+                    );
+                    if expected
+                        && self.route == AppRoute::Session(session_id.clone())
+                        && self.active_session_profile == profile
+                    {
+                        self.older_transcript_request = None;
+                        match result {
+                            Ok(page) => {
+                                if page.replace_all {
+                                    self.transcript = page.messages;
+                                    self.transcript_has_more = false;
+                                } else {
+                                    self.transcript = merge_older_transcript_page(
+                                        page.messages,
+                                        std::mem::take(&mut self.transcript),
+                                    );
+                                    self.transcript_has_more = page.has_more;
+                                }
+                                self.transcript_message_count =
+                                    self.transcript_message_count.max(self.transcript.len());
+                                self.older_transcript_error = None;
+                                self.status = format!(
+                                    "Loaded earlier messages · {} visible",
+                                    self.transcript.len()
+                                );
+                            }
+                            Err(error) => {
+                                self.older_transcript_error = Some(error.clone());
+                                self.status = format!("Could not load earlier messages: {error}");
+                            }
+                        }
+                    }
+                }
                 GatewayEvent::PromptSubmitted {
                     session_id,
                     submission_id,
@@ -4192,6 +4352,21 @@ fn render_message() -> &'static str {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
+}
+
+fn merge_older_transcript_page(
+    older: Vec<serde_json::Value>,
+    current: Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    let overlap = (1..=older.len().min(current.len()))
+        .rev()
+        .find(|length| older[older.len() - length..] == current[..*length])
+        .unwrap_or(0);
+    let older_prefix_len = older.len() - overlap;
+    let mut merged = Vec::with_capacity(older_prefix_len + current.len());
+    merged.extend(older.into_iter().take(older_prefix_len));
+    merged.extend(current);
+    merged
 }
 
 fn transcript_message(message: &serde_json::Value) -> (String, String) {
@@ -4769,6 +4944,36 @@ mod tests {
     use egui_kittest::kittest::{NodeT, Queryable};
 
     #[test]
+    fn older_transcript_history_exposes_an_accessible_control() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("long-session".into());
+        app.active_session_profile = Some("fixture-profile".into());
+        app.gateway_connected = true;
+        app.transcript = vec![json!({"role":"assistant","content":"recent"})];
+        app.transcript_message_count = 240;
+        app.transcript_has_more = true;
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(|ui| app.draw(ui));
+        let button = harness
+            .query_by_label("Show earlier messages")
+            .expect("long transcript exposes the earlier-page action");
+        assert_eq!(format!("{:?}", button.accesskit_node().role()), "Button");
+        drop(harness);
+        app.transcript.clear();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness.query_by_label("Show earlier messages").is_some(),
+            "history remains reachable when resume supplied no tail rows"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn markdown_fixture_renders_table_and_code_copy_action_accessibly() {
         let (mut app, profile) = isolated_app();
         app.load_markdown_fixture_for_automation();
@@ -4792,6 +4997,21 @@ mod tests {
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
     }
+    #[test]
+    fn older_transcript_page_prepends_and_deduplicates_boundary_overlap() {
+        let older = vec![json!({"id":1}), json!({"id":2}), json!({"id":3})];
+        let current = vec![json!({"id":3}), json!({"id":4})];
+        assert_eq!(
+            merge_older_transcript_page(older, current),
+            vec![
+                json!({"id":1}),
+                json!({"id":2}),
+                json!({"id":3}),
+                json!({"id":4})
+            ]
+        );
+    }
+
     #[test]
     fn session_filter_matches_title_preview_and_id_without_case_sensitivity() {
         let session = SessionSummary {
@@ -6168,6 +6388,11 @@ impl HermesNativeApp {
             },
             "chat": {
                 "active_runtime_session_id": self.active_runtime_session_id.as_deref(),
+                "transcript_visible_message_count": self.transcript.len(),
+                "transcript_total_message_count": self.transcript_message_count,
+                "transcript_has_older_messages": self.transcript_has_more,
+                "transcript_page_loading": self.older_transcript_request.is_some(),
+                "transcript_page_error": self.older_transcript_error.as_deref(),
                 "active_profile": self.active_session_profile.as_deref(),
                 "submission_pending": self.active_runtime_session_id.as_ref().is_some_and(|session_id| {
                     self.pending_submissions.contains_key(&session_identity_key(session_id, self.active_session_profile.as_deref()))

@@ -959,6 +959,9 @@ fn stable_test_id(role: &str, name: &str) -> Option<String> {
         ("MultilineTextInput", "Message composer") => "chat.composer",
         ("Button", "Send") => "chat.send",
         ("Button", "Stop response") | ("Button", "Stopping response") => "chat.stop",
+        ("Button", "Show earlier messages") | ("Button", "Loading earlier messages") => {
+            "chat.transcript.show-earlier"
+        }
         ("Button", "Connect to Hermes") => "gateway.connect",
         ("Button", "Install Hermes locally") => "gateway.install",
         ("Button", "Close") => "overlay.close",
@@ -1395,6 +1398,14 @@ mod tests {
         assert_eq!(
             stable_test_id("Button", "Stopping response").as_deref(),
             Some("chat.stop")
+        );
+        assert_eq!(
+            stable_test_id("Button", "Show earlier messages").as_deref(),
+            Some("chat.transcript.show-earlier")
+        );
+        assert_eq!(
+            stable_test_id("Button", "Loading earlier messages").as_deref(),
+            Some("chat.transcript.show-earlier")
         );
         assert_eq!(
             stable_test_id("Button", "Release notes, session sess-42").as_deref(),
