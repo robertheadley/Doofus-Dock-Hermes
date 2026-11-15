@@ -785,3 +785,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** No runtime dependencies; one child process per page; mutations are serialized.
 - **risks:** Bun execution is unverified because Bun is not installed here; this client is headless and does not control a native window.
 - **follow_up:** Run the same suite under Bun when available, then integrate the client with an isolated native background host.
+
+- **id:** HUI-066
+- **timestamp:** 2026-11-15T18:59:20Z
+- **what:** Changed the Hermes HTML preview lifecycle smoke to create a visible, off-screen, non-activating window on the normal display desktop. It records the Windows foreground owner PID before and after, fails if the smoke process becomes foreground, rejects existing evidence paths, and writes a source/build/image-bound PNG sidecar.
+- **why:** Validate actual native WebView2 and Dock lifecycle behavior without taking focus from the operator, and make the result independently reviewable.
+- **components:** Hermes Native HTML preview smoke; plan, architecture, backlog and operator docs; native screenshot, JSON receipt and provenance sidecar.
+- **type:** native automation evidence and safety improvement.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 139 library and 12 automation tests; all-target feature check passed; actual Windows smoke returned `ok=true`, HTML title `asset-loaded:16`, visible non-zero child bounds, successful hide/reopen, unchanged foreground PID and matching PNG/sidecar SHA-256. The egui screenshot digest is byte-identical to the earlier fixed-fixture capture; the existing labeled WebView2 child image contains the visible document pixels.
+- **performance:** One isolated UI launch and renderer capture; no app runtime path or normal launch cost changed.
+- **risks:** The isolated Win32 desktop route could not create an OpenGL window config. Off-screen native window actions are not exposed through the agent protocol; live Hermes and source-paired acceptance remain open. The shell screenshot omits the WebView2 child.
+- **follow_up:** Integrate the agent protocol with a persistent isolated native host and capture distinct user-selected native states; keep all 499 in-scope requirements pending until source-paired acceptance.

@@ -2,6 +2,7 @@
 
 use std::{
     fs,
+    io::Write,
     path::PathBuf,
     sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
@@ -9,8 +10,27 @@ use std::{
 
 use eframe::egui;
 use hermes_native::app::HermesNativeApp;
+use sha2::{Digest, Sha256};
 
 const EXPECTED_TITLE: &str = "asset-loaded:16";
+
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn GetForegroundWindow() -> *mut std::ffi::c_void;
+    fn GetWindowThreadProcessId(window: *mut std::ffi::c_void, process_id: *mut u32) -> u32;
+}
+
+fn foreground_process_id() -> Option<u32> {
+    // SAFETY: These User32 calls only query the current foreground window and its owner.
+    unsafe {
+        let window = GetForegroundWindow();
+        if window.is_null() {
+            return None;
+        }
+        let mut process_id = 0;
+        (GetWindowThreadProcessId(window, &mut process_id) != 0).then_some(process_id)
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 enum SmokePhase {
@@ -21,6 +41,7 @@ enum SmokePhase {
 
 struct SmokeApp {
     hermes: HermesNativeApp,
+    window_mode: serde_json::Value,
     preview_path: PathBuf,
     output_path: PathBuf,
     screenshot_path: PathBuf,
@@ -112,6 +133,7 @@ impl eframe::App for SmokeApp {
             let record = match result {
                 Ok(()) => serde_json::json!({
                     "ok": true,
+                    "native_window": self.window_mode,
                     "document_title": EXPECTED_TITLE,
                     "screenshot": screenshot,
                     "preview_states": {
@@ -161,14 +183,35 @@ fn main() -> Result<(), String> {
         return Err("Usage: html-preview-smoke RESULT_JSON_PATH".into());
     }
     let screenshot_path = output_path.with_extension("png");
+    let sidecar_path = output_path.with_extension("png.json");
+    let staging_path = output_path.with_extension("capture.json");
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|error| format!("create result directory: {error}"))?;
     }
-    let _ = fs::remove_file(&output_path);
-    let _ = fs::remove_file(&screenshot_path);
+    if output_path.exists()
+        || screenshot_path.exists()
+        || sidecar_path.exists()
+        || staging_path.exists()
+    {
+        return Err(format!(
+            "refusing to overwrite smoke evidence: {}, {}, {} or {} already exists",
+            output_path.display(),
+            screenshot_path.display(),
+            sidecar_path.display(),
+            staging_path.display()
+        ));
+    }
 
     let root = unique_temp_dir("hermes-html-preview-app-smoke")?;
     fs::create_dir(&root).map_err(|error| format!("create isolated smoke root: {error}"))?;
+    let window_mode = serde_json::json!({
+        "mode": "offscreen_inactive",
+        "position": [-32000, -32000],
+        "visible": true,
+        "active_requested": false,
+        "taskbar": false,
+        "input_desktop_switched": false
+    });
     let fixture_root = root.join("project");
     let profile_dir = root.join("profile");
     fs::create_dir(&profile_dir).map_err(|error| format!("create isolated profile: {error}"))?;
@@ -177,15 +220,20 @@ fn main() -> Result<(), String> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Hermes HTML preview smoke")
             .with_inner_size([1440.0, 900.0])
+            .with_position(egui::pos2(-32000.0, -32000.0))
             .with_taskbar(false)
+            .with_active(false)
             .with_visible(true),
         ..Default::default()
     };
-    let result_path = output_path.clone();
+    let result_path = staging_path.clone();
     let profile_for_app = profile_dir.clone();
     let fixture_for_app = fixture_root.clone();
     let preview_path = fixture_root.join("preview.html");
     let screenshot_path_for_app = screenshot_path.clone();
+    let window_mode_for_app = window_mode.clone();
+    let foreground_before = foreground_process_id();
+    let app_process_id = std::process::id();
     let run_result = eframe::run_native(
         "Hermes HTML preview smoke",
         options,
@@ -195,6 +243,7 @@ fn main() -> Result<(), String> {
             let (screenshot_tx, screenshot_rx) = mpsc::channel();
             Ok(Box::new(SmokeApp {
                 hermes,
+                window_mode: window_mode_for_app,
                 preview_path,
                 output_path: result_path,
                 screenshot_path: screenshot_path_for_app,
@@ -213,16 +262,78 @@ fn main() -> Result<(), String> {
     );
     let _ = fs::remove_dir_all(&root);
     run_result.map_err(|error| format!("run Hermes HTML preview smoke: {error}"))?;
-    let result: serde_json::Value = serde_json::from_slice(
-        &fs::read(&output_path).map_err(|error| format!("read smoke result: {error}"))?,
+    let mut result: serde_json::Value = serde_json::from_slice(
+        &fs::read(&staging_path).map_err(|error| format!("read smoke result: {error}"))?,
     )
     .map_err(|error| format!("parse smoke result: {error}"))?;
+    let foreground_after = foreground_process_id();
+    result["foreground_evidence"] = serde_json::json!({
+        "before_process_id": foreground_before,
+        "after_process_id": foreground_after,
+        "smoke_process_id": app_process_id,
+        "smoke_became_foreground": foreground_after == Some(app_process_id),
+        "foreground_process_unchanged": foreground_before.is_some() && foreground_before == foreground_after
+    });
+    if foreground_after == Some(app_process_id) {
+        result["ok"] = serde_json::Value::Bool(false);
+        result["error"] = serde_json::Value::String(
+            "off-screen smoke process unexpectedly became foreground".into(),
+        );
+    }
+    fs::remove_file(&staging_path)
+        .map_err(|error| format!("remove smoke result staging file: {error}"))?;
+    let staging_temp_path = staging_path.with_extension("json.tmp");
+    if staging_temp_path.exists() {
+        fs::remove_file(&staging_temp_path)
+            .map_err(|error| format!("remove smoke result temp: {error}"))?;
+    }
+    atomic_write(&output_path, result.to_string().as_bytes())?;
     if result["ok"] != true {
         return Err(result["error"]
             .as_str()
             .unwrap_or("Hermes HTML preview smoke failed")
             .to_owned());
     }
+    let screenshot_bytes = fs::read(&screenshot_path)
+        .map_err(|error| format!("read screenshot for provenance: {error}"))?;
+    let smoke_state_bytes = fs::read(&output_path)
+        .map_err(|error| format!("read smoke state for provenance: {error}"))?;
+    let executable =
+        std::env::current_exe().map_err(|error| format!("resolve smoke executable: {error}"))?;
+    let executable_bytes = fs::read(&executable)
+        .map_err(|error| format!("read smoke executable for provenance: {error}"))?;
+    let target_commit = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .map_err(|error| format!("read target commit: {error}"))?;
+    if !target_commit.status.success() {
+        return Err("git rev-parse HEAD failed while recording screenshot provenance".into());
+    }
+    let target_commit = String::from_utf8_lossy(&target_commit.stdout)
+        .trim()
+        .to_owned();
+    let metadata = serde_json::json!({
+        "version": 1,
+        "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+        "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+        "target_commit": target_commit,
+        "target_dirty": true,
+        "smoke_binary_sha256": format!("{:x}", Sha256::digest(executable_bytes)),
+        "smoke_state_json_sha256": format!("{:x}", Sha256::digest(smoke_state_bytes)),
+        "screenshot_sha256": format!("{:x}", Sha256::digest(screenshot_bytes)),
+        "dimensions": {"width": 2160, "height": 1350},
+        "route": "/files-preview-fixture/preview.html",
+        "state": "HermesNativeApp Files HTML Preview; child WebView loaded relative SVG, hid, and reopened",
+        "capture_method": "egui renderer framebuffer; separate native WebView2 child HWND is not included",
+        "foreground_evidence": result["foreground_evidence"],
+        "gateway": "disabled",
+        "profile": "temporary isolated profile",
+        "timestamp_utc": time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .map_err(|error| format!("format provenance timestamp: {error}"))?
+    });
+    atomic_write(&sidecar_path, metadata.to_string().as_bytes())?;
     println!("{}", result);
     Ok(())
 }
@@ -237,10 +348,21 @@ fn unique_temp_dir(prefix: &str) -> Result<PathBuf, String> {
 
 fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     let temp_path = path.with_extension("json.tmp");
-    fs::write(&temp_path, bytes).map_err(|error| format!("write smoke result: {error}"))?;
     serde_json::from_slice::<serde_json::Value>(bytes)
         .map_err(|error| format!("validate smoke result: {error}"))?;
-    fs::rename(&temp_path, path).map_err(|error| format!("publish smoke result: {error}"))
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .map_err(|error| format!("create smoke result temp: {error}"))?;
+    file.write_all(bytes)
+        .map_err(|error| format!("write smoke result temp: {error}"))?;
+    file.sync_all()
+        .map_err(|error| format!("flush smoke result temp: {error}"))?;
+    drop(file);
+    fs::hard_link(&temp_path, path)
+        .map_err(|error| format!("publish smoke result without overwrite: {error}"))?;
+    fs::remove_file(temp_path).map_err(|error| format!("remove smoke result temp: {error}"))
 }
 
 fn save_egui_screenshot(
@@ -265,6 +387,12 @@ fn save_egui_screenshot(
         .ok_or("screenshot output path has no parent directory")?;
     fs::create_dir_all(parent).map_err(|error| format!("create screenshot directory: {error}"))?;
     let temp_path = path.with_extension("png.tmp");
+    let _reservation = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .map_err(|error| format!("reserve screenshot temp path: {error}"))?;
+    drop(_reservation);
     image
         .save_with_format(&temp_path, image::ImageFormat::Png)
         .map_err(|error| format!("encode egui screenshot: {error}"))?;
@@ -278,9 +406,8 @@ fn save_egui_screenshot(
         let _ = fs::remove_file(&temp_path);
         return Err("egui screenshot dimensions did not validate".into());
     }
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| format!("replace previous screenshot: {error}"))?;
-    }
-    fs::rename(&temp_path, path).map_err(|error| format!("publish egui screenshot: {error}"))?;
+    fs::hard_link(&temp_path, path)
+        .map_err(|error| format!("publish egui screenshot without overwrite: {error}"))?;
+    fs::remove_file(&temp_path).map_err(|error| format!("remove screenshot temp: {error}"))?;
     Ok((width as u32, height as u32))
 }

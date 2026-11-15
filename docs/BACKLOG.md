@@ -2,6 +2,8 @@
 
 The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/`: 499 stock Hermes Desktop requirements are in scope and 66 Hermes-Doofus requirements are excluded by the approved scope. The fixed target is downloaded Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`; later upstream updates do not expand scope. The reference package passes its offline consistency check. Completion requires source-paired validation for every in-scope behavior.
 
+**Acceptance progress snapshot (2026-11-15): 0/499 in-scope rows accepted (0%).** All 565 matrix rows currently say `pending`, including the 66 excluded research rows. Many partial implementation slices exist, but the project does not track a defensible weighted implementation percentage.
+
 ## Delivered in this slice
 
 - Native Rust/egui window and four-zone workbench.

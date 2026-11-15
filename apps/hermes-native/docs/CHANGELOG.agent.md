@@ -1502,3 +1502,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Tree serialization adds one visibility calculation and parent ID string per AccessKit node.
   **risks:** Visibility means non-hidden with positive bounds, not confirmed unobscured pixels. Native window control and physical desktop acceptance remain open.
   **follow_up:** Add a query/filter API if needed, then provide isolated background native-window capture/control and verify workflows on a separate desktop; preserve the no-focus and no-installed-profile invariants.
+
+- **id:** HUR-001-118
+  **timestamp:** 2026-11-15T18:59:20Z
+  **what:** Added actual foreground-process evidence to the native Files HTML preview smoke and made smoke result, screenshot and sidecar publication write-once. The successful off-screen run keeps the prior foreground PID and verifies WebView2 load, relative SVG, Dock bounds and hide/reopen lifecycle.
+  **why:** The previous isolated-desktop run could not initialize an OpenGL window, while “active false requested” alone did not prove that the smoke left the operator's foreground window untouched.
+  **components:** apps/hermes-native/src/bin/html-preview-smoke.rs; apps/hermes-native/docs/PLAN.md; apps/hermes-native/README.md; apps/hermes-native/docs/ARCHITECTURE.md; apps/hermes-native/docs/BACKLOG.md; docs/ARCHITECTURE.md; docs/BACKLOG.md; docs/EXECUTION_LOGS.md; artifacts/agent-ui/native-offscreen-window-focus-proof-verified-20261115.json; artifacts/agent-ui/native-offscreen-window-focus-proof-verified-20261115.png; artifacts/agent-ui/native-offscreen-window-focus-proof-verified-20261115.png.json.
+  **type:** Windows native smoke evidence and no-clobber output safety.
+  **validation:** Formatting passed; all-target feature tests passed (139 library + 12 automation); all-target feature check passed; native smoke passed and the actual before/after foreground owner PID remained 5220 while smoke PID 6720 never became foreground. WebView2 reported `asset-loaded:16`, non-zero Dock bounds and visible → hidden → reopened states. Sidecar image SHA-256 matches the PNG. Pinned-source acceptance remains 0/499 (0%); all 565 matrix rows remain pending.
+  **performance:** One isolated startup and framebuffer capture; no normal runtime overhead.
+  **risks:** Isolated desktop has no compatible OpenGL config; off-screen one-shot smoke is not a persistent native UI control host. The egui capture is byte-identical to the previous fixed-fixture shell capture and omits WebView2 pixels.
+  **follow_up:** Add a persistent agent-controlled native host, user-selected native route actions and source-paired acceptance; retain the 499-row fixed denominator.

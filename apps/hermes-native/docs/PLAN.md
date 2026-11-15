@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 109 (implementation in progress).
+- **Working revision:** 110 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -550,3 +550,9 @@ Extend `screenshots.capture` to publish a PNG and same-stem JSON sidecar as one 
 ### Revision 109 — Playwright-shaped JavaScript client
 
 Add a dependency-free Node-compatible client that launches the isolated Rust stdio runner and exposes semantic role/name and test-ID locators, user-equivalent actions, state/tree/diagnostic reads and screenshot capture. Serialize mutations with expected-generation tracking, keep timed-out mutation outcomes unknown without replay, and provide explicit process close. Validate the client with Node's test runner and a real Rust child-process navigation/screenshot/hash smoke. Bun compatibility is intended through its Node APIs but remains unverified in this environment because Bun is not installed. This provides an ergonomic headless control API, not native window or OS UI Automation.
+
+### Revision 110 — off-screen native preview lifecycle and foreground proof
+
+Run the actual Hermes Native Files/HTML Preview surface in a visible but off-screen, non-activating Windows window on the normal display desktop. Record the foreground process IDs before and after and fail if the smoke process becomes foreground. Preserve write-once screenshot and JSON output, with renderer capture, HTML/JavaScript/relative-SVG load, child WebView bounds, and hide/reopen checks. The separate-desktop experiment could not create a matching OpenGL config, so it is not the background host strategy. This smoke proves one isolated native lifecycle and no activation during the run; it does not provide native-window actions, full desktop UIA control, installed-Hermes/live-gateway acceptance, or source-paired parity. The egui framebuffer omits the WebView2 child and this fixed fixture may reproduce an earlier shell screenshot; use the labeled child capture for visible document pixels.
+
+**Acceptance status snapshot (2026-11-15):** 0 of 499 in-scope fixed-source rows accepted (0%). The matrix contains 565 pending rows total: 499 in-scope stock Hermes Desktop requirements and 66 excluded research rows. This is a strict acceptance percentage, not an estimate of partial implementation effort; no weighted implementation percentage is maintained.
