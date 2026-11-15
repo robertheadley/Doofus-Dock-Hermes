@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-11-15T14:21:20Z",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "effc98090a10c4fef7bd6e038981549167ab1cc8",
+  "target_binary_sha256": "518acacc6408bb90e3b3edfce8f9e8c318d7dba13e90b51c53436e06a3c2402a",
+  "screenshot_sha256": "29db85e91553bd81cfbd617b322732d7cac75293648b968ed045174096bbba99",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale": "headless logical pixels"
+  },
+  "route": "/svg-preview-fixture",
+  "fixture": "isolated synthetic session and vector SVG under TemporaryProfile; gateway disabled",
+  "visible_state": [
+    "Sessions sidebar",
+    "Files tab selected",
+    "workspace chat",
+    "vector.svg rasterized preview pane",
+    "project tree with SVG and sample files"
+  ],
+  "verification": "AccessKit inspection confirmed the SVG fixture route and transcript; the 1440x900 Rust target screenshot was visually inspected.",
+  "limitations": [
+    "Target-only screenshot; no paired Hermes source capture",
+    "No physical Windows host evidence",
+    "Synthetic SVG; no Hermes gateway started",
+    "PDF and HTML preview modes remain open"
+  ]
+}

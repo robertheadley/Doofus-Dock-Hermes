@@ -733,3 +733,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** SVG parsing/rendering runs on the existing background worker; file bytes, edge length and output pixels are bounded.
 - **risks:** PDF/HTML and source-paired/native-host acceptance remain open; unusual SVG features follow usvg support limits; PAR-0105 remains pending.
 - **follow_up:** Publish the capture with hash metadata; continue PDF/HTML preview and remaining Files semantics.
+- **id:** HUI-061
+- **timestamp:** 2026-11-15T14:21:20Z
+- **what:** Added a distinct vector preview screenshot and hash-bound metadata tied to published SVG-renderer commit `effc98090a10c4fef7bd6e038981549167ab1cc8`.
+- **why:** Make SVG preview behavior reproducible and distinguishable from the default route and raster image fixture.
+- **components:** Agent UI SVG fixture, screenshot and sidecar.
+- **type:** capture and verification.
+- **validation:** AccessKit inspection identified the SVG fixture; image is 1440×900 and its SHA-256 plus exact runner binary SHA-256 are recorded and validated; image visually inspected.
+- **performance:** Isolated capture completed in under ten seconds after build.
+- **risks:** Synthetic target-only screenshot does not establish source-matched behavior or live Windows acceptance.
+- **follow_up:** Continue PDF/HTML and other pinned Files behaviors, then gather source-paired evidence.
