@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-11-15T09:12:33Z",
+  "request_id": "hermes-ui-parity-20261115-connectors-union-followup",
+  "hermes_snapshot_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "repository_head": "7753ea6a1b99971955ed8c443d00b4406672bca7",
+  "source_diff_sha256": "86bd2615db5148bcf9d9ba42f802070cd9824fcd5e14f4dc7505a68ed31ea5de",
+  "untracked_source_files_in_digest": [],
+  "executable_sha256": "b5f652c3636f2cd0cffca5a0a44b4da2ef76bbb22ea72a3082addabc52780561",
+  "screenshot_sha256": "f9235f7c568ea610711b1aa17d1cfdafe2840ee896036c571a688ab4f023a536",
+  "route": "/capabilities?tab=connectors",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "fixture": "connectors-fixture",
+  "fixture_data": "Three synthetic catalog rows (Linear, GitHub, Notion), one active Engineering account, plus connected list-only slug unlisted_service. No gateway or account mutation.",
+  "visual_review": "Four distinct directory rows are visible; the list-only slug is rendered as Unlisted Service · Connected. Header is inset and no clipping is visible.",
+  "accessibility_receipt": {
+    "fixture_test": "connectors_directory_shows_connected_state_and_account_details",
+    "visible_locators": [
+      "DisclosureTriangle: Linear · Connected",
+      "DisclosureTriangle: Unlisted Service · Connected"
+    ],
+    "expanded_detail": "Account · Engineering · active"
+  },
+  "protocol_receipt": {
+    "fixture_test": "connectors_read_uses_the_pinned_catalog_list_and_accounts_rpc_contracts",
+    "methods": [
+      "connectors.list",
+      "connectors.catalog",
+      "connectors.accounts"
+    ],
+    "owner_param": {
+      "type": "account"
+    }
+  },
+  "limitations": [
+    "Synthetic isolated fixture only; no live profile/gateway.",
+    "Connector sign-in, local MCP reconciliation, policy/tools and hosted-account operations remain incomplete.",
+    "No source-paired Hermes Desktop screenshot or physical Windows window evidence."
+  ]
+}

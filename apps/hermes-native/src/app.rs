@@ -577,13 +577,22 @@ fn render_message() -> &'static str {
                     category: "Knowledge".into(),
                 },
             ],
-            connectors: vec![crate::gateway::ConnectorListEntry {
-                connector: "linear".into(),
-                enabled: true,
-                connected: true,
-                connection_status: Some("active".into()),
-                status_reason: None,
-            }],
+            connectors: vec![
+                crate::gateway::ConnectorListEntry {
+                    connector: "linear".into(),
+                    enabled: true,
+                    connected: true,
+                    connection_status: Some("active".into()),
+                    status_reason: None,
+                },
+                crate::gateway::ConnectorListEntry {
+                    connector: "unlisted_service".into(),
+                    enabled: true,
+                    connected: true,
+                    connection_status: Some("active".into()),
+                    status_reason: None,
+                },
+            ],
             accounts: vec![crate::gateway::ConnectorAccountEntry {
                 connection_id: "fixture-linear-account".into(),
                 connector: "linear".into(),
@@ -2486,9 +2495,22 @@ fn render_message() -> &'static str {
                             .color(MUTED),
                     );
                 }
+                let mut catalog = snapshot.catalog.clone();
+                for connector in &snapshot.connectors {
+                    if !catalog
+                        .iter()
+                        .any(|entry| entry.slug == connector.connector)
+                    {
+                        catalog.push(crate::gateway::ConnectorCatalogEntry {
+                            slug: connector.connector.clone(),
+                            name: connector_title(&connector.connector),
+                            description: String::new(),
+                            category: String::new(),
+                        });
+                    }
+                }
                 let query = self.capabilities_query.trim().to_lowercase();
-                let rows = snapshot
-                    .catalog
+                let rows = catalog
                     .iter()
                     .filter(|row| {
                         query.is_empty()
@@ -2501,13 +2523,9 @@ fn render_message() -> &'static str {
                 ui.horizontal(|ui| {
                     ui.add_space(4.0);
                     ui.label(
-                        RichText::new(format!(
-                            "Connectors · {} of {}",
-                            rows.len(),
-                            snapshot.catalog.len()
-                        ))
-                        .strong()
-                        .color(TEXT),
+                        RichText::new(format!("Connectors · {} of {}", rows.len(), catalog.len()))
+                            .strong()
+                            .color(TEXT),
                     );
                 });
                 if rows.is_empty() {
@@ -2534,11 +2552,19 @@ fn render_message() -> &'static str {
                             .iter()
                             .filter(|account| account.connector == row.slug && !account.disabled)
                             .collect::<Vec<_>>();
-                        let state_text = match state {
-                            Some(item) if item.connected => "Connected",
-                            Some(item) if !item.enabled => "Off",
-                            Some(item) => item.connection_status.as_deref().unwrap_or("Available"),
-                            None => "Available",
+                        let account_status =
+                            accounts.first().map(|account| account.status.as_str());
+                        let state_text = match (state, account_status) {
+                            (Some(item), _) if !item.enabled => "Off",
+                            (_, Some("active")) => "Connected",
+                            (Some(item), _) if item.connected => {
+                                connector_status_label(item.connection_status.as_deref())
+                            }
+                            (_, Some(status)) => connector_status_label(Some(status)),
+                            (Some(item), _) => {
+                                connector_status_label(item.connection_status.as_deref())
+                            }
+                            _ => "Available",
                         };
                         egui::CollapsingHeader::new(
                             RichText::new(format!("{} · {state_text}", row.name))
@@ -7585,6 +7611,12 @@ mod tests {
             harness.query_by_label("Linear · Connected").is_some(),
             "directory shows the live connection state in its row"
         );
+        assert!(
+            harness
+                .query_by_label("Unlisted Service · Connected")
+                .is_some(),
+            "connector rows absent from catalog remain visible with the source slug-title fallback"
+        );
         harness
             .query_by_label("Linear · Connected")
             .expect("Linear connector row")
@@ -10030,6 +10062,51 @@ fn operation_id(kind: &str) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos());
     format!("hermes-native-{kind}-{}-{nanos}", std::process::id())
+}
+
+fn connector_status_label(status: Option<&str>) -> &'static str {
+    match status {
+        Some("active") => "Connected",
+        Some("pending") => "Connecting",
+        Some("failed") => "Could not connect",
+        Some("expired") => "Access expired",
+        Some("revoked" | "inactive") => "Off",
+        _ => "Available",
+    }
+}
+
+fn connector_title(slug: &str) -> String {
+    let known = match slug.to_ascii_lowercase().as_str() {
+        "gmail" => Some("Gmail"),
+        "googlecalendar" => Some("Google Calendar"),
+        "googledrive" => Some("Google Drive"),
+        "googledocs" => Some("Google Docs"),
+        "slack" => Some("Slack"),
+        "github" => Some("GitHub"),
+        "notion" => Some("Notion"),
+        "linear" => Some("Linear"),
+        "jira" => Some("Jira"),
+        "todoist" => Some("Todoist"),
+        "figma" => Some("Figma"),
+        "discord" => Some("Discord"),
+        "stripe_mcp" => Some("Stripe"),
+        "outlook" => Some("Outlook"),
+        _ => None,
+    };
+    if let Some(name) = known {
+        return name.to_owned();
+    }
+    slug.split(['_', '-'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().chain(chars).collect::<String>())
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn profile_title(id: &str) -> &'static str {

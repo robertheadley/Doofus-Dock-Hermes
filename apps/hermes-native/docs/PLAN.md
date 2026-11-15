@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 62 (implementation in progress).
+- **Working revision:** 63 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -360,3 +360,7 @@ The live agent screenshot `artifacts/agent-ui/plugin-catalog-live-20261115.png` 
 ### Revision 62 — Connectors catalog and account read path
 
 Opening Capabilities → Connectors now requests the pinned Desktop gateway methods `connectors.list` for account-owner state, `connectors.catalog` for descriptions/categories, and `connectors.accounts` for profile-owned accounts through the existing serialized gateway actor. Responses decode into typed rows and apply only to the current correlated request while the Connectors tab is active. The UI adds local search, visible connection state, account aliases/status in each expanded row, refresh, and loading/error handling. A protocol WebSocket fixture verifies the exact method order/params and DTO results; an AccessKit fixture verifies visible state and expanded account details. `artifacts/agent-ui/connectors-readonly-20261115.png` is a synthetic isolated view. Connector authentication/sign-in, local MCP/plugin reconciliation, tools and policy editors, hosted-account operations, and live-profile plus source-paired visual acceptance remain open. This partial read path does not close the Capabilities route or any 1:1 gate.
+
+### Revision 63 — source union and connection-state fallback
+
+The pinned Desktop directory joins the catalog with live list rows so an installed/connected connector remains visible when its slug is absent from the catalog. The native view now renders that union, uses the source's known connector title map plus separator/capitalization fallback, and lets the owning account's status participate in the visible state. The fixture/test cover a connected `unlisted_service` row; `artifacts/agent-ui/connectors-directory-union-20261115.png` is the revised 1440×900 capture. This corrects directory inclusion only. Authentication, local MCP rows, connector details/dialogs, tools/policy, hosted-account operations, live profile behavior, and source-paired Windows acceptance remain open.

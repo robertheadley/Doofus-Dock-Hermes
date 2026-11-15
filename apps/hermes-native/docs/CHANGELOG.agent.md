@@ -851,3 +851,11 @@ This does not complete Connectors parity. Sign-in/connect, local MCP/plugin serv
 ### HUI-034 publication record
 
 The validated Connectors directory slice was committed as `aab2176` and pushed to `origin/main`. The fetched remote was at the expected parent before publication; local `main` and `origin/main` now resolve to the same commit and the worktree is clean.
+
+### HUI-034 source join follow-up
+
+Aligned row inclusion with the pinned Desktop's `hostedSlugs` union: connectors returned by `connectors.list` remain visible even if `connectors.catalog` omits them. Added the fixed-source known display names plus slug-title fallback and account-status participation in the connection label. The offline fixture/test now includes a connected list-only `unlisted_service`; `connectors-directory-union-20261115.png` is a fresh distinct capture. Authentication and all connector mutation/detail workflows remain incomplete.
+
+### HUI-034 source-join validation
+
+The final union/status follow-up passed the full feature suite (98 library + 7 automation tests), all-target automation cargo check, rustfmt, diff check, and fixed-source validator (565/565 inventory rows and 14 source receipts). The revised 1440×900 capture shows the catalog/list union and was visually reviewed. No live Hermes profile or gateway was used.

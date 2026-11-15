@@ -426,3 +426,7 @@ HUI-033 screenshot evidence follow-up: identified that fresh headless processes 
 HUI-034: added the pinned-source Connectors catalog/list/accounts read path, searchable directory and expanded account status using the profile-bound gateway actor. Local WebSocket and AccessKit fixtures pass; a distinct synthetic directory screenshot is saved. Connector authentication, local MCP, policy/tools management, hosted account operations and live/source-paired acceptance remain open.
 
 HUI-034 publication record: committed the verified Connectors read slice as `aab2176` and pushed it to `origin/main` after confirming the remote parent matched; local/remote main agree and the worktree is clean.
+
+HUI-034 follow-up: matched the pinned Desktop's catalog/list union so connected rows missing from catalog remain visible, with source slug-title and account-status fallbacks. The isolated fixture now proves a list-only connected row and has a distinct 4-row screenshot. This does not implement connector sign-in, MCP, policy/tools, or hosted account operations.
+
+HUI-034 source-join validation: full test/build/source-inventory validation passed; the revised 4-row synthetic screenshot was visually checked. No live profile was used.
