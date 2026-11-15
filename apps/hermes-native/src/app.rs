@@ -58,6 +58,9 @@ pub enum RegisteredUiAction {
         key: String,
         enabled: bool,
     },
+    RequestAgentPluginRemoval {
+        name: String,
+    },
     StopGeneration,
     RespondApproval {
         prompt_id: String,
@@ -131,6 +134,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"refresh_plugin_catalog","permission":"ui_interaction","mutates":false,"schema":{}}
             ,{"type":"set_toolset_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded toolsets, max 128 bytes","enabled":"boolean"}}
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
+            ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
@@ -215,6 +219,12 @@ struct PendingToolsetUpdate {
 struct PendingAgentPluginUpdate {
     request_id: String,
     enabled: bool,
+    profile: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingAgentPluginRemoval {
+    request_id: String,
     profile: Option<String>,
 }
 
@@ -354,6 +364,8 @@ pub struct HermesNativeApp {
     agent_plugins_pending: bool,
     agent_plugins_error: Option<String>,
     pending_agent_plugin_updates: BTreeMap<String, PendingAgentPluginUpdate>,
+    agent_plugin_removal_confirmation: Option<String>,
+    pending_agent_plugin_removals: BTreeMap<String, PendingAgentPluginRemoval>,
     plugin_catalog_worker: PluginCatalogWorker,
     plugin_catalog: Option<Vec<PluginCatalogEntry>>,
     plugin_catalog_request_id: Option<String>,
@@ -722,6 +734,8 @@ fn render_message() -> &'static str {
             agent_plugins_pending: false,
             agent_plugins_error: None,
             pending_agent_plugin_updates: BTreeMap::new(),
+            agent_plugin_removal_confirmation: None,
+            pending_agent_plugin_removals: BTreeMap::new(),
             plugin_catalog_worker: PluginCatalogWorker::start(),
             plugin_catalog: None,
             plugin_catalog_request_id: None,
@@ -2472,6 +2486,43 @@ fn render_message() -> &'static str {
                                     }
                                     if pending {
                                         ui.label(RichText::new("Saving…").size(10.0).color(MUTED));
+                                    }
+                                    if matches!(plugin.source.as_str(), "user" | "git") {
+                                        let uninstall = ui
+                                            .add_enabled(
+                                                self.gateway_connected
+                                                    && !pending
+                                                    && self.agent_plugins_profile.as_deref()
+                                                        == self.gateway_endpoint.as_ref().map(
+                                                            |endpoint| endpoint.profile_id.as_str(),
+                                                        )
+                                                    && !self
+                                                        .pending_agent_plugin_removals
+                                                        .contains_key(&plugin.name),
+                                                egui::Button::new("Uninstall"),
+                                            )
+                                            .accessible_name(format!(
+                                                "Uninstall agent plugin: {}",
+                                                plugin.name
+                                            ));
+                                        if uninstall.clicked() {
+                                            self.execute_registered_action(
+                                                RegisteredUiAction::RequestAgentPluginRemoval {
+                                                    name: plugin.name.clone(),
+                                                },
+                                            )
+                                            .unwrap_or_else(|error| self.status = error);
+                                        }
+                                        if self
+                                            .pending_agent_plugin_removals
+                                            .contains_key(&plugin.name)
+                                        {
+                                            ui.label(
+                                                RichText::new("Uninstalling…")
+                                                    .size(10.0)
+                                                    .color(MUTED),
+                                            );
+                                        }
                                     }
                                 });
                             });
@@ -4868,6 +4919,9 @@ fn render_message() -> &'static str {
             RegisteredUiAction::SetAgentPluginEnabled { key, enabled } => {
                 self.set_agent_plugin_enabled(key, enabled)?;
             }
+            RegisteredUiAction::RequestAgentPluginRemoval { name } => {
+                self.request_agent_plugin_removal(name)?;
+            }
             RegisteredUiAction::StopGeneration => self.stop_generation()?,
             RegisteredUiAction::RespondApproval { prompt_id, choice } => {
                 self.respond_to_approval(prompt_id, choice)?;
@@ -4988,6 +5042,118 @@ fn render_message() -> &'static str {
             },
         );
         Ok(())
+    }
+
+    fn request_agent_plugin_removal(&mut self, name: String) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before uninstalling a plugin".into());
+        }
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err("Plugin name is invalid".into());
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self.agent_plugins_profile != profile {
+            return Err(
+                "Installed plugins belong to a different profile; refresh the inventory".into(),
+            );
+        }
+        let plugin = self
+            .agent_plugins
+            .as_ref()
+            .and_then(|snapshot| snapshot.plugins.iter().find(|plugin| plugin.name == name))
+            .ok_or_else(|| "Plugin is not in the loaded profile inventory".to_owned())?;
+        if !agent_plugin_is_manageable(plugin) || !matches!(plugin.source.as_str(), "user" | "git")
+        {
+            return Err("Only user or git installed plugins can be uninstalled here".into());
+        }
+        if self.pending_agent_plugin_removals.contains_key(&name) {
+            return Err("This plugin already has an uninstall in progress".into());
+        }
+        self.agent_plugin_removal_confirmation = Some(name);
+        Ok(())
+    }
+
+    fn confirm_agent_plugin_removal(&mut self, name: String) -> Result<(), String> {
+        if self.agent_plugin_removal_confirmation.as_deref() != Some(name.as_str()) {
+            return Err("Plugin removal confirmation is stale".into());
+        }
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before uninstalling a plugin".into());
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self.agent_plugins_profile != profile {
+            self.agent_plugin_removal_confirmation = None;
+            return Err(
+                "Installed plugins belong to a different profile; refresh the inventory".into(),
+            );
+        }
+        let eligible = self
+            .agent_plugins
+            .as_ref()
+            .and_then(|snapshot| snapshot.plugins.iter().find(|plugin| plugin.name == name))
+            .is_some_and(|plugin| {
+                agent_plugin_is_manageable(plugin)
+                    && matches!(plugin.source.as_str(), "user" | "git")
+            });
+        if !eligible {
+            self.agent_plugin_removal_confirmation = None;
+            return Err("Plugin is no longer eligible for uninstall".into());
+        }
+        let request_id = operation_id("agent-plugin-remove");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?;
+        gateway.remove_agent_plugin(request_id.clone(), name.clone(), profile.clone())?;
+        self.pending_agent_plugin_removals.insert(
+            name,
+            PendingAgentPluginRemoval {
+                request_id,
+                profile,
+            },
+        );
+        self.agent_plugin_removal_confirmation = None;
+        Ok(())
+    }
+
+    fn show_agent_plugin_removal_dialog(&mut self, ctx: &egui::Context) {
+        let Some(name) = self.agent_plugin_removal_confirmation.clone() else {
+            return;
+        };
+        let mut confirm = false;
+        let mut cancel = false;
+        egui::Window::new("Uninstall agent plugin?")
+            .id(Id::NULL.with(("agent-plugin-remove", &name)))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Uninstall {name} from the selected Hermes profile?"
+                ));
+                ui.label("Its files and install metadata will be removed. This cannot be undone.");
+                ui.horizontal(|ui| {
+                    confirm = ui
+                        .button("Uninstall")
+                        .accessible_name(format!("Confirm uninstall agent plugin: {name}"))
+                        .clicked();
+                    cancel = ui
+                        .button("Cancel")
+                        .accessible_name("Cancel agent plugin uninstall")
+                        .clicked();
+                });
+            });
+        if confirm {
+            self.confirm_agent_plugin_removal(name)
+                .unwrap_or_else(|error| self.status = error);
+        } else if cancel {
+            self.agent_plugin_removal_confirmation = None;
+        }
     }
 
     fn load_plugin_catalog(&mut self) -> Result<(), String> {
@@ -6642,6 +6808,45 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::AgentPluginRemoved {
+                    request_id,
+                    name,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_agent_plugin_removals.get(&name) else {
+                        continue;
+                    };
+                    if pending.request_id != request_id || pending.profile != profile {
+                        continue;
+                    }
+                    let pending = self
+                        .pending_agent_plugin_removals
+                        .remove(&name)
+                        .expect("pending plugin removal checked");
+                    if pending.profile
+                        != self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                    {
+                        continue;
+                    }
+                    match result {
+                        Ok(()) => {
+                            self.agent_plugins = None;
+                            self.agent_plugins_profile = None;
+                            self.status = format!("Uninstalled {name}; refreshing inventory");
+                            if self.route == AppRoute::Capabilities
+                                && self.capabilities_tab == CapabilitiesTab::Plugins
+                            {
+                                self.load_agent_plugins()
+                                    .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
+                            }
+                        }
+                        Err(error) => self.status = error,
+                    }
+                }
                 GatewayEvent::ConnectorsLoaded { request_id, result } => {
                     if self.route != AppRoute::Capabilities
                         || self.capabilities_tab != CapabilitiesTab::Connectors
@@ -6688,6 +6893,13 @@ fn render_message() -> &'static str {
                         self.pending_agent_plugin_updates.clear();
                         self.agent_plugins_error = Some(
                             "Plugin operation outcome unknown after gateway disconnect; refresh the inventory".into(),
+                        );
+                    }
+                    if !self.pending_agent_plugin_removals.is_empty() {
+                        self.pending_agent_plugin_removals.clear();
+                        self.agent_plugin_removal_confirmation = None;
+                        self.agent_plugins_error = Some(
+                            "Plugin uninstall outcome unknown after gateway disconnect; refresh the inventory".into(),
                         );
                     }
                     self.status = error;
@@ -8225,6 +8437,58 @@ mod tests {
     }
 
     #[test]
+    fn user_plugin_uninstall_requires_profile_bound_confirmation() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Plugins;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: vec![],
+            control_home: None,
+        });
+        app.agent_plugins_profile = Some("work".into());
+        app.agent_plugins = Some(AgentPluginsSnapshot {
+            plugins: vec![AgentPluginInfo {
+                name: "Legacy Helper".into(),
+                key: "legacy/helper".into(),
+                source: "user".into(),
+                status: "disabled".into(),
+                ..AgentPluginInfo::default()
+            }],
+            user_count: 1,
+            bundled_count: 0,
+        });
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness
+            .get_by_label("Uninstall agent plugin: Legacy Helper")
+            .click();
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Confirm uninstall agent plugin: Legacy Helper")
+                .is_some(),
+            "destructive uninstall requires an accessible confirmation control"
+        );
+        assert_eq!(
+            app.borrow().pending_agent_plugin_removals.len(),
+            0,
+            "opening a confirmation never starts the destructive RPC"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn installed_plugin_visibility_matches_pinned_desktop_bundled_and_hidden_rules() {
         let user = AgentPluginInfo {
             key: "image_gen/legacy".into(),
@@ -8260,6 +8524,13 @@ mod tests {
                 .expect("action catalog array")
                 .iter()
                 .any(|action| action["type"] == "set_agent_plugin_enabled")
+        );
+        assert!(
+            registered_ui_action_catalog()["actions"]
+                .as_array()
+                .expect("action catalog array")
+                .iter()
+                .any(|action| action["type"] == "request_agent_plugin_removal")
         );
     }
     #[test]
@@ -10573,6 +10844,7 @@ impl HermesNativeApp {
             }
         }
         self.show_route_overlay(&ctx);
+        self.show_agent_plugin_removal_dialog(&ctx);
         self.show_rename_dialog(&ctx);
         self.show_session_close_dialog(&ctx);
         self.show_recent_session_switcher(&ctx);
@@ -10602,6 +10874,7 @@ impl HermesNativeApp {
                 "installed_plugins_user_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.user_count),
                 "installed_plugins_bundled_count": self.agent_plugins.as_ref().map(|snapshot| snapshot.bundled_count),
                 "plugin_updates_pending": self.pending_agent_plugin_updates.len(),
+                "plugin_removals_pending": self.pending_agent_plugin_removals.len(),
                 "connectors_pending": self.connectors_pending,
                 "connectors_error": self.connectors_error,
                 "connectors_available": self.connectors.as_ref().map(|value| value.available),

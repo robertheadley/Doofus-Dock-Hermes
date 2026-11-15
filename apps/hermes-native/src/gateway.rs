@@ -400,6 +400,12 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<AgentPluginToggleReceipt, String>,
     },
+    AgentPluginRemoved {
+        request_id: String,
+        name: String,
+        profile: Option<String>,
+        result: Result<(), String>,
+    },
     ToolsetEnabled {
         request_id: String,
         name: String,
@@ -444,6 +450,11 @@ enum GatewayCommand {
         request_id: String,
         key: String,
         enabled: bool,
+        profile: Option<String>,
+    },
+    RemoveAgentPlugin {
+        request_id: String,
+        name: String,
         profile: Option<String>,
     },
     ResumeSession {
@@ -832,6 +843,21 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
+    pub fn remove_agent_plugin(
+        &self,
+        request_id: String,
+        name: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::RemoveAgentPlugin {
+                request_id,
+                name,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn set_toolset_enabled(
         &self,
         request_id: String,
@@ -1182,6 +1208,48 @@ fn gateway_actor(
                         request_id,
                         key,
                         enabled,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::RemoveAgentPlugin {
+                request_id,
+                name,
+                profile,
+            }) => {
+                let result = session_profile_params(
+                    serde_json::json!({"action":"remove","name":name}),
+                    profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "plugins.manage",
+                        params,
+                        Some(&events),
+                    )
+                })
+                .and_then(|value| {
+                    if value.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+                        Ok(())
+                    } else {
+                        Err(value
+                            .get("error")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("Hermes refused to uninstall the plugin")
+                            .to_owned())
+                    }
+                });
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginRemoved {
+                        request_id,
+                        name,
                         profile,
                         result,
                     })
@@ -4472,6 +4540,63 @@ mod tests {
                 profile: Some(profile),
                 result: Ok(AgentPluginToggleReceipt { plugin, restart_required: false, gateway_reloaded: true }) }
                 if request_id == "plugin-toggle-1" && key == "legacy/helper" && profile == "work" && plugin.status == "enabled"
+        ));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn agent_plugin_remove_uses_profile_scoped_manage_contract() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket
+                .read()
+                .expect("read plugin remove request")
+            {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse remove request"),
+                other => panic!("expected remove request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "plugins.manage");
+            assert_eq!(
+                request["params"],
+                json!({"action":"remove","name":"Legacy Helper","profile":"work"})
+            );
+            let id = request["id"].as_u64().expect("remove RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"result":{"ok":true}})
+                        .to_string()
+                        .into(),
+                ))
+                .expect("send removal result");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::RemoveAgentPlugin {
+                request_id: "plugin-remove-1".into(),
+                name: "Legacy Helper".into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue profile plugin removal");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("removal receipt"),
+            GatewayEvent::AgentPluginRemoved { request_id, name, profile: Some(profile), result: Ok(()) }
+                if request_id == "plugin-remove-1" && name == "Legacy Helper" && profile == "work"
         ));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
