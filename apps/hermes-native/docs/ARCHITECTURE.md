@@ -60,6 +60,10 @@ Curated Agent Plugin installation begins with profile-scoped `plugins.manage` in
 
 An installed Agent Plugin with `update_available` exposes a profile-bound update button and shared agent action. `plugins.manage action=update` responses can open a capability-delta consent review or a security-scan review. Consent retries carry `accept_capabilities`; only a `caution` verdict enables the explicit `force` override, and `dangerous` remains blocked. Findings are severity-sorted and capped at eight visible lines. The pending result is fenced by request, plugin name, profile and override flags; success invalidates and refreshes the inventory. Profile-scoped Update all is implemented on an isolated authenticated connection. Desktop-half package reconciliation and live update acceptance remain open.
 
+## Files panel
+
+`files::FileBrowserState` owns only transient presentation state: selected root, expanded paths, loaded directory entries, errors, and selected row. The root is derived from the active route's matching profile-scoped `SessionSummary.cwd`. A dedicated worker performs local `read_dir` calls off the UI thread, and responses carry root plus generation identity so a project switch or refresh cannot apply stale results. The panel is read-only and does not persist directory state in DoofusDock geometry. Remote filesystem adapters, pinned Desktop `.gitignore` behavior/show-ignored state, missing-root fallback, file previews and dynamic preview panels remain separate open requirements.
+
 ## Typography
 
 JetBrains Mono is the primary application UI typeface; its Medium face is used for heading and button text styles. Fira Code is the egui monospace family and is explicitly used by the Hermes message composer. Both are bundled from official tagged releases with their OFL 1.1 license texts and archive hashes in `assets/fonts/README.md`. The original egui fonts remain fallbacks for uncovered glyphs.

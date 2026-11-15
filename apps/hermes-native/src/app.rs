@@ -1,3 +1,4 @@
+use crate::files::FileBrowserState;
 use crate::gateway::{
     AgentPluginAutoUpdateSettings, AgentPluginInfo, AgentPluginInspection, AgentPluginScanFinding,
     AgentPluginUpdateAllRow, AgentPluginUpdateOutcome, AgentPluginsSnapshot, CapabilitiesSnapshot,
@@ -441,6 +442,7 @@ pub struct HermesNativeApp {
     gateway_discovery: Option<GatewayDiscovery>,
     gateway_endpoint: Option<GatewayEndpoint>,
     sessions: Vec<SessionSummary>,
+    files: FileBrowserState,
     archived_sessions: Vec<SessionSummary>,
     show_archived_sessions: bool,
     recent_session_switcher: Option<RecentSessionSwitcher>,
@@ -653,6 +655,7 @@ fn render_message() -> &'static str {
             .open_session_pane(Some(profile), session_id, "Native session pane")
             .expect("fixture pane identity is valid");
         self.sessions.push(SessionSummary {
+            cwd: None,
             id: session_id.into(),
             profile: Some(profile.into()),
             title: "Native session pane".into(),
@@ -697,6 +700,7 @@ fn render_message() -> &'static str {
         ]
         .into_iter()
         .map(|(id, title)| SessionSummary {
+            cwd: None,
             id: id.into(),
             profile: Some("fixture-profile".into()),
             title: title.into(),
@@ -979,6 +983,7 @@ fn render_message() -> &'static str {
             gateway_discovery: connect_gateway.then(GatewayDiscovery::start),
             gateway_endpoint: None,
             sessions: Vec::new(),
+            files: FileBrowserState::default(),
             archived_sessions: Vec::new(),
             show_archived_sessions: false,
             recent_session_switcher: None,
@@ -1289,7 +1294,7 @@ fn render_message() -> &'static str {
             SESSIONS => self.sessions_content(&mut child),
             WORKSPACE => self.workspace_content(&mut child),
             REVIEW => self.empty_panel(&mut child, "No review is active"),
-            FILES => self.empty_panel(&mut child, "Session files will appear here"),
+            FILES => self.files_panel(&mut child),
             TERMINAL => self.empty_panel(
                 &mut child,
                 "Terminal is unavailable while the backend is offline",
@@ -1302,6 +1307,44 @@ fn render_message() -> &'static str {
             }
             _ => {}
         }
+    }
+
+    fn files_panel(&mut self, ui: &mut Ui) {
+        let root = match &self.route {
+            AppRoute::Session(session_id) => self
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == *session_id
+                        && session.profile == self.active_session_profile
+                        && !session.archived
+                })
+                .and_then(|session| session.cwd.as_deref())
+                .map(std::path::PathBuf::from),
+            _ => None,
+        };
+        self.files.set_root(root);
+        if self.files.poll() {
+            ui.ctx().request_repaint();
+        }
+
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("PROJECT FILES").strong().color(TEXT));
+            if let Some(root) = self.files.root() {
+                ui.label(
+                    RichText::new(root.display().to_string())
+                        .small()
+                        .color(MUTED),
+                );
+            }
+            if ui.small_button("Refresh").clicked() {
+                self.files.refresh();
+            }
+        });
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .id_salt("hermes-files-tree-scroll")
+            .show(ui, |ui| self.files.draw(ui));
     }
 
     fn draw_split_resize_handles(
@@ -4604,6 +4647,7 @@ fn render_message() -> &'static str {
         self.sessions.insert(
             0,
             SessionSummary {
+                cwd: None,
                 id: stored_id.into(),
                 profile: profile.map(str::to_owned),
                 title,
@@ -7759,6 +7803,7 @@ fn render_message() -> &'static str {
                             self.sessions.insert(
                                 0,
                                 SessionSummary {
+                                    cwd: None,
                                     id: created.stored_session_id.clone(),
                                     profile: profile.clone(),
                                     title: text.chars().take(72).collect(),
@@ -9350,6 +9395,7 @@ fn merge_session_search_results(
 
 fn session_summary_from_search(result: &SessionSearchResult) -> SessionSummary {
     SessionSummary {
+        cwd: None,
         id: result.session_id.clone(),
         profile: result.profile.clone(),
         title: result
@@ -10072,6 +10118,7 @@ mod tests {
         app.sessions = ["recent-a", "recent-b", "recent-c"]
             .into_iter()
             .map(|id| SessionSummary {
+                cwd: None,
                 id: id.into(),
                 profile: Some("work".into()),
                 title: format!("Session {id}"),
@@ -10119,6 +10166,7 @@ mod tests {
         app.sessions = ["recent-a", "recent-b", "recent-c"]
             .into_iter()
             .map(|id| SessionSummary {
+                cwd: None,
                 id: id.into(),
                 profile: Some("work".into()),
                 title: format!("Session {id}"),
@@ -10156,6 +10204,7 @@ mod tests {
         app.sessions = ["recent-a", "recent-b", "recent-c"]
             .into_iter()
             .map(|id| SessionSummary {
+                cwd: None,
                 id: id.into(),
                 profile: Some("work".into()),
                 title: format!("Session {id}"),
@@ -11116,6 +11165,7 @@ mod tests {
     #[test]
     fn session_filter_matches_title_preview_and_id_without_case_sensitivity() {
         let session = SessionSummary {
+            cwd: None,
             id: "session-42".into(),
             profile: None,
             title: "Repair Gateway".into(),
@@ -11147,6 +11197,7 @@ mod tests {
     #[test]
     fn session_merge_keeps_colliding_ids_in_separate_profiles() {
         let make_session = |profile: Option<&str>, title: &str| SessionSummary {
+            cwd: None,
             id: "shared-session-id".into(),
             profile: profile.map(str::to_owned),
             title: title.into(),
@@ -11175,6 +11226,7 @@ mod tests {
     fn registered_open_session_scopes_colliding_ids_and_path_navigation_rejects_ambiguity() {
         let (mut app, profile_dir) = isolated_app();
         let default_session = SessionSummary {
+            cwd: None,
             id: "shared-id".into(),
             profile: None,
             title: "Default".into(),
@@ -11748,6 +11800,7 @@ mod tests {
     fn session_rows_expose_the_stored_id_in_the_accessible_name() {
         let (mut app, profile) = isolated_app();
         app.sessions.push(SessionSummary {
+            cwd: None,
             id: "sess-42".into(),
             profile: None,
             title: "Pinned parity review".into(),
@@ -11814,6 +11867,7 @@ mod tests {
             control_home: None,
         });
         app.archived_sessions.push(SessionSummary {
+            cwd: None,
             id: "old-session-9".into(),
             profile: Some("work".into()),
             title: "Archived planning".into(),
@@ -11876,6 +11930,7 @@ mod tests {
             control_home: None,
         });
         app.sessions.push(SessionSummary {
+            cwd: None,
             id: "session-42".into(),
             profile: Some("work".into()),
             title: "Old title".into(),
@@ -11919,6 +11974,7 @@ mod tests {
     fn sessions_view_toggle_switches_to_cached_archived_rows() {
         let (mut app, profile) = isolated_app();
         app.archived_sessions.push(SessionSummary {
+            cwd: None,
             id: "saved-session-3".into(),
             profile: None,
             title: "Saved draft".into(),
@@ -11951,6 +12007,7 @@ mod tests {
     fn server_session_search_keeps_rank_and_appends_loaded_only_matches() {
         let loaded = vec![
             SessionSummary {
+                cwd: None,
                 id: "loaded-hit".into(),
                 profile: None,
                 title: "Matched loaded session".into(),
@@ -11964,6 +12021,7 @@ mod tests {
                 archived: false,
             },
             SessionSummary {
+                cwd: None,
                 id: "branch-hit".into(),
                 profile: None,
                 title: "Local cwd match".into(),

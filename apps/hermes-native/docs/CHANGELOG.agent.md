@@ -1111,3 +1111,25 @@ HUI-052/HUI-053 publication: `688b6cae39d84e2739df5b23fdc2f33f468e6047` is publi
 - **follow_up:** Continue pinned-source workflow parity and native host evidence.
 
 HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is published on `origin/main`; 123 library and 11 automation tests pass.
+
+- **id:** HUR-001-082
+  **timestamp:** 2026-11-15T13:21:08Z
+  **what:** Replaced the Files panel's empty state with a session-cwd-rooted, lazy, asynchronous, read-only local directory tree; added folder sorting, source-derived transport/build exclusions, refresh/retry controls, profile-root selection, and generation fencing; preserved session `cwd` from the pinned `/api/sessions` response.
+  **why:** Make one of the largest visible placeholder panes perform its first real source-aligned workflow without changing Hermes files or blocking the UI thread.
+  **components:** `src/files.rs`, `src/app.rs`, `src/gateway.rs`, `src/lib.rs`, `README.md`, `docs/ARCHITECTURE.md`, `docs/BACKLOG.md`, `docs/PLAN.md`.
+  **type:** feature
+  **validation:** `cargo fmt --all -- --check`; `cargo check -p hermes-native --all-targets --features agent-automation`; `cargo test -p hermes-native --lib --features agent-automation` (125 passed). Added filesystem sorting/exclusion, asynchronous root-change fencing, and session-list `cwd` decoding coverage. The formal 499-row acceptance matrix remains pending for source-paired evidence.
+  **performance:** Directory enumeration is off the egui frame; each directory is capped at 1,000 entries. No benchmark performed or claimed.
+  **risks:** Remote filesystem access, `.gitignore`/show-ignored, missing-root fallback, file preview panes/context actions, and source-paired Windows acceptance are still missing. Local session cwd is currently read directly by this native process.
+  **follow_up:** Add remote/local filesystem adapter parity, `.gitignore` and ignored-file preferences, preview-pane lifecycle, and source-matched Windows acceptance before closing any Files requirements.
+
+- **id:** HUR-001-083
+  **timestamp:** 2026-11-15T13:26:22Z
+  **what:** Completed the full automation-feature build, library/protocol test suite, formatting check, and whitespace validation for the Files slice.
+  **why:** Validate the integrated native UI and agent-control targets after adding accessible Files tree rows and session-root plumbing.
+  **components:** `src/files.rs`, `src/app.rs`, `src/gateway.rs`, `docs/AGENT_CONTROL_CROSSWALK.md`.
+  **type:** validation
+  **validation:** `cargo fmt --all -- --check` passed; `cargo test -p hermes-native --all-targets --features agent-automation` passed (125 library tests, 11 automation protocol tests); `cargo check -p hermes-native --all-targets --features agent-automation` passed; `git diff --check` passed.
+  **performance:** No benchmark performed.
+  **risks:** Passing local fixtures does not establish visual parity, remote Files behavior, or Windows host acceptance.
+  **follow_up:** Continue with filesystem source behavior and dynamic preview panes; keep Files acceptance pending until paired runtime evidence exists.

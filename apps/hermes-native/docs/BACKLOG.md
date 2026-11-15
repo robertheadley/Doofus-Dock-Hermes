@@ -62,7 +62,7 @@ The first shell passed compile and two layout-policy tests and was opened on Win
 
 ## Stage 5 — remaining stock widgets
 
-- [ ] Files, dynamic previews, artifacts, terminal/PTY lifetime, Git review/worktrees and subagents.
+- [ ] Files and dynamic previews: the local Files panel now uses session `cwd` from the fixed-source session list, lazy async read-only directory enumeration, source transport/build-noise exclusions, retry, refresh, and stale-generation fencing. Still open: remote filesystem routing, `.gitignore` filtering/show-ignored, missing-root fallback, file preview panes and context actions, exact visuals, and live/source-paired acceptance. Artifacts, terminal/PTY lifetime, Git review/worktrees and subagents also remain open.
 - [ ] Profiles, models, settings, memory graph, skills/MCP/plugins, voice, Quick Entry/HUD, onboarding, scheduling, messaging, notifications, theming and accessibility.
 
 ## Stage 6 — source parity evidence

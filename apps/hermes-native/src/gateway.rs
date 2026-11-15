@@ -46,6 +46,8 @@ struct EnsureReply {
 pub struct SessionSummary {
     pub id: String,
     #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
     pub profile: Option<String>,
     #[serde(default)]
     pub title: String,
@@ -3001,6 +3003,8 @@ struct SessionListPage {
 struct SessionListRow {
     id: String,
     #[serde(default)]
+    cwd: Option<String>,
+    #[serde(default)]
     profile: Option<String>,
     #[serde(default)]
     title: Option<String>,
@@ -3051,6 +3055,7 @@ fn request_session_list_page(
             .into_iter()
             .map(|session| SessionSummary {
                 id: session.id,
+                cwd: session.cwd,
                 profile: session.profile,
                 title: session.title.unwrap_or_default(),
                 preview: session.preview.unwrap_or_default(),
@@ -3087,6 +3092,7 @@ fn request_all_profile_archived_session_page(
             .into_iter()
             .map(|session| SessionSummary {
                 id: session.id,
+                cwd: session.cwd,
                 profile: session.profile,
                 title: session.title.unwrap_or_default(),
                 preview: session.preview.unwrap_or_default(),
@@ -4275,6 +4281,7 @@ mod tests {
             let rows = if offset == 0 {
                 vec![
                     SessionSummary {
+                        cwd: None,
                         id: "archived-1".into(),
                         profile: Some("alpha".into()),
                         title: "Older conversation".into(),
@@ -4288,6 +4295,7 @@ mod tests {
                         archived: true,
                     },
                     SessionSummary {
+                        cwd: None,
                         id: "live-pin".into(),
                         profile: Some("alpha".into()),
                         title: "Pinned live row".into(),
@@ -4304,6 +4312,7 @@ mod tests {
             } else {
                 vec![
                     SessionSummary {
+                        cwd: None,
                         id: "archived-2".into(),
                         profile: Some("beta".into()),
                         title: "Newest archived conversation".into(),
@@ -4317,6 +4326,7 @@ mod tests {
                         archived: true,
                     },
                     SessionSummary {
+                        cwd: None,
                         id: "live-pin".into(),
                         profile: Some("alpha".into()),
                         title: "Pinned live row".into(),
@@ -4330,6 +4340,7 @@ mod tests {
                         archived: false,
                     },
                     SessionSummary {
+                        cwd: None,
                         id: "archived-1".into(),
                         profile: Some("beta".into()),
                         title: "Same stored ID in another profile".into(),
@@ -4432,6 +4443,7 @@ mod tests {
             );
             let body = json!({"sessions":[{
                 "id":"session-recent",
+                "cwd":"C:/Users/test/project",
                 "title":"Recent session",
                 "preview":"Latest message",
                 "message_count":8,
@@ -4462,6 +4474,7 @@ mod tests {
         assert!(sessions[0].pinned);
         assert!(sessions[0].unread);
         assert_eq!(sessions[0].started_at, 1_731_543_800.0);
+        assert_eq!(sessions[0].cwd.as_deref(), Some("C:/Users/test/project"));
         assert_eq!(sessions[1].title, "");
         assert_eq!(sessions[1].source, "");
         assert_eq!(sessions[1].last_active, None);

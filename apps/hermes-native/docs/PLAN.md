@@ -435,4 +435,12 @@ Extend the opt-in agent UI protocol with bounded `actions.scroll` over a unique 
 
 ### Revision 81 — exact semantic fill for native text fields
 
+### Revision 82 — initial pinned-source Files tree
+
+Implement the first user-visible Files workflow against Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`. Carry the session `cwd` returned by `/api/sessions` into `SessionSummary`; derive the Files root only from the selected stored session and matching profile. Add a dedicated read-only directory worker, lazy folder expansion, folder-first sorting, pinned Desktop transport/build-noise exclusions, manual refresh and explicit folder errors/retry. Root and generation fencing prevents stale results after switching projects or refreshing. Two filesystem tests exercise enumeration and stale-root behavior; the session-list HTTP fixture asserts the cwd round trip; the full feature test suite passes. This closes no parity-matrix row because no source-paired UI, remote filesystem, gitignore/show-ignored, preview-pane or Windows-host acceptance was captured. Those remain open.
+
+### Revision 83 — full feature-suite and agent protocol verification
+
+Run the complete automation-feature target matrix after the Files panel and accessibility crosswalk changes: `cargo fmt --all -- --check`, `cargo test -p hermes-native --all-targets --features agent-automation`, `cargo check -p hermes-native --all-targets --features agent-automation`, and `git diff --check`. The 125 library tests and 11 agent-protocol tests pass; source-paired Files behavior and physical Windows host acceptance remain open.
+
 Add `actions.fill` for accessible single- and multiline-text inputs. It validates a unique semantic locator, enabled state, payload length and current UI generation, then sends AccessKit `SetValue` through egui to replace the complete field value (including clearing it). Tests prove fill, replacement, clearing, and the structured action receipt. This complements typed keystrokes while preserving the normal widget path.
