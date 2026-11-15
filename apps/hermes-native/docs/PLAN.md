@@ -463,4 +463,8 @@ Capture review found the synthetic temporary absolute path consumed and clipped 
 
 The pinned file preview uses Shiki for recognized source types. For UTF-8 source text, map the existing extension language and render a CommonMark fenced block through the cached syntax-highlighting renderer; choose a safe tilde/backtick fence that cannot terminate on file content, and fall back to bounded plain monospace for pathological fence-only inputs. The Files fixture now opens a small Rust source file so the non-default screenshot demonstrates a source-code preview. This is first syntax-highlight coverage; source line virtualization/numbers, image/PDF/HTML media and source-paired screenshots remain open.
 
+### Revision 89 — bounded raster image previews
+
+Match the pinned Desktop image path for BMP, GIF, JPEG, PNG and WebP files. Read and decode off the UI thread, reject files over 16 MiB and decoded images above 64 megapixels, then display through a cached egui texture. The isolated `--image-preview-fixture` creates a synthetic PNG and captures a visibly distinct image pane. Tests verify pixel decoding and the encoded-size refusal. SVG, PDF, HTML, full source size behavior, source-paired comparison and native Windows acceptance remain open; PAR-0105 remains pending.
+
 Add `actions.fill` for accessible single- and multiline-text inputs. It validates a unique semantic locator, enabled state, payload length and current UI generation, then sends AccessKit `SetValue` through egui to replace the complete field value (including clearing it). Tests prove fill, replacement, clearing, and the structured action receipt. This complements typed keystrokes while preserving the normal widget path.

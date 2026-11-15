@@ -16,6 +16,9 @@ use std::{
 
 const MAX_DIRECTORY_ENTRIES: usize = 1_000;
 const MAX_PREVIEW_BYTES: u64 = 512 * 1024;
+const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_IMAGE_PIXELS: u64 = 64 * 1024 * 1024;
+const IMAGE_EXTENSIONS: &[&str] = &["bmp", "gif", "jpeg", "jpg", "png", "webp"];
 const EXCLUDED_NAMES: &[&str] = &[
     ".git",
     ".hg",
@@ -66,14 +69,27 @@ struct PreviewResult {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FilePreviewContent {
-    pub text: String,
-    pub language: String,
-    pub truncated: bool,
+    pub kind: FilePreviewKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FilePreviewKind {
+    Text {
+        text: String,
+        language: String,
+        truncated: bool,
+    },
+    Image {
+        width: usize,
+        height: usize,
+        rgba: Vec<u8>,
+    },
 }
 
 #[derive(Default)]
 pub struct FilePreviewStore {
     contents: BTreeMap<PathBuf, Result<FilePreviewContent, String>>,
+    images: BTreeMap<PathBuf, egui::TextureHandle>,
     pending: BTreeSet<PathBuf>,
     request_tx: Option<Sender<PreviewRequest>>,
     result_rx: Option<Receiver<PreviewResult>>,
@@ -108,32 +124,59 @@ impl FilePreviewStore {
         self.request(path);
         let mut force_preview = false;
         match self.contents.get(path) {
-            Some(Ok(content)) => {
-                egui::ScrollArea::both()
-                    .id_salt(("hermes-file-preview", path))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.add_space(12.0);
-                            ui.vertical(|ui| {
-                                if content.language == "markdown" {
-                                    CommonMarkViewer::new().show(ui, markdown_cache, &content.text);
-                                } else if let Some(markdown) =
-                                    syntax_highlight_markdown(&content.language, &content.text)
-                                {
-                                    CommonMarkViewer::new().show(ui, markdown_cache, &markdown);
-                                } else {
-                                    ui.label(
-                                        egui::RichText::new(&content.text)
-                                            .font(egui::FontId::monospace(12.0)),
-                                    );
-                                }
-                                if content.truncated {
-                                    ui.label("Preview is truncated at 512 KiB.");
-                                }
+            Some(Ok(content)) => match &content.kind {
+                FilePreviewKind::Text {
+                    text,
+                    language,
+                    truncated,
+                } => {
+                    egui::ScrollArea::both()
+                        .id_salt(("hermes-file-preview", path))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.add_space(12.0);
+                                ui.vertical(|ui| {
+                                    if language == "markdown" {
+                                        CommonMarkViewer::new().show(ui, markdown_cache, text);
+                                    } else if let Some(markdown) =
+                                        syntax_highlight_markdown(language, text)
+                                    {
+                                        CommonMarkViewer::new().show(ui, markdown_cache, &markdown);
+                                    } else {
+                                        ui.label(
+                                            egui::RichText::new(text)
+                                                .font(egui::FontId::monospace(12.0)),
+                                        );
+                                    }
+                                    if *truncated {
+                                        ui.label("Preview is truncated at 512 KiB.");
+                                    }
+                                });
                             });
                         });
+                }
+                FilePreviewKind::Image {
+                    width,
+                    height,
+                    rgba,
+                } => {
+                    let texture = self.images.entry(path.to_path_buf()).or_insert_with(|| {
+                        let image =
+                            egui::ColorImage::from_rgba_unmultiplied([*width, *height], rgba);
+                        ui.ctx().load_texture(
+                            format!("hermes-file-preview:{}", path.display()),
+                            image,
+                            egui::TextureOptions::LINEAR,
+                        )
                     });
-            }
+                    egui::ScrollArea::both()
+                        .id_salt(("hermes-file-preview-image", path))
+                        .show(ui, |ui| {
+                            ui.add_space(12.0);
+                            ui.image(&*texture);
+                        });
+                }
+            },
             Some(Err(error)) => {
                 ui.vertical_centered(|ui| {
                     ui.add_space(32.0);
@@ -531,6 +574,14 @@ fn read_file_preview(path: &Path, force: bool) -> Result<FilePreviewContent, Str
     if !metadata.is_file() {
         return Err("Only regular files can be previewed".into());
     }
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if IMAGE_EXTENSIONS.contains(&extension.as_str()) {
+        return read_image_preview(path, metadata.len());
+    }
     if metadata.len() > MAX_PREVIEW_BYTES && !force {
         return Err(format!(
             "File exceeds the {MAX_PREVIEW_BYTES}-byte preview limit"
@@ -553,13 +604,7 @@ fn read_file_preview(path: &Path, force: bool) -> Result<FilePreviewContent, Str
         Err(error) if force => String::from_utf8_lossy(error.as_bytes()).into_owned(),
         Err(_) => return Err("File is binary or not valid UTF-8".into()),
     };
-    let language = match path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase()
-        .as_str()
-    {
+    let language = match extension.as_str() {
         "md" | "markdown" | "mdx" => "markdown",
         "rs" => "rust",
         "py" => "python",
@@ -574,9 +619,46 @@ fn read_file_preview(path: &Path, force: bool) -> Result<FilePreviewContent, Str
     }
     .to_owned();
     Ok(FilePreviewContent {
-        text,
-        language,
-        truncated,
+        kind: FilePreviewKind::Text {
+            text,
+            language,
+            truncated,
+        },
+    })
+}
+
+fn read_image_preview(path: &Path, file_size: u64) -> Result<FilePreviewContent, String> {
+    if file_size > MAX_IMAGE_BYTES {
+        return Err(format!(
+            "Image exceeds the {MAX_IMAGE_BYTES}-byte preview limit"
+        ));
+    }
+    let bytes = fs::read(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| format!("Unable to identify image format: {error}"))?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some((MAX_IMAGE_PIXELS * 4).min(256 * 1024 * 1024));
+    let mut reader = reader;
+    reader.limits(limits);
+    let decoded = reader
+        .decode()
+        .map_err(|error| format!("Unable to decode image: {error}"))?;
+    let (width, height) = (decoded.width() as u64, decoded.height() as u64);
+    if width.saturating_mul(height) > MAX_IMAGE_PIXELS {
+        return Err(format!(
+            "Image dimensions exceed the {MAX_IMAGE_PIXELS}-pixel preview limit"
+        ));
+    }
+    let image = decoded.to_rgba8();
+    Ok(FilePreviewContent {
+        kind: FilePreviewKind::Image {
+            width: image.width() as usize,
+            height: image.height() as usize,
+            rgba: image.into_raw(),
+        },
     })
 }
 
@@ -697,8 +779,11 @@ mod tests {
         let text = root.join("sample.rs");
         fs::write(&text, "fn main() {}\n").unwrap();
         let preview = read_file_preview(&text, false).unwrap();
-        assert_eq!(preview.language, "rust");
-        assert!(preview.text.contains("fn main"));
+        assert!(matches!(
+            preview.kind,
+            FilePreviewKind::Text { ref language, ref text, truncated: false }
+                if language == "rust" && text.contains("fn main")
+        ));
 
         let binary = root.join("image.bin");
         fs::write(&binary, [0, 159, 146, 150]).unwrap();
@@ -707,7 +792,10 @@ mod tests {
                 .unwrap_err()
                 .contains("binary")
         );
-        assert!(read_file_preview(&binary, true).unwrap().text.contains('�'));
+        assert!(matches!(
+            read_file_preview(&binary, true).unwrap().kind,
+            FilePreviewKind::Text { ref text, .. } if text.contains('�')
+        ));
 
         let oversized = root.join("large.txt");
         let file = fs::File::create(&oversized).unwrap();
@@ -717,7 +805,44 @@ mod tests {
                 .unwrap_err()
                 .contains("preview limit")
         );
-        assert!(read_file_preview(&oversized, true).unwrap().truncated);
+        assert!(matches!(
+            read_file_preview(&oversized, true).unwrap().kind,
+            FilePreviewKind::Text {
+                truncated: true,
+                ..
+            }
+        ));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn image_preview_decodes_supported_raster_content_and_rejects_oversized_input() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("hermes-image-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let image_path = root.join("preview.png");
+        image::RgbaImage::from_pixel(2, 1, image::Rgba([12, 34, 56, 255]))
+            .save(&image_path)
+            .unwrap();
+        let preview = read_file_preview(&image_path, false).unwrap();
+        assert!(matches!(
+            preview.kind,
+            FilePreviewKind::Image { width: 2, height: 1, ref rgba }
+                if rgba == &[12, 34, 56, 255, 12, 34, 56, 255]
+        ));
+
+        let oversized = root.join("large.png");
+        let file = fs::File::create(&oversized).unwrap();
+        file.set_len(MAX_IMAGE_BYTES + 1).unwrap();
+        assert!(
+            read_file_preview(&oversized, false)
+                .unwrap_err()
+                .contains("preview limit")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

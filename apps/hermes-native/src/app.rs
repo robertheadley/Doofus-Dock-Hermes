@@ -694,6 +694,7 @@ fn render_message() -> &'static str {
     pub fn load_files_preview_fixture_for_automation(
         &mut self,
         root: &std::path::Path,
+        image_preview: bool,
     ) -> Result<(), String> {
         std::fs::create_dir_all(root)
             .map_err(|error| format!("create fixture project: {error}"))?;
@@ -712,6 +713,18 @@ fn render_message() -> &'static str {
             "fn main() {\n    println!(\"Hello from the preview fixture\");\n}\n",
         )
         .map_err(|error| format!("write fixture source: {error}"))?;
+        let image_path = root.join("preview.png");
+        image::RgbaImage::from_fn(320, 180, |x, y| {
+            let stripe = ((x / 32 + y / 18) % 2) == 0;
+            let color = if stripe {
+                [73, 130, 206, 255]
+            } else {
+                [37, 45, 58, 255]
+            };
+            image::Rgba(color)
+        })
+        .save(&image_path)
+        .map_err(|error| format!("write fixture image: {error}"))?;
 
         let session_id = "files-preview-fixture";
         let profile = "fixture-profile";
@@ -735,7 +748,7 @@ fn render_message() -> &'static str {
         });
         self.transcript = vec![
             json!({"role":"user","content":"Show the project files."}),
-            json!({"role":"assistant","content":"The Rust source file is open with syntax highlighting in a transient preview pane."}),
+            json!({"role":"assistant","content": if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
         ];
         self.workspace
             .preferences
@@ -744,7 +757,11 @@ fn render_message() -> &'static str {
         self.workspace.apply_active_profile()?;
         self.files.set_root(Some(root.to_path_buf()));
 
-        let preview_path = root.join("main.rs");
+        let preview_path = if image_preview {
+            image_path
+        } else {
+            root.join("main.rs")
+        };
         self.workspace.open_file_preview(&preview_path)?;
         self.file_previews.request(&preview_path);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);

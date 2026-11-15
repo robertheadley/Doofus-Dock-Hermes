@@ -703,3 +703,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** Fixture setup and capture complete in about three seconds.
 - **risks:** This remains synthetic target-only evidence and does not establish source-paired or native-host parity.
 - **follow_up:** Continue pinned-source implementation; keep formal acceptance rows pending until corresponding paired evidence exists.
+- **id:** HUI-058
+- **timestamp:** 2026-11-15T14:14:22Z
+- **what:** Added read-only BMP, GIF, JPEG, PNG and WebP preview decoding on the file worker, cached egui textures, and an isolated image-preview capture fixture.
+- **why:** The pinned Hermes Desktop routes recognized image extensions into a visual preview pane; the native tree previously treated them as text.
+- **components:** Hermes Native Files preview worker, image dependencies, UI fixture, automation runner and documentation.
+- **type:** feature slice and validation.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 130 library + 11 automation tests; all-target agent-automation check and `git diff --check` passed; 1440×900 image fixture captured and visually inspected.
+- **performance:** Image I/O and decode stay off the UI thread; encoded size is capped at 16 MiB and dimensions at 64 megapixels; decoded textures are reused by path.
+- **risks:** SVG remains unsupported along with PDF/HTML, remote file reads and exact source-paired appearance; formal PAR-0105 remains pending.
+- **follow_up:** Add SVG/PDF/HTML paths and source-paired interaction/visual evidence against the pinned snapshot.
