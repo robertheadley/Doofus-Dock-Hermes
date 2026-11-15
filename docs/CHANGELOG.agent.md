@@ -267,3 +267,16 @@
 - **performance:** Cache targets 32 idle session views; active/in-flight work is protected.
 - **risks:** State is memory-only and not rendered as separate dynamic panes; background approval/clarify request ownership remains open.
 - **follow_up:** Bind each DoofusDock session descriptor to its own visible chat view and request lifecycle.
+
+## HUI-022
+
+- **id:** HUI-022
+- **timestamp:** 2026-11-15T06:06:37Z
+- **what:** Render independently keyed Hermes session panes in DoofusDock, front stored sessions in canonical tabs, support blank-session creation and first-message sidebar listing, and confirm close of active tabs without stopping Hermes.
+- **why:** The previous implementation had persisted pane descriptors and cached route state but no visible dynamic session workspace.
+- **components:** Hermes Native app/layout, session gateway lifecycle, headless agent fixture and screenshot capture.
+- **type:** session UI and interaction parity increment.
+- **validation:** Formatting, all-target feature check, and test suite passed (74 library + 5 automation tests); the 1440x900 isolated session pane rendered through the shared headless UI harness. Screenshot evidence is `artifacts/agent-ui/session-pane-current-20261115.png`.
+- **performance:** Session content reuses the existing view cache and shared transcript/composer render path without per-frame network calls.
+- **risks:** Source-parity remains incomplete for hidden server requests, primary-pane promotion/reset, reuse of edited blank drafts, error correlation, persistent scroll, close commands/keyboard/focus/overflow and live acceptance.
+- **follow_up:** Complete remaining tab lifecycle and hidden-request routing, then continue source-paired parity against the pinned downloaded snapshot.

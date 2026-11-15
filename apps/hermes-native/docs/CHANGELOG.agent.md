@@ -671,3 +671,16 @@
 - **performance:** Cache target 32 idle session views; active, streaming, pending-page, submission, interrupt, approval and clarification state is protected from eviction. Cache is in-memory.
 - **risks:** Views are not yet rendered inside DoofusDock panes; server-request ownership for hidden sessions is incomplete; this cache is lost on app restart.
 - **follow_up:** Render each pane from its keyed view model, route all interactive RPC receipts by profile/session, and add open/create/close UI actions.
+
+### Revision 48 — visible profile-scoped session panes
+
+- **id:** HUR-001-060
+- **timestamp:** 2026-11-15T06:06:37Z
+- **what:** Render profile-scoped session transcripts/composers in dynamic Dock panes; open existing and blank sessions as canonical tiles with same-profile untouched-tile reuse; add session tile close controls with busy-session confirmation; route hidden submit receipts back to their cached view; add a headless session-pane fixture and screenshot.
+- **why:** The prior layout and cache foundations did not expose usable session tabs or independent chat views in the actual workspace.
+- **components:** apps/hermes-native/src/app.rs; apps/hermes-native/src/layout.rs; apps/hermes-native/src/bin/hermes-automation.rs; session tile rendering/open/create/close; agent screenshot fixture.
+- **type:** user-visible chat workflow and Dock integration.
+- **validation:** `cargo fmt --all`; `cargo check -p hermes-native --all-targets --features agent-automation`; `cargo test -p hermes-native --features agent-automation` passed (74 library + 5 automation tests). `cargo run -p hermes-native --features agent-automation --bin hermes-automation -- --session-pane-fixture --screenshot artifacts/agent-ui/session-pane-current-20261115.png` rendered a 1440x900 screenshot. Pinned research package validator passed: 565 behaviors, 565 UI inventory items, 565 pending tests and 14 source receipts; optional PyYAML parsing was skipped because PyYAML is not installed.
+- **performance:** Adds one keyed view-state swap per visible session tile during each egui frame; no network calls occur during render.
+- **risks:** Hidden approval/clarify request ownership, main-pane promote/reset semantics, reuse of edited blank drafts, resume error correlation, persistent scroll state and exact upstream tab lifecycle remain incomplete. Desktop OpenGL screenshots through Windows Graphics Capture appeared white while the shared headless renderer produced the expected dark UI.
+- **follow_up:** Finish hidden request routing and source lifecycle edge cases; exercise blank creation and first-message visibility against an isolated gateway; capture paired source/target Windows behavior and continue all fixed-snapshot workflows.

@@ -254,7 +254,6 @@ struct BatchClarifyPrompt {
 pub struct HermesNativeApp {
     workspace: Workspace,
     load_error: Option<String>,
-    tabs: TabStripState,
     status: String,
     route: AppRoute,
     overlay_return: AppRoute,
@@ -297,6 +296,7 @@ pub struct HermesNativeApp {
     active_session_profile: Option<String>,
     draft: String,
     pending_create: Option<(String, String)>,
+    untouched_blank_session: Option<(String, Option<String>)>,
     pending_submissions: BTreeMap<String, PendingPrompt>,
     recent_completed_admissions: VecDeque<String>,
     pending_interrupt: Option<(String, String)>,
@@ -308,6 +308,7 @@ pub struct HermesNativeApp {
     uncertain_session_renames: BTreeSet<String>,
     rename_session: Option<SessionSummary>,
     rename_draft: String,
+    pending_session_close: Option<PanelId>,
     approval_prompts: BTreeMap<String, ApprovalPrompt>,
     clarify_prompts: BTreeMap<String, ClarifyPrompt>,
     batch_clarify_prompts: BTreeMap<String, BatchClarifyPrompt>,
@@ -375,6 +376,47 @@ fn render_message() -> &'static str {
         self.status = "Long transcript fixture · gateway isolated".into();
     }
 
+    #[cfg(feature = "agent-automation")]
+    pub fn load_session_pane_fixture_for_automation(&mut self) {
+        let session_id = "pane-fixture-session";
+        let profile = "fixture-profile";
+        self.workspace
+            .open_session_pane(Some(profile), session_id, "Native session pane")
+            .expect("fixture pane identity is valid");
+        self.sessions.push(SessionSummary {
+            id: session_id.into(),
+            profile: Some(profile.into()),
+            title: "Native session pane".into(),
+            preview: "This pane has its own transcript and composer draft.".into(),
+            message_count: 2,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        });
+        self.session_chat_views.insert(
+            session_identity_key(session_id, Some(profile)),
+            SessionChatViewState {
+                profile: Some(profile.into()),
+                runtime_session_id: Some("pane-fixture-runtime".into()),
+                transcript: vec![
+                    json!({"role":"user","content":"How does the session pane work?"}),
+                    json!({
+                        "role":"assistant",
+                        "content":"Each Dock pane owns its **profile-scoped** transcript and draft.\n\nClosing a busy tab leaves Hermes running in the background."
+                    }),
+                ],
+                transcript_message_count: 2,
+                draft: "Keep this draft with the pane".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+        self.gateway_connected = true;
+        self.status = "Session pane fixture · gateway isolated".into();
+    }
+
     fn from_workspace_result(
         connect_gateway: bool,
         workspace: Result<Workspace, String>,
@@ -387,7 +429,6 @@ fn render_message() -> &'static str {
         Self {
             workspace,
             load_error,
-            tabs: TabStripState::default(),
             status: if connect_gateway {
                 "Backend offline"
             } else {
@@ -435,6 +476,7 @@ fn render_message() -> &'static str {
             active_session_profile: None,
             draft: String::new(),
             pending_create: None,
+            untouched_blank_session: None,
             pending_submissions: BTreeMap::new(),
             recent_completed_admissions: VecDeque::new(),
             pending_interrupt: None,
@@ -446,6 +488,7 @@ fn render_message() -> &'static str {
             uncertain_session_renames: BTreeSet::new(),
             rename_session: None,
             rename_draft: String::new(),
+            pending_session_close: None,
             approval_prompts: BTreeMap::new(),
             clarify_prompts: BTreeMap::new(),
             batch_clarify_prompts: BTreeMap::new(),
@@ -590,16 +633,36 @@ fn render_message() -> &'static str {
                 .max_rect(rect)
                 .layout(Layout::top_down(Align::Min)),
         );
+        let descriptor = self
+            .workspace
+            .dock
+            .snapshot()
+            .document
+            .descriptor(&PanelId::from(id))
+            .cloned();
+        let is_session_tile = descriptor
+            .as_ref()
+            .is_some_and(|descriptor| descriptor.role == "hermes_session_tile");
         let title = match id {
             SESSIONS => "Sessions",
             WORKSPACE => self.route.title(),
             REVIEW => "Review",
             FILES => "Files",
             TERMINAL => "Terminal",
-            _ => id,
+            _ => descriptor
+                .as_ref()
+                .map(|descriptor| descriptor.title_key.as_str())
+                .unwrap_or(id),
         };
         let controls = if id == SESSIONS || id == WORKSPACE {
             vec![]
+        } else if is_session_tile {
+            vec![PanelChromeControl {
+                glyph: "×",
+                accessible_label: "Close session tab",
+                tooltip: "Close session tab",
+                enabled: true,
+            }]
         } else {
             vec![PanelChromeControl {
                 glyph: "×",
@@ -625,8 +688,14 @@ fn render_message() -> &'static str {
                 self.begin_panel_drag(PanelId::from(id));
             }
             if !response.activated_controls.is_empty() {
-                self.execute_registered_action(RegisteredUiAction::TogglePane { panel: id.into() })
+                if is_session_tile {
+                    self.request_close_session_pane(&PanelId::from(id));
+                } else {
+                    self.execute_registered_action(RegisteredUiAction::TogglePane {
+                        panel: id.into(),
+                    })
                     .unwrap_or_else(|error| self.status = error);
+                }
             }
         }
         self.update_panel_drop_target(&child, id, drop_rect);
@@ -640,6 +709,12 @@ fn render_message() -> &'static str {
                 &mut child,
                 "Terminal is unavailable while the backend is offline",
             ),
+            _ if is_session_tile => {
+                self.session_pane_content(
+                    &mut child,
+                    descriptor.as_ref().expect("matched descriptor"),
+                );
+            }
             _ => {}
         }
     }
@@ -948,8 +1023,7 @@ fn render_message() -> &'static str {
             egui::Button::new(RichText::new("+  New session").color(TEXT)),
         );
         if new.clicked() {
-            self.execute_registered_action(RegisteredUiAction::Navigate { path: "/".into() })
-                .unwrap_or_else(|error| self.status = error);
+            self.create_blank_session_tab();
         }
         self.sidebar_route(ui, AppRoute::Capabilities);
         self.sidebar_route(ui, AppRoute::Messaging);
@@ -1280,111 +1354,10 @@ fn render_message() -> &'static str {
     }
 
     fn workspace_content(&mut self, ui: &mut egui::Ui) {
-        if matches!(self.route, AppRoute::NewChat | AppRoute::Session(_)) {
-            ui.add_space(4.0);
-            let strip_rect = ui.allocate_space(Vec2::new(ui.available_width(), 34.0)).1;
-            let title = self.route.title();
-            let items = [TabStripItem {
-                title,
-                accessible_label: title,
-                icon: None,
-                modified: false,
-                pinned: false,
-                closable: false,
-                multi_selected: false,
-            }];
-            let _ = tab_strip(
-                ui,
-                Id::unique("workspace-tabs"),
-                strip_rect,
-                &items,
-                0,
-                &mut self.tabs,
-                &Self::chrome_style(),
-            );
-        }
         ui.add_space(24.0);
-        match &self.route {
+        match self.route.clone() {
             AppRoute::NewChat => self.new_chat_content(ui),
-            AppRoute::Session(session_id) => {
-                if self.transcript.is_empty() {
-                    if !self.gateway_connected {
-                        self.route_unavailable(ui, "Connect to Hermes to open this session.");
-                    } else if self.transcript_has_more {
-                        let loading = self.older_transcript_request.is_some();
-                        let load_older = ui
-                            .add_enabled(
-                                !loading,
-                                egui::Button::new(if loading {
-                                    "Loading earlier messages…"
-                                } else {
-                                    "Show earlier messages"
-                                }),
-                            )
-                            .accessible_name(if loading {
-                                "Loading earlier messages"
-                            } else {
-                                "Show earlier messages"
-                            });
-                        if load_older.clicked() {
-                            self.load_older_transcript(session_id.clone());
-                        }
-                        if let Some(error) = &self.older_transcript_error {
-                            ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
-                        }
-                    } else if self.active_runtime_session_id.is_some() {
-                        self.route_unavailable(ui, "This session has no messages yet.");
-                    } else {
-                        self.route_unavailable(ui, &format!("Loading session {session_id}…"));
-                    }
-                } else {
-                    if self.transcript_has_more {
-                        let loading = self.older_transcript_request.is_some();
-                        let load_older = ui
-                            .add_enabled(
-                                self.gateway_connected && !loading,
-                                egui::Button::new(if loading {
-                                    "Loading earlier messages…"
-                                } else {
-                                    "Show earlier messages"
-                                }),
-                            )
-                            .accessible_name(if loading {
-                                "Loading earlier messages"
-                            } else {
-                                "Show earlier messages"
-                            });
-                        if load_older.clicked() {
-                            self.load_older_transcript(session_id.clone());
-                        }
-                    }
-                    if let Some(error) = &self.older_transcript_error {
-                        ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
-                    }
-                    let messages = self.transcript.clone();
-                    let markdown_cache = &mut self.markdown_cache;
-                    egui::ScrollArea::vertical()
-                        .max_height((ui.available_height() - 76.0).max(120.0))
-                        .show(ui, |ui| {
-                            ui.set_max_width(ui.available_width().min(860.0));
-                            for message in messages {
-                                let (speaker, body) = transcript_message(&message);
-                                let entry = ui.group(|ui| {
-                                    ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
-                                    render_transcript_markdown(ui, markdown_cache, &body);
-                                });
-                                entry.response.widget_info(|| {
-                                    egui::WidgetInfo::labeled(
-                                        Role::Group,
-                                        true,
-                                        format!("{speaker}: {body}"),
-                                    )
-                                });
-                                ui.add_space(8.0);
-                            }
-                        });
-                }
-            }
+            AppRoute::Session(session_id) => self.session_content(ui, &session_id),
             AppRoute::Capabilities => self.capabilities_content(ui),
             AppRoute::Messaging => {
                 self.route_unavailable(ui, "Connect to Hermes to load messaging connections.")
@@ -1409,6 +1382,86 @@ fn render_message() -> &'static str {
             self.clarify_cards(ui);
             self.batch_clarify_cards(ui);
             self.composer(ui);
+        }
+    }
+
+    fn session_content(&mut self, ui: &mut Ui, session_id: &str) {
+        if self.transcript.is_empty() {
+            if !self.gateway_connected {
+                self.route_unavailable(ui, "Connect to Hermes to open this session.");
+            } else if self.transcript_has_more {
+                let loading = self.older_transcript_request.is_some();
+                let load_older = ui
+                    .add_enabled(
+                        !loading,
+                        egui::Button::new(if loading {
+                            "Loading earlier messages…"
+                        } else {
+                            "Show earlier messages"
+                        }),
+                    )
+                    .accessible_name(if loading {
+                        "Loading earlier messages"
+                    } else {
+                        "Show earlier messages"
+                    });
+                if load_older.clicked() {
+                    self.load_older_transcript(session_id.to_owned());
+                }
+                if let Some(error) = &self.older_transcript_error {
+                    ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+                }
+            } else if self.active_runtime_session_id.is_some() {
+                self.route_unavailable(ui, "This session has no messages yet.");
+            } else {
+                self.route_unavailable(ui, &format!("Loading session {session_id}…"));
+            }
+        } else {
+            if self.transcript_has_more {
+                let loading = self.older_transcript_request.is_some();
+                let load_older = ui
+                    .add_enabled(
+                        self.gateway_connected && !loading,
+                        egui::Button::new(if loading {
+                            "Loading earlier messages…"
+                        } else {
+                            "Show earlier messages"
+                        }),
+                    )
+                    .accessible_name(if loading {
+                        "Loading earlier messages"
+                    } else {
+                        "Show earlier messages"
+                    });
+                if load_older.clicked() {
+                    self.load_older_transcript(session_id.to_owned());
+                }
+            }
+            if let Some(error) = &self.older_transcript_error {
+                ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+            }
+            let messages = self.transcript.clone();
+            let markdown_cache = &mut self.markdown_cache;
+            egui::ScrollArea::vertical()
+                .max_height((ui.available_height() - 76.0).max(120.0))
+                .show(ui, |ui| {
+                    ui.set_max_width(ui.available_width().min(860.0));
+                    for message in messages {
+                        let (speaker, body) = transcript_message(&message);
+                        let entry = ui.group(|ui| {
+                            ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
+                            render_transcript_markdown(ui, markdown_cache, &body);
+                        });
+                        entry.response.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                Role::Group,
+                                true,
+                                format!("{speaker}: {body}"),
+                            )
+                        });
+                        ui.add_space(8.0);
+                    }
+                });
         }
     }
 
@@ -2136,7 +2189,50 @@ fn render_message() -> &'static str {
 
     fn create_session_from_draft(&mut self) {
         let text = self.draft.trim().to_owned();
-        if text.is_empty() || self.pending_create.is_some() {
+        if text.is_empty() {
+            return;
+        }
+        self.begin_create_session(text);
+    }
+
+    fn create_blank_session_tab(&mut self) {
+        self.save_active_chat_view();
+        if let Some((session_id, profile)) = self.untouched_blank_session.clone() {
+            let key = session_identity_key(&session_id, profile.as_deref());
+            let still_untouched = self
+                .session_chat_views
+                .get(&key)
+                .is_none_or(|view| view.transcript.is_empty() && view.draft.trim().is_empty());
+            let owner_profile = self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+                .or_else(|| self.active_session_profile.clone());
+            if owner_profile == profile && still_untouched {
+                match self.workspace.open_session_pane(
+                    profile.as_deref(),
+                    &session_id,
+                    "New session",
+                ) {
+                    Ok(_) => {
+                        self.active_session_profile = profile;
+                        self.navigate_after_save(AppRoute::Session(session_id));
+                        self.status = "Reused the untouched new-session tab".into();
+                        return;
+                    }
+                    Err(error) => {
+                        self.status = error;
+                        return;
+                    }
+                }
+            }
+            self.untouched_blank_session = None;
+        }
+        self.begin_create_session(String::new());
+    }
+
+    fn begin_create_session(&mut self, text: String) {
+        if self.pending_create.is_some() {
             return;
         }
         let (Some(gateway), Some(endpoint)) = (&self.gateway_discovery, &self.gateway_endpoint)
@@ -2366,6 +2462,16 @@ fn render_message() -> &'static str {
             self.status = error;
             return;
         }
+        if let AppRoute::Session(stored_session_id) = &self.route
+            && self
+                .untouched_blank_session
+                .as_ref()
+                .is_some_and(|(blank_id, blank_profile)| {
+                    blank_id == stored_session_id && blank_profile == &self.active_session_profile
+                })
+        {
+            self.untouched_blank_session = None;
+        }
         self.transcript.push(serde_json::json!({
             "id":submission_id,
             "submission_id":submission_id,
@@ -2432,18 +2538,35 @@ fn render_message() -> &'static str {
         }) else {
             return;
         };
+        let Some(pending) = self.pending_submissions.get(&key).cloned() else {
+            return;
+        };
+        let is_active = self.active_runtime_session_id.as_deref() == Some(session_id.as_str())
+            && self.active_session_profile == pending.profile;
         match result {
             Ok(PromptSubmitReceipt::Admitted {
                 admission_id,
                 status,
                 execution_generation,
             }) => {
-                if let Some(message) = self.transcript.iter_mut().find(|message| {
-                    message
-                        .get("submission_id")
-                        .and_then(|value| value.as_str())
-                        == Some(submission_id.as_str())
-                }) {
+                if let Some(stored_session_id) =
+                    self.stored_session_id_for_runtime(&session_id, pending.profile.as_deref())
+                {
+                    self.record_session_in_sidebar(
+                        &stored_session_id,
+                        pending.profile.as_deref(),
+                        &pending.text,
+                    );
+                }
+                if let Some(transcript) =
+                    self.transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
+                    && let Some(message) = transcript.iter_mut().find(|message| {
+                        message
+                            .get("submission_id")
+                            .and_then(|value| value.as_str())
+                            == Some(submission_id.as_str())
+                    })
+                {
                     message["admission_id"] = serde_json::Value::String(admission_id.clone());
                 }
                 if let Some(pending) = self.pending_submissions.get_mut(&key) {
@@ -2455,7 +2578,7 @@ fn render_message() -> &'static str {
                 {
                     self.pending_submissions.remove(&key);
                 }
-                if self.active_runtime_session_id.as_deref() == Some(session_id.as_str()) {
+                if is_active {
                     self.status = match status.as_str() {
                         "queued" => "Message queued in Hermes".into(),
                         "unknown" => "Message admitted; execution outcome needs recovery".into(),
@@ -2468,44 +2591,157 @@ fn render_message() -> &'static str {
                 }
             }
             Ok(PromptSubmitReceipt::VoiceStopped) => {
-                self.transcript.retain(|message| {
-                    message
-                        .get("submission_id")
-                        .and_then(|value| value.as_str())
-                        != Some(submission_id.as_str())
-                });
+                if let Some(transcript) =
+                    self.transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
+                {
+                    transcript.retain(|message| {
+                        message
+                            .get("submission_id")
+                            .and_then(|value| value.as_str())
+                            != Some(submission_id.as_str())
+                    });
+                }
                 self.pending_submissions.remove(&key);
-                self.status = "Voice chat stopped; no message was admitted".into();
+                if is_active {
+                    self.status = "Voice chat stopped; no message was admitted".into();
+                }
             }
             Err(error)
                 if error.starts_with("Hermes prompt.submit refused:")
                     || error == "Hermes session profile scope is invalid" =>
             {
-                if let Some(index) = self.transcript.iter().position(|message| {
-                    message
-                        .get("submission_id")
-                        .and_then(|value| value.as_str())
-                        == Some(submission_id.as_str())
-                }) {
-                    let message = self.transcript.remove(index);
-                    if self.active_runtime_session_id.as_deref() == Some(session_id.as_str()) {
+                let message = self
+                    .transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
+                    .and_then(|transcript| {
+                        transcript
+                            .iter()
+                            .position(|message| {
+                                message
+                                    .get("submission_id")
+                                    .and_then(|value| value.as_str())
+                                    == Some(submission_id.as_str())
+                            })
+                            .map(|index| transcript.remove(index))
+                    });
+                if is_active {
+                    if let Some(message) = message {
                         self.draft = message
                             .get("content")
                             .and_then(|value| value.as_str())
                             .unwrap_or_default()
                             .to_owned();
                     }
+                } else if let Some(message) = message {
+                    self.set_cached_draft_for_runtime(
+                        &session_id,
+                        pending.profile.as_deref(),
+                        message
+                            .get("content")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or_default()
+                            .to_owned(),
+                    );
                 }
                 self.pending_submissions.remove(&key);
-                self.status = error;
+                if is_active {
+                    self.status = error;
+                }
             }
             Err(error) => {
                 if let Some(pending) = self.pending_submissions.get_mut(&key) {
                     pending.uncertain = true;
                 }
-                self.status = format!("Message admission unknown; retry the same message: {error}");
+                if is_active {
+                    self.status =
+                        format!("Message admission unknown; retry the same message: {error}");
+                }
             }
         }
+    }
+
+    fn transcript_for_runtime_mut(
+        &mut self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+    ) -> Option<&mut Vec<serde_json::Value>> {
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && self.active_session_profile.as_deref() == profile
+        {
+            return Some(&mut self.transcript);
+        }
+        let key = self.session_chat_views.iter().find_map(|(key, view)| {
+            (view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                && view.profile.as_deref() == profile)
+                .then(|| key.clone())
+        })?;
+        self.session_chat_views
+            .get_mut(&key)
+            .map(|view| &mut view.transcript)
+    }
+
+    fn set_cached_draft_for_runtime(
+        &mut self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+        draft: String,
+    ) {
+        if let Some(view) = self.session_chat_views.values_mut().find(|view| {
+            view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                && view.profile.as_deref() == profile
+        }) {
+            view.draft = draft;
+        }
+    }
+
+    fn stored_session_id_for_runtime(
+        &self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+    ) -> Option<String> {
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && self.active_session_profile.as_deref() == profile
+            && let AppRoute::Session(stored_session_id) = &self.route
+        {
+            return Some(stored_session_id.clone());
+        }
+        self.session_chat_views.iter().find_map(|(key, view)| {
+            (view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                && view.profile.as_deref() == profile)
+                .then(|| {
+                    key.split_once('\0')
+                        .map(|(_, stored_id)| stored_id.to_owned())
+                })
+                .flatten()
+        })
+    }
+
+    fn record_session_in_sidebar(&mut self, stored_id: &str, profile: Option<&str>, text: &str) {
+        if self
+            .sessions
+            .iter()
+            .any(|session| session.id == stored_id && session.profile.as_deref() == profile)
+        {
+            return;
+        }
+        let title = text.chars().take(72).collect::<String>();
+        self.sessions.insert(
+            0,
+            SessionSummary {
+                id: stored_id.into(),
+                profile: profile.map(str::to_owned),
+                title,
+                preview: text.chars().take(120).collect(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0.0, |duration| duration.as_secs_f64()),
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            },
+        );
     }
 
     fn resolve_unknown_submission(&mut self) {
@@ -3367,8 +3603,24 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.clone())
             });
+            let title = self
+                .sessions
+                .iter()
+                .chain(self.archived_sessions.iter())
+                .find(|session| {
+                    session.id == *session_id && session.profile == self.active_session_profile
+                })
+                .map(|session| session.title.as_str())
+                .filter(|title| !title.trim().is_empty())
+                .unwrap_or(session_id);
+            self.workspace.open_session_pane(
+                self.active_session_profile.as_deref(),
+                session_id,
+                title,
+            )?;
             self.navigate_after_save(route.clone());
         } else {
+            self.workspace.select_panel(&PanelId::from(WORKSPACE))?;
             self.navigate(route.clone());
         }
         let capabilities_tab =
@@ -3409,10 +3661,20 @@ fn render_message() -> &'static str {
                 }) {
                     return Err("Session profile is invalid".into());
                 }
+                let title = self
+                    .sessions
+                    .iter()
+                    .chain(self.archived_sessions.iter())
+                    .find(|session| session.id == session_id && session.profile == profile)
+                    .map(|session| session.title.clone())
+                    .filter(|title| !title.trim().is_empty())
+                    .unwrap_or_else(|| session_id.clone());
                 self.save_active_chat_view();
+                self.workspace
+                    .open_session_pane(profile.as_deref(), &session_id, &title)?;
                 self.active_session_profile = profile;
                 self.navigate_after_save(AppRoute::Session(session_id));
-                self.status = "Opened Session".into();
+                self.status = "Opened session tab".into();
             }
             RegisteredUiAction::TogglePane { panel } => {
                 if !matches!(panel.as_str(), REVIEW | FILES | TERMINAL) {
@@ -3938,6 +4200,165 @@ fn render_message() -> &'static str {
         ui.label(RichText::new(message).size(12.0).color(MUTED));
     }
 
+    fn session_pane_content(&mut self, ui: &mut Ui, descriptor: &doofusdock_core::PanelDescriptor) {
+        let (Some(session_id), Some(profile_value)) = (
+            descriptor.metadata.get("hermes.session.id"),
+            descriptor.metadata.get("hermes.session.profile"),
+        ) else {
+            self.empty_panel(ui, "This session pane has incomplete identity metadata");
+            return;
+        };
+        let session_id = session_id.clone();
+        let profile = (!profile_value.is_empty()).then(|| profile_value.clone());
+        let key = session_identity_key(&session_id, profile.as_deref());
+
+        self.save_active_chat_view();
+        let previous_route = self.route.clone();
+        let previous_profile = self.active_session_profile.clone();
+        let previous_runtime = self.active_runtime_session_id.clone();
+        let previous_transcript = std::mem::take(&mut self.transcript);
+        let previous_message_count = self.transcript_message_count;
+        let previous_has_more = self.transcript_has_more;
+        let previous_older_request = self.older_transcript_request.take();
+        let previous_older_error = self.older_transcript_error.take();
+        let previous_draft = std::mem::take(&mut self.draft);
+
+        let view = self
+            .session_chat_views
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| SessionChatViewState {
+                profile: profile.clone(),
+                ..SessionChatViewState::default()
+            });
+        self.route = AppRoute::Session(session_id.clone());
+        self.active_session_profile = profile;
+        self.active_runtime_session_id = view.runtime_session_id;
+        self.transcript = view.transcript;
+        self.transcript_message_count = view.transcript_message_count;
+        self.transcript_has_more = view.transcript_has_more;
+        self.older_transcript_request = view.older_transcript_request;
+        self.older_transcript_error = view.older_transcript_error;
+        self.draft = view.draft;
+
+        self.session_content(ui, &session_id);
+        self.approval_cards(ui);
+        self.clarify_cards(ui);
+        self.batch_clarify_cards(ui);
+        self.composer(ui);
+        self.save_active_chat_view();
+
+        self.route = previous_route;
+        self.active_session_profile = previous_profile;
+        self.active_runtime_session_id = previous_runtime;
+        self.transcript = previous_transcript;
+        self.transcript_message_count = previous_message_count;
+        self.transcript_has_more = previous_has_more;
+        self.older_transcript_request = previous_older_request;
+        self.older_transcript_error = previous_older_error;
+        self.draft = previous_draft;
+    }
+
+    fn session_pane_is_busy(&self, panel: &PanelId) -> bool {
+        let document = self.workspace.dock.snapshot().document;
+        let Some(descriptor) = document.descriptor(panel) else {
+            return false;
+        };
+        let (Some(session_id), Some(profile_value)) = (
+            descriptor.metadata.get("hermes.session.id"),
+            descriptor.metadata.get("hermes.session.profile"),
+        ) else {
+            return false;
+        };
+        let profile = (!profile_value.is_empty()).then_some(profile_value.as_str());
+        let key = session_identity_key(session_id, profile);
+        let runtime = self
+            .session_chat_views
+            .get(&key)
+            .and_then(|view| view.runtime_session_id.clone())
+            .or_else(|| {
+                (self.route == AppRoute::Session(session_id.clone())
+                    && self.active_session_profile.as_deref() == profile)
+                    .then(|| self.active_runtime_session_id.clone())
+                    .flatten()
+            });
+        let Some(runtime) = runtime else {
+            return false;
+        };
+        let runtime_key = session_identity_key(&runtime, profile);
+        self.pending_submissions.contains_key(&runtime_key)
+            || self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, session)| session == &runtime)
+            || self
+                .approval_prompts
+                .values()
+                .any(|prompt| prompt.session_id == runtime)
+            || self
+                .clarify_prompts
+                .values()
+                .any(|prompt| prompt.session_id == runtime)
+            || self
+                .batch_clarify_prompts
+                .values()
+                .any(|prompt| prompt.session_id == runtime)
+    }
+
+    fn close_session_pane(&mut self, panel: &PanelId) {
+        match self.workspace.close_session_pane(panel) {
+            Ok(()) => {
+                self.pending_session_close = None;
+                self.status = "Session tab closed · Hermes continues in the background".into();
+            }
+            Err(error) => {
+                self.pending_session_close = None;
+                self.status = error;
+            }
+        }
+    }
+
+    fn request_close_session_pane(&mut self, panel: &PanelId) {
+        if self.session_pane_is_busy(panel) {
+            self.pending_session_close = Some(panel.clone());
+        } else {
+            self.close_session_pane(panel);
+        }
+    }
+
+    fn show_session_close_dialog(&mut self, ctx: &egui::Context) {
+        let Some(panel) = self.pending_session_close.clone() else {
+            return;
+        };
+        let title = self
+            .workspace
+            .dock
+            .snapshot()
+            .document
+            .descriptor(&panel)
+            .map(|descriptor| descriptor.title_key.clone())
+            .unwrap_or_else(|| "session".into());
+        let mut confirm = false;
+        let mut cancel = false;
+        egui::Window::new("Close active session tab?")
+            .id(Id::NULL.with(("close-session-tab", &panel.0)))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!("{title} is still active."));
+                ui.label("Closing this tab will not stop Hermes. The session can continue in the background.");
+                ui.horizontal(|ui| {
+                    confirm = ui.button("Close tab").clicked();
+                    cancel = ui.button("Keep open").clicked();
+                });
+            });
+        if confirm {
+            self.close_session_pane(&panel);
+        } else if cancel {
+            self.pending_session_close = None;
+        }
+    }
+
     fn update_gateway_discovery(&mut self, ctx: &egui::Context) {
         let Some(discovery) = &self.gateway_discovery else {
             return;
@@ -3993,28 +4414,40 @@ fn render_message() -> &'static str {
                             .gateway_endpoint
                             .as_ref()
                             .map(|endpoint| endpoint.profile_id.clone());
-                        self.sessions.retain(|session| {
-                            session.id != created.stored_session_id || session.profile != profile
-                        });
-                        self.sessions.insert(
-                            0,
-                            SessionSummary {
-                                id: created.stored_session_id.clone(),
-                                profile: profile.clone(),
-                                title: text.chars().take(72).collect(),
-                                preview: text.chars().take(120).collect(),
-                                message_count: 0,
-                                source: "desktop".into(),
-                                started_at: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .map_or(0.0, |duration| duration.as_secs_f64()),
-                                last_active: None,
-                                pinned: false,
-                                unread: false,
-                                archived: false,
+                        let pane_result = self.workspace.open_session_pane(
+                            profile.as_deref(),
+                            &created.stored_session_id,
+                            if text.is_empty() {
+                                "New session"
+                            } else {
+                                &text
                             },
                         );
-                        self.route = AppRoute::Session(created.stored_session_id);
+                        if !text.is_empty() {
+                            self.sessions.retain(|session| {
+                                session.id != created.stored_session_id
+                                    || session.profile != profile
+                            });
+                            self.sessions.insert(
+                                0,
+                                SessionSummary {
+                                    id: created.stored_session_id.clone(),
+                                    profile: profile.clone(),
+                                    title: text.chars().take(72).collect(),
+                                    preview: text.chars().take(120).collect(),
+                                    message_count: 0,
+                                    source: "desktop".into(),
+                                    started_at: std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map_or(0.0, |duration| duration.as_secs_f64()),
+                                    last_active: None,
+                                    pinned: false,
+                                    unread: false,
+                                    archived: false,
+                                },
+                            );
+                        }
+                        self.route = AppRoute::Session(created.stored_session_id.clone());
                         self.transcript.clear();
                         self.transcript_message_count = 0;
                         self.transcript_has_more = false;
@@ -4025,8 +4458,24 @@ fn render_message() -> &'static str {
                             .gateway_endpoint
                             .as_ref()
                             .map(|endpoint| endpoint.profile_id.clone());
+                        let blank_session = text.is_empty();
+                        if blank_session {
+                            self.untouched_blank_session = Some((
+                                created.stored_session_id.clone(),
+                                self.active_session_profile.clone(),
+                            ));
+                        }
                         self.draft = text;
-                        self.submit_prompt(created.runtime_session_id);
+                        if blank_session {
+                            self.status = "New Hermes session tab created".into();
+                        } else {
+                            self.submit_prompt(created.runtime_session_id);
+                        }
+                        if let Err(error) = pane_result {
+                            self.status = format!(
+                                "Session created, but its Dock tab could not be opened: {error}"
+                            );
+                        }
                     }
                     Err(error) => {
                         self.pending_create = None;
@@ -5310,6 +5759,29 @@ mod tests {
         .expect("explicit profile selects the intended session");
         assert_eq!(app.route, AppRoute::Session("shared-id".into()));
         assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+        let pane = app.workspace.session_pane_ids().into_iter().find(|panel| {
+            app.workspace
+                .dock
+                .snapshot()
+                .document
+                .descriptor(panel)
+                .is_some_and(|descriptor| {
+                    descriptor
+                        .metadata
+                        .get("hermes.session.profile")
+                        .map(String::as_str)
+                        == Some("work")
+                        && descriptor
+                            .metadata
+                            .get("hermes.session.id")
+                            .map(String::as_str)
+                            == Some("shared-id")
+                })
+        });
+        assert!(
+            pane.is_some(),
+            "opening a session registers a profile-safe Dock tile"
+        );
         let error = app
             .execute_registered_action(RegisteredUiAction::Navigate {
                 path: "/shared-id".into(),
@@ -5317,6 +5789,228 @@ mod tests {
             .expect_err("path-only navigation must not choose a profile silently");
         assert!(error.contains("multiple profiles"));
         assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn dynamic_session_pane_renders_its_profile_view_without_replacing_the_main_chat() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("main-session".into());
+        app.active_session_profile = Some("personal".into());
+        app.active_runtime_session_id = Some("runtime-personal".into());
+        app.transcript = vec![json!({"role":"assistant","content":"Personal main transcript"})];
+        app.draft = "Personal main draft".into();
+        let panel = app
+            .workspace
+            .open_session_pane(Some("work"), "shared-pane-id", "Work session")
+            .expect("register profile-scoped session pane");
+        app.session_chat_views.insert(
+            session_identity_key("shared-pane-id", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-work".into()),
+                transcript: vec![json!({
+                    "role":"assistant",
+                    "content":"Work pane transcript"
+                })],
+                draft: "Work pane draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        let work_transcript_is_visible = harness
+            .query_all_by(|node| node.value().as_deref() == Some("Work pane transcript"))
+            .next()
+            .is_some();
+        let work_draft_is_visible = harness
+            .query_all_by(|node| node.value().as_deref() == Some("Work pane draft"))
+            .next()
+            .is_some();
+        drop(harness);
+        assert!(
+            work_transcript_is_visible,
+            "the canonical Dock tile renders the matching profile-scoped transcript"
+        );
+        assert!(
+            work_draft_is_visible,
+            "the composer uses the pane-specific draft"
+        );
+        assert!(
+            app.workspace
+                .dock
+                .snapshot()
+                .document
+                .descriptor(&panel)
+                .is_some_and(|descriptor| descriptor.role == "hermes_session_tile")
+        );
+        assert_eq!(app.route, AppRoute::Session("main-session".into()));
+        assert_eq!(app.active_session_profile.as_deref(), Some("personal"));
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-personal")
+        );
+        assert_eq!(app.transcript[0]["content"], "Personal main transcript");
+        assert_eq!(app.draft, "Personal main draft");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn active_session_pane_close_requires_confirmation_and_does_not_interrupt_hermes() {
+        let (mut app, profile_dir) = isolated_app();
+        let panel = app
+            .workspace
+            .open_session_pane(Some("work"), "busy-session", "Busy session")
+            .expect("register busy session pane");
+        let key = session_identity_key("busy-session", Some("work"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-busy".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.pending_submissions.insert(
+            session_identity_key("runtime-busy", Some("work")),
+            PendingPrompt {
+                session_id: "runtime-busy".into(),
+                profile: Some("work".into()),
+                submission_id: "submission-busy".into(),
+                text: "working".into(),
+                uncertain: false,
+                admission_id: None,
+                execution_generation: Some(1),
+                resolving_unknown: false,
+            },
+        );
+        assert!(app.session_pane_is_busy(&panel));
+        app.request_close_session_pane(&panel);
+        assert_eq!(app.pending_session_close.as_ref(), Some(&panel));
+        assert!(
+            !app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+        assert!(
+            app.pending_submissions
+                .contains_key(&session_identity_key("runtime-busy", Some("work")))
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn new_session_reuses_the_untouched_blank_tile_for_the_same_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_session_profile = Some("work".into());
+        app.untouched_blank_session = Some(("blank-session".into(), Some("work".into())));
+
+        app.create_blank_session_tab();
+
+        assert_eq!(app.route, AppRoute::Session("blank-session".into()));
+        assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+        assert!(
+            app.pending_create.is_none(),
+            "reuse does not issue session.create again"
+        );
+        assert_eq!(app.workspace.session_pane_ids().len(), 1);
+        assert_eq!(app.status, "Reused the untouched new-session tab");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn new_session_does_not_reuse_a_blank_tile_after_its_draft_is_edited() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_session_profile = Some("work".into());
+        app.untouched_blank_session = Some(("blank-session".into(), Some("work".into())));
+        app.session_chat_views.insert(
+            session_identity_key("blank-session", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-blank".into()),
+                draft: "keep this draft in its own tab".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.create_blank_session_tab();
+
+        assert!(app.untouched_blank_session.is_none());
+        assert!(app.pending_create.is_none());
+        assert!(app.workspace.session_pane_ids().is_empty());
+        assert_eq!(app.status, "Hermes gateway is unavailable");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn hidden_session_submission_receipt_updates_its_cached_pane_transcript() {
+        let (mut app, profile_dir) = isolated_app();
+        let key = session_identity_key("shared-id", Some("work"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-work".into()),
+                transcript: vec![json!({
+                    "role":"user",
+                    "content":"work only",
+                    "submission_id":"submission-work"
+                })],
+                draft: String::new(),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.pending_submissions.insert(
+            session_identity_key("runtime-work", Some("work")),
+            PendingPrompt {
+                session_id: "runtime-work".into(),
+                profile: Some("work".into()),
+                submission_id: "submission-work".into(),
+                text: "work only".into(),
+                uncertain: false,
+                admission_id: None,
+                execution_generation: None,
+                resolving_unknown: false,
+            },
+        );
+
+        app.handle_prompt_submitted(
+            "runtime-work".into(),
+            "submission-work".into(),
+            Ok(PromptSubmitReceipt::Admitted {
+                admission_id: "admission-work".into(),
+                status: "started".into(),
+                execution_generation: Some(3),
+            }),
+        );
+
+        assert_eq!(
+            app.session_chat_views[&key].transcript[0]["admission_id"],
+            "admission-work"
+        );
+        assert!(
+            app.transcript.is_empty(),
+            "a background receipt must not touch the visible chat"
+        );
+        assert_eq!(
+            app.pending_submissions[&session_identity_key("runtime-work", Some("work"))]
+                .execution_generation,
+            Some(3)
+        );
+        assert_eq!(app.sessions[0].id, "shared-id");
+        assert_eq!(app.sessions[0].profile.as_deref(), Some("work"));
+        assert_eq!(app.sessions[0].title, "work only");
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
@@ -6579,9 +7273,13 @@ impl HermesNativeApp {
                     .panels
                     .iter()
                     .filter_map(|panel| {
-                        layout
-                            .descriptor(panel)
-                            .map(|descriptor| descriptor.title_key.clone())
+                        layout.descriptor(panel).map(|descriptor| {
+                            if panel.0 == WORKSPACE {
+                                self.route.title().to_owned()
+                            } else {
+                                descriptor.title_key.clone()
+                            }
+                        })
                     })
                     .collect::<Vec<_>>();
                 let labels = titles
@@ -6591,13 +7289,16 @@ impl HermesNativeApp {
                 let items = titles
                     .iter()
                     .zip(&labels)
-                    .map(|(title, label)| TabStripItem {
+                    .zip(&group.panels)
+                    .map(|((title, label), panel)| TabStripItem {
                         title,
                         accessible_label: label,
                         icon: None,
                         modified: false,
                         pinned: false,
-                        closable: false,
+                        closable: layout
+                            .descriptor(panel)
+                            .is_some_and(|descriptor| descriptor.role == "hermes_session_tile"),
                         multi_selected: false,
                     })
                     .collect::<Vec<_>>();
@@ -6626,6 +7327,15 @@ impl HermesNativeApp {
                         container: group.node.clone(),
                         target_index: None,
                     });
+                }
+                if let Some(index) = response.close
+                    && let Some(panel) = group.panels.get(index)
+                    && layout
+                        .descriptor(panel)
+                        .is_some_and(|descriptor| descriptor.role == "hermes_session_tile")
+                {
+                    self.request_close_session_pane(panel);
+                    break;
                 }
                 if let Some(reorder) = &mut self.tab_reorder
                     && reorder.container == group.node
@@ -6682,6 +7392,7 @@ impl HermesNativeApp {
         }
         self.show_route_overlay(&ctx);
         self.show_rename_dialog(&ctx);
+        self.show_session_close_dialog(&ctx);
     }
 
     #[cfg(feature = "agent-automation")]

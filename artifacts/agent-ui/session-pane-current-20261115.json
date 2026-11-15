@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-11-15T06:06:37Z",
+  "hermes_parity_source": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_source": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "repository_base_commit": "b108a8d5804ecf850a6178767a72b65acda603dc",
+  "working_tree_diff_sha256": "9e45e453a96d95f28b5158afcd000e0187d61180b36f98f7d608954d950d6cf4",
+  "executable_sha256": "6735bd865af88b59f4e72993b2e8bb19441847cf108c136e48f40120e5ad0023",
+  "fixture": "session-pane-fixture",
+  "fixture_profile": "temporary isolated Hermes Native automation profile",
+  "app_route": "/",
+  "active_dock_pane": "Native session pane",
+  "viewport_px": "1440x900",
+  "dpi": "headless egui logical scale 1.0; Windows DPI not measured",
+  "screenshot": "session-pane-current-20261115.png",
+  "screenshot_sha256": "64b0933fbb7c1fe39be437aa6bc46d660ddaf374c91ba6a93612735373f2a01c"
+}

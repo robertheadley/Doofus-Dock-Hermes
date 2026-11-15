@@ -252,6 +252,31 @@ impl Workspace {
         Ok(())
     }
 
+    /// Select an existing panel through the canonical Dock tab operation.
+    pub fn select_panel(&mut self, panel: &PanelId) -> Result<(), String> {
+        let observed = self.dock.snapshot();
+        if observed.document.descriptor(panel).is_none() {
+            return Err("Panel is not registered in the Dock layout".into());
+        }
+        if observed.document.closed_panels.contains(panel) {
+            return Err("A closed Dock panel cannot be selected".into());
+        }
+        if let Some((tabs, index)) = find_tab_for_panel(observed.document.root.as_deref(), panel) {
+            let active = find_tabs_active_index(observed.document.root.as_deref(), &tabs);
+            if active != Some(index) {
+                self.dock
+                    .transact(
+                        observed.revision,
+                        CommandId::from(format!("select-panel-{}-{}", observed.revision, panel.0)),
+                        [Operation::SelectTab { tabs, index }],
+                    )
+                    .map_err(|error| error.to_string())?;
+                self.save_layout();
+            }
+        }
+        Ok(())
+    }
+
     pub fn session_pane_ids(&self) -> Vec<PanelId> {
         self.dock
             .snapshot()
@@ -500,6 +525,29 @@ fn find_tab_for_panel(root: Option<&Node>, panel: &PanelId) -> Option<(NodeId, u
         }
     }
     root.and_then(|root| walk(root, panel))
+}
+
+fn find_tabs_active_index(root: Option<&Node>, tabs: &NodeId) -> Option<usize> {
+    fn walk(node: &Node, tabs: &NodeId) -> Option<usize> {
+        if &node.id == tabs {
+            return match &node.kind {
+                NodeKind::Tabs { active_index, .. } => Some(*active_index),
+                _ => None,
+            };
+        }
+        match &node.kind {
+            NodeKind::Tabs { items, .. }
+            | NodeKind::DocumentWell { groups: items, .. }
+            | NodeKind::Split {
+                children: items, ..
+            }
+            | NodeKind::Extension {
+                children: items, ..
+            } => items.iter().find_map(|child| walk(child, tabs)),
+            NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => None,
+        }
+    }
+    root.and_then(|root| walk(root, tabs))
 }
 
 fn source_profiles() -> Vec<WorkspaceProfile> {
@@ -865,6 +913,41 @@ fn write_preferences_atomic(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn select_panel_uses_canonical_tabs_and_is_idempotent() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-select-panel-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let session = workspace
+            .open_session_pane(Some("work"), "session-id", "Work session")
+            .unwrap();
+        let snapshot = workspace.dock.snapshot();
+        let (tabs, session_index) =
+            find_tab_for_panel(snapshot.document.root.as_deref(), &session).unwrap();
+        assert_eq!(
+            find_tabs_active_index(snapshot.document.root.as_deref(), &tabs),
+            Some(session_index)
+        );
+
+        workspace.select_panel(&PanelId::from(WORKSPACE)).unwrap();
+        let selected = workspace.dock.snapshot();
+        assert_eq!(
+            find_tabs_active_index(selected.document.root.as_deref(), &tabs),
+            Some(0)
+        );
+        let revision = selected.revision;
+        workspace.select_panel(&PanelId::from(WORKSPACE)).unwrap();
+        assert_eq!(workspace.dock.snapshot().revision, revision);
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn session_panes_are_profile_scoped_and_survive_profile_close_reopen_and_restore() {
