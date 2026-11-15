@@ -1221,3 +1221,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No benchmark performed.
   **risks:** Unit/protocol validation does not prove visual parity.
   **follow_up:** Capture the updated fixture and keep all Files acceptance IDs pending pending review.
+
+- **id:** HUR-001-092
+  **timestamp:** 2026-11-15T13:55:37Z
+  **what:** Removed a per-frame clone of cached file preview content.
+  **why:** The source-sized preview buffer should not be copied for every egui render pass.
+  **components:** src/files.rs.
+  **type:** performance
+  **validation:** Full automation-feature matrix passed: formatting, 128 library tests, 11 protocol tests, all-target check and diff check.
+  **performance:** Avoids copying up to the 512 KiB preview buffer each frame; no benchmark performed.
+  **risks:** None identified; operation stays within the bounded content store.
+  **follow_up:** Measure only if later preview workloads show a material rendering bottleneck.
+
+- **id:** HUR-001-093
+  **timestamp:** 2026-11-15T13:55:37Z
+  **what:** Recorded complete validation for the borrow-only preview rendering change.
+  **why:** Confirm the optimization preserves interactive and worker behavior.
+  **components:** src/files.rs, docs/EXECUTION_LOGS.md.
+  **type:** validation
+  **validation:** Formatting, 128 library tests, 11 protocol tests, all-target feature check and git diff check passed.
+  **performance:** No benchmark performed.
+  **risks:** Test evidence does not establish visual parity.
+  **follow_up:** Keep the preview slice open for exact source comparisons and acceptance tests.

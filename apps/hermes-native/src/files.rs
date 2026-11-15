@@ -106,7 +106,8 @@ impl FilePreviewStore {
 
     pub fn open(&mut self, ui: &mut egui::Ui, path: &Path, markdown_cache: &mut CommonMarkCache) {
         self.request(path);
-        match self.contents.get(path).cloned() {
+        let mut force_preview = false;
+        match self.contents.get(path) {
             Some(Ok(content)) => {
                 ui.label(
                     egui::RichText::new(path.display().to_string())
@@ -136,7 +137,7 @@ impl FilePreviewStore {
                     ui.label(format!("Unable to preview this file: {error}"));
                     if error.contains("preview limit") || error.contains("binary") {
                         if ui.button("Preview anyway").clicked() {
-                            self.request_force(path);
+                            force_preview = true;
                         }
                     }
                 });
@@ -151,6 +152,9 @@ impl FilePreviewStore {
                     ui.label("Preview queue is full. Close an unused preview and retry.");
                 });
             }
+        }
+        if force_preview {
+            self.request_force(path);
         }
     }
 
