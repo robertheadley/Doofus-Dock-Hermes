@@ -1,8 +1,8 @@
 use crate::gateway::{
     AgentPluginAutoUpdateSettings, AgentPluginInfo, AgentPluginInspection, AgentPluginScanFinding,
-    AgentPluginUpdateOutcome, AgentPluginsSnapshot, CapabilitiesSnapshot, ConnectorsSnapshot,
-    GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt, SessionSearchResult,
-    SessionSummary, SkillInfo, ToolsetInfo,
+    AgentPluginUpdateAllRow, AgentPluginUpdateOutcome, AgentPluginsSnapshot, CapabilitiesSnapshot,
+    ConnectorsSnapshot, GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt,
+    SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
 };
 use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
@@ -68,6 +68,7 @@ pub enum RegisteredUiAction {
     SetAgentPluginAutoUpdate {
         enabled: bool,
     },
+    RequestAgentPluginUpdateAll,
     RequestCatalogPluginInstall {
         name: String,
     },
@@ -172,6 +173,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
             ,{"type":"request_agent_plugin_update","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded manageable plugin with an available update"}}
             ,{"type":"set_agent_plugin_auto_update","permission":"ui_interaction","mutates":true,"schema":{"enabled":"boolean; selected Hermes profile; available when plugins.manage auto_update is supported"}}
+            ,{"type":"request_agent_plugin_update_all","permission":"ui_interaction","mutates":true,"schema":{"profile":"selected profile with a fresh installed-plugin inventory; invokes plugins.manage action=update_all"}}
             ,{"type":"stop_generation","permission":"ui_interaction","mutates":true,"schema":{}}
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
@@ -264,6 +266,18 @@ struct PendingAgentPluginAutoUpdate {
     request_id: String,
     profile: Option<String>,
     enabled: Option<bool>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingAgentPluginUpdateAll {
+    request_id: String,
+    profile: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct AgentPluginUpdateAllReport {
+    profile: Option<String>,
+    rows: Vec<AgentPluginUpdateAllRow>,
 }
 
 #[derive(Clone, Debug)]
@@ -457,6 +471,9 @@ pub struct HermesNativeApp {
     agent_plugins_error: Option<String>,
     agent_plugin_auto_update: Option<(Option<String>, AgentPluginAutoUpdateSettings)>,
     pending_agent_plugin_auto_update: Option<PendingAgentPluginAutoUpdate>,
+    pending_agent_plugin_update_all: Option<PendingAgentPluginUpdateAll>,
+    agent_plugin_update_all_report: Option<AgentPluginUpdateAllReport>,
+    agent_plugin_update_all_uncertain: bool,
     pending_agent_plugin_updates: BTreeMap<String, PendingAgentPluginUpdate>,
     pending_agent_plugin_catalog_updates: BTreeMap<String, PendingAgentPluginCatalogUpdate>,
     agent_plugin_update_dialog: Option<AgentPluginUpdateDialog>,
@@ -783,6 +800,37 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_plugin_update_all_report_fixture_for_automation(&mut self) {
+        self.load_plugin_auto_update_fixture_for_automation();
+        self.agent_plugin_update_all_report = Some(AgentPluginUpdateAllReport {
+            profile: None,
+            rows: vec![
+                AgentPluginUpdateAllRow {
+                    name: "Research Companion".into(),
+                    status: "updated".into(),
+                    detail: Some("Updated to 2.4.1".into()),
+                },
+                AgentPluginUpdateAllRow {
+                    name: "Workspace Helper".into(),
+                    status: "needs_review".into(),
+                    detail: Some("New workspace access requires approval".into()),
+                },
+                AgentPluginUpdateAllRow {
+                    name: "Legacy Helper".into(),
+                    status: "failed".into(),
+                    detail: Some("Registry request timed out; current version retained".into()),
+                },
+                AgentPluginUpdateAllRow {
+                    name: "Calendar Tools".into(),
+                    status: "current".into(),
+                    detail: None,
+                },
+            ],
+        });
+        self.status = "Update all report · synthetic results for visual review".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_connectors_fixture_for_automation(&mut self) {
         self.route = AppRoute::Capabilities;
         self.capabilities_tab = CapabilitiesTab::Connectors;
@@ -908,6 +956,9 @@ fn render_message() -> &'static str {
             agent_plugins_error: None,
             agent_plugin_auto_update: None,
             pending_agent_plugin_auto_update: None,
+            pending_agent_plugin_update_all: None,
+            agent_plugin_update_all_report: None,
+            agent_plugin_update_all_uncertain: false,
             pending_agent_plugin_updates: BTreeMap::new(),
             pending_agent_plugin_catalog_updates: BTreeMap::new(),
             agent_plugin_update_dialog: None,
@@ -2581,6 +2632,38 @@ fn render_message() -> &'static str {
                                 .color(MUTED),
                         );
                     }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let update_all_pending = self.pending_agent_plugin_update_all.is_some();
+                        let selected_profile = self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone());
+                        let update_all = ui
+                            .add_enabled(
+                                self.gateway_connected
+                                    && self.agent_plugins.is_some()
+                                    && !self.agent_plugins_pending
+                                    && self.agent_plugins_profile == selected_profile
+                                    && !self.agent_plugin_update_all_uncertain
+                                    && !update_all_pending
+                                    && self.pending_agent_plugin_updates.is_empty()
+                                    && self.pending_agent_plugin_catalog_updates.is_empty()
+                                    && self.pending_agent_plugin_removals.is_empty(),
+                                egui::Button::new(if update_all_pending {
+                                    "Updating all…"
+                                } else {
+                                    "Update all"
+                                }),
+                            )
+                            .on_hover_text("Update all eligible plugins in this profile; updates requiring review remain unchanged")
+                            .accessible_name("Update all Agent Plugins for this profile");
+                        if update_all.clicked() {
+                            self.execute_registered_action(
+                                RegisteredUiAction::RequestAgentPluginUpdateAll,
+                            )
+                            .unwrap_or_else(|error| self.status = error);
+                        }
+                    });
                 });
                 if let Some((profile, settings)) = self.agent_plugin_auto_update.clone()
                     && self.agent_plugins_profile == profile
@@ -2613,6 +2696,38 @@ fn render_message() -> &'static str {
                             ui.label(RichText::new("Saving…").size(10.0).color(MUTED));
                         }
                     });
+                }
+                if let Some(report) = self.agent_plugin_update_all_report.clone()
+                    && report.profile == self.agent_plugins_profile
+                {
+                    let updated = report
+                        .rows
+                        .iter()
+                        .filter(|row| row.status == "updated")
+                        .count();
+                    let review = report
+                        .rows
+                        .iter()
+                        .filter(|row| row.status == "needs_review")
+                        .count();
+                    let failed = report
+                        .rows
+                        .iter()
+                        .filter(|row| row.status == "failed")
+                        .count();
+                    ui.collapsing(
+                        format!("Last update-all · {updated} updated · {review} need review · {failed} failed"),
+                        |ui| {
+                            for row in report.rows.iter().filter(|row| row.status != "current") {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(RichText::new(format!("{} · {}", row.name, row.status)).strong());
+                                    if let Some(detail) = &row.detail {
+                                        ui.label(RichText::new(detail).color(MUTED));
+                                    }
+                                });
+                            }
+                        },
+                    );
                 }
                 if self.agent_plugins_pending && self.agent_plugins.is_none() {
                     ui.label(
@@ -5449,6 +5564,9 @@ fn render_message() -> &'static str {
             RegisteredUiAction::SetAgentPluginAutoUpdate { enabled } => {
                 self.set_agent_plugin_auto_update(enabled)?;
             }
+            RegisteredUiAction::RequestAgentPluginUpdateAll => {
+                self.request_agent_plugin_update_all()?;
+            }
             RegisteredUiAction::RequestCatalogPluginInstall { name } => {
                 self.request_catalog_plugin_install(name)?;
             }
@@ -5581,6 +5699,52 @@ fn render_message() -> &'static str {
             profile,
             enabled: Some(enabled),
         });
+        Ok(())
+    }
+
+    fn request_agent_plugin_update_all(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before updating plugins".into());
+        }
+        if self.pending_agent_plugin_update_all.is_some() {
+            return Err("Plugin update-all is already running".into());
+        }
+        if self.agent_plugin_update_all_uncertain {
+            return Err(
+                "Refresh the selected profile inventory before retrying the uncertain update-all"
+                    .into(),
+            );
+        }
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self.agent_plugins.is_none()
+            || self.agent_plugins_pending
+            || self.agent_plugins_profile != profile
+        {
+            return Err(
+                "Load the installed plugins for the selected profile before updating all".into(),
+            );
+        }
+        if !self.pending_agent_plugin_updates.is_empty()
+            || !self.pending_agent_plugin_catalog_updates.is_empty()
+            || !self.pending_agent_plugin_removals.is_empty()
+        {
+            return Err("Finish the current plugin operation before starting update-all".into());
+        }
+        let request_id = operation_id("agent-plugin-update-all");
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
+            .update_all_agent_plugins(request_id.clone(), profile.clone())?;
+        self.pending_agent_plugin_update_all = Some(PendingAgentPluginUpdateAll {
+            request_id,
+            profile,
+        });
+        self.agent_plugin_update_all_report = None;
+        self.status =
+            "Updating all Agent Plugins; items requiring review will remain unchanged".into();
         Ok(())
     }
 
@@ -7751,6 +7915,7 @@ fn render_message() -> &'static str {
                             self.agent_plugins = Some(snapshot);
                             self.agent_plugins_profile = profile;
                             self.agent_plugins_error = None;
+                            self.agent_plugin_update_all_uncertain = false;
                         }
                         Err(error) => self.agent_plugins_error = Some(error),
                     }
@@ -7783,6 +7948,80 @@ fn render_message() -> &'static str {
                             // The pinned Desktop hides this control when the backend does not
                             // implement plugins.manage auto_update (or cannot read its state).
                             self.agent_plugin_auto_update = None;
+                        }
+                    }
+                }
+                GatewayEvent::AgentPluginUpdateAll {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_agent_plugin_update_all.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile != profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.pending_agent_plugin_update_all = None;
+                    match result {
+                        Ok(rows) => {
+                            let updated = rows.iter().filter(|row| row.status == "updated").count();
+                            let review = rows
+                                .iter()
+                                .filter(|row| row.status == "needs_review")
+                                .count();
+                            let failed = rows.iter().filter(|row| row.status == "failed").count();
+                            self.status = format!(
+                                "Plugin update-all complete · {updated} updated · {review} need review · {failed} failed"
+                            );
+                            self.agent_plugin_update_all_report =
+                                Some(AgentPluginUpdateAllReport { profile, rows });
+                            if updated > 0 {
+                                self.agent_plugins = None;
+                                self.agent_plugins_profile = None;
+                                if self.route == AppRoute::Capabilities
+                                    && self.capabilities_tab == CapabilitiesTab::Plugins
+                                {
+                                    self.load_agent_plugins().unwrap_or_else(|error| {
+                                        self.agent_plugins_error = Some(error)
+                                    });
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            let uncertain = error.to_ascii_lowercase().contains("timed out")
+                                || error.to_ascii_lowercase().contains("disconnected")
+                                || error.to_ascii_lowercase().contains("closed during");
+                            if uncertain {
+                                self.agent_plugin_update_all_uncertain = true;
+                                self.agent_plugins = None;
+                                self.agent_plugins_profile = None;
+                                self.agent_plugins_error = Some(
+                                    "Update-all outcome unknown; refresh the installed profile inventory before retrying".into(),
+                                );
+                                if self.gateway_connected
+                                    && self.route == AppRoute::Capabilities
+                                    && self.capabilities_tab == CapabilitiesTab::Plugins
+                                {
+                                    self.load_agent_plugins().unwrap_or_else(|load_error| {
+                                        self.agent_plugins_error = Some(load_error)
+                                    });
+                                }
+                            }
+                            self.status = if uncertain {
+                                format!(
+                                    "Plugin update-all outcome unknown; refresh the profile inventory before retrying. {error}"
+                                )
+                            } else {
+                                error
+                            };
                         }
                     }
                 }
@@ -8201,6 +8440,14 @@ fn render_message() -> &'static str {
                         self.agent_plugins_profile = None;
                         self.agent_plugins_error = Some(
                             "Plugin update outcome unknown after gateway disconnect; refresh the inventory before acting again".into(),
+                        );
+                    }
+                    if self.pending_agent_plugin_update_all.take().is_some() {
+                        self.agent_plugin_update_all_uncertain = true;
+                        self.agent_plugins = None;
+                        self.agent_plugins_profile = None;
+                        self.agent_plugins_error = Some(
+                            "Plugin update-all outcome unknown after gateway disconnect; refresh the inventory before retrying".into(),
                         );
                     }
                     if !self.pending_agent_plugin_removals.is_empty() {
@@ -9794,6 +10041,14 @@ mod tests {
         );
         assert!(
             harness
+                .query_by_label("Update all Agent Plugins for this profile")
+                .expect("profile update-all action remains discoverable")
+                .accesskit_node()
+                .is_disabled(),
+            "update-all is not actionable while disconnected"
+        );
+        assert!(
+            harness
                 .query_all_by(|node| node.value().as_deref() == Some("Update available · 1.3.0"))
                 .next()
                 .is_some(),
@@ -9814,6 +10069,11 @@ mod tests {
             })
             .expect_err("automatic update setting must be rejected offline")
             .contains("Connect to Hermes")
+        );
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::RequestAgentPluginUpdateAll)
+                .expect_err("update-all must be rejected offline")
+                .contains("Connect to Hermes")
         );
         app.agent_plugin_auto_update = None;
         let harness = egui_kittest::Harness::builder()
@@ -10151,6 +10411,13 @@ mod tests {
                 .expect("action catalog array")
                 .iter()
                 .any(|action| action["type"] == "set_agent_plugin_auto_update")
+        );
+        assert!(
+            registered_ui_action_catalog()["actions"]
+                .as_array()
+                .expect("action catalog array")
+                .iter()
+                .any(|action| action["type"] == "request_agent_plugin_update_all")
         );
         assert!(
             registered_ui_action_catalog()["actions"]
@@ -12526,6 +12793,15 @@ impl HermesNativeApp {
                     "check_hours": settings.check_hours,
                 })),
                 "plugin_auto_update_pending": self.pending_agent_plugin_auto_update.is_some(),
+                "plugin_update_all_pending": self.pending_agent_plugin_update_all.is_some(),
+                "plugin_update_all_uncertain": self.agent_plugin_update_all_uncertain,
+                "plugin_update_all_report": self.agent_plugin_update_all_report.as_ref().map(|report| json!({
+                    "profile": report.profile,
+                    "updated": report.rows.iter().filter(|row| row.status == "updated").count(),
+                    "current": report.rows.iter().filter(|row| row.status == "current").count(),
+                    "needs_review": report.rows.iter().filter(|row| row.status == "needs_review").count(),
+                    "failed": report.rows.iter().filter(|row| row.status == "failed").count(),
+                })),
                 "plugin_update_review": self.agent_plugin_update_dialog.as_ref().map(|dialog| match &dialog.review {
                     AgentPluginUpdateReview::Consent { .. } => json!({"name":dialog.name,"kind":"consent","profile":dialog.profile}),
                     AgentPluginUpdateReview::Scan { verdict, findings } => json!({"name":dialog.name,"kind":"scan","verdict":verdict,"finding_count":findings.len(),"profile":dialog.profile}),

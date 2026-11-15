@@ -264,6 +264,16 @@ pub struct AgentPluginAutoUpdateSettings {
     pub check_hours: u64,
 }
 
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct AgentPluginUpdateAllRow {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct AgentPluginToggleReceipt {
     pub plugin: AgentPluginInfo,
@@ -459,6 +469,11 @@ pub enum GatewayEvent {
         enabled: bool,
         result: Result<AgentPluginAutoUpdateSettings, String>,
     },
+    AgentPluginUpdateAll {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<Vec<AgentPluginUpdateAllRow>, String>,
+    },
     AgentPluginToggled {
         request_id: String,
         key: String,
@@ -540,6 +555,10 @@ enum GatewayCommand {
         request_id: String,
         profile: Option<String>,
         enabled: bool,
+    },
+    UpdateAllAgentPlugins {
+        request_id: String,
+        profile: Option<String>,
     },
     SetAgentPluginEnabled {
         request_id: String,
@@ -965,6 +984,19 @@ impl GatewayDiscovery {
                 request_id,
                 profile,
                 enabled,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn update_all_agent_plugins(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::UpdateAllAgentPlugins {
+                request_id,
+                profile,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -1405,6 +1437,37 @@ fn gateway_actor(
                         request_id,
                         profile,
                         enabled,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::UpdateAllAgentPlugins {
+                request_id,
+                profile,
+            }) => {
+                let result = session_profile_params(
+                    serde_json::json!({"action":"update_all"}),
+                    profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events_timeout(
+                        socket,
+                        next_request_id,
+                        "plugins.manage",
+                        params,
+                        Duration::from_secs(600),
+                        Some(&events),
+                    )
+                })
+                .and_then(parse_agent_plugin_update_all);
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginUpdateAll {
+                        request_id,
+                        profile,
                         result,
                     })
                     .is_err()
@@ -2453,6 +2516,34 @@ fn parse_agent_plugin_auto_update_settings(
             .unwrap_or(false),
         check_hours,
     })
+}
+
+fn parse_agent_plugin_update_all(
+    value: serde_json::Value,
+) -> Result<Vec<AgentPluginUpdateAllRow>, String> {
+    let rows: Vec<AgentPluginUpdateAllRow> = serde_json::from_value(
+        value
+            .get("results")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([])),
+    )
+    .map_err(|_| "Hermes returned invalid plugin update-all results".to_owned())?;
+    if rows.iter().any(|row| {
+        row.name.is_empty()
+            || row.name.len() > 512
+            || row.name.chars().any(char::is_control)
+            || !matches!(
+                row.status.as_str(),
+                "updated" | "current" | "failed" | "needs_review"
+            )
+            || row
+                .detail
+                .as_ref()
+                .is_some_and(|detail| detail.len() > 16_384)
+    }) {
+        return Err("Hermes returned invalid plugin update-all row data".into());
+    }
+    Ok(rows)
 }
 
 const TICKET_CLIENT: &str = r#"
@@ -3565,7 +3656,18 @@ fn rpc_with_events(
     params: serde_json::Value,
     events: Option<&mpsc::Sender<GatewayEvent>>,
 ) -> Result<serde_json::Value, String> {
-    let deadline = Instant::now() + Duration::from_secs(60);
+    rpc_with_events_timeout(socket, id, method, params, Duration::from_secs(60), events)
+}
+
+fn rpc_with_events_timeout(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+    id: u64,
+    method: &str,
+    params: serde_json::Value,
+    timeout: Duration,
+    events: Option<&mpsc::Sender<GatewayEvent>>,
+) -> Result<serde_json::Value, String> {
+    let deadline = Instant::now() + timeout;
     let request =
         serde_json::json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
     socket
@@ -5018,6 +5120,64 @@ mod tests {
                 enabled: true,
                 result: Ok(AgentPluginAutoUpdateSettings { auto_apply: true, check_hours: 12 }),
             } if request_id == "auto-write" && profile == "fixture-profile"
+        ));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn plugin_update_all_uses_profile_scope_and_preserves_summary_rows() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read update-all request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected update-all request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "plugins.manage");
+            assert_eq!(
+                request["params"],
+                json!({"action":"update_all","profile":"fixture-profile"})
+            );
+            let id = request["id"].as_u64().expect("numeric RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"result":{"results":[
+                        {"name":"Weather Tools","status":"updated"},
+                        {"name":"Research Helper","status":"needs_review","detail":"Capabilities changed"},
+                        {"name":"Browser Helper","status":"failed","detail":"Repository unavailable"}
+                    ]}})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send update-all result");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::UpdateAllAgentPlugins {
+                request_id: "update-all-1".into(),
+                profile: Some("fixture-profile".into()),
+            })
+            .expect("queue update-all");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("update-all receipt"),
+            GatewayEvent::AgentPluginUpdateAll { request_id, profile:Some(profile), result:Ok(rows) }
+                if request_id == "update-all-1" && profile == "fixture-profile" && rows.len() == 3
+                    && rows[0].status == "updated" && rows[1].status == "needs_review"
+                    && rows[2].detail.as_deref() == Some("Repository unavailable")
         ));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");

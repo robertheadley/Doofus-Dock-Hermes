@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "request_id": "hermes-ui-parity-20261115-plugin-update-all",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "base_head": "f9dfaca318eaaf6a1aca3ff03073d580aa53747b",
+  "source_diff_sha256": "55d51146f7a87d425f2623579e3811fac4c6dacb8cf308e3d4a8aba3bdb96f56",
+  "automation_binary_sha256": "9c697005bce1430ef928b08de185c10b94091cdd20b6a3d6dd71af2c6102445a",
+  "screenshot_sha256": "fa004285096c5a80fdf280bc12045b5380dc7558d0889870b7703b79bfa55746",
+  "viewport": {
+    "height": 900,
+    "width": 1440
+  },
+  "route": "/capabilities?tab=plugins",
+  "fixture": "synthetic update-all outcome report; no Hermes gateway transport",
+  "state": {
+    "profile": "default synthetic profile",
+    "gateway_connected_ui_flag": true,
+    "rows": [
+      {
+        "status": "updated",
+        "name": "Research Companion",
+        "detail": "Updated to 2.4.1"
+      },
+      {
+        "status": "needs_review",
+        "name": "Workspace Helper",
+        "detail": "New workspace access requires approval"
+      },
+      {
+        "status": "failed",
+        "name": "Legacy Helper",
+        "detail": "Registry request timed out; current version retained"
+      },
+      {
+        "status": "current",
+        "name": "Calendar Tools"
+      }
+    ],
+    "gateway_transport": "absent"
+  },
+  "capture_method": "hermes-automation --plugin-update-all-report-fixture --click \"Last update-all · 1 updated · 1 need review · 1 failed\" --screenshot",
+  "access_receipt": "Synthetic visual fixture only; gateway RPC contract test verifies action=update_all profile scope and typed summary parsing; offline UI action fails closed.",
+  "visual_review": "Distinct expanded update-all report shows updated, needs-review, and failed rows with details above installed inventory; 1440x900 PNG visually inspected.",
+  "limitations": [
+    "synthetic report; no Hermes gateway or installed profile accessed",
+    "long-running plugins.manage RPC uses the serialized WebSocket actor, so other WebSocket work waits for completion or its 600-second timeout",
+    "source-paired Windows visual comparison and live profile acceptance remain open"
+  ]
+}

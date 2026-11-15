@@ -944,3 +944,14 @@ Change record: id HUI-041; type feature; components Plugins inventory, gateway a
 Validation correction for HUI-041: after adding the interval parser boundary test, the final complete suite passed 113 library tests and 7 automation tests. The default and all-target checks, package validation, screenshot and sidecar validation also passed.
 
 HUI-041 publication: implementation commit 88206d5 was pushed to main after fetching and confirming its parent matched origin/main; publication evidence is appended separately.
+
+- **id:** HUI-042
+- **timestamp:** 2026-11-15T11:19:42Z
+- **what:** Added fixed-source profile-scoped Agent Plugin Update all, a registered UI/agent action, typed outcome summary and a distinct expanded synthetic screenshot fixture.
+- **why:** Complete the pinned Plugins workflow and provide evidence that visibly differs from prior captures of the same static Plugins state.
+- **components:** apps/hermes-native/src/app.rs, apps/hermes-native/src/gateway.rs, apps/hermes-native/src/bin/hermes-automation.rs, apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs, apps/hermes-native/artifacts/agent-ui/plugin-update-all-report-20261115.png, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/BACKLOG.md, apps/hermes-native/docs/ARCHITECTURE.md, apps/hermes-native/README.md.
+- **type:** source-parity feature; agent UI fixture.
+- **validation:** cargo fmt --all -- --check; cargo test -p hermes-native --features agent-automation (114 library + 7 automation tests); screenshot captured at 1440x900 and visually inspected with all three non-current result types expanded; profile-scoped WebSocket fixture and offline action coverage passed.
+- **performance:** No benchmark run. The 600-second RPC uses the serialized WebSocket actor and blocks other WebSocket commands; this remains a known limitation.
+- **risks:** Gateway RPC congestion during update-all; synthetic screenshot is not live Hermes acceptance; full pinned-source parity remains open.
+- **follow_up:** Add RPC multiplexing or a dedicated authenticated socket, add live profile/source-paired validation, then continue remaining 499 in-scope acceptance rows.
