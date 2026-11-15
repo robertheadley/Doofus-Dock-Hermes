@@ -1,10 +1,15 @@
 use doofusdock_core::{
-    ClosePolicy, DockingService, LayoutDocument, LayoutId, LayoutStore, Orientation,
-    PanelDescriptor, PanelId, PersistenceLimits, ProfileLayout, ProfilePresentation, ProfileRegion,
-    WorkspaceProfile, apply_workspace_profile,
+    ClosePolicy, CommandId, DockingService, LayoutDocument, LayoutId, LayoutStore, Node, NodeId,
+    NodeKind, Operation, Orientation, PanelDescriptor, PanelId, PersistenceLimits, ProfileLayout,
+    ProfilePresentation, ProfileRegion, WorkspaceProfile, apply_workspace_profile,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::PathBuf,
+    sync::Arc,
+};
 
 pub const SESSIONS: &str = "sessions";
 pub const WORKSPACE: &str = "workspace";
@@ -126,6 +131,138 @@ impl Workspace {
         Ok(workspace)
     }
 
+    /// Add or front a stored Hermes session as a dynamic pane in the canonical
+    /// DoofusDock layout. Pane identity includes both profile and stored ID.
+    pub fn open_session_pane(
+        &mut self,
+        profile_id: Option<&str>,
+        stored_session_id: &str,
+        title: &str,
+    ) -> Result<PanelId, String> {
+        validate_session_pane_identity(profile_id, stored_session_id, title)?;
+        let panel = session_pane_id(profile_id, stored_session_id);
+        let observed = self.dock.snapshot();
+        if let Some(descriptor) = observed.document.descriptor(&panel) {
+            let expected_profile = profile_id.unwrap_or_default();
+            if descriptor
+                .metadata
+                .get("hermes.session.id")
+                .map(String::as_str)
+                != Some(stored_session_id)
+                || descriptor
+                    .metadata
+                    .get("hermes.session.profile")
+                    .map(String::as_str)
+                    != Some(expected_profile)
+            {
+                return Err("Session pane ID collision failed identity validation".into());
+            }
+            if observed.document.closed_panels.contains(&panel) {
+                let force_open = BTreeSet::from([panel.clone()]);
+                let active_profile_id = self.active_profile().to_owned();
+                let active_profile = profile(&self.profiles, &active_profile_id)?;
+                apply_profile_to_service_with_reopen(
+                    &mut self.dock,
+                    active_profile,
+                    &self.preferences,
+                    &self.session_reveals,
+                    &force_open,
+                )?;
+                self.save_layout();
+            } else if let Some((tabs, index)) =
+                find_tab_for_panel(observed.document.root.as_deref(), &panel)
+            {
+                self.dock
+                    .transact(
+                        observed.revision,
+                        CommandId::from(format!(
+                            "front-session-pane-{}-{}",
+                            observed.revision, panel.0
+                        )),
+                        [Operation::SelectTab { tabs, index }],
+                    )
+                    .map_err(|error| error.to_string())?;
+                self.save_layout();
+            }
+            return Ok(panel);
+        }
+
+        let workspace_node = find_panel_node(observed.document.root.as_deref(), WORKSPACE)
+            .ok_or_else(|| {
+                "The Hermes workspace pane is not present in the Dock layout".to_owned()
+            })?;
+        let mut descriptor = PanelDescriptor::new(panel.0.clone(), bounded_session_title(title));
+        descriptor.role = "hermes_session_tile".into();
+        descriptor.minimum = doofusdock_core::Size::new(180, 140);
+        descriptor.close_policy = ClosePolicy::Allowed;
+        descriptor
+            .metadata
+            .insert("hermes.session.tile".into(), "1".into());
+        descriptor
+            .metadata
+            .insert("hermes.session.id".into(), stored_session_id.into());
+        descriptor.metadata.insert(
+            "hermes.session.profile".into(),
+            profile_id.unwrap_or_default().into(),
+        );
+        self.dock
+            .transact(
+                observed.revision,
+                CommandId::from(format!(
+                    "open-session-pane-{}-{}",
+                    observed.revision, panel.0
+                )),
+                [Operation::AddPanel {
+                    descriptor,
+                    target: Some(workspace_node),
+                }],
+            )
+            .map_err(|error| error.to_string())?;
+        self.save_layout();
+        Ok(panel)
+    }
+
+    /// Close a session pane through the canonical Dock operation. Busy-session
+    /// confirmation is owned by the app layer and must happen before this call.
+    pub fn close_session_pane(&mut self, panel: &PanelId) -> Result<(), String> {
+        let observed = self.dock.snapshot();
+        let descriptor = observed
+            .document
+            .descriptor(panel)
+            .ok_or_else(|| "Session pane is not registered".to_owned())?;
+        if descriptor.role != "hermes_session_tile" {
+            return Err("Refusing to close a non-session pane as a session tile".into());
+        }
+        if observed.document.closed_panels.contains(panel) {
+            return Ok(());
+        }
+        self.dock
+            .transact(
+                observed.revision,
+                CommandId::from(format!(
+                    "close-session-pane-{}-{}",
+                    observed.revision, panel.0
+                )),
+                [Operation::ClosePanel {
+                    panel: panel.clone(),
+                }],
+            )
+            .map_err(|error| error.to_string())?;
+        self.save_layout();
+        Ok(())
+    }
+
+    pub fn session_pane_ids(&self) -> Vec<PanelId> {
+        self.dock
+            .snapshot()
+            .document
+            .panels
+            .iter()
+            .filter(|descriptor| descriptor.role == "hermes_session_tile")
+            .map(|descriptor| descriptor.id.clone())
+            .collect()
+    }
+
     pub fn profile_ids(&self) -> Vec<&'static str> {
         match self.preferences.mode {
             InterfaceMode::Advanced => vec!["default", "basic", "focus", "terminal-deck", "quad"],
@@ -228,8 +365,27 @@ fn apply_profile_to_service(
     preferences: &UiPreferences,
     reveals: &BTreeMap<String, bool>,
 ) -> Result<(), String> {
+    apply_profile_to_service_with_reopen(dock, profile, preferences, reveals, &BTreeSet::new())
+}
+
+fn apply_profile_to_service_with_reopen(
+    dock: &mut DockingService,
+    profile: &WorkspaceProfile,
+    preferences: &UiPreferences,
+    reveals: &BTreeMap<String, bool>,
+    force_open: &BTreeSet<PanelId>,
+) -> Result<(), String> {
+    let observed = dock.snapshot();
     let mut assignments = BTreeMap::new();
-    for panel in [SESSIONS, WORKSPACE, REVIEW, FILES, TERMINAL] {
+    let mut workspace_panels = vec![PanelId::from(WORKSPACE)];
+    workspace_panels.extend(observed.document.panels.iter().filter_map(|descriptor| {
+        (descriptor.role == "hermes_session_tile"
+            && (!observed.document.closed_panels.contains(&descriptor.id)
+                || force_open.contains(&descriptor.id)))
+        .then(|| descriptor.id.clone())
+    }));
+    assignments.insert(WORKSPACE.to_owned(), workspace_panels);
+    for panel in [SESSIONS, REVIEW, FILES, TERMINAL] {
         let open = matches!(panel, SESSIONS | WORKSPACE)
             || reveals
                 .get(panel)
@@ -250,12 +406,100 @@ fn apply_profile_to_service(
         );
     }
 
-    let observed = dock.snapshot();
     let application = apply_workspace_profile(&observed.document, profile, &assignments)
         .map_err(|error| error.to_string())?;
     dock.apply_layout(observed.revision, &application.document)
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn validate_session_pane_identity(
+    profile: Option<&str>,
+    stored_session_id: &str,
+    title: &str,
+) -> Result<(), String> {
+    if stored_session_id.is_empty()
+        || stored_session_id.len() > 512
+        || stored_session_id.chars().any(char::is_control)
+    {
+        return Err("Stored session ID is invalid".into());
+    }
+    if profile.is_some_and(|value| {
+        value.is_empty() || value.len() > 128 || value.chars().any(char::is_control)
+    }) {
+        return Err("Session profile is invalid".into());
+    }
+    if title.len() > 512 || title.chars().any(char::is_control) {
+        return Err("Session title is invalid".into());
+    }
+    Ok(())
+}
+
+fn bounded_session_title(title: &str) -> String {
+    let title: String = title.chars().take(72).collect();
+    if title.trim().is_empty() {
+        "Session".into()
+    } else {
+        title
+    }
+}
+
+fn session_pane_id(profile: Option<&str>, stored_session_id: &str) -> PanelId {
+    // Fixed FNV-1a over explicit separators provides a stable, bounded panel ID.
+    // Full identities remain in descriptor metadata and are checked on lookup.
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in profile
+        .unwrap_or_default()
+        .bytes()
+        .chain([0])
+        .chain(stored_session_id.bytes())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    PanelId::from(format!("session-tile:{hash:016x}"))
+}
+
+fn find_panel_node(root: Option<&Node>, panel_id: &str) -> Option<NodeId> {
+    let node = root?;
+    match &node.kind {
+        NodeKind::Panel { panel } if panel.0 == panel_id => Some(node.id.clone()),
+        NodeKind::Tabs { items, .. }
+        | NodeKind::DocumentWell { groups: items, .. }
+        | NodeKind::Split {
+            children: items, ..
+        }
+        | NodeKind::Extension {
+            children: items, ..
+        } => items
+            .iter()
+            .find_map(|child| find_panel_node(Some(child), panel_id)),
+        NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => None,
+    }
+}
+
+fn find_tab_for_panel(root: Option<&Node>, panel: &PanelId) -> Option<(NodeId, usize)> {
+    fn walk(node: &Node, panel: &PanelId) -> Option<(NodeId, usize)> {
+        match &node.kind {
+            NodeKind::Tabs { items, .. } => {
+                if let Some(index) = items.iter().position(
+                    |child| matches!(&child.kind, NodeKind::Panel { panel: id } if id == panel),
+                ) {
+                    return Some((node.id.clone(), index));
+                }
+                items.iter().find_map(|child| walk(child, panel))
+            }
+            NodeKind::DocumentWell { groups, .. }
+            | NodeKind::Split {
+                children: groups, ..
+            }
+            | NodeKind::Extension {
+                children: groups, ..
+            } => groups.iter().find_map(|child| walk(child, panel)),
+            NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => None,
+        }
+    }
+    root.and_then(|root| walk(root, panel))
 }
 
 fn source_profiles() -> Vec<WorkspaceProfile> {
@@ -621,6 +865,121 @@ fn write_preferences_atomic(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_panes_are_profile_scoped_and_survive_profile_close_reopen_and_restore() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-session-pane-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let work = workspace
+            .open_session_pane(Some("work"), "duplicate-id", "Work transcript")
+            .unwrap();
+        let personal = workspace
+            .open_session_pane(Some("personal"), "duplicate-id", "Personal transcript")
+            .unwrap();
+        assert_ne!(work, personal);
+        assert_eq!(workspace.session_pane_ids().len(), 2);
+
+        let document = workspace.dock.snapshot().document;
+        for (panel, profile_id) in [(&work, "work"), (&personal, "personal")] {
+            let descriptor = document.descriptor(panel).unwrap();
+            assert_eq!(descriptor.role, "hermes_session_tile");
+            assert_eq!(descriptor.metadata["hermes.session.id"], "duplicate-id");
+            assert_eq!(descriptor.metadata["hermes.session.profile"], profile_id);
+            assert!(find_tab_for_panel(document.root.as_deref(), panel).is_some());
+        }
+
+        workspace.set_profile("focus").unwrap();
+        let document = workspace.dock.snapshot().document;
+        assert!(find_tab_for_panel(document.root.as_deref(), &work).is_some());
+        assert!(find_tab_for_panel(document.root.as_deref(), &personal).is_some());
+
+        workspace.close_session_pane(&work).unwrap();
+        assert!(
+            workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&work)
+        );
+        let reopened = workspace
+            .open_session_pane(Some("work"), "duplicate-id", "Work transcript")
+            .unwrap();
+        assert_eq!(reopened, work);
+        let document = workspace.dock.snapshot().document;
+        assert!(!document.closed_panels.contains(&work));
+        assert!(find_tab_for_panel(document.root.as_deref(), &work).is_some());
+
+        workspace
+            .open_session_pane(Some("work"), "duplicate-id", "Updated title")
+            .unwrap();
+        let snapshot = workspace.dock.snapshot();
+        let (tabs, selected_index) =
+            find_tab_for_panel(snapshot.document.root.as_deref(), &work).unwrap();
+        let active_index = find_active_tab_index(snapshot.document.root.as_deref(), &tabs).unwrap();
+        assert_eq!(active_index, selected_index);
+        workspace.save_layout();
+        assert!(workspace.persistence_error.is_none());
+        drop(workspace);
+
+        let restored = Workspace::load_from(directory.clone()).unwrap();
+        let document = restored.dock.snapshot().document;
+        assert_eq!(restored.session_pane_ids().len(), 2);
+        assert!(find_tab_for_panel(document.root.as_deref(), &work).is_some());
+        assert!(find_tab_for_panel(document.root.as_deref(), &personal).is_some());
+        drop(restored);
+        assert!(directory.starts_with(std::env::temp_dir()));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    fn find_active_tab_index(root: Option<&Node>, tabs: &NodeId) -> Option<usize> {
+        fn walk(node: &Node, tabs: &NodeId) -> Option<usize> {
+            if &node.id == tabs {
+                if let NodeKind::Tabs { active_index, .. } = &node.kind {
+                    return Some(*active_index);
+                }
+                return None;
+            }
+            match &node.kind {
+                NodeKind::Tabs { items, .. }
+                | NodeKind::DocumentWell { groups: items, .. }
+                | NodeKind::Split {
+                    children: items, ..
+                }
+                | NodeKind::Extension {
+                    children: items, ..
+                } => items.iter().find_map(|child| walk(child, tabs)),
+                NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => None,
+            }
+        }
+        root.and_then(|root| walk(root, tabs))
+    }
+
+    #[test]
+    fn session_pane_identity_validation_is_bounded_and_rejects_controls() {
+        assert!(validate_session_pane_identity(None, "", "Session").is_err());
+        assert!(validate_session_pane_identity(None, "bad\nid", "Session").is_err());
+        assert!(validate_session_pane_identity(Some(""), "session", "Session").is_err());
+        assert!(validate_session_pane_identity(Some("work"), "session", "bad\ntitle").is_err());
+        assert!(validate_session_pane_identity(None, &"s".repeat(513), "Session").is_err());
+        assert_eq!(
+            session_pane_id(Some("work"), "same"),
+            session_pane_id(Some("work"), "same")
+        );
+        assert_ne!(
+            session_pane_id(Some("work"), "same"),
+            session_pane_id(Some("personal"), "same")
+        );
+        assert_eq!(bounded_session_title("\n"), "Session");
+        assert_eq!(bounded_session_title(&"x".repeat(100)).chars().count(), 72);
+    }
 
     #[test]
     fn every_source_profile_projects_with_all_panels_open() {

@@ -647,3 +647,15 @@
 - **performance:** No runtime change or benchmark.
 - **risks:** Dynamic pane support and background session event isolation touch shared workspace and gateway state; implement in dependency order with multi-profile tests before exposing capability.
 - **follow_up:** Begin with canonical dynamic-pane identity/transaction support, then independent session view models before adding lifecycle controls.
+### Revision 46 — canonical dynamic session-pane foundation
+
+- **id:** HUR-001-058
+- **timestamp:** 2026-11-15T05:21:18Z
+- **what:** Added profile-scoped stable dynamic session-pane descriptors and revision-bound DoofusDock add, select, close, profile-preservation, and reopen behavior.
+- **why:** Build session tiles in the canonical Dock layout before exposing them in the UI, avoiding a second tab/layout store.
+- **components:** apps/hermes-native/src/layout.rs; DoofusDock LayoutDocument transactions; layout/profile persistence; architecture plan and parity backlog.
+- **type:** layout foundation.
+- **validation:** `cargo fmt --all -- --check`; `cargo check -p hermes-native --all-targets --features agent-automation`; `cargo test -p hermes-native --all-targets --features agent-automation` passed (65 library + 5 automation tests). New fixtures cover duplicate IDs across profiles, invalid/bounded identities, canonical tab selection, profile changes, close/reopen and persisted restore.
+- **performance:** No benchmark; session pane IDs are fixed 16-digit FNV-1a hashes with full identity checked in metadata.
+- **risks:** No UI controls or independent session content is wired; layout descriptors can persist after close because the pinned Dock API has no descriptor-removal operation.
+- **follow_up:** Add independent per-pane chat view models and gateway event routing before exposing session panes to users.

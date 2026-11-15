@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 45 (published canonical workspace to the user-provided repository).
+- **Working revision:** 46 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -247,10 +247,15 @@ Source inspection confirmed that the pinned Desktop does not implement session t
 
 Implementation sequence (ordered):
 
-1. Extend the canonical `LayoutDocument`/panel registry and `DockingService` transaction path to support dynamic, stable session-pane IDs without a parallel app-owned layout tree. Add pane metadata for stored session ID, profile, title, runtime session and close state. Ensure workspace serialization/reload and existing fixed pane profiles remain valid.
+1. [x] Extend the canonical `LayoutDocument`/panel registry and `DockingService` transaction path to support dynamic, stable, profile-scoped session-pane IDs without a parallel app-owned layout tree. Persist validated stored-session/profile metadata, add/front/close panes through revision-bound Dock operations, and preserve pane state through profile changes and layout restore. Runtime linkage, title synchronization and UI exposure remain open.
 2. Make each dynamic pane own a session view model (draft, transcript window/cursor, runtime identity, pending/uncertain send, approval/clarify state and scroll position). Route gateway events and action receipts by `(profile, stored_session_id, runtime_session_id)` even when the pane is hidden. Re-selecting a pane must restore its visible state without duplicate `session.resume` or prompt submission.
 3. Implement open existing session (front an already-open pane), new unlisted draft creation, per-window single-flight creation, default-owner untouched-draft reuse, Bot Mode exact-owner scope and first-message listing. Keep failures attached to the originating pane.
 4. Implement active pane selection/reorder and close semantics through DoofusDock's canonical tab/docking transactions. Include busy/awaiting-input close confirmation, workspace promotion/reset behavior, close-other/right/all commands, keyboard shortcuts, focus precedence, accessibility names, narrow overflow, and no-window-close guarantees.
 5. Add shared semantic UI/agent actions and stable locators for open/select/reorder/close. Add deterministic fixtures for multiple simultaneous sessions, cross-profile duplicate stored IDs, background streaming and stale receipts, draft reuse, close/promotion and failure recovery. Capture a 1440px source-paired screenshot only after source and target have matched session fixtures.
 
 Acceptance: layout revision and persisted pane order/active selection change only through canonical Dock transactions; session ownership and messages never bleed across tabs/profiles; source close/open rules match the pinned implementation; all tab actions work through both UI and semantic agent control; paired source/target functional receipts and Windows screenshots are reviewable. Do not replace this architecture with a separate session-tab vector or count the current single-item strip as parity.
+### Revision 46 — canonical dynamic session-pane foundation
+
+Added profile-scoped stable session-pane identities as DoofusDock `PanelDescriptor`s, including validated session/profile metadata and bounded titles. Opening a pane uses revision-bound `Operation::AddPanel` targeting the canonical workspace node; fronting and closing use `SelectTab` and `ClosePanel`. Profile application preserves open session panes in the workspace tab group and leaves explicitly closed panes closed; reopening uses the current profile's canonical profile transaction. Tests cover duplicate stored IDs across profiles, bounded/control-character validation, identity metadata, profile changes, close/reopen, active tab selection, and persisted layout restoration.
+
+This is the layout foundation only. No UI action creates these panes yet, the renderer does not show a session chat inside each pane, busy-close confirmation is not wired, and per-pane transcript/draft/runtime event ownership is still open. This slice is not user-visible session-tab parity.
