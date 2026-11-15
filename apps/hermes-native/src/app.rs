@@ -691,6 +691,78 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_files_preview_fixture_for_automation(
+        &mut self,
+        root: &std::path::Path,
+    ) -> Result<(), String> {
+        std::fs::create_dir_all(root.join("src"))
+            .map_err(|error| format!("create fixture project: {error}"))?;
+        std::fs::write(
+            root.join("README.md"),
+            "# Files preview fixture\n\nThis is a distinct, isolated Files and preview screen.\n",
+        )
+        .map_err(|error| format!("write fixture README: {error}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"hermes-preview-fixture\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|error| format!("write fixture manifest: {error}"))?;
+        std::fs::write(
+            root.join("src/main.rs"),
+            "fn main() {\n    println!(\"Hello from the preview fixture\");\n}\n",
+        )
+        .map_err(|error| format!("write fixture source: {error}"))?;
+
+        let session_id = "files-preview-fixture";
+        let profile = "fixture-profile";
+        let cwd = root.to_string_lossy().into_owned();
+        self.route = AppRoute::Session(session_id.into());
+        self.active_session_profile = Some(profile.into());
+        self.active_runtime_session_id = Some("runtime-files-preview-fixture".into());
+        self.sessions.push(SessionSummary {
+            cwd: Some(cwd),
+            id: session_id.into(),
+            profile: Some(profile.into()),
+            title: "Files preview fixture".into(),
+            preview: "Inspect a project tree and transient file preview.".into(),
+            message_count: 2,
+            source: "fixture".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        });
+        self.transcript = vec![
+            json!({"role":"user","content":"Show the project files."}),
+            json!({"role":"assistant","content":"The README is open in a transient preview pane."}),
+        ];
+        self.workspace
+            .preferences
+            .pane_open
+            .insert(FILES.into(), true);
+        self.workspace.apply_active_profile()?;
+        self.files.set_root(Some(root.to_path_buf()));
+
+        let preview_path = root.join("README.md");
+        self.workspace.open_file_preview(&preview_path)?;
+        self.file_previews.request(&preview_path);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut tree_ready = false;
+        let mut preview_ready = false;
+        while std::time::Instant::now() < deadline {
+            tree_ready |= self.files.poll();
+            preview_ready |= self.file_previews.poll();
+            if tree_ready && preview_ready {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        self.status = "Files preview fixture · isolated local files · gateway disabled".into();
+        Ok(())
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_recent_session_switcher_fixture_for_automation(&mut self) {
         self.active_session_profile = Some("fixture-profile".into());
         self.route = AppRoute::Session("switcher-session-b".into());

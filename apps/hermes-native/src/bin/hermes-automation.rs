@@ -91,6 +91,7 @@ fn run() -> Result<(), String> {
     let mut plugin_auto_update_fixture = false;
     let mut plugin_update_all_report_fixture = false;
     let mut connectors_fixture = false;
+    let mut files_preview_fixture = false;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
@@ -119,6 +120,7 @@ fn run() -> Result<(), String> {
             "--plugin-auto-update-fixture" => plugin_auto_update_fixture = true,
             "--plugin-update-all-report-fixture" => plugin_update_all_report_fixture = true,
             "--connectors-fixture" => connectors_fixture = true,
+            "--files-preview-fixture" => files_preview_fixture = true,
             "--click" => actions.push(Action::Click(take(&args, &mut index, "--click")?)),
             "--type" => {
                 let label = take(&args, &mut index, "--type")?;
@@ -147,6 +149,7 @@ fn run() -> Result<(), String> {
         plugin_auto_update_fixture,
         plugin_update_all_report_fixture,
         connectors_fixture,
+        files_preview_fixture,
     ]
     .into_iter()
     .filter(|enabled| *enabled)
@@ -192,6 +195,10 @@ fn run() -> Result<(), String> {
             .load_plugin_update_all_report_fixture_for_automation();
     } else if connectors_fixture {
         app.borrow_mut().load_connectors_fixture_for_automation();
+    } else if files_preview_fixture {
+        app.borrow_mut().load_files_preview_fixture_for_automation(
+            &profile_path.join("files-preview-project"),
+        )?;
     }
     let app_for_frame = app.clone();
     let mut builder = Harness::builder().with_size(Vec2::new(width, height));
@@ -271,7 +278,7 @@ fn describe_node(node: egui_kittest::Node<'_>) -> Value {
 
 fn print_help() {
     println!("Hermes Native background UI agent runner
-Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
+Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --files-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
 Accessible actions use egui's AccessKit UI tree and normal widget input handling.");
 }

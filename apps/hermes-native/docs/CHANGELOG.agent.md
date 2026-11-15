@@ -1177,3 +1177,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Not applicable.
   **risks:** Publication does not establish source-paired visual parity or complete Files behavior.
   **follow_up:** Continue from the fixed source pin; navigate to target states before capturing screenshots.
+
+- **id:** HUR-001-088
+  **timestamp:** 2026-11-15T13:48:48Z
+  **what:** Added a navigated Files-preview headless fixture so agent captures can show an actual non-default route.
+  **why:** Repeated screenshots happened because every one-shot run starts a new app at New session; the capture runner needs an explicit state fixture for pane-level review.
+  **components:** src/app.rs, src/bin/hermes-automation.rs, README, docs/AGENT_AUTOMATION.md, docs/ARCHITECTURE.md, docs/BACKLOG.md, docs/PLAN.md.
+  **type:** feature
+  **validation:** CLI inspection found fixture session, Files rows, preview content/title and close control; 1440x900 screenshot visually shows the separate preview and Files pane. The screen is native-target-only evidence.
+  **performance:** Fixture waits at most two seconds for its asynchronous worker reads; no benchmark performed.
+  **risks:** Screenshot does not prove Hermes source parity or Windows native-host behavior.
+  **follow_up:** Use explicit navigation/fixtures for every pane capture and compare against the same pinned Hermes scenario before accepting a matrix row.
+
+- **id:** HUR-001-089
+  **timestamp:** 2026-11-15T13:48:48Z
+  **what:** Validated the navigated Files-preview fixture and feature-enabled build.
+  **why:** Verify the new screenshot path and preserve full agent automation coverage.
+  **components:** src/app.rs, src/bin/hermes-automation.rs, docs/EXECUTION_LOGS.md.
+  **type:** validation
+  **validation:** cargo fmt --all -- --check, cargo test -p hermes-native --all-targets --features agent-automation (128 library + 11 protocol), cargo check -p hermes-native --all-targets --features agent-automation and git diff --check passed.
+  **performance:** No benchmark performed.
+  **risks:** Automated target fixture is not source-paired visual acceptance.
+  **follow_up:** Continue source-based parity implementation and record distinct scenario receipts.

@@ -39,6 +39,12 @@ Run a headless agent navigation and screenshot capture without opening a window:
 cargo run --features agent-automation --bin hermes-automation -- --inspect --click Files --screenshot artifacts\agent-ui\files-panel.png
 ```
 
+To capture the separate Files tree and a live text preview pane, start from the isolated named fixture instead of the default New session route:
+
+```powershell
+cargo run --features agent-automation --bin hermes-automation -- --files-preview-fixture --inspect --screenshot artifacts\agent-ui\files-preview.png
+```
+
 Start a persistent agent-controlled child process using inherited stdin/stdout:
 
 ```powershell
