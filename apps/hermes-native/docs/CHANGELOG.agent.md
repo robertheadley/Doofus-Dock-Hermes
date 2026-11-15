@@ -1053,3 +1053,5 @@ HUI-048/HUI-049 publication: implementation commit `4d247d7ccbee6f31604923e52fc3
 - **performance:** No runtime behavior changed.
 - **risks:** PyYAML is unavailable; optional YAML parse skipped. PAR-0065 remains pending.
 - **follow_up:** Finish timestamp format/tool-run parity and matched Windows evidence.
+
+HUI-050/HUI-051 publication: `cdeffe3b2e2dac737b8c463aea01d19bd73a866c` (implementation) and `86eacb86ccd159c55221ae4667586504c2b38d64` (evidence) are published on `origin/main`. PAR-0065 remains pending.
