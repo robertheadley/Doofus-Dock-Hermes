@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 50 (published canonical workspace to the user-provided repository).
+- **Working revision:** 51 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -249,7 +249,7 @@ Implementation sequence (ordered):
 
 1. [x] Extend the canonical `LayoutDocument`/panel registry and `DockingService` transaction path to support dynamic, stable, profile-scoped session-pane IDs without a parallel app-owned layout tree. Persist validated stored-session/profile metadata, add/front/close panes through revision-bound Dock operations, and preserve pane state through profile changes and layout restore. Runtime linkage, title synchronization and UI exposure remain open.
 2. Make each dynamic pane own a session view model (draft, transcript window/cursor, runtime identity, pending/uncertain send, approval/clarify state and scroll position). Route gateway events and action receipts by `(profile, stored_session_id, runtime_session_id)` even when the pane is hidden. Re-selecting a pane must restore its visible state without duplicate `session.resume` or prompt submission.
-3. Implement source-faithful open-existing behavior, unlisted draft creation, per-window single-flight creation, Bot Mode exact-owner scope and first-message listing. The native currently reuses a same-profile untouched blank tile; other default-owner reuse cases remain open. Keep failures attached to the originating pane.
+3. Implement source-faithful open-existing behavior, unlisted draft creation, per-window single-flight creation, Bot Mode exact-owner scope and first-message listing. The native now reuses a clean primary draft or known idle empty unlisted same-profile tile; Bot Mode owner routes, attachment-aware emptiness and live draft debounce flushing remain open. Keep failures attached to the originating pane.
 4. [in progress] Implement active pane selection/reorder and close semantics through DoofusDock's canonical tab/docking transactions. `Ctrl+W`/agent `close_active_tab`, busy tile confirmation, workspace promotion and reset are implemented. Include remaining close-other/right/all commands, focus precedence, accessibility names, narrow overflow and no-window-close guarantees.
 5. Add shared semantic UI/agent actions and stable locators for open/select/reorder/close. Add deterministic fixtures for multiple simultaneous sessions, cross-profile duplicate stored IDs, background streaming and stale receipts, draft reuse, close/promotion and failure recovery. Capture a 1440px source-paired screenshot only after source and target have matched session fixtures.
 
@@ -285,3 +285,10 @@ The hidden-pane fixture now verifies both accessible prompt controls and that se
 The native close-tab command now follows the pinned Desktop's primary workspace behavior. `Ctrl+W` (Command+W on macOS) and the registered `close_active_tab` agent action share one handler. When a session tile is selected, the handler uses the existing busy-close confirmation. When the primary workspace is selected, it promotes the nearest live session tile from the workspace tab group (following the workspace tab, then wrapping outward); if no tile is stacked there, it promotes an open session tile from another Dock zone. Promotion closes only the tile through a canonical DoofusDock transaction and loads its profile-scoped cached view into the primary chat. With no open tile, an occupied primary chat becomes a clean New session draft; a blank draft or full-page route is unchanged.
 
 Local tests cover profile-preserving promotion, primary reset, selected busy-tab confirmation and agent action registration. The suite validates app behavior and shortcut matching is wired in `draw`; physical Windows keyboard/focus acceptance is still open. This does not complete close-target precedence, terminal/tool-tab closing, secondary chat groups or narrow tab overflow.
+
+
+### Revision 51 — exact untouched New session reuse
+
+The New session action now follows the pinned `frontUntouchedDraftTab` rules for the surfaces supported by this native workspace. It first fronts the primary New session draft only when that route has no active session, no pending creation, no typed draft, and its selected profile matches the gateway's current default owner. Otherwise it can front the tracked blank session tile only when its Dock pane is still open, the runtime view is known and idle, transcript/message count and composer are empty, the session is unlisted, and the pane owner matches the current profile. If no candidate qualifies, it starts one new blank session creation; repeated clicks during `session.create` stay single-flight. A typed main draft and an edited tile remain intact.
+
+Local tests cover clean-main reuse, typed-main preservation, exact-profile tile reuse and edited-tile non-reuse. Hermes Bot Mode's exact owner-route ladder, attachment-aware drafts and composer debounce flushing do not exist in this native surface and remain outside this slice.

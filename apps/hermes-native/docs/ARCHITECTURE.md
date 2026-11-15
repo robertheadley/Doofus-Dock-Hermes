@@ -65,3 +65,8 @@ Approval and batch clarification requests are assigned by runtime session ID plu
 ### Primary tab close behavior
 
 `Ctrl+W` (Command+W on macOS) and agent action `close_active_tab` share one app handler. Closing the selected session tile uses its existing busy confirmation. Closing an occupied primary workspace promotes the nearest valid profile-scoped session tile from the workspace group, or from another Dock zone when the group has none, using canonical DoofusDock close/selection transactions before loading that cached view into primary. If there is no tile, primary returns to a clean New session draft. Blank drafts and full-page routes are no-ops. Other source close precedence, including focused terminal and tool tabs, remains incomplete.
+
+
+### New session draft reuse
+
+The Sessions-pane New session action fronts the primary New session only when it is empty and matches the attached profile. It can also front a tracked tile only when its pane is open, runtime view is known and idle, message/transcript/composer state is empty, session is unlisted and profile matches. Edited drafts are preserved; creation requests remain single-flight. The native surface does not yet implement Bot Mode owner routes, attachments or debounce-flush synchronization.

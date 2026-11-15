@@ -47,6 +47,8 @@ The headless semantic runner has completed Files-panel reveal and Capabilities-r
 
 Latest evidence: the 1440×900 headless screenshot `artifacts/agent-ui/capabilities-toolsets-v23.png` was captured after semantic navigation to Toolsets, with source/build/route/profile metadata in the adjacent JSON. The expected offline message is shown because the isolated run disables the gateway. This validates route rendering and agent navigation only, not live inventory rendering or source/Windows visual parity.
 
+The latest 1440×900 session-pane render is `artifacts/agent-ui/session-pane-draft-reuse-20261115.png`; its sidecar records the fixed Hermes/DoofusDock SHAs, current source diff, executable and screenshot hashes, and isolated fixture limits. It is a headless capture with no gateway request.
+
 The latest 1440×900 session-pane render is `artifacts/agent-ui/session-pane-primary-close-20261115.png`; its sidecar records the fixed Hermes/DoofusDock SHAs, source diff, executable and image hashes, plus fixture limits. It is a deterministic headless screenshot; no gateway request was sent.
 
 The latest 1440×900 session-pane render is `artifacts/agent-ui/session-pane-background-routing-20261115.png`; its sidecar records the fixed Hermes/DoofusDock SHAs, source diff, executable hash and fixture limits. It is a deterministic headless screenshot; no gateway request was sent. The fixture was recaptured after hidden approval/clarify action routing so the binary and source-diff metadata match.

@@ -2202,17 +2202,61 @@ fn render_message() -> &'static str {
 
     fn create_blank_session_tab(&mut self) {
         self.save_active_chat_view();
+        if self.pending_create.is_some() {
+            self.status = "A New session tab is already being created".into();
+            return;
+        }
+        let owner_profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+            .or_else(|| self.active_session_profile.clone());
+        if self.route == AppRoute::NewChat
+            && self.active_runtime_session_id.is_none()
+            && self.active_session_profile == owner_profile
+            && self.draft.trim().is_empty()
+            && self.new_chat_draft.trim().is_empty()
+            && self.pending_create.is_none()
+        {
+            if let Err(error) = self.workspace.select_panel(&PanelId::from(WORKSPACE)) {
+                self.status = error;
+            } else {
+                self.status = "Reused the untouched primary New session draft".into();
+            }
+            return;
+        }
         if let Some((session_id, profile)) = self.untouched_blank_session.clone() {
             let key = session_identity_key(&session_id, profile.as_deref());
-            let still_untouched = self
-                .session_chat_views
-                .get(&key)
-                .is_none_or(|view| view.transcript.is_empty() && view.draft.trim().is_empty());
-            let owner_profile = self
-                .gateway_endpoint
-                .as_ref()
-                .map(|endpoint| endpoint.profile_id.clone())
-                .or_else(|| self.active_session_profile.clone());
+            let panel = self.workspace.session_pane_ids().into_iter().find(|panel| {
+                self.workspace
+                    .dock
+                    .snapshot()
+                    .document
+                    .descriptor(panel)
+                    .is_some_and(|descriptor| {
+                        descriptor.metadata.get("hermes.session.id") == Some(&session_id)
+                            && descriptor.metadata.get("hermes.session.profile")
+                                == Some(&profile.clone().unwrap_or_default())
+                    })
+            });
+            let document = self.workspace.dock.snapshot().document;
+            let tile_is_open = panel.as_ref().is_some_and(|panel| {
+                !document.closed_panels.contains(panel)
+                    && find_panel_node(document.root.as_deref(), &panel.0).is_some()
+            });
+            let still_untouched = tile_is_open
+                && self.session_chat_views.get(&key).is_some_and(|view| {
+                    view.runtime_session_id.is_some()
+                        && view.transcript.is_empty()
+                        && view.transcript_message_count == 0
+                        && view.older_transcript_request.is_none()
+                        && view.draft.trim().is_empty()
+                })
+                && !self
+                    .sessions
+                    .iter()
+                    .any(|session| session.id == session_id && session.profile == profile)
+                && !self.session_pane_is_busy(panel.as_ref().expect("open tile has a panel"));
             if owner_profile == profile && still_untouched {
                 match self.workspace.open_session_pane(
                     profile.as_deref(),
@@ -6168,8 +6212,21 @@ mod tests {
     #[test]
     fn new_session_reuses_the_untouched_blank_tile_for_the_same_profile() {
         let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("current-session".into());
         app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("current-runtime".into());
+        app.workspace
+            .open_session_pane(Some("work"), "blank-session", "New session")
+            .expect("open untouched blank tile");
         app.untouched_blank_session = Some(("blank-session".into(), Some("work".into())));
+        app.session_chat_views.insert(
+            session_identity_key("blank-session", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-blank".into()),
+                ..SessionChatViewState::default()
+            },
+        );
 
         app.create_blank_session_tab();
 
@@ -6188,7 +6245,12 @@ mod tests {
     #[test]
     fn new_session_does_not_reuse_a_blank_tile_after_its_draft_is_edited() {
         let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("current-session".into());
         app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("current-runtime".into());
+        app.workspace
+            .open_session_pane(Some("work"), "blank-session", "New session")
+            .expect("open edited draft tile");
         app.untouched_blank_session = Some(("blank-session".into(), Some("work".into())));
         app.session_chat_views.insert(
             session_identity_key("blank-session", Some("work")),
@@ -6204,8 +6266,45 @@ mod tests {
 
         assert!(app.untouched_blank_session.is_none());
         assert!(app.pending_create.is_none());
-        assert!(app.workspace.session_pane_ids().is_empty());
+        assert_eq!(app.workspace.session_pane_ids().len(), 1);
+        assert_eq!(
+            app.session_chat_views[&session_identity_key("blank-session", Some("work"))].draft,
+            "keep this draft in its own tab"
+        );
         assert_eq!(app.status, "Hermes gateway is unavailable");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn new_session_reuses_an_untouched_primary_draft_without_creating_a_session() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_session_profile = Some("work".into());
+
+        app.create_blank_session_tab();
+
+        assert_eq!(app.route, AppRoute::NewChat);
+        assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+        assert!(app.pending_create.is_none());
+        assert!(app.workspace.session_pane_ids().is_empty());
+        assert_eq!(app.status, "Reused the untouched primary New session draft");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn new_session_does_not_reuse_a_typed_primary_draft() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_session_profile = Some("work".into());
+        app.draft = "preserve this unsaved draft".into();
+        app.new_chat_draft = app.draft.clone();
+
+        app.create_blank_session_tab();
+
+        assert_eq!(app.route, AppRoute::NewChat);
+        assert_eq!(app.draft, "preserve this unsaved draft");
+        assert_eq!(app.status, "Hermes gateway is unavailable");
+        assert!(app.workspace.session_pane_ids().is_empty());
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
