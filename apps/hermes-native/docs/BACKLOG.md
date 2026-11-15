@@ -2,6 +2,8 @@
 
 The fixed parity target is downloaded Hermes snapshot 8783054ef6cbafd86f10892241436862c1171a66. The preserved 565-row research package contains 499 in-scope stock Desktop requirements and 66 excluded Hermes-Doofus rows. The separate 491-item/108-deferred package remains historical supplemental material. Later upstream changes do not expand scope. The 499 in-scope requirements remain pending until source-paired evidence is accepted.
 
+- [ ] Complete first-run bootstrap parity: source-style setup choice is now rendered after failed initial gateway discovery, but remote URL probe/auth/config persistence and the local Hermes installer/startup/cancel/recovery state machine are still unimplemented. Target-only evidence is in `artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png`; PAR-0001 remains pending.
+
 ## Stage 1 — exact native shell
 
 - [x] Implement source Advanced Default geometry, Basic, Focus, Terminal Deck, Quad and Sidebar left/right trees through `WorkspaceProfile`.

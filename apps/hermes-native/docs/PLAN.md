@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 99 (implementation in progress).
+- **Working revision:** 102 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -514,3 +514,19 @@ The session-pane archived-view capture at `artifacts/agent-ui/session-pane-archi
 ### Revision 100 — pinned-source first-run evidence
 
 Build and run the onboarding E2E from the exact archived Hermes commit `8783054ef6cbafd86f10892241436862c1171a66`, with a temporary no-provider profile and Electron on an isolated Windows desktop. Capture the source UI at 1220×800 CSS pixels and capture the native default launch at the same logical size. Source asserts `Set up Hermes Desktop`, `Connect to existing Hermes`, and `Install Hermes locally`; native currently presents a `Welcome to Hermes` empty-session state with connect/install buttons in a different layout. Preserve both captures as gap evidence only; do not accept any parity row until the same state transition and rendered outcome are paired.
+
+### Revision 101 — native first-run setup surface
+
+Add the pinned-source setup title, description, side-by-side choice cards and remote URL form to the native shell. Show it after initial gateway discovery fails on the New session route. Make Install, Test and Apply expose clear incomplete-flow errors instead of fake successes; do not start installers or remote requests without the source-compatible adapters. An isolated egui_kittest fixture verifies both choice transitions and captures a distinct 1220×800 target PNG with SHA-bound metadata. The source card still uses real Electron remote configuration/authentication and a local bootstrap state machine, so neither flow is parity-complete. The install location is not guessed; PAR-0001 and the 499-row matrix remain pending.
+
+### Revision 102 — agent-addressable onboarding fixture
+
+Add `--first-run-setup-fixture` to the isolated one-shot agent runner so setup states are intentionally reachable without opening a window, starting Hermes, or borrowing the installed profile. Add role-qualified `--type-role` for ambiguous accessible names, and make text actions focus their actual input before sending text. Verify the Connect → Gateway URL → remote setup path and the explicit Test error using a synthetic URL with no network request. Add setup booleans to bounded diagnostics; do not expose entered URLs. Capture the first-run and remote setup states as separate target-only artifacts. This makes evidence repeatable but leaves remote and local setup behaviors incomplete.
+
+### Revision 103 — source-sized first-run layout captures
+
+Refine the native setup modal's outer geometry to the pinned source capture at 1220×800, then regenerate three semantic target captures: setup choices, remote URL form, and the explicit unsupported Test result. Keep the screenshots bound to the source snapshot, DoofusDock revision, current source hashes, and JSON sidecars. The choice cards still lack the source globe/monitor icons; the remote and local setup flows remain unimplemented; this visual refinement does not close any of the 499 acceptance rows.
+
+### Revision 104 — preserve both remote action controls
+
+Render the Test and Apply controls independently so clicking Apply does not short-circuit construction of the Test widget for that frame. Extend the isolated AccessKit onboarding test to require Test connection after the Apply action, then rerun the complete all-features test suite and recapture all three semantic states against the resulting source hashes. This covers widget presence only; it does not implement remote testing or application.

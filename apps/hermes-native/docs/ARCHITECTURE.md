@@ -68,6 +68,10 @@ The opt-in headless agent runner starts at New session for every invocation. Nam
 
 The Files panel displays the active project folder name and exposes its full root path on hover. A preview pane uses the file basename in Dock chrome rather than repeating a clipped absolute path in its body.
 
+### First-run setup surface
+
+`HermesNativeApp::update_gateway_discovery` marks the first-run setup surface available only after the initial gateway attach returns an error. `show_first_run_setup` renders the source-style blocking choice modal on New session. Connect opens an isolated gateway URL form; Apply/Test report that remote configuration is not implemented. Install reports that the local bootstrap pipeline is not implemented. Neither handler starts an unverified process or claims a successful connection. The source uses Electron-owned connection configuration/authentication and a bootstrap state machine; those ownership, secret-storage and lifecycle adapters are not yet implemented in Rust. The opt-in agent runner's `--first-run-setup-fixture` forces this state in a unique temporary offline profile, and `--type-role ROLE NAME TEXT` disambiguates controls that share an accessible name. Diagnostics expose only visibility, open and error booleans, not the entered URL.
+
 ## Typography
 
 JetBrains Mono is the primary application UI typeface; its Medium face is used for heading and button text styles. Fira Code is the egui monospace family and is explicitly used by the Hermes message composer. Both are bundled from official tagged releases with their OFL 1.1 license texts and archive hashes in `assets/fonts/README.md`. The original egui fonts remain fallbacks for uncovered glyphs.

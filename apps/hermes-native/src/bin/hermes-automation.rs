@@ -16,6 +16,7 @@ enum Action {
     Click(String),
     Scroll(String, bool),
     Type(String, String),
+    TypeByRole(String, String, String),
     Screenshot(PathBuf),
 }
 
@@ -81,6 +82,7 @@ fn run() -> Result<(), String> {
     let mut height = 900.0_f32;
     let mut actions = Vec::new();
     let mut markdown_fixture = false;
+    let mut first_run_setup_fixture = false;
     let mut long_session_fixture = false;
     let mut transcript_find_fixture = false;
     let mut transcript_timestamps_fixture = false;
@@ -115,6 +117,7 @@ fn run() -> Result<(), String> {
             }
             "--inspect" => actions.push(Action::Inspect),
             "--markdown-fixture" => markdown_fixture = true,
+            "--first-run-setup-fixture" => first_run_setup_fixture = true,
             "--long-session-fixture" => long_session_fixture = true,
             "--transcript-find-fixture" => transcript_find_fixture = true,
             "--transcript-timestamps-fixture" => transcript_timestamps_fixture = true,
@@ -146,6 +149,12 @@ fn run() -> Result<(), String> {
                 let text = take(&args, &mut index, "--type text")?;
                 actions.push(Action::Type(label, text));
             }
+            "--type-role" => {
+                let role = take(&args, &mut index, "--type-role")?;
+                let label = take(&args, &mut index, "--type-role accessible name")?;
+                let text = take(&args, &mut index, "--type-role text")?;
+                actions.push(Action::TypeByRole(role, label, text));
+            }
             "--screenshot" => actions.push(Action::Screenshot(PathBuf::from(take(
                 &args,
                 &mut index,
@@ -157,6 +166,7 @@ fn run() -> Result<(), String> {
     }
     if [
         markdown_fixture,
+        first_run_setup_fixture,
         long_session_fixture,
         transcript_find_fixture,
         transcript_timestamps_fixture,
@@ -189,6 +199,9 @@ fn run() -> Result<(), String> {
     ));
     if markdown_fixture {
         app.borrow_mut().load_markdown_fixture_for_automation();
+    } else if first_run_setup_fixture {
+        app.borrow_mut()
+            .load_first_run_setup_fixture_for_automation();
     } else if long_session_fixture {
         app.borrow_mut().load_long_session_fixture_for_automation();
     } else if transcript_find_fixture {
@@ -319,15 +332,61 @@ fn run() -> Result<(), String> {
                 );
             }
             Action::Type(label, text) => {
+                let role;
+                {
+                    let node = harness
+                        .query_by_label(&label)
+                        .ok_or_else(|| format!("no accessible control named {label:?}"))?;
+                    role = format!("{:?}", node.accesskit_node().role());
+                    node.click();
+                }
+                harness.run();
                 let node = harness
                     .query_by_label(&label)
-                    .ok_or_else(|| format!("no accessible control named {label:?}"))?;
-                let role = format!("{:?}", node.accesskit_node().role());
+                    .ok_or_else(|| format!("control {label:?} disappeared after focus"))?;
                 node.type_text(&text);
                 harness.run();
                 println!(
                     "{}",
                     json!({"ok":true,"action":"type","label":label,"role":role,"characters":text.chars().count()})
+                );
+            }
+            Action::TypeByRole(role, label, text) => {
+                {
+                    let mut matches = harness.query_all_by(|node| {
+                        format!("{:?}", node.role()) == role
+                            && node.label().as_deref() == Some(label.as_str())
+                    });
+                    let node = matches
+                        .next()
+                        .ok_or_else(|| format!("no accessible {role} control named {label:?}"))?;
+                    if matches.next().is_some() {
+                        return Err(format!(
+                            "multiple accessible {role} controls named {label:?}"
+                        ));
+                    }
+                    node.click();
+                }
+                harness.run();
+                {
+                    let mut matches = harness.query_all_by(|node| {
+                        format!("{:?}", node.role()) == role
+                            && node.label().as_deref() == Some(label.as_str())
+                    });
+                    let node = matches.next().ok_or_else(|| {
+                        format!("{role} control named {label:?} disappeared after focus")
+                    })?;
+                    if matches.next().is_some() {
+                        return Err(format!(
+                            "multiple accessible {role} controls named {label:?} after focus"
+                        ));
+                    }
+                    node.type_text(&text);
+                }
+                harness.run();
+                println!(
+                    "{}",
+                    json!({"ok":true,"action":"type","role":role,"label":label,"characters":text.chars().count()})
                 );
             }
             Action::Screenshot(path) => {
@@ -367,7 +426,7 @@ fn describe_node(node: egui_kittest::Node<'_>) -> Value {
 
 fn print_help() {
     println!("Hermes Native background UI agent runner
-Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
+Usage: hermes-automation [--viewport WIDTHxHEIGHT] [--markdown-fixture | --first-run-setup-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT | --type-role ROLE ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
 Accessible actions use egui's AccessKit UI tree and normal widget input handling.");
 }

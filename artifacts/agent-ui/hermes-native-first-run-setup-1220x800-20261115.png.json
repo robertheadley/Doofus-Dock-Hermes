@@ -1,0 +1,25 @@
+{
+  "captured_at": "2026-11-15T17:43:33Z",
+  "hermes_parity_source": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_source": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "hermes_source_baseline_screenshot": "hermes-upstream-first-run-878305-20261115.png",
+  "hermes_source_baseline_sha256": "2d73abe173980ea82e28ee1d521a4cb0d6b4d31375e1084fc804b9dd0aaf513f",
+  "target_base_commit": "93f44c893a97a88986b2c49b604381182f03af6c",
+  "target_app_rs_sha256": "a2cc0b9684e716e89d23a32ecd9b37a59366073b9804a778d8e2c2cd5b7f21e1",
+  "automation_runner_rs_sha256": "65bcab66593f644beeb42d2e32c706d7319e5342a18656fa92becd509ef397fa",
+  "fixture": "--first-run-setup-fixture; unique temporary offline profile; no native window; no Hermes gateway",
+  "profile_isolated": true,
+  "process_generation": "one-shot hermes-automation",
+  "app_route": "new-session/first-run-setup",
+  "viewport_px": "1220x800",
+  "dpi": "headless egui logical scale 1.0; Windows DPI not measured",
+  "interaction_receipts": [],
+  "visible_state": [
+    "Set up Hermes Desktop",
+    "Connect to existing Hermes",
+    "Install Hermes locally"
+  ],
+  "screenshot": "hermes-native-first-run-setup-1220x800-20261115.png",
+  "screenshot_sha256": "189934a8d74aa04a1188f79f445cb2036647bff6b784d1edbcfaa05d17dc97a0",
+  "evidence_limit": "Target-only egui semantic fixture at pinned source dimensions. Layout visually compared to pinned source; no pixel-diff acceptance or real backend setup is proven."
+}

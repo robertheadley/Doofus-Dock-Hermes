@@ -511,6 +511,11 @@ pub struct HermesNativeApp {
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
+    first_run_logo_texture: Option<egui::TextureHandle>,
+    first_run_setup_visible: bool,
+    first_run_remote_setup_open: bool,
+    first_run_setup_error: Option<String>,
+    first_run_gateway_url: String,
     session_chat_views: BTreeMap<String, SessionChatViewState>,
     session_chat_view_order: VecDeque<String>,
     new_chat_draft: String,
@@ -611,6 +616,16 @@ fn render_message() -> &'static str {
         self.route = AppRoute::Session("markdown-fixture".into());
         self.transcript = vec![json!({"role":"assistant","content":markdown})];
         self.status = "Markdown fixture · gateway isolated".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn load_first_run_setup_fixture_for_automation(&mut self) {
+        self.route = AppRoute::NewChat;
+        self.first_run_setup_visible = true;
+        self.first_run_remote_setup_open = false;
+        self.first_run_setup_error = None;
+        self.first_run_gateway_url.clear();
+        self.status = "First-run setup fixture · gateway isolated".into();
     }
     #[cfg(feature = "agent-automation")]
     pub fn load_long_session_fixture_for_automation(&mut self) {
@@ -1231,6 +1246,11 @@ fn render_message() -> &'static str {
             pending_toolset_updates: BTreeMap::new(),
             fonts_installed: false,
             gateway_connected: false,
+            first_run_logo_texture: None,
+            first_run_setup_visible: false,
+            first_run_remote_setup_open: false,
+            first_run_setup_error: None,
+            first_run_gateway_url: String::new(),
             session_chat_views: BTreeMap::new(),
             session_chat_view_order: VecDeque::new(),
             new_chat_draft: String::new(),
@@ -4138,21 +4158,128 @@ fn render_message() -> &'static str {
                     .size(14.0)
                     .color(MUTED),
             );
-            ui.add_space(18.0);
-            ui.horizontal_centered(|ui| {
-                let connect = ui.add_sized(
-                    [190.0, 38.0],
-                    egui::Button::new(RichText::new("Connect to Hermes").color(TEXT))
-                        .fill(Color32::from_rgb(57, 103, 163)),
+        });
+    }
+
+    fn show_first_run_setup(&mut self, ctx: &egui::Context) {
+        if self.gateway_connected
+            || !self.first_run_setup_visible
+            || self.route != AppRoute::NewChat
+        {
+            return;
+        }
+
+        let mut modal_style = egui::Style::default();
+        modal_style.visuals = egui::Visuals::light();
+        let modal_frame = egui::Frame::popup(&modal_style)
+            .inner_margin(egui::Margin {
+                left: 31,
+                right: 31,
+                top: 26,
+                bottom: 50,
+            })
+            .fill(Color32::from_rgb(250, 250, 252))
+            .stroke(Stroke::new(1.0, Color32::from_rgb(226, 228, 233)));
+        egui::Modal::new(Id::NULL.with("hermes-first-run-setup"))
+            .frame(modal_frame)
+            .backdrop_color(Color32::WHITE)
+            .show(ctx, |ui| {
+            ui.style_mut().visuals = egui::Visuals::light();
+            if self.first_run_logo_texture.is_none() {
+                let rgba = image::load_from_memory(include_bytes!("../assets/brand/nous-girl.png"))
+                    .expect("embedded Hermes brand mark is valid PNG")
+                    .into_rgba8();
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                self.first_run_logo_texture = Some(ctx.load_texture(
+                    "hermes-first-run-brand-mark",
+                    color_image,
+                    egui::TextureOptions::LINEAR,
+                ));
+            }
+            ui.set_min_width(560.0);
+            ui.set_max_width(608.0);
+
+            if self.first_run_remote_setup_open {
+                ui.heading("Connect to existing Hermes");
+                ui.add_space(6.0);
+                ui.label(RichText::new("Enter your gateway URL. Hermes Desktop will detect whether it needs a token or browser sign-in.").color(Color32::from_rgb(105, 109, 118)));
+                ui.add_space(18.0);
+                ui.label(
+                    RichText::new("Gateway URL")
+                        .strong()
+                        .color(Color32::from_rgb(48, 52, 59)),
                 );
-                if connect.clicked() {
-                    self.status = "Backend offline · gateway connection is not configured".into();
+                ui.add(egui::TextEdit::singleline(&mut self.first_run_gateway_url)
+                    .hint_text("https://gateway.example.com/hermes")
+                    .desired_width(500.0))
+                    .accessible_name("Gateway URL");
+                if let Some(error) = &self.first_run_setup_error {
+                    ui.add_space(10.0);
+                    ui.label(RichText::new(error).color(Color32::LIGHT_RED));
                 }
+                ui.add_space(18.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Back to setup").clicked() {
+                        self.first_run_remote_setup_open = false;
+                        self.first_run_setup_error = None;
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let apply_clicked = ui.button("Apply remote").clicked();
+                        let test_clicked = ui.button("Test connection").clicked();
+                        if apply_clicked || test_clicked {
+                            self.first_run_setup_error = Some("Remote gateway setup is not implemented in this Rust client yet.".into());
+                        }
+                    });
+                });
+                return;
+            }
+
+            ui.horizontal(|ui| {
                 ui.add_sized(
-                    [170.0, 38.0],
-                    egui::Button::new(RichText::new("Install Hermes locally").color(TEXT)),
+                    [44.0, 44.0],
+                    egui::Image::new((
+                        self.first_run_logo_texture
+                            .as_ref()
+                            .expect("Hermes brand mark loaded above")
+                            .id(),
+                        Vec2::splat(44.0),
+                    )),
                 );
+                ui.add_space(8.0);
+                ui.vertical(|ui| {
+                    ui.heading("Set up Hermes Desktop");
+                    ui.label(RichText::new("Connect this app to a Hermes gateway you already run, or install Hermes locally on this computer.").color(Color32::from_rgb(105, 109, 118)));
+                });
             });
+            ui.add_space(39.0);
+            ui.columns(2, |columns| {
+                let connect = columns[0].add_sized(
+                    [296.0, 121.0],
+                    egui::Button::new(RichText::new("Connect to existing Hermes\n\nUse a remote backend with a session token or browser sign-in. No local install will start.").color(Color32::from_rgb(48, 52, 59)))
+                        .fill(Color32::from_rgb(237, 239, 246)),
+                ).accessible_name("Connect to existing Hermes. Use a remote backend with a session token or browser sign-in. No local install will start.");
+                if connect.clicked() {
+                    self.first_run_remote_setup_open = true;
+                    self.first_run_gateway_url.clear();
+                    self.first_run_setup_error = None;
+                }
+
+                let install = columns[1].add_sized(
+                    [296.0, 121.0],
+                    egui::Button::new(RichText::new("Install Hermes locally\n\nDownload Hermes, create its Python environment, and run the backend on this computer.").color(Color32::from_rgb(48, 52, 59)))
+                        .fill(Color32::from_rgb(237, 239, 246)),
+                ).accessible_name("Install Hermes locally. Download Hermes, create its Python environment, and run the backend on this computer.");
+                if install.clicked() {
+                    self.first_run_setup_error = Some("Local Hermes bootstrap is not implemented in this Rust client yet.".into());
+                }
+            });
+            if let Some(error) = &self.first_run_setup_error {
+                ui.add_space(12.0);
+                ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+            }
+            ui.add_space(21.0);
+            ui.label(RichText::new("The install location is determined by Hermes Desktop.").size(12.0).color(Color32::from_rgb(105, 109, 118)));
         });
     }
 
@@ -7983,6 +8110,7 @@ fn render_message() -> &'static str {
             if let Some(result) = discovery.poll() {
                 match result {
                     Ok(connection) => {
+                        self.first_run_setup_visible = false;
                         self.gateway_connected = true;
                         self.status =
                             format!("Gateway connected · {} sessions", connection.sessions.len());
@@ -8015,6 +8143,7 @@ fn render_message() -> &'static str {
                         }
                     }
                     Err(reason) => {
+                        self.first_run_setup_visible = true;
                         self.gateway_connected = false;
                         self.status = format!("Backend unavailable: {reason}");
                     }
@@ -12540,6 +12669,44 @@ mod tests {
         )
     }
 
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn first_run_setup_matches_pinned_copy_and_exposes_unimplemented_actions() {
+        let (mut app, profile_dir) = isolated_app();
+        app.first_run_setup_visible = true;
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1220.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        harness
+            .get_by_label("Install Hermes locally. Download Hermes, create its Python environment, and run the backend on this computer.")
+            .click();
+        harness.run();
+        assert_eq!(
+            app.borrow().first_run_setup_error.as_deref(),
+            Some("Local Hermes bootstrap is not implemented in this Rust client yet.")
+        );
+
+        harness
+            .get_by_label("Connect to existing Hermes. Use a remote backend with a session token or browser sign-in. No local install will start.")
+            .click();
+        harness.run();
+        assert!(app.borrow().first_run_remote_setup_open);
+        harness.get_by_label("Apply remote").click();
+        harness.run();
+        assert_eq!(
+            app.borrow().first_run_setup_error.as_deref(),
+            Some("Remote gateway setup is not implemented in this Rust client yet.")
+        );
+        let _ = harness.get_by_label("Test connection");
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
     fn seed_pending_submission(
         app: &mut HermesNativeApp,
         submission_id: &str,
@@ -13858,6 +14025,7 @@ impl HermesNativeApp {
             }
         }
         self.show_route_overlay(&ctx);
+        self.show_first_run_setup(&ctx);
         self.show_catalog_plugin_install_dialog(&ctx);
         self.show_agent_plugin_update_dialog(&ctx);
         self.show_agent_plugin_removal_dialog(&ctx);
@@ -13964,6 +14132,9 @@ impl HermesNativeApp {
             },
             "gateway": {
                 "state": if self.gateway_connected { "connected" } else { "isolated" },
+                "first_run_setup_visible": self.first_run_setup_visible,
+                "first_run_remote_setup_open": self.first_run_remote_setup_open,
+                "first_run_setup_has_error": self.first_run_setup_error.is_some(),
                 "session_count": self.sessions.len(),
                 "show_archived_sessions": self.show_archived_sessions,
                 "archived_session_count": self.archived_sessions.len(),

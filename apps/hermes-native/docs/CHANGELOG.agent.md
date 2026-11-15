@@ -1436,3 +1436,36 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Pinned Electron build completed; source E2E screenshot completed in 10.3s after build.
   **risks:** Source setup uses an empty provider configuration and random temporary install path; target uses a disabled gateway. They show different visual states and are not source-paired acceptance. The source checkout has a strict pnpm/Node≥26 install requirement; Bun runtime compatibility was not tested in this pass.
   **follow_up:** Implement the full source first-run flow and side-by-side card layout/choices in Hermes Native, then capture the same transitions and negative paths before accepting PAR-0001.
+
+- **id:** HUR-001-112
+  **timestamp:** 2026-11-15T17:19:48Z
+  **what:** Added a pinned-source-style first-run setup modal on initial gateway discovery failure, a remote URL entry surface, explicit unsupported-flow errors, an isolated AccessKit action test and a distinct 1220x800 screenshot with metadata.
+  **why:** The previous target screenshot showed a different welcome layout, and its buttons did not perform their advertised actions. The native app now presents the source choice and clearly reports missing backend workflows instead of implying success.
+  **components:** apps/hermes-native/src/app.rs, apps/hermes-native/README.md, apps/hermes-native/docs/ARCHITECTURE.md, apps/hermes-native/docs/BACKLOG.md, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, apps/hermes-native/docs/CHANGELOG.agent.md, artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png, artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png.json, docs/EXECUTION_LOGS.md.
+  **type:** native onboarding UI implementation and target-only evidence.
+  **validation:** `cargo check --all-features` passed; `cargo test --all-features` passed 138 library and 11 automation tests; the focused AccessKit test clicked Install, Connect and Apply and checked explicit failure states; PNG dimensions/hash and JSON sidecar were validated; screenshot was visually inspected. An earlier full suite exposed a NaN layout when the modal rendered for headless tests; setup display was then gated on an actual initial gateway discovery failure, and the suite passed after the fix.
+  **performance:** No benchmark run; the modal renders on the UI thread with no network or installer work.
+  **risks:** Remote gateway probing, authentication, secure config persistence, local Hermes installation/start/cancel/recovery and physical Windows visual parity remain unimplemented. The screenshot is target-only, PAR-0001 remains pending, and no requirement was accepted.
+  **follow_up:** Implement source-compatible connection and bootstrap adapters before treating the setup flow as complete; capture same-state source/target transitions and negative receipts.
+
+- **id:** HUR-001-113
+  **timestamp:** 2026-11-15T17:43:33Z
+  **what:** Matched the native first-run setup card's outer geometry to the pinned 1220×800 source screenshot and refreshed setup, remote form, and unsupported Test-state captures with source/hash-bound sidecars.
+  **why:** Prior target captures used stale layout dimensions after adding the exact Hermes brand asset and needed repeatable, current evidence for the source-sized modal.
+  **components:** apps/hermes-native/src/app.rs; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/CHANGELOG.agent.md; artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png; artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-setup-1220x800-20261115.png; artifacts/agent-ui/hermes-native-first-run-remote-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-error-1220x800-20261115.png; artifacts/agent-ui/hermes-native-first-run-remote-error-1220x800-20261115.png.json; docs/EXECUTION_LOGS.md.
+  **type:** visual-fidelity and evidence refresh.
+  **validation:** cargo fmt --check passed; cargo check --all-features passed; cargo test --all-features passed 138 library and 11 automation tests before the final margin-only adjustment; all three final semantic captures rendered as valid 1220×800 PNGs and were visually inspected. Final margin-only code also passed cargo check and formatting.
+  **performance:** No runtime behavior or performance-sensitive path changed.
+  **risks:** Headless capture does not prove Windows DPI behavior. Source choice icons are still absent from native cards, and remote/local setup behavior is not implemented. The target screenshots are not accepted parity diffs.
+  **follow_up:** Implement source-equivalent bootstrap-state detection and actual remote/local setup; capture source and native remote transition pairs; keep PAR-0001 pending.
+
+- **id:** HUR-001-114
+  **timestamp:** 2026-11-15T17:43:33Z
+  **what:** Constructed the Test connection and Apply remote widgets independently and extended the onboarding AccessKit test to ensure Test remains present after Apply is clicked.
+  **why:** The prior boolean short-circuit could omit construction of the second action widget in the frame where Apply was clicked.
+  **components:** apps/hermes-native/src/app.rs; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/CHANGELOG.agent.md; artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-error-1220x800-20261115.png.json; docs/EXECUTION_LOGS.md.
+  **type:** UI interaction correctness.
+  **validation:** cargo fmt passed; cargo test --all-features passed 138 library and 11 automation tests; the new AccessKit existence check runs after Apply. All three semantic captures were regenerated and metadata source hashes were refreshed.
+  **performance:** No material performance impact; two buttons are constructed on each remote setup frame.
+  **risks:** Both controls still intentionally return an explicit unsupported-flow message; no network, authentication, or remote state mutation is implemented.
+  **follow_up:** Implement source-equivalent remote test/apply handlers and state; keep PAR-0001 pending until behavior and visual pairing pass.
