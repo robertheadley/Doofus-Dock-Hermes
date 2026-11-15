@@ -1475,6 +1475,7 @@ capabilities:
     tests: partial
   evidence:
   - EV-0016
+  - EV-0017
 - id: ui-convert-selected-terminal-text-into-composer-draft
   name: Convert selected terminal text into composer draft
   area: chat-transcript

@@ -1040,3 +1040,16 @@ HUI-048/HUI-049 publication: implementation commit `4d247d7ccbee6f31604923e52fc3
 - **performance:** One bounded config read on connect/profile change; no benchmarked performance change.
 - **risks:** Exact timestamp locale/tooltips and tool-run lifecycle behavior, live-profile behavior, and source-paired Windows acceptance remain open; PAR-0065 remains pending. Optional PyYAML validation is unavailable.
 - **follow_up:** Implement remaining timestamp details and capture matched source/target Windows states before accepting PAR-0065.
+
+## HUI-051 — 2026-11-15
+
+- **id:** HUI-051
+- **timestamp:** 2026-11-15
+- **what:** Added EV-0017 for the profile-scoped timestamp config read and advanced the active plan's evidence revision.
+- **why:** Bind the implementation receipt to the committed source while preserving partial capability status and pending formal acceptance.
+- **components:** Fixed-snapshot capability evidence, `capabilities.yaml`, Hermes Native plan.
+- **type:** parity evidence update.
+- **validation:** Fixed-source package validator passed with all 565 acceptance rows still pending.
+- **performance:** No runtime behavior changed.
+- **risks:** PyYAML is unavailable; optional YAML parse skipped. PAR-0065 remains pending.
+- **follow_up:** Finish timestamp format/tool-run parity and matched Windows evidence.

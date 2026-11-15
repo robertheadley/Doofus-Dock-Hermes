@@ -1,0 +1,10 @@
+{
+  "uid": "EV-0017",
+  "capability_id": "ui-display-local-timestamps-and-message-role",
+  "kind": "implementation",
+  "outcome": "partial",
+  "locator": "apps/hermes-native/src/gateway.rs; apps/hermes-native/src/app.rs",
+  "date": "2026-11-15",
+  "commit": "cdeffe3b2e2dac737b8c463aea01d19bd73a866c",
+  "notes": "Reads only display.timestamps from the selected Hermes profile authenticated /api/config endpoint at the pinned Hermes source SHA. Gateway fixtures verify profile query encoding, ticket header and accepted value forms. Window-local /timestamps overrides remain authoritative over late config responses. 123 library and 8 automation tests passed; all-target automation feature check passed. Source locale/time tooltip details, tool-run timestamps and paired Windows acceptance remain open; PAR-0065 remains pending."
+}
