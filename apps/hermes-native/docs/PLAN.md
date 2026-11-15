@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 75 (implementation in progress).
+- **Working revision:** 76 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -412,3 +412,7 @@ Implement the pinned Desktop `view.findInPage` interaction for the active native
 ### Revision 75 — distinct find-in-page visual evidence
 
 Add a dedicated offline `--transcript-find-fixture` to the one-shot automation runner and capture `artifacts/agent-ui/transcript-find-in-page-20261115.png` at 1440×900. The fixture contains synthetic retry-related turns, opens the search bar with a visible `1/3` count, and selects a matching message card. This produces a reproducible non-default state for visual review; it is evidence of the native UI surface, not a source-matched acceptance screenshot.
+
+### Revision 76 — local transcript timestamps
+
+Implement the pinned Desktop message timestamp display gate as an off-by-default, per-window override with `/timestamps`, `/timestamps on|off|toggle|status`. It is consumed locally before any gateway submission and reports that the override lasts only for the window. Render positive Unix-second message timestamps in local time with three fractional digits; preserve upstream `timelineTimestamp`/`timelineCompletedAt` metadata and capture start/completion boundaries for streamed assistant rows. Roles stay visible as before. Unit tests cover command transitions, invalid timestamps, metadata extraction, millisecond formatting, and event boundaries; the offline screenshot `artifacts/agent-ui/transcript-timestamps-20261115.png` shows two distinct timestamped rows. Persistent `display.timestamps` config initialization, exact locale/date tooltip formatting, tool-group timing, and source-paired Windows acceptance remain open; PAR-0065 remains pending.

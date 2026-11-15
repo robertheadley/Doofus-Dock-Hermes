@@ -1,0 +1,20 @@
+{
+  "fixture": "transcript-timestamps",
+  "captured_at_utc": "2026-11-15T12:34:45.0341870Z",
+  "route": "/session/timestamps-fixture",
+  "viewport_px": {
+    "width": 1440,
+    "height": 900
+  },
+  "scale_factor": "headless egui harness; native Windows DPI not exercised",
+  "theme": "default dark egui theme",
+  "profile": "isolated temporary HermesNative-Agent profile",
+  "gateway": "offline synthetic fixture; no Hermes gateway started",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_git_base": "7fb1eb615cd08e5041a5d6b57b4b51b4c90cb6cf",
+  "build_binary_sha256": "32BBD67C00F8E3F6F1728F9489023EF9B3A0077ECB476A8F8F86CC0EEA803434",
+  "screenshot_sha256": "94CA5B8BD055006A5E4B5904FEB93405F7FDE4513FFB0B24745045A4829099F7",
+  "visible_state": "User and assistant transcript rows display distinct local timestamps; assistant row includes start and completion values.",
+  "evidence_limit": "Synthetic target-only visual fixture; not a source-paired parity capture."
+}

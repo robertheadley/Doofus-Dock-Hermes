@@ -570,3 +570,16 @@ HUI-041 publication: implementation commit 88206d5 is published on main after co
 - **performance:** Fixture is local and offline; no gateway or installed profile is opened.
 - **risks:** The image demonstrates a synthetic native state and is not source-paired parity acceptance.
 - **follow_up:** Continue implementing and visually validating the fixed Hermes snapshot; keep PAR-0058 unaccepted until source-paired checks pass.
+
+## HUI-048 — 2026-11-15
+
+- **id:** HUI-048
+- **timestamp:** 2026-11-15
+- **what:** Added optional local transcript timestamps, window-scoped slash controls, lifecycle capture, and an isolated visual fixture.
+- **why:** Advance native Hermes P0 chat parity using the pinned Desktop behavior.
+- **components:** Hermes Native transcript renderer, prompt command handling, automation fixture, source parity map.
+- **type:** feature / source-parity slice.
+- **validation:** 121 native library tests and 8 automation tests passed; all-target feature check passed; 1440×900 screenshot rendered and visually inspected.
+- **performance:** Formatting is local and conditional; no backend calls added.
+- **risks:** Config initialization and source-paired acceptance remain open; PAR-0065 remains pending.
+- **follow_up:** Complete config-backed default, source tooltip/tool timing, and paired Windows acceptance.

@@ -454,6 +454,7 @@ pub struct HermesNativeApp {
     find_in_page_scroll_pending: bool,
     find_in_page_focus_pending: bool,
     find_in_page_route: Option<String>,
+    timestamps_enabled: bool,
     session_filter: String,
     session_search_changed_at: Option<std::time::Instant>,
     session_search_request_id: Option<String>,
@@ -617,6 +618,28 @@ fn render_message() -> &'static str {
         self.find_in_page_scroll_pending = true;
         self.find_in_page_route = Some(self.route.path());
         self.status = "Transcript find fixture · gateway isolated".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn load_transcript_timestamps_fixture_for_automation(&mut self) {
+        self.route = AppRoute::Session("timestamps-fixture".into());
+        self.active_session_profile = Some("fixture-profile".into());
+        self.active_runtime_session_id = Some("runtime-timestamps-fixture".into());
+        self.timestamps_enabled = true;
+        self.transcript = vec![
+            json!({
+                "role":"user",
+                "content":"Why did the local gateway retry after reconnect?",
+                "timestamp":1794747600.125
+            }),
+            json!({
+                "role":"assistant",
+                "content":"The first connection closed before the attach receipt arrived.",
+                "timestamp":1794747600.875,
+                "completedAt":1794747602.25
+            }),
+        ];
+        self.status = "Timeline timestamp fixture · synthetic offline transcript".into();
     }
 
     #[cfg(feature = "agent-automation")]
@@ -966,6 +989,7 @@ fn render_message() -> &'static str {
             find_in_page_scroll_pending: false,
             find_in_page_focus_pending: false,
             find_in_page_route: None,
+            timestamps_enabled: false,
             session_filter: String::new(),
             session_search_changed_at: None,
             session_search_request_id: None,
@@ -2119,6 +2143,7 @@ fn render_message() -> &'static str {
             }
             let messages = self.transcript.clone();
             let search_matches = transcript_search_matches(&messages, &self.find_in_page_query);
+            let timestamps_enabled = self.timestamps_enabled;
             let find_target = self.find_in_page_target;
             let scroll_target = self
                 .find_in_page_scroll_pending
@@ -2153,6 +2178,26 @@ fn render_message() -> &'static str {
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
                             render_transcript_markdown(ui, markdown_cache, &body);
+                            if timestamps_enabled
+                                && let Some((started, completed)) = transcript_timestamp(&message)
+                            {
+                                let stamp = format_timeline_range(started, completed);
+                                if !stamp.is_empty() {
+                                    ui.horizontal(|ui| {
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    RichText::new(stamp)
+                                                        .size(10.0)
+                                                        .color(MUTED)
+                                                        .monospace(),
+                                                );
+                                            },
+                                        );
+                                    });
+                                }
+                            }
                         });
                         entry.response.widget_info(|| {
                             egui::WidgetInfo::labeled(
@@ -3922,6 +3967,9 @@ fn render_message() -> &'static str {
     }
 
     fn create_session_from_draft(&mut self) {
+        if self.handle_timestamps_command() {
+            return;
+        }
         let text = self.draft.trim().to_owned();
         if text.is_empty() {
             return;
@@ -4215,6 +4263,9 @@ fn render_message() -> &'static str {
     }
 
     fn submit_prompt(&mut self, session_id: String) {
+        if self.handle_timestamps_command() {
+            return;
+        }
         let text = self.draft.trim().to_owned();
         if text.is_empty() {
             return;
@@ -4254,7 +4305,8 @@ fn render_message() -> &'static str {
             "id":submission_id,
             "submission_id":submission_id,
             "role":"user",
-            "content":text
+            "content":text,
+            "timestamp":unix_now_seconds()
         }));
         self.pending_submissions.insert(
             pending_key,
@@ -4271,6 +4323,42 @@ fn render_message() -> &'static str {
         );
         self.draft.clear();
         self.status = "Sending message to Hermes…".into();
+    }
+
+    fn handle_timestamps_command(&mut self) -> bool {
+        let text = self.draft.trim();
+        let mut words = text.split_whitespace();
+        if words
+            .next()
+            .is_none_or(|command| !command.eq_ignore_ascii_case("/timestamps"))
+        {
+            return false;
+        }
+        let argument = words.next().unwrap_or_default().to_ascii_lowercase();
+        let extra = words.next().is_some();
+        let result = if extra {
+            "Usage: /timestamps [on|off|toggle|status]".to_owned()
+        } else {
+            match argument.as_str() {
+                "" | "toggle" => {
+                    self.timestamps_enabled = !self.timestamps_enabled;
+                    timestamps_status(self.timestamps_enabled)
+                }
+                "on" => {
+                    self.timestamps_enabled = true;
+                    timestamps_status(true)
+                }
+                "off" => {
+                    self.timestamps_enabled = false;
+                    timestamps_status(false)
+                }
+                "status" => timestamps_status(self.timestamps_enabled),
+                _ => "Usage: /timestamps [on|off|toggle|status]".to_owned(),
+            }
+        };
+        self.draft.clear();
+        self.status = result;
+        true
     }
 
     fn retry_uncertain_prompt(&mut self) {
@@ -8744,6 +8832,19 @@ fn apply_stream_event_to_transcript(
         "tool.start" | "tool.complete" => {
             upsert_tool_row(transcript, event_type, payload, execution_generation);
         }
+        "message.start" => {
+            if !transcript.iter().any(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                    && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            }) {
+                transcript.push(serde_json::json!({
+                    "role":"assistant",
+                    "content":"",
+                    "streaming":true,
+                    "timestamp":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
+                }));
+            }
+        }
         "message.delta" => {
             let delta = payload
                 .get("text")
@@ -8781,12 +8882,85 @@ fn apply_stream_event_to_transcript(
                     message["content"] = serde_json::Value::String(text.to_owned());
                 }
                 message["streaming"] = serde_json::Value::Bool(false);
+                message["completedAt"] = serde_json::json!(
+                    payload
+                        .get("timestamp")
+                        .and_then(json_epoch_seconds)
+                        .unwrap_or_else(unix_now_seconds)
+                );
             } else if let Some(text) = final_text.filter(|text| !text.is_empty()) {
-                transcript.push(serde_json::json!({"role":"assistant","content":text}));
+                transcript.push(serde_json::json!({
+                    "role":"assistant",
+                    "content":text,
+                    "timestamp":payload.get("started_at").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
+                    "completedAt":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
+                }));
             }
         }
         _ => {}
     }
+}
+
+fn unix_now_seconds() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64())
+        .unwrap_or_default()
+}
+
+fn json_epoch_seconds(value: &serde_json::Value) -> Option<f64> {
+    let seconds = value.as_f64()?;
+    (seconds.is_finite() && seconds > 0.0).then_some(seconds)
+}
+
+fn transcript_timestamp(message: &serde_json::Value) -> Option<(f64, Option<f64>)> {
+    let metadata = message
+        .get("metadata")
+        .and_then(|metadata| metadata.get("custom"));
+    let started = message
+        .get("timestamp")
+        .or_else(|| metadata.and_then(|custom| custom.get("timelineTimestamp")))
+        .and_then(json_epoch_seconds)?;
+    let completed = message
+        .get("completedAt")
+        .or_else(|| metadata.and_then(|custom| custom.get("timelineCompletedAt")))
+        .and_then(json_epoch_seconds)
+        .filter(|completed| *completed > started);
+    Some((started, completed))
+}
+
+fn format_timeline_range(start: f64, end: Option<f64>) -> String {
+    use time::{OffsetDateTime, UtcOffset};
+
+    fn format_one(seconds: f64) -> Option<String> {
+        if !seconds.is_finite() || seconds <= 0.0 {
+            return None;
+        }
+        let format = time::format_description::parse_borrowed::<3>(
+            "[hour]:[minute]:[second].[subsecond digits:3]",
+        )
+        .ok()?;
+        let instant =
+            OffsetDateTime::from_unix_timestamp_nanos((seconds * 1_000_000_000.0).round() as i128)
+                .ok()?;
+        let local_offset = UtcOffset::local_offset_at(instant).unwrap_or(UtcOffset::UTC);
+        instant.to_offset(local_offset).format(&format).ok()
+    }
+
+    let Some(start) = format_one(start) else {
+        return String::new();
+    };
+    let Some(end) = end.and_then(format_one) else {
+        return start;
+    };
+    format!("{start} → {end}")
+}
+
+fn timestamps_status(enabled: bool) -> String {
+    format!(
+        "Timestamps: {} (this window only; set display.timestamps in config.yaml to keep it)",
+        if enabled { "on" } else { "off" }
+    )
 }
 
 fn transcript_message(message: &serde_json::Value) -> (String, String) {
@@ -10159,6 +10333,105 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn timestamps_command_is_window_scoped_and_does_not_submit_to_hermes() {
+        let (mut app, profile) = isolated_app();
+        assert!(
+            !app.timestamps_enabled,
+            "timestamps default off like upstream"
+        );
+
+        app.draft = "/timestamps on".into();
+        assert!(app.handle_timestamps_command());
+        assert!(app.timestamps_enabled);
+        assert!(app.status.contains("this window only"));
+        assert!(app.draft.is_empty());
+
+        app.draft = "/timestamps status".into();
+        assert!(app.handle_timestamps_command());
+        assert!(
+            app.timestamps_enabled,
+            "status does not change the override"
+        );
+        assert!(app.status.contains("Timestamps: on"));
+
+        app.draft = "/timestamps off".into();
+        assert!(app.handle_timestamps_command());
+        assert!(!app.timestamps_enabled);
+
+        app.draft = "/timestamps someday".into();
+        assert!(app.handle_timestamps_command());
+        assert!(
+            !app.timestamps_enabled,
+            "invalid arguments preserve current state"
+        );
+        assert!(app.status.starts_with("Usage:"));
+
+        app.draft = "/timestamps extra words".into();
+        assert!(app.handle_timestamps_command());
+        assert!(app.status.starts_with("Usage:"));
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn transcript_timestamps_read_upstream_metadata_and_format_local_ranges() {
+        let message = json!({
+            "role":"assistant",
+            "metadata":{"custom":{"timelineTimestamp":100.125,"timelineCompletedAt":102.75}}
+        });
+        assert_eq!(
+            transcript_timestamp(&message),
+            Some((100.125, Some(102.75)))
+        );
+        assert_eq!(
+            transcript_timestamp(&json!({"role":"user","timestamp":100,"completedAt":99})),
+            Some((100.0, None)),
+            "completion earlier than start is suppressed"
+        );
+        assert_eq!(
+            transcript_timestamp(&json!({"role":"assistant","timestamp":0})),
+            None
+        );
+
+        let range = format_timeline_range(100.125, Some(102.75));
+        assert!(range.contains(" → "));
+        assert!(
+            range.ends_with(".750"),
+            "millisecond precision is retained: {range}"
+        );
+        assert!(format_timeline_range(f64::NAN, None).is_empty());
+    }
+
+    #[test]
+    fn message_start_and_complete_events_capture_timeline_boundaries() {
+        let mut transcript = Vec::new();
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.start",
+            &json!({"timestamp":100.25}),
+            Some(1),
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &json!({"text":"answer"}),
+            Some(1),
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.complete",
+            &json!({"text":"answer","timestamp":101.5}),
+            Some(1),
+        );
+        assert_eq!(transcript.len(), 1);
+        assert_eq!(transcript[0]["content"], "answer");
+        assert_eq!(
+            transcript_timestamp(&transcript[0]),
+            Some((100.25, Some(101.5)))
+        );
     }
 
     #[test]

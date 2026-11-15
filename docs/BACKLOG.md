@@ -14,6 +14,7 @@ The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDo
 - Explicit disconnected/empty states; no fabricated domain data.
 - Bounded older-transcript pagination with a profile-scoped one-use ticket, exact session/order/offset validation, stale-session response fencing, overlap-safe chronological merge, and an accessible “Show earlier messages” control. Local HTTP and AccessKit fixtures cover success and negative paths; live gateway acceptance and source scroll-window parity remain open.
 - Transcript find-in-page: accessible native search bar, case-insensitive matching over loaded transcript rows, match count, previous/next and keyboard stepping, Escape close, message-card highlight and scroll-to-match. The fixed-source PAR-0058 acceptance remains open for exact rendered-text highlights, other rendered panes, and paired Windows evidence.
+- Transcript message roles remain visible and active chat now has optional window-scoped local timestamps with millisecond precision, populated from stored timestamps or stream start/completion boundaries. `/timestamps [on|off|toggle|status]` does not call the gateway or alter prompt context. The `display.timestamps` config default, source locale/time tooltip details, tool-run timestamps, and source-paired PAR-0065 acceptance remain open.
 
 ## Remaining, in dependency order
 

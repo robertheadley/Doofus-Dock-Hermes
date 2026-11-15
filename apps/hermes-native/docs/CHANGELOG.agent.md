@@ -1005,3 +1005,13 @@ HUI-041 publication: implementation commit 88206d5 was pushed to main after fetc
 - **performance:** Fixture is local and offline; no gateway or installed profile is opened.
 - **risks:** The image demonstrates a synthetic native state and is not source-paired parity acceptance.
 - **follow_up:** Continue implementing and visually validating the fixed Hermes snapshot; keep PAR-0058 unaccepted until source-paired checks pass.
+- **id:** HUI-048
+- **timestamp:** 2026-11-15
+- **what:** Added off-by-default local transcript timestamps, a window-scoped `/timestamps` command, message lifecycle boundaries, an offline visual fixture, and a distinct screenshot.
+- **why:** Implement pinned Hermes Desktop `display.timestamps` behavior as the next P0 chat parity slice while keeping the command out of model submissions.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/bin/hermes-automation.rs`, `apps/hermes-native/Cargo.toml`, `apps/hermes-native/Cargo.lock`, `artifacts/agent-ui/transcript-timestamps-20261115.png`, `README.md`, `docs/BACKLOG.md`, `docs/ARCHITECTURE.md`, `apps/hermes-native/README.md`, `apps/hermes-native/docs/PLAN.md`, parity evidence maps.
+- **type:** source-parity implementation slice.
+- **validation:** `cargo fmt --all`; `cargo test -p hermes-native --features agent-automation` (121 library + 8 automation tests); `cargo check -p hermes-native --all-targets --features agent-automation`; isolated 1440×900 fixture rendered and inspected.
+- **performance:** Per-message local formatting only when timestamps are enabled; no gateway requests, network activity, or benchmarked performance change.
+- **risks:** `display.timestamps` config initialization, source locale/date tooltip formatting, tool-group timestamps, live Hermes behavior, and source-paired Windows acceptance remain open. PAR-0065 stays pending.
+- **follow_up:** Read the pinned config value, match the source timestamp tooltip and tool-run lifecycle, then validate with paired source/target Windows captures before accepting PAR-0065.
