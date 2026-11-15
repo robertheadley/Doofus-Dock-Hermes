@@ -201,7 +201,7 @@ impl ProtocolState {
             "capabilities.list" => success(id.clone(), capabilities()),
             "app.actions.list" => success(id.clone(), registered_ui_action_catalog()),
             "state.get" => success(id.clone(), snapshot(app, self.generation)),
-            "ui.tree" => success(id.clone(), describe_node(harness.root())),
+            "ui.tree" => success(id.clone(), describe_node(harness.root(), None)),
             "app.action.execute" => {
                 let Some(action_value) = params.get("action").cloned() else {
                     return failure(id.clone(), "invalid_argument", "action is required".into());
@@ -1160,23 +1160,36 @@ fn modifier_names(modifiers: &egui::Modifiers) -> Vec<&'static str> {
     names
 }
 
-fn describe_node(node: egui_kittest::Node<'_>) -> Value {
+fn describe_node(node: egui_kittest::Node<'_>, parent_id: Option<String>) -> Value {
     let access = node.accesskit_node();
+    let node_id = format!("{:?}", access.id());
     let role = format!("{:?}", access.role());
     let name = access.label();
     let test_id = name.as_deref().and_then(|name| stable_test_id(&role, name));
-    let bounds = access.bounding_box().map(
+    let bounds_rect = access.bounding_box();
+    let bounds = bounds_rect.as_ref().map(
         |rect| json!({"x":rect.x0,"y":rect.y0,"width":rect.x1-rect.x0,"height":rect.y1-rect.y0}),
     );
-    let children = node.children().map(describe_node).collect::<Vec<_>>();
+    let disabled = access.is_disabled();
+    let visible = !access.is_hidden()
+        && bounds_rect
+            .as_ref()
+            .is_some_and(|rect| rect.x1 > rect.x0 && rect.y1 > rect.y0);
+    let children = node
+        .children()
+        .map(|child| describe_node(child, Some(node_id.clone())))
+        .collect::<Vec<_>>();
     json!({
-        "id": format!("{:?}", access.id()),
+        "id": node_id,
+        "parent_id": parent_id,
         "role": role,
         "name": name,
         "test_id": test_id,
         "description": access.description(),
         "value": access.value(),
-        "disabled": access.is_disabled(),
+        "visible": visible,
+        "enabled": !disabled,
+        "disabled": disabled,
         "focused": node.is_focused(),
         "bounds": bounds,
         "children": children
@@ -1290,6 +1303,17 @@ fn stable_test_id(role: &str, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+fn find_tree_node<'a>(node: &'a Value, key: &str, value: &str) -> Option<&'a Value> {
+    if node.get(key).and_then(Value::as_str) == Some(value) {
+        return Some(node);
+    }
+    node.get("children")?
+        .as_array()?
+        .iter()
+        .find_map(|child| find_tree_node(child, key, value))
 }
 
 fn valid_session_test_id(session_id: &str) -> bool {
@@ -1775,7 +1799,7 @@ mod tests {
         let mut harness = Harness::builder()
             .with_size(egui::vec2(1440.0, 900.0))
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
-        let tree = describe_node(harness.root());
+        let tree = describe_node(harness.root(), None);
         assert_eq!(
             matching_test_id_nodes(&harness, "route.capabilities").len(),
             1
@@ -1783,6 +1807,22 @@ mod tests {
         let tree_text = tree.to_string();
         assert!(tree_text.contains("sessions.search"));
         assert!(tree_text.contains("app.interface-mode"));
+        let capability_node = find_tree_node(&tree, "test_id", "route.capabilities")
+            .expect("tree exposes stable route locator");
+        assert_eq!(capability_node["visible"], true);
+        assert_eq!(capability_node["enabled"], true);
+        assert!(capability_node["bounds"]["width"].as_f64().unwrap() > 0.0);
+        let parent_id = capability_node["parent_id"]
+            .as_str()
+            .expect("tree exposes parent locator");
+        let parent = find_tree_node(&tree, "id", parent_id).expect("parent exists in tree");
+        assert!(
+            parent["children"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|child| child["id"] == capability_node["id"])
+        );
 
         let mut protocol = ProtocolState::default();
         let response = protocol.handle(
@@ -1804,7 +1844,7 @@ mod tests {
             "/capabilities?tab=skills"
         );
         assert_eq!(response["result"]["target"]["name"], "Capabilities");
-        let capabilities_tree = describe_node(harness.root()).to_string();
+        let capabilities_tree = describe_node(harness.root(), None).to_string();
         assert!(capabilities_tree.contains("capabilities.tab.toolsets"));
         assert!(capabilities_tree.contains("capabilities.search"));
 

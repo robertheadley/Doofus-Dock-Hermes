@@ -59,7 +59,7 @@ The selected and downloaded target is commit `8783054ef6cbafd86f10892241436862c1
 
 ### 4. Agent-operated UI and background evidence
 
-- [ ] Provide Playwright-like semantic locators for the native app: accessible role/name, stable test ID, visible/enabled state, bounds, and parent/child relationships.
+- [x] Provide Playwright-like semantic locators for the native app: accessible role/name, stable test ID, visible/enabled state, bounds, and parent/child relationships. The `ui.tree` response exposes these fields and remains queryable through the stdio child protocol; AccessKit tests verify visibility, enabled state, nonzero bounds and that parent IDs resolve back to the owning child list. This is tree/query evidence, not native-window or OS automation.
 - [x] Support click, text entry, selection, keyboard input, bounded pointer drag, wait-for-state, screenshot, and structured action receipts through the shared egui UI input path; drag targets use exact accessible locators and generation checks.
 - [ ] Run a separate isolated app window/profile in the background for routine navigation and screenshots. Do not steal foreground focus or mutate the installed Hermes profile; live gateway acceptance must use an isolated profile or explicitly read-only scenarios.
 - [ ] Add a separate authenticated/local diagnostics surface for route/layout/session/gateway state, logs, errors, and backend receipts. Diagnostics can inspect more than a person can see, but must not bypass UI confirmation, authorization, or normal action paths.
@@ -538,3 +538,7 @@ Disable Test for an empty or malformed gateway URL, enable it only for a minimal
 ### Revision 106 — validate remote authority and port
 
 Tighten the setup URL gate to reject malformed ports, unbracketed/malformed IPv6, invalid IPv6 literals, credentials in the authority, and invalid host characters, while accepting HTTP(S), localhost, regular DNS names and bracketed IPv6. Add negative cases to the URL validator test, rerun all feature tests, and refresh source-hash-bound states. This is input gating only; the source probe still requires a standards-compliant URL parser and the real remote connection/test pipeline.
+
+### Revision 107 — explicit semantic tree locator state
+
+Extend each `ui.tree` node with `visible`, `enabled` and `parent_id`, retaining AccessKit IDs, role/name, stable test IDs, disabled/focused state, nullable bounds and nested children. Define visible as not AccessKit-hidden with positive-area bounds, and enabled as the inverse of disabled. Test a stable route node's state/bounds and resolve its parent back to the child list, then exercise the actual inherited-stdio protocol to read the tree without opening a native window or starting Hermes. This completes the semantic tree data contract only; the isolated background native window and OS-level UI control remain open.

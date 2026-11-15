@@ -1491,3 +1491,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Host/port validation uses bounded string parsing and standard IPv6 parsing only.
   **risks:** This remains a UI gate and intentionally shallow parser, not the source's actual URL normalization, network probe, authentication, or remote apply.
   **follow_up:** Replace the shallow check with a standards-compliant URL parser as part of source-compatible remote setup; keep PAR-0001 pending.
+
+- **id:** HUR-001-117
+  **timestamp:** 2026-11-15T18:03:10Z
+  **what:** Exposed explicit visible/enabled state and parent IDs in every AccessKit node returned by the native agent `ui.tree` method.
+  **why:** Agents need queryable semantic state and hierarchy so Playwright-like navigation and inspection do not depend on guessing coordinates or rebuilding the tree relationships client-side.
+  **components:** apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs; apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md; apps/hermes-native/docs/AGENT_AUTOMATION.md; apps/hermes-native/docs/PLAN.md; docs/EXECUTION_LOGS.md.
+  **type:** agent locator and accessibility tree contract.
+  **validation:** `cargo test --all-features` passed 139 library and 11 automation tests; AccessKit assertions checked visible, enabled, positive bounds and parent/child linkage; an actual `--stdio` process served `ui.tree` and returned the expected visible/enabled Capabilities locator with bounds and parent ID without opening a native window or starting Hermes.
+  **performance:** Tree serialization adds one visibility calculation and parent ID string per AccessKit node.
+  **risks:** Visibility means non-hidden with positive bounds, not confirmed unobscured pixels. Native window control and physical desktop acceptance remain open.
+  **follow_up:** Add a query/filter API if needed, then provide isolated background native-window capture/control and verify workflows on a separate desktop; preserve the no-focus and no-installed-profile invariants.

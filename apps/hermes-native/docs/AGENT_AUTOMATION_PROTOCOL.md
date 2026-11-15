@@ -15,7 +15,7 @@ The protocol is `hermes-native-agent-ui/1`. The first output line is a `ready` e
 | `app.actions.list` | Read only | Versioned catalog of typed first-party app actions and validation schemas |
 | `app.action.execute` | UI interaction | Typed `action` object plus `expected_state_generation`; executes a registered shared app handler |
 | `state.get` | Read only | Current route, layout, panels, gateway summary, recent-session switcher open/pending/index/session IDs, generation |
-| `ui.tree` | Read only | AccessKit role/name/value/disabled/bounds, nullable stable `test_id`, and child tree |
+| `ui.tree` | Read only | AccessKit role/name/value, visible/enabled/disabled/focused state, bounds, nullable stable `test_id`, explicit `parent_id`, and child tree |
 | `events.list` | Read only | Bounded recent event receipts |
 | `diagnostics.bundle` | Read only | State, bounded events, process and protocol health counters |
 | `actions.click` | UI interaction | Either `test_id` or `role` + `name`, with `expected_state_generation`; requires one exact accessible match |
@@ -35,7 +35,7 @@ Semantic actions dispatch through egui_kittest/AccessKit input to the shared UI 
 ## Bounds and retry rules
 
 - Request lines are limited to 64 KiB; a request ID is 1–128 bytes; text is limited to 16,384 Unicode characters.
-- The accessible tree includes role, name/value, disabled/focused flags, nullable stable `test_id`, children, and physical-pixel bounds when supplied by AccessKit; bounds are `null` for nodes without a bounding box. Stable IDs are assigned to app controls such as `sessions.search`, `chat.composer`, conditional `chat.stop`, `app.layout-profile`, `route.capabilities`, and `panel.sessions`.
+- The accessible tree includes role, name/value, visible/enabled/disabled/focused flags, nullable stable `test_id`, child nodes and explicit `parent_id` links. `visible` is true when AccessKit does not mark a node hidden and it has positive-area bounds; `enabled` is the inverse of AccessKit's disabled flag. Bounds are `null` when AccessKit supplies no bounding box. Stable IDs are assigned to app controls such as `sessions.search`, `chat.composer`, conditional `chat.stop`, `app.layout-profile`, `route.capabilities`, and `panel.sessions`.
 - Responses are limited to 256 KiB. The event ring retains 128 events.
 - The response cache retains the latest 128 request IDs. Identical retries within that window replay the original response. Reusing an ID with a different payload returns `request_id_conflict`. After cache eviction, an already-seen ID returns `request_replay_expired` and is never executed again. At most 10,000 unique IDs are accepted per process; additional new IDs receive `request_limit_reached`.
 - Callers should use a fresh unique ID for each request and retain it for retries. UI mutation requests must also use the generation from the latest state response.
