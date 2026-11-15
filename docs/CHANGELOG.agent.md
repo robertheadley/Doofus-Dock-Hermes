@@ -183,3 +183,16 @@
 - **performance:** Not benchmarked; the native parser cache is retained on the app instance. No performance improvement is claimed.
 - **risks:** This is not full Streamdown parity. Tail streaming repairs, math/media plugins, transcript directives, artifact promotion and rich cards remain open. The screenshot is headless and gateway isolated. A small vendored backend patch must be reconciled deliberately if changing egui_commonmark versions.
 - **follow_up:** Continue the 565 fixed-snapshot requirements and matched Windows visual/interaction evidence. Never expand the target because Hermes upstream changes.
+
+## HUI-016
+
+- **id:** HUI-016
+- **timestamp:** 2026-11-15T04:37:44Z
+- **what:** Initialized the user-provided repository as the canonical project root, published the reviewed workspace to origin/main, and preserved the active app plus the two older prototype trees. Build outputs, the local downloaded-source staging tree, env files and interrupted-write scratch files are excluded.
+- **why:** The user created robertheadley/Doofus-Dock-Hermes for ongoing implementation; the prior workspace had no Git metadata.
+- **components:** .gitignore, .gitattributes, Cargo.toml, Cargo.lock, README.md, apps/hermes-native, apps/hermes-native-rev1, src, docs, docs/EXECUTION_LOGS.md, docs/CHANGELOG.agent.md.
+- **type:** repository bootstrap and publication.
+- **validation:** Reviewed 230 staged paths; zero staged env/build/staging/temp paths; git diff --cached --check passed; initial commit 3c4f905de63f5d2fae2fe3c1e35645abe539aba9 pushed to origin/main; remote ref resolved to the same SHA and working tree was clean.
+- **performance:** Not applicable.
+- **risks:** The GitHub repository is public as created by the user. It contains the fixed acceptance package and historical prototype/reference files; the downloaded Hermes source checkout remains in ignored local staging and is not published.
+- **follow_up:** Continue from this canonical main checkout and keep the parity target fixed at 8783054ef6cbafd86f10892241436862c1171a66.

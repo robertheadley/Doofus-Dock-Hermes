@@ -576,3 +576,16 @@
 - **performance:** Not benchmarked; Markdown cache is retained by the app instance.
 - **risks:** Streamdown streaming repair, math, media, transcript directives, artifact promotion, rich cards, and physical Windows source-paired visual acceptance remain open. The vendored backend diff must be reviewed on dependency upgrade.
 - **follow_up:** Continue the fixed 565-row snapshot implementation and source-paired Windows acceptance. Later upstream changes do not expand scope.
+
+## HUR-001-053 — Publish the reviewed project to the user-provided repository
+
+- **id:** HUR-001-053
+- **timestamp:** 2026-11-15T04:37:44Z
+- **what:** Initialized the extracted workspace as the main branch of robertheadley/Doofus-Dock-Hermes and pushed the reviewed 230-file baseline. Root Cargo defaults to hermes-native while the root prototype remains buildable and rev1 remains preserved. Downloaded upstream staging and generated/local files are excluded.
+- **why:** The user supplied this repository as the canonical place to continue the approved Hermes Native replacement.
+- **components:** repository root, Cargo workspace, README, fixed 565-item source package, apps/hermes-native and both prototype trees.
+- **type:** repository setup and publication.
+- **validation:** Staged-path audit found no env, target, node_modules, staging or temp paths; cached diff whitespace check passed; commit 3c4f905de63f5d2fae2fe3c1e35645abe539aba9 is on origin/main and local main tracks origin/main cleanly.
+- **performance:** Not applicable.
+- **risks:** The GitHub repository is public. The exact Hermes source tree is intentionally local-only; the snapshot SHA and acceptance evidence are tracked.
+- **follow_up:** Continue source-paired implementation in this checkout without periodic upstream refreshes.
