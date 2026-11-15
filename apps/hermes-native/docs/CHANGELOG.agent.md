@@ -1331,3 +1331,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Five local semantic scroll actions and one frame capture completed in under three seconds on the development host.
   **risks:** Offline synthetic PDF fixture; it does not prove native-window wheel routing, Chromium text features, or installed Hermes integration.
   **follow_up:** Capture the rest of the feature evidence from different actual UI states; continue source-paired Files parity.
+
+- **id:** HUR-001-102
+  **timestamp:** 2026-11-15T15:16:00Z
+  **what:** Bound the distinct Page 3 PDF scroll-state screenshot to the pinned sources, implementation commit and automation binary with a validated JSON sidecar.
+  **why:** Make screenshot state and provenance reviewable, and ensure the artifact records an actual changed viewport.
+  **components:** artifacts/agent-ui/pdf-agent-scrolled-five-20261115.png, artifacts/agent-ui/pdf-agent-scrolled-five-20261115.png.json.
+  **type:** visual evidence.
+  **validation:** Sidecar JSON parses; target commit, executable SHA-256 and screenshot SHA-256 are validated against current files; the 1440×900 screenshot was visually inspected.
+  **performance:** Hashing and atomic sidecar write completed locally in under one second.
+  **risks:** Synthetic target-only capture; no paired Hermes source or installed desktop acceptance.
+  **follow_up:** Continue source-paired Files parity and native-window interaction validation.

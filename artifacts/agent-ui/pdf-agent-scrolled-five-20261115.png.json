@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-11-15T15:14:37Z",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "8a8c0d2550f684be6ffcf7e09d8f3881fb1399d1",
+  "target_binary_sha256": "0cf9c2cef3b40c490e284e34006adcc52a9849035ee860dda976f843a4df9f94",
+  "screenshot_sha256": "c2f6fdf5d936692361387b6acbadd4c73af4663ec489c8b0057becc625caa9a6",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale": "headless logical pixels"
+  },
+  "route": "/pdf-scroll-fixture",
+  "actions": [
+    "Scroll down preview.pdf five times; each semantic action requests 100 points"
+  ],
+  "fixture": "Six-page synthetic PDF in isolated local project; Hermes gateway disabled",
+  "visible_state": [
+    "Files preview pane displays a continuous PDF page stack",
+    "Toolbar reads Page 3 of 6 at 100%",
+    "Pages 3 through 6 are visible or partially visible"
+  ],
+  "verification": "Automation runner reported five successful accessible scroll actions and a 1440x900 screenshot; image visually inspected",
+  "limitations": [
+    "Synthetic target-only screenshot; no paired Hermes source capture",
+    "No physical Windows host evidence",
+    "Raster preview lacks Chromium text selection/search and annotations"
+  ]
+}
