@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "captured_at_utc": "2026-11-15T13:59:30Z",
+  "captured_at_utc": "2026-11-15T14:06:41Z",
   "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
   "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
-  "target_commit": "63afa6a1eac1ff3acf32084958ffaed26497ded9",
-  "target_binary_sha256": "408feb0a045aeab09b123380f94e7caebb7db2b880ae2ab611371d3fd952d035",
-  "screenshot_sha256": "5dad036b78ac89a833e975927a573776a21d11702f0d4a164468bee94d5f798f",
+  "target_commit": "259f7a6e",
+  "target_binary_sha256": "897c40eff39b1462b96b8960238971f1f68c5bf1ad496d17f092c0b1ed7e5e2a",
+  "screenshot_sha256": "d83eb229beb3602bdb576963833b4cbc2a3c571bed17b70df6d8661b9a544ac0",
   "viewport": {
     "width": 1440,
     "height": 900,
@@ -15,11 +15,12 @@
   "fixture": "isolated synthetic session and project under TemporaryProfile; gateway disabled",
   "visible_state": [
     "Sessions sidebar",
+    "Files tab selected",
     "workspace chat",
-    "README.md Markdown preview pane",
-    "Files project tree"
+    "main.rs Rust syntax-highlighted preview pane",
+    "Cargo.toml, main.rs, and README.md project tree"
   ],
-  "verification": "AccessKit tree identified the preview title/content/close control and file rows; 1440x900 PNG visually inspected",
+  "verification": "Automation inspect confirmed fixture route, assistant fixture transcript, preview pane and Files controls; 1440x900 PNG visually inspected.",
   "limitations": [
     "Target-only screenshot; no paired Hermes source capture",
     "No physical Windows host evidence",

@@ -693,3 +693,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** Reuses the existing preview worker and CommonMark renderer; no additional I/O path.
 - **risks:** Preview formats remain partial; target-only capture is not source-paired Hermes parity evidence; PAR-0104 remains pending.
 - **follow_up:** Publish this slice, bind a distinct code-preview capture to the published commit, then continue the next pinned Files requirement.
+- **id:** HUI-057
+- **timestamp:** 2026-11-15T14:06:41Z
+- **what:** Refreshed the isolated Rust code-preview screenshot and bound its metadata to published commit `259f7a6e`.
+- **why:** Provide a visibly distinct, reproducible capture of the current Files-preview state.
+- **components:** Agent automation fixture, screenshot artifact and sidecar metadata.
+- **type:** capture and verification.
+- **validation:** AccessKit inspection confirms Files-preview fixture state; PNG dimensions are 1440×900; screenshot and binary SHA-256 values recorded; image visually inspected.
+- **performance:** Fixture setup and capture complete in about three seconds.
+- **risks:** This remains synthetic target-only evidence and does not establish source-paired or native-host parity.
+- **follow_up:** Continue pinned-source implementation; keep formal acceptance rows pending until corresponding paired evidence exists.
