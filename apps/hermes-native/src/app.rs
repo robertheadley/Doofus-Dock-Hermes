@@ -1,4 +1,4 @@
-use crate::files::FileBrowserState;
+use crate::files::{FileBrowserState, FilePreviewStore};
 use crate::gateway::{
     AgentPluginAutoUpdateSettings, AgentPluginInfo, AgentPluginInspection, AgentPluginScanFinding,
     AgentPluginUpdateAllRow, AgentPluginUpdateOutcome, AgentPluginsSnapshot, CapabilitiesSnapshot,
@@ -443,6 +443,7 @@ pub struct HermesNativeApp {
     gateway_endpoint: Option<GatewayEndpoint>,
     sessions: Vec<SessionSummary>,
     files: FileBrowserState,
+    file_previews: FilePreviewStore,
     archived_sessions: Vec<SessionSummary>,
     show_archived_sessions: bool,
     recent_session_switcher: Option<RecentSessionSwitcher>,
@@ -984,6 +985,7 @@ fn render_message() -> &'static str {
             gateway_endpoint: None,
             sessions: Vec::new(),
             files: FileBrowserState::default(),
+            file_previews: FilePreviewStore::default(),
             archived_sessions: Vec::new(),
             show_archived_sessions: false,
             recent_session_switcher: None,
@@ -1233,6 +1235,9 @@ fn render_message() -> &'static str {
         let is_session_tile = descriptor
             .as_ref()
             .is_some_and(|descriptor| descriptor.role == "hermes_session_tile");
+        let is_file_preview = descriptor
+            .as_ref()
+            .is_some_and(|descriptor| descriptor.role == "hermes_file_preview");
         let title = match id {
             SESSIONS => "Sessions",
             WORKSPACE => self.route.title(),
@@ -1251,6 +1256,13 @@ fn render_message() -> &'static str {
                 glyph: "×",
                 accessible_label: "Close session tab",
                 tooltip: "Close session tab",
+                enabled: true,
+            }]
+        } else if is_file_preview {
+            vec![PanelChromeControl {
+                glyph: "×",
+                accessible_label: "Close file preview",
+                tooltip: "Close file preview",
                 enabled: true,
             }]
         } else {
@@ -1280,6 +1292,11 @@ fn render_message() -> &'static str {
             if !response.activated_controls.is_empty() {
                 if is_session_tile {
                     self.request_close_session_pane(&PanelId::from(id));
+                } else if is_file_preview {
+                    self.workspace
+                        .close_file_preview(&PanelId::from(id))
+                        .unwrap_or_else(|error| self.status = error);
+                    ui.ctx().request_repaint();
                 } else {
                     self.execute_registered_action(RegisteredUiAction::TogglePane {
                         panel: id.into(),
@@ -1304,6 +1321,17 @@ fn render_message() -> &'static str {
                     &mut child,
                     descriptor.as_ref().expect("matched descriptor"),
                 );
+            }
+            _ if is_file_preview => {
+                if let Some(path) = descriptor
+                    .as_ref()
+                    .and_then(|descriptor| descriptor.metadata.get("hermes.file.path"))
+                {
+                    self.file_previews
+                        .open(&mut child, std::path::Path::new(path));
+                } else {
+                    self.empty_panel(&mut child, "File preview path is missing");
+                }
             }
             _ => {}
         }
@@ -1342,9 +1370,19 @@ fn render_message() -> &'static str {
             }
         });
         ui.separator();
-        egui::ScrollArea::vertical()
+        let opened = egui::ScrollArea::vertical()
             .id_salt("hermes-files-tree-scroll")
-            .show(ui, |ui| self.files.draw(ui));
+            .show(ui, |ui| self.files.draw(ui))
+            .inner;
+        if let Some(path) = opened {
+            match self.workspace.open_file_preview(&path) {
+                Ok(_) => {
+                    self.file_previews.request(&path);
+                    ui.ctx().request_repaint();
+                }
+                Err(error) => self.status = error,
+            }
+        }
     }
 
     fn draw_split_resize_handles(
@@ -13053,6 +13091,9 @@ mod tests {
 impl HermesNativeApp {
     pub fn draw(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        if self.file_previews.poll() {
+            ctx.request_repaint();
+        }
         if self.find_in_page_open
             && self.find_in_page_route.as_deref() != Some(self.route.path().as_str())
         {

@@ -13,6 +13,7 @@ use std::{
 };
 
 const MAX_DIRECTORY_ENTRIES: usize = 1_000;
+const MAX_PREVIEW_BYTES: u64 = 1_048_576;
 const EXCLUDED_NAMES: &[&str] = &[
     ".git",
     ".hg",
@@ -49,6 +50,141 @@ struct DirectoryResult {
     root: PathBuf,
     path: PathBuf,
     result: Result<Vec<FileEntry>, String>,
+}
+
+struct PreviewRequest {
+    path: PathBuf,
+}
+
+struct PreviewResult {
+    path: PathBuf,
+    result: Result<FilePreviewContent, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilePreviewContent {
+    pub text: String,
+    pub language: String,
+}
+
+#[derive(Default)]
+pub struct FilePreviewStore {
+    contents: BTreeMap<PathBuf, Result<FilePreviewContent, String>>,
+    pending: BTreeSet<PathBuf>,
+    request_tx: Option<Sender<PreviewRequest>>,
+    result_rx: Option<Receiver<PreviewResult>>,
+}
+
+impl FilePreviewStore {
+    pub fn request(&mut self, path: &Path) {
+        self.ensure_worker();
+        self.poll();
+        if !self.contents.contains_key(path) && !self.pending.contains(path) {
+            if self.pending.len() < 8 {
+                self.pending.insert(path.to_path_buf());
+                let sent = self.request_tx.as_ref().is_some_and(|tx| {
+                    tx.send(PreviewRequest {
+                        path: path.to_path_buf(),
+                    })
+                    .is_ok()
+                });
+                if !sent {
+                    self.pending.remove(path);
+                    self.contents.insert(
+                        path.to_path_buf(),
+                        Err("File preview worker stopped".into()),
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn open(&mut self, ui: &mut egui::Ui, path: &Path) {
+        self.request(path);
+        match self.contents.get(path) {
+            Some(Ok(content)) => {
+                ui.label(
+                    egui::RichText::new(path.display().to_string())
+                        .small()
+                        .color(ui.visuals().weak_text_color()),
+                );
+                ui.separator();
+                egui::ScrollArea::both()
+                    .id_salt(("hermes-file-preview", path))
+                    .show(ui, |ui| {
+                        if content.language == "markdown" {
+                            ui.label(egui::RichText::new(&content.text).size(13.0));
+                        } else {
+                            ui.label(
+                                egui::RichText::new(&content.text)
+                                    .font(egui::FontId::monospace(12.0)),
+                            );
+                        }
+                    });
+            }
+            Some(Err(error)) => {
+                ui.centered_and_justified(|ui| {
+                    ui.label(format!("Unable to preview this file: {error}"));
+                });
+            }
+            None if self.pending.contains(path) => {
+                ui.centered_and_justified(|ui| {
+                    ui.label("Loading file preview…");
+                });
+            }
+            None => {
+                ui.centered_and_justified(|ui| {
+                    ui.label("Preview queue is full. Close an unused preview and retry.");
+                });
+            }
+        }
+    }
+
+    pub fn poll(&mut self) -> bool {
+        let Some(receiver) = &self.result_rx else {
+            return false;
+        };
+        let mut changed = false;
+        loop {
+            match receiver.try_recv() {
+                Ok(result) => {
+                    self.pending.remove(&result.path);
+                    self.contents.insert(result.path, result.result);
+                    changed = true;
+                }
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
+            }
+        }
+        changed
+    }
+
+    fn ensure_worker(&mut self) {
+        if self.request_tx.is_some() {
+            return;
+        }
+        let (request_tx, request_rx) = mpsc::channel::<PreviewRequest>();
+        let (result_tx, result_rx) = mpsc::channel::<PreviewResult>();
+        let spawn = thread::Builder::new()
+            .name("hermes-file-preview".into())
+            .spawn(move || {
+                while let Ok(request) = request_rx.recv() {
+                    let result = read_file_preview(&request.path);
+                    if result_tx
+                        .send(PreviewResult {
+                            path: request.path,
+                            result,
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+        if spawn.is_ok() {
+            self.request_tx = Some(request_tx);
+            self.result_rx = Some(result_rx);
+        }
+    }
 }
 
 pub struct FileBrowserState {
@@ -170,15 +306,15 @@ impl FileBrowserState {
         changed
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui) {
+    pub fn draw(&mut self, ui: &mut egui::Ui) -> Option<PathBuf> {
         let Some(root) = self.root.clone() else {
             ui.centered_and_justified(|ui| {
                 ui.label("Open a Hermes session with a project folder to browse files.");
             });
-            return;
+            return None;
         };
 
-        self.draw_directory(ui, &root, 0);
+        let opened = self.draw_directory(ui, &root, 0);
         if let Some(selected) = self.selected.clone() {
             ui.separator();
             ui.label(
@@ -187,6 +323,7 @@ impl FileBrowserState {
                     .color(ui.visuals().weak_text_color()),
             );
         }
+        opened
     }
 
     fn request_directory(&mut self, path: PathBuf) {
@@ -216,7 +353,7 @@ impl FileBrowserState {
         }
     }
 
-    fn draw_directory(&mut self, ui: &mut egui::Ui, path: &Path, depth: usize) {
+    fn draw_directory(&mut self, ui: &mut egui::Ui, path: &Path, depth: usize) -> Option<PathBuf> {
         let Some(entries) = self.entries.get(path).cloned() else {
             if self.pending.contains_key(path) {
                 ui.label("Loading…");
@@ -231,10 +368,11 @@ impl FileBrowserState {
                     }
                 });
             }
-            return;
+            return None;
         };
 
         for entry in entries {
+            let mut open_file = None;
             ui.horizontal(|ui| {
                 ui.add_space((depth as f32) * 14.0);
                 if entry.is_directory {
@@ -261,6 +399,12 @@ impl FileBrowserState {
                     });
                     if response.clicked() {
                         self.selected = Some(entry.path.clone());
+                        if open {
+                            self.expanded.remove(&entry.path);
+                        } else {
+                            self.expanded.insert(entry.path.clone());
+                            self.request_directory(entry.path.clone());
+                        }
                     }
                 } else {
                     let response = ui.selectable_label(
@@ -277,10 +421,18 @@ impl FileBrowserState {
                     if response.clicked() {
                         self.selected = Some(entry.path.clone());
                     }
+                    if response.double_clicked() {
+                        open_file = Some(entry.path.clone());
+                    }
                 }
             });
+            if open_file.is_some() {
+                return open_file;
+            }
             if entry.is_directory && self.expanded.contains(&entry.path) {
-                self.draw_directory(ui, &entry.path, depth + 1);
+                if let Some(opened) = self.draw_directory(ui, &entry.path, depth + 1) {
+                    return Some(opened);
+                }
             }
         }
         if self
@@ -296,7 +448,49 @@ impl FileBrowserState {
                 .color(ui.visuals().weak_text_color()),
             );
         }
+        None
     }
+}
+
+fn read_file_preview(path: &Path) -> Result<FilePreviewContent, String> {
+    let metadata = fs::metadata(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
+    if !metadata.is_file() {
+        return Err("Only regular files can be previewed".into());
+    }
+    if metadata.len() > MAX_PREVIEW_BYTES {
+        return Err(format!(
+            "File exceeds the {MAX_PREVIEW_BYTES}-byte preview limit"
+        ));
+    }
+    let bytes = fs::read(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
+    if bytes.len() as u64 > MAX_PREVIEW_BYTES {
+        return Err(format!(
+            "File exceeds the {MAX_PREVIEW_BYTES}-byte preview limit"
+        ));
+    }
+    let text =
+        String::from_utf8(bytes).map_err(|_| "File is binary or not valid UTF-8".to_owned())?;
+    let language = match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "md" | "markdown" | "mdx" => "markdown",
+        "rs" => "rust",
+        "py" => "python",
+        "js" | "jsx" | "mjs" | "cjs" => "javascript",
+        "ts" | "tsx" => "typescript",
+        "json" => "json",
+        "toml" => "toml",
+        "yml" | "yaml" => "yaml",
+        "html" | "htm" => "html",
+        "css" => "css",
+        _ => "text",
+    }
+    .to_owned();
+    Ok(FilePreviewContent { text, language })
 }
 
 fn read_directory(path: &Path) -> Result<Vec<FileEntry>, String> {
@@ -402,5 +596,35 @@ mod tests {
         assert_eq!(state.entries[&second][0].name, "new.txt");
         fs::remove_dir_all(first).unwrap();
         fs::remove_dir_all(second).unwrap();
+    }
+
+    #[test]
+    fn preview_reads_small_utf8_text_and_rejects_large_or_binary_files() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("hermes-preview-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let text = root.join("sample.rs");
+        fs::write(&text, "fn main() {}\n").unwrap();
+        let preview = read_file_preview(&text).unwrap();
+        assert_eq!(preview.language, "rust");
+        assert!(preview.text.contains("fn main"));
+
+        let binary = root.join("image.bin");
+        fs::write(&binary, [0, 159, 146, 150]).unwrap();
+        assert!(read_file_preview(&binary).unwrap_err().contains("binary"));
+
+        let oversized = root.join("large.txt");
+        let file = fs::File::create(&oversized).unwrap();
+        file.set_len(MAX_PREVIEW_BYTES + 1).unwrap();
+        assert!(
+            read_file_preview(&oversized)
+                .unwrap_err()
+                .contains("preview limit")
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }

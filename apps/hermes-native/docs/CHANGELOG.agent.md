@@ -1144,3 +1144,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Not applicable.
   **risks:** Publication does not close the 1:1 parity objective; Files remote/preview/ignore behavior and all source-paired acceptance remain open.
   **follow_up:** Continue the fixed-source parity backlog from the new published `main` revision.
+
+- **id:** HUR-001-085
+  **timestamp:** 2026-11-15T13:38:40Z
+  **what:** Added dynamic source-inspired file preview panes to the pinned-source Files panel.
+  **why:** Complete the next Files workflow slice while keeping previews temporary and bounded.
+  **components:** src/files.rs, src/layout.rs, src/app.rs, README, architecture, backlog, plan.
+  **type:** feature
+  **validation:** Formatting passed; automation-feature tests passed (128 library and 11 protocol tests); all-target feature check and git diff check passed. Tests cover UTF-8 preview, binary/size rejection, tab grouping and persistence omission.
+  **performance:** Preview filesystem reads are isolated on a worker and capped at 1 MiB each; no benchmark performed.
+  **risks:** Local-only files, source-paired rendering, remote filesystem, gitignore, richer previews and physical Windows host acceptance remain open.
+  **follow_up:** Continue pinned-source parity; capture only after navigating to the exact route/fixture and keep the acceptance matrix pending until source-paired evidence is reviewed.
+
+- **id:** HUR-001-086
+  **timestamp:** 2026-11-15T13:38:40Z
+  **what:** Recorded the verified full automation-feature target matrix for dynamic file previews.
+  **why:** Preserve reproducible evidence for the current implementation increment.
+  **components:** src/files.rs, src/layout.rs, src/app.rs, docs/EXECUTION_LOGS.md.
+  **type:** validation
+  **validation:** cargo fmt --all -- --check, cargo test -p hermes-native --all-targets --features agent-automation (128 + 11 passed), cargo check -p hermes-native --all-targets --features agent-automation, and git diff --check all passed.
+  **performance:** No benchmark performed.
+  **risks:** Local automated coverage does not establish visual parity or physical Windows acceptance.
+  **follow_up:** Source-pair the Files tree and previews against the fixed snapshot before closing those matrix rows.

@@ -1,13 +1,14 @@
 use doofusdock_core::{
     ClosePolicy, CommandId, DockingService, LayoutDocument, LayoutId, LayoutStore, Node, NodeId,
-    NodeKind, Operation, Orientation, PanelDescriptor, PanelId, PersistenceLimits, ProfileLayout,
-    ProfilePresentation, ProfileRegion, WorkspaceProfile, apply_workspace_profile,
+    NodeKind, Operation, Orientation, PanelDescriptor, PanelId, PersistenceLimits,
+    PersistencePolicy, ProfileLayout, ProfilePresentation, ProfileRegion, WorkspaceProfile,
+    apply_workspace_profile,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -59,6 +60,10 @@ pub struct Workspace {
 }
 
 const CLOSED_SESSION_PANE_LIMIT: usize = 64;
+
+fn layout_command(kind: &str, revision: u64) -> CommandId {
+    CommandId::from(format!("hermes-native-{kind}-{revision}"))
+}
 
 #[derive(Clone, Debug)]
 struct ClosedSessionPane {
@@ -352,6 +357,150 @@ impl Workspace {
         Ok(())
     }
 
+    pub fn open_file_preview(&mut self, path: &Path) -> Result<PanelId, String> {
+        if !path.is_absolute() || path.to_string_lossy().len() > 32_768 {
+            return Err("File preview path must be absolute and no longer than 32768 bytes".into());
+        }
+        let path = path.to_string_lossy().into_owned();
+        let panel = file_preview_panel_id(&path);
+        let observed = self.dock.snapshot();
+        if let Some(existing) = observed.document.descriptor(&panel) {
+            if existing.role != "hermes_file_preview"
+                || existing.metadata.get("hermes.file.path") != Some(&path)
+            {
+                return Err(
+                    "File preview identity collision; refusing to reuse another pane".into(),
+                );
+            }
+            if !observed.document.closed_panels.contains(&panel) {
+                if let Some((tabs, index)) =
+                    find_tab_for_panel(observed.document.root.as_deref(), &panel)
+                {
+                    self.dock
+                        .transact(
+                            observed.revision,
+                            layout_command("select-file-preview", observed.revision),
+                            [Operation::SelectTab { tabs, index }],
+                        )
+                        .map_err(|error| error.to_string())?;
+                    return Ok(panel);
+                }
+                return Ok(panel);
+            }
+            let target_tabs = observed
+                .document
+                .panels
+                .iter()
+                .filter(|descriptor| {
+                    descriptor.role == "hermes_file_preview"
+                        && !observed.document.closed_panels.contains(&descriptor.id)
+                })
+                .find_map(|descriptor| {
+                    find_tab_for_panel(observed.document.root.as_deref(), &descriptor.id)
+                        .map(|(tabs, _)| tabs)
+                })
+                .or_else(|| {
+                    find_tab_for_panel(observed.document.root.as_deref(), &PanelId::from(WORKSPACE))
+                        .map(|(tabs, _)| tabs)
+                })
+                .ok_or_else(|| "No tab group is available for the file preview".to_owned())?;
+            let index = find_tab_group(observed.document.root.as_deref(), &target_tabs)
+                .map_or(0, |(len, _)| len);
+            self.dock
+                .transact(
+                    observed.revision,
+                    layout_command("reopen-file-preview", observed.revision),
+                    [Operation::ReopenPanel {
+                        panel: panel.clone(),
+                        target_tabs,
+                        index,
+                    }],
+                )
+                .map_err(|error| error.to_string())?;
+            self.save_layout();
+            return Ok(panel);
+        }
+
+        let mut descriptor = PanelDescriptor::new(
+            panel.0.clone(),
+            Path::new(&path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&path),
+        );
+        descriptor.role = "hermes_file_preview".into();
+        descriptor.persistence = PersistencePolicy::Never;
+        descriptor.close_policy = ClosePolicy::Allowed;
+        descriptor.minimum = doofusdock_core::Size::new(240, 160);
+        descriptor.metadata.insert("hermes.file.path".into(), path);
+
+        let preview_group = observed
+            .document
+            .panels
+            .iter()
+            .filter(|descriptor| {
+                descriptor.role == "hermes_file_preview"
+                    && !observed.document.closed_panels.contains(&descriptor.id)
+            })
+            .find_map(|descriptor| {
+                find_tab_for_panel(observed.document.root.as_deref(), &descriptor.id)
+                    .map(|(tabs, _)| tabs)
+                    .or_else(|| {
+                        find_panel_node(observed.document.root.as_deref(), &descriptor.id.0)
+                    })
+            });
+        let operation = if let Some(target) = preview_group {
+            Operation::AddPanel {
+                descriptor,
+                target: Some(target),
+            }
+        } else {
+            let target =
+                find_panel_node(observed.document.root.as_deref(), WORKSPACE).ok_or_else(|| {
+                    "The Hermes workspace pane is not present in the Dock layout".to_owned()
+                })?;
+            Operation::AddGroup {
+                descriptor,
+                target: Some(target),
+                orientation: Orientation::Horizontal,
+                before: false,
+                ratio: 0.38,
+            }
+        };
+        self.dock
+            .transact(
+                observed.revision,
+                layout_command("open-file-preview", observed.revision),
+                [operation],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(panel)
+    }
+
+    pub fn close_file_preview(&mut self, panel: &PanelId) -> Result<(), String> {
+        let observed = self.dock.snapshot();
+        let descriptor = observed
+            .document
+            .descriptor(panel)
+            .ok_or_else(|| "File preview pane is not registered".to_owned())?;
+        if descriptor.role != "hermes_file_preview" {
+            return Err("Refusing to close a non-preview pane as a file preview".into());
+        }
+        if !observed.document.closed_panels.contains(panel) {
+            self.dock
+                .transact(
+                    observed.revision,
+                    layout_command("close-file-preview", observed.revision),
+                    [Operation::ClosePanel {
+                        panel: panel.clone(),
+                    }],
+                )
+                .map_err(|error| error.to_string())?;
+            self.save_layout();
+        }
+        Ok(())
+    }
+
     /// Reopen the most recently closed session pane owned by this Hermes
     /// profile. Closed history is intentionally in-memory, matching the
     /// pinned Desktop's reopen stack; the pane itself remains DoofusDock-owned.
@@ -508,7 +657,7 @@ impl Workspace {
     }
 
     pub fn save_layout(&mut self) {
-        let document = self.dock.snapshot().document;
+        let document = persistent_layout(self.dock.snapshot().document);
         match self.store.save(&document) {
             Ok(()) => self.persistence_error = None,
             Err(error) => self.persistence_error = Some(error.to_string()),
@@ -631,6 +780,186 @@ fn session_pane_id(profile: Option<&str>, stored_session_id: &str) -> PanelId {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     PanelId::from(format!("session-tile:{hash:016x}"))
+}
+
+fn file_preview_panel_id(path: &str) -> PanelId {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in path.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    PanelId::from(format!("file-preview:{hash:016x}"))
+}
+
+fn persistent_layout(mut document: LayoutDocument) -> LayoutDocument {
+    let ephemeral = document
+        .panels
+        .iter()
+        .filter(|descriptor| descriptor.persistence == PersistencePolicy::Never)
+        .map(|descriptor| descriptor.id.clone())
+        .collect::<BTreeSet<_>>();
+    if ephemeral.is_empty() {
+        return document;
+    }
+    document.root = document
+        .root
+        .as_deref()
+        .and_then(|root| prune_ephemeral_node(root, &ephemeral));
+    for window in &mut document.floating_windows {
+        if let Some(root) = prune_ephemeral_node(&window.root, &ephemeral) {
+            window.root = root;
+        }
+    }
+    document
+        .floating_windows
+        .retain(|window| !contains_ephemeral(&window.root, &ephemeral));
+    document.panels = Arc::new(
+        document
+            .panels
+            .iter()
+            .filter(|descriptor| !ephemeral.contains(&descriptor.id))
+            .cloned()
+            .collect(),
+    );
+    document
+        .closed_panels
+        .retain(|panel| !ephemeral.contains(panel));
+    document
+        .pinned_panels
+        .retain(|panel| !ephemeral.contains(panel));
+    document
+        .auto_hide_panels
+        .retain(|entry| !ephemeral.contains(&entry.panel));
+    if document
+        .maximized_panel
+        .as_ref()
+        .is_some_and(|panel| ephemeral.contains(panel))
+    {
+        document.maximized_panel = None;
+    }
+    document
+}
+
+fn contains_ephemeral(node: &Node, ephemeral: &BTreeSet<PanelId>) -> bool {
+    match &node.kind {
+        NodeKind::Panel { panel } | NodeKind::Placeholder { panel, .. } => {
+            ephemeral.contains(panel)
+        }
+        NodeKind::Tabs { items, .. }
+        | NodeKind::DocumentWell { groups: items, .. }
+        | NodeKind::Split {
+            children: items, ..
+        }
+        | NodeKind::Extension {
+            children: items, ..
+        } => items
+            .iter()
+            .any(|child| contains_ephemeral(child, ephemeral)),
+    }
+}
+
+fn prune_ephemeral_node(node: &Node, ephemeral: &BTreeSet<PanelId>) -> Option<Arc<Node>> {
+    match &node.kind {
+        NodeKind::Panel { panel } | NodeKind::Placeholder { panel, .. }
+            if ephemeral.contains(panel) =>
+        {
+            None
+        }
+        NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => Some(Arc::new(node.clone())),
+        NodeKind::Tabs {
+            items,
+            active_index,
+        } => {
+            let items = items
+                .iter()
+                .filter_map(|item| prune_ephemeral_node(item, ephemeral))
+                .collect::<Vec<_>>();
+            match items.len() {
+                0 => None,
+                1 => items.into_iter().next(),
+                _ => Some(Arc::new(Node {
+                    id: node.id.clone(),
+                    kind: NodeKind::Tabs {
+                        active_index: (*active_index).min(items.len() - 1),
+                        items,
+                    },
+                })),
+            }
+        }
+        NodeKind::DocumentWell {
+            groups,
+            active_group,
+        } => {
+            let groups = groups
+                .iter()
+                .filter_map(|item| prune_ephemeral_node(item, ephemeral))
+                .collect::<Vec<_>>();
+            match groups.len() {
+                0 => None,
+                1 => groups.into_iter().next(),
+                _ => Some(Arc::new(Node {
+                    id: node.id.clone(),
+                    kind: NodeKind::DocumentWell {
+                        active_group: (*active_group).min(groups.len() - 1),
+                        groups,
+                    },
+                })),
+            }
+        }
+        NodeKind::Split {
+            orientation,
+            weights,
+            children,
+        } => {
+            let retained = children
+                .iter()
+                .enumerate()
+                .filter_map(|(index, item)| {
+                    prune_ephemeral_node(item, ephemeral).map(|item| (index, item))
+                })
+                .collect::<Vec<_>>();
+            match retained.len() {
+                0 => None,
+                1 => retained.into_iter().next().map(|(_, item)| item),
+                _ => {
+                    let total = retained
+                        .iter()
+                        .map(|(index, _)| weights.get(*index).copied().unwrap_or(1.0))
+                        .sum::<f64>();
+                    let normalized = retained
+                        .iter()
+                        .map(|(index, _)| weights.get(*index).copied().unwrap_or(1.0) / total)
+                        .collect();
+                    Some(Arc::new(Node {
+                        id: node.id.clone(),
+                        kind: NodeKind::Split {
+                            orientation: *orientation,
+                            weights: normalized,
+                            children: retained.into_iter().map(|(_, item)| item).collect(),
+                        },
+                    }))
+                }
+            }
+        }
+        NodeKind::Extension {
+            modality,
+            payload,
+            children,
+        } => {
+            let children = children
+                .iter()
+                .filter_map(|item| prune_ephemeral_node(item, ephemeral))
+                .collect::<Vec<_>>();
+            Some(Arc::new(Node {
+                id: node.id.clone(),
+                kind: NodeKind::Extension {
+                    modality: modality.clone(),
+                    payload: payload.clone(),
+                    children,
+                },
+            }))
+        }
+    }
 }
 
 fn find_panel_node(root: Option<&Node>, panel_id: &str) -> Option<NodeId> {
@@ -1128,6 +1457,71 @@ fn write_preferences_atomic(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_preview_tabs_are_transient_and_do_not_enter_persisted_layouts() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-file-preview-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let files = directory.join("project");
+        std::fs::create_dir_all(&files).unwrap();
+        let first_path = files.join("README.md");
+        let second_path = files.join("Cargo.toml");
+        std::fs::write(&first_path, "# Sample").unwrap();
+        std::fs::write(&second_path, "[package]").unwrap();
+
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let first = workspace.open_file_preview(&first_path).unwrap();
+        let second = workspace.open_file_preview(&second_path).unwrap();
+        let live = workspace.dock.snapshot().document;
+        assert_eq!(live.descriptor(&first).unwrap().role, "hermes_file_preview");
+        assert_eq!(
+            live.descriptor(&second).unwrap().role,
+            "hermes_file_preview"
+        );
+        assert_eq!(
+            find_tab_for_panel(live.root.as_deref(), &first).unwrap().0,
+            find_tab_for_panel(live.root.as_deref(), &second).unwrap().0,
+            "subsequent file previews must share the preview tab group"
+        );
+
+        workspace.save_layout();
+        assert!(workspace.persistence_error.is_none());
+        let persisted = workspace
+            .store
+            .load(&LayoutId::from("hermes-native-main"))
+            .unwrap();
+        assert!(persisted.descriptor(&first).is_none());
+        assert!(persisted.descriptor(&second).is_none());
+        assert!(find_panel_node(persisted.root.as_deref(), &first.0).is_none());
+        assert!(find_panel_node(persisted.root.as_deref(), &second.0).is_none());
+
+        workspace.close_file_preview(&first).unwrap();
+        assert!(
+            workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&first)
+        );
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn file_preview_identity_is_stable_and_path_specific() {
+        let first = file_preview_panel_id("C:/project/README.md");
+        let same = file_preview_panel_id("C:/project/README.md");
+        let second = file_preview_panel_id("C:/project/Cargo.toml");
+        assert_eq!(first, same);
+        assert_ne!(first, second);
+    }
 
     #[test]
     fn select_panel_uses_canonical_tabs_and_is_idempotent() {
