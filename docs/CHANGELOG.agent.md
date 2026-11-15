@@ -713,3 +713,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** Image I/O and decode stay off the UI thread; encoded size is capped at 16 MiB and dimensions at 64 megapixels; decoded textures are reused by path.
 - **risks:** SVG remains unsupported along with PDF/HTML, remote file reads and exact source-paired appearance; formal PAR-0105 remains pending.
 - **follow_up:** Add SVG/PDF/HTML paths and source-paired interaction/visual evidence against the pinned snapshot.
+- **id:** HUI-059
+- **timestamp:** 2026-11-15T14:14:55Z
+- **what:** Added a distinct PNG preview screenshot and hash-bound metadata for published image-preview commit `3b203ea014c7eabd66cae436c201a3b91ffd196e`.
+- **why:** Keep visual evidence tied to the exact pinned source and target binary while making screenshot routes reproducible.
+- **components:** Agent UI image fixture and screenshot artifact.
+- **type:** capture and verification.
+- **validation:** AccessKit inspection confirmed the image fixture route; PNG dimensions and SHA-256 hashes were parsed and validated; capture is 1440×900 and visually inspected.
+- **performance:** Fixture capture completed in under ten seconds including incremental build.
+- **risks:** Synthetic target-only capture does not establish source parity or live Windows behavior.
+- **follow_up:** Continue remaining pinned Files behaviors and source-paired acceptance.

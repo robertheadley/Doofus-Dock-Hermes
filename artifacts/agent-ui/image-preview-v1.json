@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-11-15T14:14:55Z",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "3b203ea014c7eabd66cae436c201a3b91ffd196e",
+  "target_binary_sha256": "af6f53d7cc7b809c88f22145db833c89ed1cf0135570f252ed548947f46983fc",
+  "screenshot_sha256": "90fc81e89c64f8936811bc82e228db81386a61efb248fe52f0577ab4473cce10",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale": "headless logical pixels"
+  },
+  "route": "/image-preview-fixture",
+  "fixture": "isolated synthetic session and PNG under TemporaryProfile; gateway disabled",
+  "visible_state": [
+    "Sessions sidebar",
+    "Files tab selected",
+    "workspace chat",
+    "preview.png decoded image pane",
+    "project tree with synthetic image and text files"
+  ],
+  "verification": "AccessKit inspection confirmed the isolated image-preview fixture and Rust screenshot visually shows the decoded image at 1440x900.",
+  "limitations": [
+    "Target-only screenshot; no paired Hermes source capture",
+    "No physical Windows host evidence",
+    "Synthetic PNG; no Hermes gateway started",
+    "SVG/PDF/HTML preview modes remain unimplemented"
+  ]
+}
