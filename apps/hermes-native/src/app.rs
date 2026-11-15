@@ -554,6 +554,61 @@ pub struct HermesNativeApp {
     split_resize: Option<SplitResizeSession>,
 }
 
+fn is_valid_http_gateway_url(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() || value.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let Some((scheme, remainder)) = value.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    let authority = remainder.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.is_empty() || authority.contains('@') {
+        return false;
+    }
+    let (host, port) = if let Some((literal, suffix)) = authority
+        .strip_prefix('[')
+        .and_then(|tail| tail.split_once(']'))
+    {
+        let port = if suffix.is_empty() {
+            None
+        } else {
+            suffix.strip_prefix(':')
+        };
+        if !literal.contains(':') || (!suffix.is_empty() && port.is_none()) {
+            return false;
+        }
+        if literal.parse::<std::net::Ipv6Addr>().is_err() {
+            return false;
+        }
+        (literal, port)
+    } else {
+        let mut pieces = authority.split(':');
+        let host = pieces.next().unwrap_or_default();
+        let port = pieces.next();
+        if pieces.next().is_some() {
+            return false;
+        }
+        (host, port)
+    };
+    let valid_host = if authority.starts_with('[') {
+        host.parse::<std::net::Ipv6Addr>().is_ok()
+    } else {
+        !host.is_empty()
+            && host != "."
+            && !host.starts_with('.')
+            && !host.ends_with('.')
+            && host
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
+    };
+    let valid_port = port.is_none_or(|port| port.parse::<u16>().is_ok_and(|parsed| parsed > 0));
+    valid_host && valid_port
+}
+
 impl HermesNativeApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self::from_workspace_result(
@@ -4225,8 +4280,13 @@ fn render_message() -> &'static str {
                         self.first_run_setup_error = None;
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let apply_clicked = ui.button("Apply remote").clicked();
-                        let test_clicked = ui.button("Test connection").clicked();
+                        let apply_clicked = ui
+                            .add_enabled(false, egui::Button::new("Apply remote"))
+                            .clicked();
+                        let test_enabled = is_valid_http_gateway_url(&self.first_run_gateway_url);
+                        let test_clicked = ui
+                            .add_enabled(test_enabled, egui::Button::new("Test connection"))
+                            .clicked();
                         if apply_clicked || test_clicked {
                             self.first_run_setup_error = Some("Remote gateway setup is not implemented in this Rust client yet.".into());
                         }
@@ -12694,17 +12754,67 @@ mod tests {
             .click();
         harness.run();
         assert!(app.borrow().first_run_remote_setup_open);
-        harness.get_by_label("Apply remote").click();
+        assert!(
+            harness
+                .get_by_label("Apply remote")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(
+            harness
+                .get_by_label("Test connection")
+                .accesskit_node()
+                .is_disabled()
+        );
+        app.borrow_mut().first_run_gateway_url = "https://gateway.example.com/hermes".into();
+        harness.run();
+        assert!(
+            !harness
+                .get_by_label("Test connection")
+                .accesskit_node()
+                .is_disabled()
+        );
+        harness.get_by_label("Test connection").click();
         harness.run();
         assert_eq!(
             app.borrow().first_run_setup_error.as_deref(),
             Some("Remote gateway setup is not implemented in this Rust client yet.")
         );
-        let _ = harness.get_by_label("Test connection");
+        assert!(
+            harness
+                .get_by_label("Apply remote")
+                .accesskit_node()
+                .is_disabled()
+        );
 
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn first_run_gateway_url_requires_http_scheme_and_host() {
+        for accepted in [
+            "https://gateway.example.com/hermes",
+            "HTTP://localhost:9119",
+            "https://[::1]:9119/api",
+        ] {
+            assert!(is_valid_http_gateway_url(accepted), "{accepted}");
+        }
+        for rejected in [
+            "",
+            "gateway.example.com",
+            "ftp://gateway.example.com",
+            "https://",
+            "https://.invalid/path",
+            "https://gateway.example.com with credentials",
+            "https://user:pass@gateway.example.com",
+            "https://gateway.example.com:notaport",
+            "https://[::1",
+            "https://[::1]suffix",
+        ] {
+            assert!(!is_valid_http_gateway_url(rejected), "{rejected}");
+        }
     }
 
     fn seed_pending_submission(

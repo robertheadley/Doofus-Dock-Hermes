@@ -1,11 +1,11 @@
 {
-  "captured_at": "2026-11-15T17:43:33Z",
+  "captured_at": "2026-11-15T17:57:23Z",
   "hermes_parity_source": "8783054ef6cbafd86f10892241436862c1171a66",
   "doofusdock_source": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
   "hermes_source_baseline_screenshot": "hermes-upstream-first-run-878305-20261115.png",
   "hermes_source_baseline_sha256": "2d73abe173980ea82e28ee1d521a4cb0d6b4d31375e1084fc804b9dd0aaf513f",
-  "target_base_commit": "93f44c893a97a88986b2c49b604381182f03af6c",
-  "target_app_rs_sha256": "a2cc0b9684e716e89d23a32ecd9b37a59366073b9804a778d8e2c2cd5b7f21e1",
+  "target_base_commit": "e182b5faea49307cdbbb6e3df4cb8871ad2c2a14",
+  "target_app_rs_sha256": "4283dd230e92c25944642b88a7277b03098f54ebc3d31740080679363012a5fe",
   "automation_runner_rs_sha256": "65bcab66593f644beeb42d2e32c706d7319e5342a18656fa92becd509ef397fa",
   "fixture": "--first-run-setup-fixture; unique temporary offline profile; no native window; no Hermes gateway",
   "profile_isolated": true,
@@ -21,9 +21,10 @@
   "visible_state": [
     "Connect to existing Hermes",
     "Gateway URL contains synthetic example endpoint",
-    "Remote gateway setup is not implemented in this Rust client yet."
+    "Remote gateway setup is not implemented in this Rust client yet.",
+    "Apply remote disabled without verified test receipt"
   ],
   "screenshot": "hermes-native-first-run-remote-error-1220x800-20261115.png",
-  "screenshot_sha256": "38154e70c87240b83e209bac3cf0207640872d00f0da5769dea311c7ba69746a",
-  "evidence_limit": "Target-only unsupported-flow evidence using a synthetic endpoint. No remote request was sent. Remote authentication, test and apply remain unimplemented."
+  "screenshot_sha256": "64eb7e299d56a89ffd63d662c391fb3c3cc8fa5c83c38f9916b1ddb50eac174b",
+  "evidence_limit": "Target-only unsupported-flow evidence using a synthetic endpoint. No remote request was sent. Remote authentication, testing, verified success and apply remain unimplemented."
 }

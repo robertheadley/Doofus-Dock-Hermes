@@ -15,7 +15,7 @@ Session rows expose accessible Pin/Unpin, persisted Mark unread/Mark read, and A
 
 ## Current implementation
 
-After initial gateway discovery fails on New session, the native shell displays a source-style first-run setup card with Connect and Install choices. These choices are currently UI scaffolding: remote connection configuration/authentication and local Hermes bootstrap are not implemented. See `docs/BACKLOG.md`; onboarding parity remains unaccepted.
+After initial gateway discovery fails on New session, the native shell displays a source-style first-run setup card with Connect and Install choices. In the remote form, Test is disabled until the URL has an HTTP(S) scheme and host; Apply remains disabled until a successful test receipt exists. The current Rust client has no probe/test/apply adapter, so Test reports that limitation for a syntactically valid URL and Apply cannot succeed. Local Hermes bootstrap is not implemented. See `docs/BACKLOG.md`; onboarding parity remains unaccepted.
 
 For isolated onboarding navigation and captures, run `cargo run --features agent-automation --bin hermes-automation -- --first-run-setup-fixture --viewport 1220x800 --inspect --screenshot artifacts\agent-ui\first-run-setup.png`. The fixture starts no Hermes gateway and uses a temporary profile.
 

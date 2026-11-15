@@ -530,3 +530,11 @@ Refine the native setup modal's outer geometry to the pinned source capture at 1
 ### Revision 104 — preserve both remote action controls
 
 Render the Test and Apply controls independently so clicking Apply does not short-circuit construction of the Test widget for that frame. Extend the isolated AccessKit onboarding test to require Test connection after the Apply action, then rerun the complete all-features test suite and recapture all three semantic states against the resulting source hashes. This covers widget presence only; it does not implement remote testing or application.
+
+### Revision 105 — source-gated remote setup actions
+
+Disable Test for an empty or malformed gateway URL, enable it only for a minimally valid HTTP(S) URL, and leave Apply disabled because this Rust client cannot create the source-required successful test receipt yet. Add AccessKit checks for both disabled states and Test enablement with a synthetic endpoint, plus URL acceptance/rejection cases. Recapture setup, remote form and unsupported Test result; no URL is sent over the network. The actual source probe/auth/config persistence and local bootstrap are still open, so PAR-0001 remains pending.
+
+### Revision 106 — validate remote authority and port
+
+Tighten the setup URL gate to reject malformed ports, unbracketed/malformed IPv6, invalid IPv6 literals, credentials in the authority, and invalid host characters, while accepting HTTP(S), localhost, regular DNS names and bracketed IPv6. Add negative cases to the URL validator test, rerun all feature tests, and refresh source-hash-bound states. This is input gating only; the source probe still requires a standards-compliant URL parser and the real remote connection/test pipeline.

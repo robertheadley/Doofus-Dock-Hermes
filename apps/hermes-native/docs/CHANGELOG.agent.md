@@ -1469,3 +1469,25 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No material performance impact; two buttons are constructed on each remote setup frame.
   **risks:** Both controls still intentionally return an explicit unsupported-flow message; no network, authentication, or remote state mutation is implemented.
   **follow_up:** Implement source-equivalent remote test/apply handlers and state; keep PAR-0001 pending until behavior and visual pairing pass.
+
+- **id:** HUR-001-115
+  **timestamp:** 2026-11-15T17:53:09Z
+  **what:** Added first-run remote URL gating: Test requires a minimally valid HTTP(S) scheme and host, while Apply remains disabled pending a successful connection-test receipt.
+  **why:** The prior placeholder allowed remote actions with an empty URL and made Apply appear available even though no valid test or secure persistence path existed.
+  **components:** apps/hermes-native/src/app.rs; apps/hermes-native/README.md; apps/hermes-native/docs/ARCHITECTURE.md; apps/hermes-native/docs/BACKLOG.md; apps/hermes-native/docs/PLAN.md; artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png; artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-setup-1220x800-20261115.png; artifacts/agent-ui/hermes-native-first-run-remote-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-error-1220x800-20261115.png; artifacts/agent-ui/hermes-native-first-run-remote-error-1220x800-20261115.png.json; docs/EXECUTION_LOGS.md.
+  **type:** first-run workflow state fidelity.
+  **validation:** URL accept/reject tests and AccessKit disabled/enabled state assertions pass; `cargo test --all-features` passes 139 library tests and 11 automation tests; three post-change 1220×800 states were visually inspected and sidecar hashes regenerated.
+  **performance:** The URL gate is a small synchronous string check on render; no network work is performed.
+  **risks:** HTTP URL validation is deliberately shallow and does not replace a standards-compliant parser. The remote probe/auth/test/commit path and local bootstrap remain unimplemented.
+  **follow_up:** Implement source-compatible probe/authentication/config receipt handling and the local bootstrap lifecycle; keep PAR-0001 pending.
+
+- **id:** HUR-001-116
+  **timestamp:** 2026-11-15T17:57:23Z
+  **what:** Tightened first-run URL authority validation for DNS/localhost hosts, bracketed IPv6, and numeric ports, with explicit malformed-authority rejection cases.
+  **why:** URL enablement should reject syntactically malformed authorities before exposing Test, even while the real source connection probe is still unavailable.
+  **components:** apps/hermes-native/src/app.rs; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/CHANGELOG.agent.md; artifacts/agent-ui/hermes-native-first-run-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-setup-1220x800-20261115.png.json; artifacts/agent-ui/hermes-native-first-run-remote-error-1220x800-20261115.png.json; docs/EXECUTION_LOGS.md.
+  **type:** URL validation and regression coverage.
+  **validation:** `cargo test --all-features` passes 139 library tests and 11 automation tests; final three 1220×800 screenshots were regenerated and their JSON sidecars bind the latest app hash.
+  **performance:** Host/port validation uses bounded string parsing and standard IPv6 parsing only.
+  **risks:** This remains a UI gate and intentionally shallow parser, not the source's actual URL normalization, network probe, authentication, or remote apply.
+  **follow_up:** Replace the shallow check with a standards-compliant URL parser as part of source-compatible remote setup; keep PAR-0001 pending.
