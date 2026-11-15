@@ -430,3 +430,14 @@ HUI-034 publication record: committed the verified Connectors read slice as `aab
 HUI-034 follow-up: matched the pinned Desktop's catalog/list union so connected rows missing from catalog remain visible, with source slug-title and account-status fallbacks. The isolated fixture now proves a list-only connected row and has a distinct 4-row screenshot. This does not implement connector sign-in, MCP, policy/tools, or hosted account operations.
 
 HUI-034 source-join validation: full test/build/source-inventory validation passed; the revised 4-row synthetic screenshot was visually checked. No live profile was used.
+
+
+### HUI-035 — source-aligned Connectors groups and search
+
+Matched the pinned Desktop directory's hosted status derivation and display rules using the profile account/list/catalog snapshot: disabled connectors group as Off, unconnected rows as Available, and connection states as Connected-group rows ordered by source attention rank. The directory exposes All/Connected/Available/Off count controls when more than one status group exists, keeps only name/slug search matches, groups the result in source order, and reports matches hidden by a selected segment. The offline fixture/test covers active, list-only connected, available and disabled rows and confirms description-only text is not searchable. The distinct 1440x900 screenshot and hash-bound sidecar are `artifacts/agent-ui/connectors-grouped-20261115.png` and `.png.json`.
+
+This remains a read-only presentation slice. Hosted/local card merging, connector connect/auth dialogs, MCP server management, tool/policy editors, account operations, live profile acceptance, and source-paired Windows visual comparison remain open.
+
+### HUI-035 validation
+
+Focused connector tests passed; the complete feature suite passed (99 library + 7 automation tests). Default and all-target feature checks, rustfmt, diff check, pinned package validator (565 in-scope/source rows; all still pending), and screenshot sidecar hash checks passed. PyYAML was unavailable, so its optional UCM YAML parse was skipped.

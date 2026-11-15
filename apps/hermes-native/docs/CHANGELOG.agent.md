@@ -859,3 +859,14 @@ Aligned row inclusion with the pinned Desktop's `hostedSlugs` union: connectors 
 ### HUI-034 source-join validation
 
 The final union/status follow-up passed the full feature suite (98 library + 7 automation tests), all-target automation cargo check, rustfmt, diff check, and fixed-source validator (565/565 inventory rows and 14 source receipts). The revised 1440×900 capture shows the catalog/list union and was visually reviewed. No live Hermes profile or gateway was used.
+
+
+### HUI-035 — source-aligned Connectors groups and search
+
+Matched the pinned Desktop directory's hosted status derivation and display rules using the profile account/list/catalog snapshot: disabled connectors group as Off, unconnected rows as Available, and connection states as Connected-group rows ordered by source attention rank. The directory exposes All/Connected/Available/Off count controls when more than one status group exists, keeps only name/slug search matches, groups the result in source order, and reports matches hidden by a selected segment. The offline fixture/test covers active, list-only connected, available and disabled rows and confirms description-only text is not searchable. The distinct 1440x900 screenshot and hash-bound sidecar are `artifacts/agent-ui/connectors-grouped-20261115.png` and `.png.json`.
+
+This remains a read-only presentation slice. Hosted/local card merging, connector connect/auth dialogs, MCP server management, tool/policy editors, account operations, live profile acceptance, and source-paired Windows visual comparison remain open.
+
+### HUI-035 validation
+
+Focused connector tests passed; the complete feature suite passed (99 library + 7 automation tests). Default and all-target feature checks, rustfmt, diff check, pinned package validator (565 in-scope/source rows; all still pending), and screenshot sidecar hash checks passed. PyYAML was unavailable, so its optional UCM YAML parse was skipped.

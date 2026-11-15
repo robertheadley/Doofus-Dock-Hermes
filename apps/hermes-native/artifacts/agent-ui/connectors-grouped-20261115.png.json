@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "request_id": "hermes-ui-parity-20261115-connectors-grouping",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "base_head": "adb7dcd92f4ac3db19ddfe935ab32255383aa854",
+  "source_diff_sha256": "644c643d6cdd52a1e0f8a850dd08f1ce8297467c1e1ddef96a6fbd9618a277bb",
+  "automation_binary_sha256": "adfcb3aa6ac1c61d2468b5032db6d70064a36c1d084013beac965df952e03a79",
+  "screenshot_sha256": "25398e7860fae80ba95f5cee3142e7001e1e9fc387af583d214c03fd60eeeb09",
+  "viewport": { "width": 1440, "height": 900 },
+  "route": "/capabilities?tab=connectors",
+  "fixture": "synthetic offline data: Linear active account; GitHub available; Notion disabled; unlisted_service active/list-only",
+  "state": {
+    "connector_total": 4,
+    "segments": { "connected": 2, "available": 1, "off": 1 },
+    "search_scope": "connector name and slug"
+  },
+  "capture_method": "headless egui_kittest / hermes-automation --connectors-fixture",
+  "access_receipt": "inspect receipt reported Connectors route, All 4, Connected 2, Available 1, Off 1 and all four rows",
+  "limitations": [
+    "synthetic data only",
+    "no authenticated gateway/profile",
+    "connector actions, local MCP merging, tools/policy and account workflows remain incomplete",
+    "no source-paired Windows capture"
+  ]
+}
