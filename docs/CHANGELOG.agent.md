@@ -583,3 +583,16 @@ HUI-041 publication: implementation commit 88206d5 is published on main after co
 - **performance:** Formatting is local and conditional; no backend calls added.
 - **risks:** Config initialization and source-paired acceptance remain open; PAR-0065 remains pending.
 - **follow_up:** Complete config-backed default, source tooltip/tool timing, and paired Windows acceptance.
+
+## HUI-049 — 2026-11-15
+
+- **id:** HUI-049
+- **timestamp:** 2026-11-15
+- **what:** Recorded the transcript timestamp capability as partial with implementation evidence and extended the fixed-inventory validator for partial capability states.
+- **why:** Keep implementation progress visible while retaining pending acceptance until source-paired validation is complete.
+- **components:** Hermes parity inventory/crosswalk/UCM, EV-0016 evidence, package validator.
+- **type:** parity evidence and validation repair.
+- **validation:** Package validator passed all 565 targets, inventory rows, and pending acceptance rows; it counted 14 source inspection receipts and 1 implementation receipt.
+- **performance:** No runtime behavior changed.
+- **risks:** Optional YAML parser was unavailable in the environment; PAR-0065 remains pending.
+- **follow_up:** Continue the fixed-source parity work and close only requirements with source-paired evidence.

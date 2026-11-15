@@ -1,0 +1,10 @@
+{
+  "uid": "EV-0016",
+  "capability_id": "ui-display-local-timestamps-and-message-role",
+  "kind": "implementation",
+  "outcome": "partial",
+  "locator": "apps/hermes-native/src/app.rs; apps/hermes-native/src/bin/hermes-automation.rs; artifacts/agent-ui/transcript-timestamps-20261115.png",
+  "date": "2026-11-15",
+  "commit": "4d247d7ccbee6f31604923e52fc37a799100aa3d",
+  "notes": "121 library and 8 automation tests passed; all-target feature check passed. Offline 1440x900 screenshot hash is 94CA5B8BD055006A5E4B5904FEB93405F7FDE4513FFB0B24745045A4829099F7; runner binary hash is 32BBD67C00F8E3F6F1728F9489023EF9B3A0077ECB476A8F8F86CC0EEA803434. Supports off-by-default window override, local millisecond formatting, stored message metadata and streamed assistant start/completion. Config default read, locale/date tooltip, tool-run timestamps and paired source/target acceptance remain open. PAR-0065 remains pending."
+}

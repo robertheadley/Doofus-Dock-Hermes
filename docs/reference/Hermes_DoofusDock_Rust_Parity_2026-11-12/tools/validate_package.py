@@ -18,7 +18,15 @@ for records,key in [(ui,'id'),(cross,'id'),(ledger,'capability_id'),(tests,'capa
  assert {r[key] for r in records}==set(ids),f'bad crosswalk {key}'
 assert len({t['test_id'] for t in tests})==len(tests)
 assert {t['result'] for t in tests}=={'pending'}
-assert all(f['target_status']=='not_implemented' for f in cap)
+allowed_status={'not_implemented','partial','implemented','verified'}
+assert all(f['target_status'] in allowed_status for f in cap)
+status_by_id={f['id']:f['target_status'] for f in cap}
+assert all(r['target_status'] in allowed_status for r in ui)
+assert all(r['target_status'] in allowed_status for r in cross)
+timestamp_id='ui-display-local-timestamps-and-message-role'
+assert status_by_id[timestamp_id]=='partial'
+assert next(r['target_status'] for r in ui if r['id']==timestamp_id)=='partial'
+assert next(r['target_status'] for r in cross if r['id']==timestamp_id)=='partial'
 assert len(load_json('maps/NAVIGATION_SCREENS.json')['screens'])>40
 assert len(load_csv('maps/UI_COMPONENT_SPECS.csv'))>30
 assert len(load_csv('maps/STATE_OWNERSHIP.csv'))>10
@@ -26,8 +34,16 @@ sources=load_json('maps/SOURCE_SNAPSHOTS.json')
 assert all(re.fullmatch(r'[a-f0-9]{40}',v['sha']) for v in sources.values())
 files=list((root/'maps/capabilities/evidence').glob('EV-*.json'))
 assert len(files)>10
+inspection_count=implementation_count=0
 for f in files:
- d=json.loads(f.read_text(encoding='utf-8'));assert d['outcome']=='pass' and d['kind']=='inspection'
+ d=json.loads(f.read_text(encoding='utf-8'))
+ if d['kind']=='inspection':
+  assert d['outcome']=='pass';inspection_count+=1
+ elif d['kind']=='implementation':
+  assert d['outcome'] in {'partial','pass'} and re.fullmatch(r'[a-f0-9]{40}',d['commit'])
+  assert d['capability_id'] in status_by_id and status_by_id[d['capability_id']] in {'partial','implemented','verified'}
+  implementation_count+=1
+ else: raise AssertionError(f"unsupported evidence kind: {d['kind']}")
 try:
  import yaml
  d=yaml.safe_load((root/'maps/capabilities.yaml').read_text(encoding='utf-8'))
@@ -35,4 +51,4 @@ try:
  assert {r['id'] for r in d['capabilities'] if r['id'].startswith('ui-')}==set(ids)
 except ImportError:
  print('PyYAML not present: skipped UCM YAML parse (install PyYAML to check)')
-print('PASS:',len(cap),'target behaviors,',len(ui),'UI inventory items,',len(tests),'pending tests,',len(files),'source inspection receipts')
+print('PASS:',len(cap),'target behaviors,',len(ui),'UI inventory items,',len(tests),'pending tests,',inspection_count,'source inspection receipts,',implementation_count,'implementation receipts')

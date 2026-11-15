@@ -1015,3 +1015,13 @@ HUI-041 publication: implementation commit 88206d5 was pushed to main after fetc
 - **performance:** Per-message local formatting only when timestamps are enabled; no gateway requests, network activity, or benchmarked performance change.
 - **risks:** `display.timestamps` config initialization, source locale/date tooltip formatting, tool-group timestamps, live Hermes behavior, and source-paired Windows acceptance remain open. PAR-0065 stays pending.
 - **follow_up:** Read the pinned config value, match the source timestamp tooltip and tool-run lifecycle, then validate with paired source/target Windows captures before accepting PAR-0065.
+- **id:** HUI-049
+- **timestamp:** 2026-11-15
+- **what:** Recorded PAR-0065 as partial in the fixed-snapshot inventory and crosswalk, added implementation evidence EV-0016, and taught the package validator to distinguish implementation receipts from source inspections.
+- **why:** Keep the user's authoritative parity ledger aligned with shipped behavior without confusing a passing local fixture with source-paired acceptance.
+- **components:** `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/`, its evidence registry, and `tools/validate_package.py`.
+- **type:** parity evidence and validator correction.
+- **validation:** Package validator passes 565 target behaviors, 565 inventory rows and 565 pending tests; counts 14 source inspection receipts and 1 implementation receipt. PAR-0065 remains pending.
+- **performance:** No runtime behavior changed.
+- **risks:** The optional PyYAML parse is unavailable in this Python environment; source-paired acceptance remains open.
+- **follow_up:** Continue filling the fixed 499-row stock Desktop scope and preserve strict source-paired acceptance gates.
