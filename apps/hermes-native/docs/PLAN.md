@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 48 (published canonical workspace to the user-provided repository).
+- **Working revision:** 49 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -270,4 +270,11 @@ This remains route-level state, not per-pane rendering. The map is in-memory onl
 
 Dynamic Hermes session descriptors now render the transcript, history paging controls, approval/clarify cards and composer inside their own DoofusDock panel. Rendering temporarily activates the keyed profile+stored-ID state and restores the primary chat state afterward. Opening an existing session or deep link creates/fronts its canonical Dock tile; new-session creation requests a blank backend session and keeps it unlisted until its first admitted prompt; the same-profile untouched empty tile is reused, while an edited draft gets a fresh tile. Admitted messages update the owning cached transcript and add a newly used session to the sidebar. DoofusDock tab strips expose session-tile close controls; busy tiles require an explicit close confirmation that leaves Hermes running. A dedicated headless fixture can render the session-pane interaction and screenshot at `artifacts/agent-ui/session-pane-current-20261115.png`.
 
-Local tests cover pane rendering and draft isolation across profiles, hidden-session submission receipt routing, sidebar promotion on first admitted message, untouched-tile reuse versus edited-draft separation, close confirmation policy, and canonical/idempotent panel selection. Remaining gaps include hidden server-request ownership, main-pane promote/reset semantics, reuse of edited blank drafts, resume failure correlation, scroll-position durability, full close commands/keyboard/focus/overflow parity, live gateway acceptance, and matched source screenshots. This is a visible behavior slice, not 1:1 session parity.
+Local tests cover pane rendering and draft isolation across profiles, hidden-session submission receipt routing, sidebar promotion on first admitted message, untouched-tile reuse versus edited-draft separation, close confirmation policy, and canonical/idempotent panel selection. Remaining gaps include main-pane promote/reset semantics, reuse of edited blank drafts, resume failure correlation, scroll-position durability, full close commands/keyboard/focus/overflow parity, live gateway acceptance, and matched source screenshots. This is a visible behavior slice, not 1:1 session parity.
+
+
+### Revision 49 — profile-bound background approval and clarification actions
+
+Approval and batch clarification prompts now retain their originating profile alongside the runtime session ID. Incoming requests still fail closed unless that runtime/profile pair resolves to exactly one open session pane; if ownership is ambiguous or conflicts with the connected endpoint profile, the request is rejected. Prompt response actions validate the same unique owner without requiring the pane to be globally active, and approval/clarification RPCs use the prompt's stored profile. Batch clarification lock RPCs use the same scope.
+
+The hidden-pane fixture now verifies both accessible prompt controls and that semantic UI actions reach the gateway-writer boundary for the background pane. This proves app routing in isolation, not an authenticated live response. Remaining tab lifecycle and full parity gates stay open.

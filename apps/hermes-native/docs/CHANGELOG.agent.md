@@ -684,3 +684,16 @@
 - **performance:** Adds one keyed view-state swap per visible session tile during each egui frame; no network calls occur during render.
 - **risks:** Hidden approval/clarify request ownership, main-pane promote/reset semantics, reuse of edited blank drafts, resume error correlation, persistent scroll state and exact upstream tab lifecycle remain incomplete. Desktop OpenGL screenshots through Windows Graphics Capture appeared white while the shared headless renderer produced the expected dark UI.
 - **follow_up:** Finish hidden request routing and source lifecycle edge cases; exercise blank creation and first-message visibility against an isolated gateway; capture paired source/target Windows behavior and continue all fixed-snapshot workflows.
+
+## HUI-023
+
+- **id:** HUI-023
+- **timestamp:** 2026-11-15T06:12:48Z
+- **what:** Bound approval and batch clarification prompts to their originating profile and runtime session; permit registered response actions from a hidden session pane and scope response/clarify-lock RPCs by the prompt owner.
+- **why:** A visible background prompt was not actionable through agent control while another session was active, and response RPCs could inherit the wrong profile.
+- **components:** Hermes Native prompt state, gateway request routing, semantic UI action handler, plan/backlog/architecture documentation.
+- **type:** background session lifecycle and action-routing parity.
+- **validation:** `cargo fmt --all -- --check`, `cargo check -p hermes-native --all-targets --features agent-automation`, and `cargo test -p hermes-native --features agent-automation` passed (76 library + 5 automation tests); package validator passed 565 target behaviors, 565 inventory items and 565 pending tests. Hidden-pane fixture confirms prompt controls and semantic action scope through the isolated no-writer boundary.
+- **performance:** No added per-frame or network work; owner lookup scans the bounded in-memory session view cache.
+- **risks:** Live authenticated gateway response receipts, cross-window ownership and runtime reconnect are not proven.
+- **follow_up:** Continue the pinned session lifecycle gaps and then proceed through the remaining fixed-snapshot acceptance matrix.

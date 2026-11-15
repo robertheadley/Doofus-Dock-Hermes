@@ -203,6 +203,7 @@ struct PendingPrompt {
 #[derive(Clone, Debug)]
 struct ApprovalPrompt {
     session_id: String,
+    profile: Option<String>,
     execution_generation: u64,
     prompt_id: String,
     server_request_id: Option<String>,
@@ -215,6 +216,7 @@ struct ApprovalPrompt {
 #[derive(Clone, Debug)]
 struct ClarifyPrompt {
     session_id: String,
+    profile: Option<String>,
     execution_generation: u64,
     prompt_id: String,
     question: String,
@@ -244,6 +246,7 @@ struct PendingClarifyLock {
 #[derive(Clone, Debug)]
 struct BatchClarifyPrompt {
     session_id: String,
+    profile: Option<String>,
     server_request_id: String,
     questions: Vec<BatchClarifyQuestion>,
     response_pending: bool,
@@ -2809,11 +2812,19 @@ fn render_message() -> &'static str {
             );
             return;
         };
-        if self.active_runtime_session_id.as_deref() != Some(session_id) {
+        let request_profile = params
+            .get("profile")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+        if !self.session_runtime_is_known(session_id, request_profile) {
             self.reject_server_request(
                 server_request_id,
                 4404,
-                "This window is not showing the session",
+                "This window has no unique open session pane for the request",
             );
             return;
         }
@@ -2862,6 +2873,7 @@ fn render_message() -> &'static str {
             prompt_id.clone(),
             ApprovalPrompt {
                 session_id: session_id.to_owned(),
+                profile: request_profile.map(str::to_owned),
                 execution_generation: 0,
                 prompt_id,
                 server_request_id: Some(server_request_id),
@@ -2882,6 +2894,32 @@ fn render_message() -> &'static str {
         self.status = "A tool approval is waiting for your decision".into();
     }
 
+    fn session_runtime_is_known(&self, runtime_session_id: &str, profile: Option<&str>) -> bool {
+        if let (Some(request_profile), Some(endpoint)) = (profile, self.gateway_endpoint.as_ref())
+            && request_profile != endpoint.profile_id
+        {
+            return false;
+        }
+        let mut owners = BTreeSet::new();
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && profile.is_none_or(|profile| self.active_session_profile.as_deref() == Some(profile))
+            && let AppRoute::Session(stored_id) = &self.route
+        {
+            owners.insert(session_identity_key(
+                stored_id,
+                self.active_session_profile.as_deref(),
+            ));
+        }
+        for (key, view) in &self.session_chat_views {
+            if view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                && profile.is_none_or(|profile| view.profile.as_deref() == Some(profile))
+            {
+                owners.insert(key.clone());
+            }
+        }
+        owners.len() == 1
+    }
+
     fn handle_batch_clarify_request(
         &mut self,
         server_request_id: String,
@@ -2899,11 +2937,19 @@ fn render_message() -> &'static str {
             );
             return;
         };
-        if self.active_runtime_session_id.as_deref() != Some(session_id) {
+        let request_profile = params
+            .get("profile")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+        if !self.session_runtime_is_known(session_id, request_profile) {
             self.reject_server_request(
                 server_request_id,
                 4404,
-                "This window is not showing the session",
+                "This window has no unique open session pane for the request",
             );
             return;
         }
@@ -3031,6 +3077,7 @@ fn render_message() -> &'static str {
             server_request_id.clone(),
             BatchClarifyPrompt {
                 session_id: session_id.to_owned(),
+                profile: request_profile.map(str::to_owned),
                 server_request_id,
                 questions,
                 response_pending: false,
@@ -3109,7 +3156,7 @@ fn render_message() -> &'static str {
                 request_id.clone(),
                 prompt.server_request_id.clone(),
                 lock.question_id.clone(),
-                self.active_session_profile.clone(),
+                prompt.profile.clone(),
                 lock.answer,
             )?;
         if let Some(prompt) = self.batch_clarify_prompts.get_mut(prompt_id) {
@@ -3304,6 +3351,12 @@ fn render_message() -> &'static str {
                         prompt_id.to_owned(),
                         ApprovalPrompt {
                             session_id: active_session.to_owned(),
+                            profile: event
+                                .get("profile")
+                                .or_else(|| payload.get("profile"))
+                                .and_then(|value| value.as_str())
+                                .map(str::to_owned)
+                                .or_else(|| self.active_session_profile.clone()),
                             execution_generation,
                             prompt_id: prompt_id.to_owned(),
                             server_request_id,
@@ -3363,6 +3416,12 @@ fn render_message() -> &'static str {
                 {
                     let mut clarify = ClarifyPrompt {
                         session_id: active_session.to_owned(),
+                        profile: event
+                            .get("profile")
+                            .or_else(|| payload.get("profile"))
+                            .and_then(|value| value.as_str())
+                            .map(str::to_owned)
+                            .or_else(|| self.active_session_profile.clone()),
                         execution_generation,
                         prompt_id: prompt_id.to_owned(),
                         question: question.to_owned(),
@@ -3838,13 +3897,8 @@ fn render_message() -> &'static str {
         let Some(prompt) = self.approval_prompts.get(&prompt_id) else {
             return Err("This approval is no longer pending".into());
         };
-        if prompt.session_id
-            != self
-                .active_runtime_session_id
-                .as_deref()
-                .unwrap_or_default()
-        {
-            return Err("This approval belongs to a different Hermes session".into());
+        if !self.session_runtime_is_known(&prompt.session_id, prompt.profile.as_deref()) {
+            return Err("This approval no longer maps to a unique open session pane".into());
         }
         if !matches!(choice.as_str(), "once" | "session" | "always" | "deny")
             || !prompt.choices.iter().any(|allowed| allowed == &choice)
@@ -3856,6 +3910,7 @@ fn render_message() -> &'static str {
         }
         let session_id = prompt.session_id.clone();
         let generation = prompt.execution_generation;
+        let profile = prompt.profile.clone();
         let server_request_id = prompt.server_request_id.clone();
         let gateway = self
             .gateway_discovery
@@ -3876,7 +3931,7 @@ fn render_message() -> &'static str {
         gateway.respond_approval(
             request_id.clone(),
             session_id,
-            self.active_session_profile.clone(),
+            profile,
             generation,
             prompt_id.clone(),
             choice.clone(),
@@ -3893,13 +3948,8 @@ fn render_message() -> &'static str {
             return Err("Connect to Hermes before answering a question".into());
         }
         if let Some(prompt) = self.batch_clarify_prompts.get(&prompt_id) {
-            if prompt.session_id
-                != self
-                    .active_runtime_session_id
-                    .as_deref()
-                    .unwrap_or_default()
-            {
-                return Err("These questions belong to a different Hermes session".into());
+            if !self.session_runtime_is_known(&prompt.session_id, prompt.profile.as_deref()) {
+                return Err("These questions no longer map to a unique open session pane".into());
             }
             if prompt.response_pending {
                 return Err("Answers are already being sent for these questions".into());
@@ -3973,19 +4023,15 @@ fn render_message() -> &'static str {
         let Some(prompt) = self.clarify_prompts.get(&prompt_id) else {
             return Err("This question is no longer pending".into());
         };
-        if prompt.session_id
-            != self
-                .active_runtime_session_id
-                .as_deref()
-                .unwrap_or_default()
-        {
-            return Err("This question belongs to a different Hermes session".into());
+        if !self.session_runtime_is_known(&prompt.session_id, prompt.profile.as_deref()) {
+            return Err("This question no longer maps to a unique open session pane".into());
         }
         if prompt.response_pending.is_some() {
             return Err("An answer is already being sent for this question".into());
         }
         let session_id = prompt.session_id.clone();
         let generation = prompt.execution_generation;
+        let profile = prompt.profile.clone();
         let request_id = operation_id("clarify");
         self.gateway_discovery
             .as_ref()
@@ -3993,7 +4039,7 @@ fn render_message() -> &'static str {
             .respond_clarify(
                 request_id.clone(),
                 session_id,
-                self.active_session_profile.clone(),
+                profile,
                 generation,
                 prompt_id.clone(),
                 answer.clone(),
@@ -6774,9 +6820,115 @@ mod tests {
     }
 
     #[test]
+    fn hidden_session_approval_and_clarify_requests_render_in_their_dock_pane() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.workspace
+            .open_session_pane(Some("work"), "stored-work", "Work session")
+            .expect("open the background session tile");
+        app.session_chat_views.insert(
+            session_identity_key("stored-work", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-work".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.handle_server_request(
+            "approval-wire-hidden".into(),
+            "approval".into(),
+            json!({
+                "session_id":"runtime-work",
+                "profile":"work",
+                "request_id":"approval-hidden-prompt",
+                "command":"run tests",
+                "choices":["once","deny"]
+            }),
+        );
+        app.handle_server_request(
+            "clarify-wire-hidden".into(),
+            "clarify".into(),
+            json!({
+                "session_id":"runtime-work",
+                "profile":"work",
+                "questions":[{"qid":"hidden-q1","question":"Choose a target","choices":["Desktop","CLI"]}]
+            }),
+        );
+        assert!(app.approval_prompts.contains_key("approval-hidden-prompt"));
+        assert!(
+            app.batch_clarify_prompts
+                .contains_key("clarify-wire-hidden")
+        );
+        let approval_error = app
+            .execute_registered_action(RegisteredUiAction::RespondApproval {
+                prompt_id: "approval-hidden-prompt".into(),
+                choice: "once".into(),
+            })
+            .expect_err("isolated fixture has no gateway writer");
+        assert_eq!(approval_error, "Hermes gateway writer is unavailable");
+        let clarify_error = app
+            .execute_registered_action(RegisteredUiAction::RespondClarify {
+                prompt_id: "clarify-wire-hidden".into(),
+                answer: String::new(),
+            })
+            .expect_err("isolated fixture has no gateway writer");
+        assert_eq!(clarify_error, "Hermes gateway writer is unavailable");
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        for label in [
+            "Allow once approval approval-hidden-prompt",
+            "Deny approval approval-hidden-prompt",
+            "Clarify question hidden-q1: Choose a target",
+            "Clarify choice Desktop for hidden-q1",
+            "Confirm and continue clarify answers clarify-wire-hidden",
+        ] {
+            assert!(
+                harness
+                    .query_all_by(|node| node.label().as_deref() == Some(label))
+                    .next()
+                    .is_some(),
+                "hidden session pane did not expose {label}"
+            );
+        }
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn server_requests_fail_closed_when_a_runtime_matches_multiple_profiles() {
+        let (mut app, profile_dir) = isolated_app();
+        for profile in ["work", "personal"] {
+            app.session_chat_views.insert(
+                session_identity_key("stored-session", Some(profile)),
+                SessionChatViewState {
+                    profile: Some(profile.into()),
+                    runtime_session_id: Some("ambiguous-runtime".into()),
+                    ..SessionChatViewState::default()
+                },
+            );
+        }
+        app.handle_server_request(
+            "approval-wire-ambiguous".into(),
+            "approval".into(),
+            json!({
+                "session_id":"ambiguous-runtime",
+                "request_id":"ambiguous-prompt",
+                "choices":["once"]
+            }),
+        );
+        assert!(app.approval_prompts.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn batch_clarify_answers_preserve_replay_and_normalize_recommended_choices() {
         let prompt = BatchClarifyPrompt {
             session_id: "runtime-session".into(),
+            profile: None,
             server_request_id: "clarify-wire-1".into(),
             questions: vec![
                 BatchClarifyQuestion {

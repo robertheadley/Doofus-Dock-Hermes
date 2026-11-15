@@ -28,7 +28,7 @@ The current chat event renderer also upserts `tool.start` and `tool.complete` ev
 
 The WebSocket reader recognizes server→client JSON-RPC request frames and returns the upstream `-32601` method-not-found response for methods without handlers, including while another RPC is pending; the original RPC continues. `client.capabilities.server_requests` remains false until the UI can receive, surface and answer supported prompt requests. The fallback does not count as interactive server-request support.
 
-For idle inbound `approval` requests, the actor forwards the request ID and params to the app event loop. The app scopes the card to its active runtime session, renders only supported backend choices, and returns the selected `{choice}` as the JSON-RPC result on that same request ID. Other session requests are declined. The local actor and AccessKit fixtures cover approval and batch clarify routing, with a separate RPC fixture for ordered `clarify.lock` receipts. Active-session ownership across windows and other server-request methods remain open, so capability negotiation stays disabled.
+For idle inbound `approval` requests, the actor forwards the request ID and params to the app event loop. The app scopes the card to the uniquely matching runtime/profile session pane, renders only supported backend choices, and returns the selected `{choice}` as the JSON-RPC result on that same request ID. The prompt retains its profile so a response can be sent while another pane is active. Requests without a unique owner are declined. The local actor and AccessKit fixtures cover approval and batch clarify routing, with a separate RPC fixture for ordered `clarify.lock` receipts. Active-session ownership across windows and other server-request methods remain open, so capability negotiation stays disabled.
 
 Read-only diagnostics have narrower scope than mutating actions. Every mutation validates schema, actor, permission, expected state/layout revision and idempotency key. Asynchronous acceptance is not success; report terminal outcomes. The bridge must not be an arbitrary shell/filesystem proxy or bypass Hermes approval.
 
@@ -55,3 +55,8 @@ JetBrains Mono is the primary application UI typeface; its Medium face is used f
 ## Transcript Markdown
 
 The transcript delegates CommonMark/GFM parsing and code syntax highlighting to egui_commonmark 0.26 with syntect. Cache state lives on the native app instance. The vendored egui_commonmark backend keeps its upstream package license and changes only the fenced-code copy affordance: a sized, accessible Copy/Copied button replaces a bundled-font-incompatible emoji. A feature-gated automation fixture covers emphasis, links, block quotes, ordered/unordered lists, GFM tables, code highlighting, and the copy control. Streamdown tail repair, rich math/media/artifacts, transcript directives, and source-paired screenshot parity remain open.
+
+
+### Background prompt ownership
+
+Approval and batch clarification requests are assigned by runtime session ID plus profile to exactly one open native session pane. Prompt state retains that profile, and both human controls and registered semantic actions respond through the same handler using the stored owner scope, even while another pane is selected. Requests with missing/ambiguous ownership or a profile conflicting with the attached gateway endpoint fail closed. Local tests verify routing and UI actions; live authenticated gateway receipts remain unverified.
