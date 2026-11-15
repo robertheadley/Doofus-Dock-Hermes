@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "ca8960c91b35f4337c46545a4602dcf951fa21f6",
+  "smoke_binary_sha256": "b2ed5d3206f78ad03cb0fbd5a8163228e21ebd323f7e1d5fcbe48b83e75136a5",
+  "smoke_state_json_sha256": "5bc3351b6d8a00488a306b7d2587480e694d77ba5fe86f6feab4b0d06ea26f2c",
+  "source_capture": {
+    "path": "artifacts/agent-ui/html-preview-files-pane-native-capture-20261115.png",
+    "sha256": "f1f92da2270ecda0445910e1c813efe582707760bb5d4c53d1f3a188fcf6940b",
+    "width": 2182,
+    "height": 1406
+  },
+  "crop": {
+    "path": "artifacts/agent-ui/html-preview-rendered-child-20261115.png",
+    "sha256": "5b31e3cd131a3e684f5918ab389815df37d3e97eb0c632ac84090f38ab8c3302",
+    "width": 495,
+    "height": 1114,
+    "source_rect_pixels": [
+      1198,
+      281,
+      495,
+      1114
+    ],
+    "content": "Rendered local HTML child WebView only",
+    "capture_limitation": "PrintWindow omitted the OpenGL-rendered parent shell; this crop is not a full-app screenshot."
+  },
+  "route": "/files-preview-fixture/preview.html",
+  "state": "HTML document asset-loaded:16; child WebView visible, hidden, then reopened at active DoofusDock preview bounds",
+  "gateway": "disabled",
+  "profile": "temporary isolated profile"
+}

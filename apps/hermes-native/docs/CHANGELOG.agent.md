@@ -1395,3 +1395,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Integrated native run completed in under five seconds after build.
   **risks:** Synthetic fixture only; no paired upstream screenshot or acceptance rows are closed. External navigation behavior and other preview-specific parity remain open.
   **follow_up:** Capture the rendered native pane if reliable isolated-desktop screenshot acquisition is added; continue fixed-source acceptance against the downloaded Hermes snapshot.
+- **id:** HUR-001-108
+  **timestamp:** 2026-11-15T16:16:24Z
+  **what:** Added a native PNG capture to the Hermes Files-pane smoke and retained both its raw PrintWindow result and a separate crop containing the rendered HTML child WebView.
+  **why:** Produce a visibly distinct, native-rendered HTML artifact without switching the operator desktop, while documenting the capture boundary.
+  **components:** apps/hermes-native/src/bin/html-preview-smoke.rs, apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, artifacts/agent-ui/html-preview-files-pane-native-capture-20261115.png, artifacts/agent-ui/html-preview-files-pane-native-capture-20261115.json, artifacts/agent-ui/html-preview-rendered-child-20261115.png, artifacts/agent-ui/html-preview-rendered-child-20261115.png.json, docs/EXECUTION_LOGS.md.
+  **type:** native visual evidence.
+  **validation:** The isolated Hermes app smoke passed with visible-hidden-reopened state and loaded title `asset-loaded:16`; raw PNG is 2182×1406; inspected crop is 495×1114 and visibly shows the local HTML page and its loaded SVG. Sidecar binds both image hashes, smoke binary, fixed source commits, route, preview bounds and capture limitation. Full Rust tests/check and screenshot PNG decode passed.
+  **performance:** Capture, PNG validation and crop verification completed in under one second after native smoke.
+  **risks:** PrintWindow omitted the parent OpenGL-rendered Hermes shell. The crop shows only the actual child WebView, not full app chrome, and remains target-only evidence.
+  **follow_up:** Use renderer-aware capture for full native app screenshots and compare to matched pinned-source states; continue all remaining parity rows.
