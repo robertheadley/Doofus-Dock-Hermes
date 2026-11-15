@@ -8,6 +8,7 @@ The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDo
 - DoofusDock-backed canonical layout, projection, persistence, center-to-tab and edge-split drag operations (wired; live drag/drop not yet verified).
 - Hermes gateway session listing and creation, transcript resume, streamed prompt submission, interruption, approval and clarification responses, capability discovery, and scoped session metadata mutations.
 - Archived-session browsing and restoration, with profile-aware session identity and profile routing through resume and chat actions. Human row clicks and the registered agent `open_session` action use the same scoped navigation handler.
+- Session-tab close and restore parity: bounded profile-scoped LIFO restore stack, active-route handoff on close, canonical DoofusDock reopen/focus, native platform shortcut, and shared registered UI-agent action. Local tests cover behavior; source-paired Windows acceptance remains part of the 499-row gate.
 - Rename dialog, profile-scoped canonical `session.mutate` rename for the active runtime session, and revision-fenced HTTP title patch for other stored sessions, with list updates after the confirmed receipt. Uncertain runtime receipts can retry the retained mutation on the same gateway actor.
 - Prompt submission includes stable submission identity, validates the canonical admission receipt, correlates completion by admission ID, and exposes an accessible exact retry after uncertain transport outcomes.
 - Explicit disconnected/empty states; no fabricated domain data.

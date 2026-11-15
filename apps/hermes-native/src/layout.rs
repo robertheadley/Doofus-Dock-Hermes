@@ -5,7 +5,7 @@ use doofusdock_core::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     path::PathBuf,
     sync::Arc,
@@ -54,7 +54,24 @@ pub struct Workspace {
     pub persistence_error: Option<String>,
     profiles: Vec<WorkspaceProfile>,
     session_reveals: BTreeMap<String, bool>,
+    closed_session_panes: BTreeMap<String, VecDeque<ClosedSessionPane>>,
     data_directory: PathBuf,
+}
+
+const CLOSED_SESSION_PANE_LIMIT: usize = 64;
+
+#[derive(Clone, Debug)]
+struct ClosedSessionPane {
+    panel: PanelId,
+    session_id: String,
+    profile: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RestoredSessionPane {
+    pub panel: PanelId,
+    pub session_id: String,
+    pub profile: Option<String>,
 }
 
 impl Workspace {
@@ -80,6 +97,7 @@ impl Workspace {
             persistence_error: None,
             profiles: source_profiles(),
             session_reveals: BTreeMap::new(),
+            closed_session_panes: BTreeMap::new(),
             data_directory: directory,
         }
     }
@@ -126,6 +144,7 @@ impl Workspace {
             persistence_error: None,
             profiles,
             session_reveals: BTreeMap::new(),
+            closed_session_panes: BTreeMap::new(),
         };
         workspace.save_layout();
         Ok(workspace)
@@ -297,6 +316,16 @@ impl Workspace {
         if observed.document.closed_panels.contains(panel) {
             return Ok(());
         }
+        let session_id = descriptor
+            .metadata
+            .get("hermes.session.id")
+            .cloned()
+            .ok_or_else(|| "Session pane is missing its stored session ID".to_owned())?;
+        let profile = descriptor
+            .metadata
+            .get("hermes.session.profile")
+            .cloned()
+            .filter(|profile| !profile.is_empty());
         self.dock
             .transact(
                 observed.revision,
@@ -309,8 +338,66 @@ impl Workspace {
                 }],
             )
             .map_err(|error| error.to_string())?;
+        let scope = profile.clone().unwrap_or_default();
+        let closed = self.closed_session_panes.entry(scope).or_default();
+        closed.push_back(ClosedSessionPane {
+            panel: panel.clone(),
+            session_id,
+            profile,
+        });
+        while closed.len() > CLOSED_SESSION_PANE_LIMIT {
+            closed.pop_front();
+        }
         self.save_layout();
         Ok(())
+    }
+
+    /// Reopen the most recently closed session pane owned by this Hermes
+    /// profile. Closed history is intentionally in-memory, matching the
+    /// pinned Desktop's reopen stack; the pane itself remains DoofusDock-owned.
+    pub fn restore_last_closed_session_pane(
+        &mut self,
+        profile: Option<&str>,
+        current_session_id: Option<&str>,
+    ) -> Result<Option<RestoredSessionPane>, String> {
+        let scope = profile.unwrap_or_default();
+        loop {
+            let closed = self
+                .closed_session_panes
+                .get_mut(scope)
+                .and_then(VecDeque::pop_back);
+            let Some(closed) = closed else {
+                return Ok(None);
+            };
+            let document = self.dock.snapshot().document;
+            let Some(descriptor) = document.descriptor(&closed.panel) else {
+                continue;
+            };
+            if descriptor.role != "hermes_session_tile"
+                || descriptor.metadata.get("hermes.session.id") != Some(&closed.session_id)
+                || descriptor
+                    .metadata
+                    .get("hermes.session.profile")
+                    .map(String::as_str)
+                    != Some(closed.profile.as_deref().unwrap_or_default())
+                || !document.closed_panels.contains(&closed.panel)
+                || (closed.session_id == current_session_id.unwrap_or_default()
+                    && closed.profile.as_deref().unwrap_or_default() == scope)
+            {
+                continue;
+            }
+            let panel = self.open_session_pane(
+                closed.profile.as_deref(),
+                &closed.session_id,
+                &descriptor.title_key,
+            )?;
+            self.select_panel(&panel)?;
+            return Ok(Some(RestoredSessionPane {
+                panel,
+                session_id: closed.session_id,
+                profile: closed.profile,
+            }));
+        }
     }
 
     /// Select an existing panel through the canonical Dock tab operation.
@@ -1262,6 +1349,66 @@ mod tests {
         assert!(find_tab_for_panel(document.root.as_deref(), &personal).is_some());
         drop(restored);
         assert!(directory.starts_with(std::env::temp_dir()));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn restore_closed_session_pane_is_lifo_profile_scoped_and_focuses_restored_tile() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-session-pane-reopen-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let old_work = workspace
+            .open_session_pane(Some("work"), "work-old", "Old work")
+            .unwrap();
+        let new_work = workspace
+            .open_session_pane(Some("work"), "work-new", "New work")
+            .unwrap();
+        let personal = workspace
+            .open_session_pane(Some("personal"), "personal-last", "Personal")
+            .unwrap();
+
+        workspace.close_session_pane(&old_work).unwrap();
+        workspace.close_session_pane(&new_work).unwrap();
+        workspace.close_session_pane(&personal).unwrap();
+
+        let restored_work = workspace
+            .restore_last_closed_session_pane(Some("work"), None)
+            .unwrap()
+            .expect("work tab restores");
+        assert_eq!(restored_work.panel, new_work);
+        assert_eq!(restored_work.session_id, "work-new");
+        let snapshot = workspace.dock.snapshot();
+        let (tabs, selected) = find_tab_for_panel(snapshot.document.root.as_deref(), &new_work)
+            .expect("restored work tab is in the layout");
+        assert_eq!(
+            find_active_tab_index(snapshot.document.root.as_deref(), &tabs),
+            Some(selected)
+        );
+
+        let restored_personal = workspace
+            .restore_last_closed_session_pane(Some("personal"), None)
+            .unwrap()
+            .expect("personal stack is independent");
+        assert_eq!(restored_personal.panel, personal);
+        let restored_old_work = workspace
+            .restore_last_closed_session_pane(Some("work"), None)
+            .unwrap()
+            .expect("older work tab remains on its profile stack");
+        assert_eq!(restored_old_work.panel, old_work);
+        assert!(
+            workspace
+                .restore_last_closed_session_pane(Some("work"), None)
+                .unwrap()
+                .is_none()
+        );
+
+        drop(workspace);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

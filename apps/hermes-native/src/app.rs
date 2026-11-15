@@ -82,6 +82,7 @@ pub enum RegisteredUiAction {
         answer: String,
     },
     CloseActiveTab,
+    RestoreClosedSessionTab,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -178,6 +179,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"respond_approval","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible approval request","choice":["once","session","always","deny"]}}
             ,{"type":"respond_clarify","permission":"ui_interaction","mutates":true,"schema":{"prompt_id":"currently visible clarify request","answer":"single answer text, batch JSON {answers:{qid:string|null}}, or empty string to skip"}}
             ,{"type":"close_active_tab","permission":"ui_interaction","mutates":true,"schema":{}}
+            ,{"type":"restore_closed_session_tab","permission":"ui_interaction","mutates":true,"schema":{}}
         ]
     })
 }
@@ -5571,6 +5573,27 @@ fn render_message() -> &'static str {
                 self.request_catalog_plugin_install(name)?;
             }
             RegisteredUiAction::StopGeneration => self.stop_generation()?,
+            RegisteredUiAction::RestoreClosedSessionTab => {
+                let profile = self.active_session_profile.clone().or_else(|| {
+                    self.gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone())
+                });
+                let current_session_id = match &self.route {
+                    AppRoute::Session(session_id) => Some(session_id.as_str()),
+                    _ => None,
+                };
+                if let Some(restored) = self
+                    .workspace
+                    .restore_last_closed_session_pane(profile.as_deref(), current_session_id)?
+                {
+                    self.active_session_profile = restored.profile.clone();
+                    self.navigate_after_save(AppRoute::Session(restored.session_id));
+                    self.status = "Restored the last closed session tab".into();
+                } else {
+                    self.status = "No closed session tab to restore for this profile".into();
+                }
+            }
             RegisteredUiAction::RespondApproval { prompt_id, choice } => {
                 self.respond_to_approval(prompt_id, choice)?;
             }
@@ -6896,8 +6919,57 @@ fn render_message() -> &'static str {
     }
 
     fn close_session_pane(&mut self, panel: &PanelId) {
+        let before = self.workspace.dock.snapshot();
+        let closed_session = before
+            .document
+            .descriptor(panel)
+            .filter(|descriptor| descriptor.role == "hermes_session_tile")
+            .and_then(|descriptor| {
+                Some((
+                    descriptor.metadata.get("hermes.session.id")?.clone(),
+                    descriptor
+                        .metadata
+                        .get("hermes.session.profile")
+                        .filter(|profile| !profile.is_empty())
+                        .cloned(),
+                ))
+            });
+        let closing_active_route = closed_session
+            .as_ref()
+            .is_some_and(|(session_id, profile)| {
+                self.route == AppRoute::Session(session_id.clone())
+                    && self.active_session_profile == *profile
+            });
         match self.workspace.close_session_pane(panel) {
             Ok(()) => {
+                if closing_active_route {
+                    let after = self.workspace.dock.snapshot();
+                    let workspace_group = collect_dock_tab_groups(after.document.root.as_deref())
+                        .into_iter()
+                        .find(|group| group.panels.contains(&PanelId::from(WORKSPACE)));
+                    let selected = workspace_group
+                        .and_then(|group| group.panels.get(group.active_index).cloned());
+                    if let Some(selected) = selected
+                        && selected != PanelId::from(WORKSPACE)
+                        && let Some(descriptor) = after.document.descriptor(&selected)
+                        && descriptor.role == "hermes_session_tile"
+                        && let Some(session_id) = descriptor.metadata.get("hermes.session.id")
+                    {
+                        self.save_active_chat_view();
+                        self.active_session_profile = descriptor
+                            .metadata
+                            .get("hermes.session.profile")
+                            .filter(|profile| !profile.is_empty())
+                            .cloned();
+                        self.navigate_after_save(AppRoute::Session(session_id.clone()));
+                    } else {
+                        self.new_chat_draft.clear();
+                        self.navigate(AppRoute::NewChat);
+                        self.active_session_profile = closed_session
+                            .as_ref()
+                            .and_then(|(_, profile)| profile.clone());
+                    }
+                }
                 self.status = "Session tab closed · Hermes continues in the background".into()
             }
             Err(error) => self.status = error,
@@ -10426,6 +10498,44 @@ mod tests {
                 .iter()
                 .any(|action| action["type"] == "request_agent_plugin_update")
         );
+        assert!(
+            registered_ui_action_catalog()["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "restore_closed_session_tab")
+        );
+    }
+
+    #[test]
+    fn restore_closed_session_tab_action_reopens_and_focuses_the_latest_closed_tile() {
+        let (mut app, profile_dir) = isolated_app();
+        let earlier = app
+            .workspace
+            .open_session_pane(Some("work"), "closed-earlier", "Earlier")
+            .unwrap();
+        let latest = app
+            .workspace
+            .open_session_pane(Some("work"), "closed-latest", "Latest")
+            .unwrap();
+        app.workspace.close_session_pane(&earlier).unwrap();
+        app.workspace.close_session_pane(&latest).unwrap();
+        app.active_session_profile = Some("work".into());
+
+        app.execute_registered_action(RegisteredUiAction::RestoreClosedSessionTab)
+            .expect("restore action succeeds");
+
+        assert_eq!(app.route, AppRoute::Session("closed-latest".into()));
+        let snapshot = app.workspace.dock.snapshot();
+        assert!(!snapshot.document.closed_panels.contains(&latest));
+        let group = collect_dock_tab_groups(snapshot.document.root.as_deref())
+            .into_iter()
+            .find(|group| group.panels.contains(&latest))
+            .expect("latest closed tab is restored in a tab group");
+        assert_eq!(group.panels[group.active_index], latest);
+        assert_eq!(app.status, "Restored the last closed session tab");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
     }
     #[test]
     fn older_transcript_page_prepends_and_deduplicates_boundary_overlap() {
@@ -12368,6 +12478,25 @@ impl HermesNativeApp {
         });
         if close_active_tab {
             self.execute_registered_action(RegisteredUiAction::CloseActiveTab)
+                .unwrap_or_else(|error| self.status = error);
+        }
+        let restore_closed_tab = ctx.input_mut(|input| {
+            #[cfg(target_os = "macos")]
+            let shortcut = egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND
+                    .plus(egui::Modifiers::CTRL)
+                    .plus(egui::Modifiers::SHIFT),
+                egui::Key::T,
+            );
+            #[cfg(not(target_os = "macos"))]
+            let shortcut = egui::KeyboardShortcut::new(
+                egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
+                egui::Key::T,
+            );
+            input.consume_shortcut(&shortcut)
+        });
+        if restore_closed_tab {
+            self.execute_registered_action(RegisteredUiAction::RestoreClosedSessionTab)
                 .unwrap_or_else(|error| self.status = error);
         }
         if !self.fonts_installed {

@@ -1326,7 +1326,7 @@ mod tests {
             &app,
         );
         assert_eq!(registry["status"], "succeeded");
-        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 19);
+        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 20);
         assert!(
             registry["result"]["actions"]
                 .as_array()
@@ -1417,6 +1417,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|action| action["type"] == "close_active_tab")
+        );
+        assert!(
+            registry["result"]["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "restore_closed_session_tab")
         );
 
         let capability_response = protocol.handle(
@@ -1894,6 +1901,64 @@ mod tests {
                 .as_array()
                 .is_some_and(|panels| panels.iter().any(|panel| panel == &session_panel)),
             "Command+W from the agent must invoke the human close-tab handler"
+        );
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn ctrl_shift_t_restores_a_closed_session_tab_while_composer_has_focus() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        app.borrow_mut()
+            .execute_registered_action(RegisteredUiAction::OpenSession {
+                session_id: "keyboard-restore-session".into(),
+                profile: Some("work".into()),
+            })
+            .expect("open an isolated session tab");
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+        let session_panel = app.borrow().automation_state()["layout_document"]["panels"]
+            .as_array()
+            .expect("layout panel descriptors")
+            .iter()
+            .find(|panel| {
+                panel["role"] == "hermes_session_tile"
+                    && panel["metadata"]["hermes.session.id"] == "keyboard-restore-session"
+            })
+            .and_then(|panel| panel["id"].as_str())
+            .expect("profile-scoped session pane")
+            .to_owned();
+
+        let closed = protocol.handle(
+            json!({"version":1,"id":"close-before-restore","method":"actions.keypress","params":{"key":"W","modifiers":["COMMAND"],"expected_state_generation":0}}),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(closed["status"], "succeeded", "{closed}");
+        assert_eq!(closed["result"]["after"]["route"], "/");
+
+        let restored = protocol.handle(
+            json!({"version":1,"id":"restore-last-closed-tab","method":"actions.keypress","params":{"key":"T","modifiers":["CTRL","SHIFT"],"expected_state_generation":1}}),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(restored["status"], "succeeded", "{restored}");
+        assert_eq!(
+            restored["result"]["after"]["route"], "/keyboard-restore-session",
+            "{restored}"
+        );
+        assert!(
+            !restored["result"]["after"]["layout_document"]["closed_panels"]
+                .as_array()
+                .is_some_and(|panels| panels.iter().any(|panel| panel == &session_panel)),
+            "Ctrl+Shift+T should reopen the closed tile in the canonical Dock: {restored}"
         );
         drop(harness);
         drop(app);

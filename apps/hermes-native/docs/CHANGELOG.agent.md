@@ -975,3 +975,13 @@ HUI-041 publication: implementation commit 88206d5 was pushed to main after fetc
 - **performance:** No runtime behavior changed; the HUI-043 concurrency benchmark remains in docs/BENCHMARKS.md.
 - **risks:** None beyond the recorded live-gateway acceptance gaps.
 - **follow_up:** Continue implementation against the fixed 499-row Hermes Desktop scope; do not mark acceptance from local fixtures alone.
+- **id:** HUI-045
+- **timestamp:** 2026-11-15T11:56:16Z
+- **what:** Added bounded profile-scoped LIFO restore of closed session tabs, active-route handoff, native shortcut, and shared UI-agent action.
+- **why:** Match the pinned Hermes Desktop `view.reopenTab` behavior through canonical DoofusDock state.
+- **components:** apps/hermes-native/src/app.rs, apps/hermes-native/src/layout.rs, apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs, docs/ARCHITECTURE.md, docs/BACKLOG.md.
+- **type:** source-parity behavior.
+- **validation:** `cargo test -p hermes-native --features agent-automation`: 117 library tests and 8 automation tests passed; source-paired Windows visual acceptance remains open.
+- **performance:** Bounded stack retains at most 64 closed session panes per profile; no network or gateway work added.
+- **risks:** Stack is in memory and does not survive app restart, matching the pinned source. Live installed-Hermes acceptance remains open.
+- **follow_up:** Continue the fixed 499-row source-paired acceptance scope; do not claim full replacement parity.

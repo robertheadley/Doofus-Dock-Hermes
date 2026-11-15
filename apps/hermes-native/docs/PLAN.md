@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 72 (implementation in progress).
+- **Working revision:** 73 (implementation in progress).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -400,3 +400,7 @@ Implement the pinned Desktop `plugins.manage action=update_all` flow using the s
 ### Revision 72 — isolate long Agent Plugin RPC from primary gateway
 
 Mint a separate one-use interactive ticket for Agent Plugin Update all, authenticate a dedicated connection against the exact attached Hermes runtime identity, and execute `plugins.manage action=update_all` on its own worker with the source 600-second timeout. Keep UI/agent action correlation and result delivery on the shared event channel while allowing the primary actor to serve other requests. A local two-socket fixture intentionally holds update-all, completes a profile-scoped plugin-list RPC before releasing it, and records the observed latency. The feature suite, default/all-target builds, and fixed-source validator pass. The automated fixture does not replace live-profile handshake, disconnect/recovery, or source-paired acceptance.
+
+### Revision 73 — restore the last closed session tab
+
+Match the pinned Desktop `view.reopenTab` behavior with a bounded in-memory LIFO stack scoped per profile. Closing a selected session tile advances the route to the neighboring selected session or New session while preserving profile scope. Restore through canonical DoofusDock pane reopening and focus, skipping the current primary session and stale descriptors. Bind Ctrl+Shift+T on Windows/Linux and Command+Ctrl+Shift+T on macOS, and expose the same behavior as the registered `restore_closed_session_tab` UI-agent action. Layout/app tests cover profile isolation, LIFO order, focus, route handoff, the shortcut path and registry exposure. Local evidence does not satisfy the remaining source-paired Windows visual and live acceptance gates.
