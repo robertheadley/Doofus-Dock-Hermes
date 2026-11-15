@@ -715,6 +715,18 @@ fn render_message() -> &'static str {
             "fn main() {\n    println!(\"Hello from the preview fixture\");\n}\n",
         )
         .map_err(|error| format!("write fixture source: {error}"))?;
+        std::fs::write(root.join(".gitignore"), "ignored-preview.txt\n")
+            .map_err(|error| format!("write fixture ignore rules: {error}"))?;
+        std::fs::write(root.join("ignored-preview.txt"), "hidden until requested\n")
+            .map_err(|error| format!("write ignored fixture: {error}"))?;
+        let git_init = std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(root)
+            .status()
+            .map_err(|error| format!("initialize fixture repository: {error}"))?;
+        if !git_init.success() {
+            return Err("initialize fixture repository: git init failed".into());
+        }
         let image_path = root.join("preview.png");
         image::RgbaImage::from_fn(320, 180, |x, y| {
             let stripe = ((x / 32 + y / 18) % 2) == 0;
@@ -1457,6 +1469,10 @@ fn render_message() -> &'static str {
             _ => None,
         };
         self.files.set_root(root);
+        if let Some(root) = self.files.root().map(std::path::Path::to_path_buf) {
+            self.files
+                .set_show_ignored(self.workspace.shows_ignored_files(&root));
+        }
         if self.files.poll() {
             ui.ctx().request_repaint();
         }
@@ -1475,8 +1491,37 @@ fn render_message() -> &'static str {
                 )
                 .on_hover_text(root.display().to_string());
             }
-            if ui.small_button("Refresh").clicked() {
+            let refresh = ui.small_button("↻").on_hover_text("Refresh project files");
+            refresh.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, false, "Refresh"));
+            if refresh.clicked() {
                 self.files.refresh();
+            }
+            if let Some(root) = self.files.root().map(std::path::Path::to_path_buf) {
+                let mut show_ignored = self.workspace.shows_ignored_files(&root);
+                let accessible_name = if show_ignored {
+                    "Hide gitignored files"
+                } else {
+                    "Show gitignored files"
+                };
+                let glyph = if show_ignored { "◉" } else { "◎" };
+                let response = ui
+                    .add(egui::Button::new(glyph).small().selected(show_ignored))
+                    .on_hover_text(accessible_name);
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::Role::Button, show_ignored, accessible_name)
+                });
+                if response.clicked() {
+                    show_ignored = !show_ignored;
+                    match self.workspace.set_show_ignored_files(&root, show_ignored) {
+                        Ok(_) => {
+                            self.files.set_show_ignored(show_ignored);
+                            ui.ctx().request_repaint();
+                        }
+                        Err(error) => {
+                            self.status = format!("Could not save Files preference: {error}")
+                        }
+                    }
+                }
             }
         });
         ui.separator();

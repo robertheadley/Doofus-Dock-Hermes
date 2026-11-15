@@ -26,11 +26,13 @@ pub enum InterfaceMode {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UiPreferences {
     pub mode: InterfaceMode,
     pub advanced_profile: String,
     pub simple_sidebar_right: bool,
     pub pane_open: BTreeMap<String, bool>,
+    pub show_ignored_files_roots: BTreeSet<String>,
 }
 
 impl Default for UiPreferences {
@@ -44,6 +46,7 @@ impl Default for UiPreferences {
                 (FILES.into(), false),
                 (TERMINAL.into(), false),
             ]),
+            show_ignored_files_roots: BTreeSet::new(),
         }
     }
 }
@@ -80,6 +83,44 @@ pub struct RestoredSessionPane {
 }
 
 impl Workspace {
+    pub fn shows_ignored_files(&self, root: &Path) -> bool {
+        self.preferences
+            .show_ignored_files_roots
+            .contains(&file_preference_path_key(root))
+    }
+
+    pub fn set_show_ignored_files(&mut self, root: &Path, show: bool) -> Result<bool, String> {
+        if !root.is_absolute() {
+            return Err("Files preference requires an absolute project root".into());
+        }
+        let key = file_preference_path_key(root);
+        let changed = if show {
+            self.preferences.show_ignored_files_roots.insert(key)
+        } else {
+            self.preferences.show_ignored_files_roots.remove(&key)
+        };
+        if changed {
+            let path = self.data_directory.join("ui-preferences.json");
+            match write_preferences_atomic(&path, &self.preferences) {
+                Ok(()) => self.persistence_error = None,
+                Err(error) => {
+                    if show {
+                        self.preferences
+                            .show_ignored_files_roots
+                            .remove(&file_preference_path_key(root));
+                    } else {
+                        self.preferences
+                            .show_ignored_files_roots
+                            .insert(file_preference_path_key(root));
+                    }
+                    self.persistence_error = Some(error.clone());
+                    return Err(error);
+                }
+            }
+        }
+        Ok(changed)
+    }
+
     pub fn load_fallback() -> Self {
         Self::load_fallback_at(std::env::temp_dir().join("HermesNative-recovery"))
     }
@@ -670,6 +711,19 @@ impl Workspace {
             Ok(()) => self.persistence_error = None,
             Err(error) => self.persistence_error = Some(error),
         }
+    }
+}
+
+fn file_preference_path_key(path: &Path) -> String {
+    let clean = path
+        .components()
+        .collect::<PathBuf>()
+        .to_string_lossy()
+        .replace('\\', "/");
+    if cfg!(windows) {
+        clean.to_lowercase()
+    } else {
+        clean
     }
 }
 
@@ -1892,6 +1946,39 @@ mod tests {
                 candidate.id
             );
         }
+    }
+
+    #[test]
+    fn show_ignored_files_preference_is_project_scoped_and_persistent() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let data = std::env::temp_dir().join(format!(
+            "HermesNative-files-preference-{}-{nonce}",
+            std::process::id()
+        ));
+        let first = data.join("project-a");
+        let second = data.join("project-b");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+
+        let mut workspace = Workspace::load_from(data.clone()).unwrap();
+        assert!(!workspace.shows_ignored_files(&first));
+        assert!(workspace.set_show_ignored_files(&first, true).unwrap());
+        assert!(!workspace.shows_ignored_files(&second));
+        let reloaded = Workspace::load_from(data.clone()).unwrap();
+        assert!(reloaded.shows_ignored_files(&first));
+        assert!(!reloaded.shows_ignored_files(&second));
+
+        let mut reloaded = reloaded;
+        assert!(reloaded.set_show_ignored_files(&first, false).unwrap());
+        assert!(
+            !Workspace::load_from(data.clone())
+                .unwrap()
+                .shows_ignored_files(&first)
+        );
+        std::fs::remove_dir_all(data).unwrap();
     }
 
     #[test]

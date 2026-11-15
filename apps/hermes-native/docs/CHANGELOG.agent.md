@@ -1287,3 +1287,14 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Not applicable.
   **risks:** Artifact documents only the native target fixture.
   **follow_up:** Publish artifact and journal record, then continue the fixed-source parity queue.
+
+- **id:** HUR-001-098
+  **timestamp:** 2026-11-15T14:51:27Z
+  **what:** Added pinned-source `.gitignore` filtering and a persisted per-project Show/Hide gitignored files control to the native Files tree; retained nested repository roots and source-defined exclusions; made refresh preserve and reload expanded directories.
+  **why:** The downloaded Hermes Files source filters ignored paths by default and allows each project to reveal ignored files, while the native tree previously omitted this behavior.
+  **components:** apps/hermes-native/src/files.rs, apps/hermes-native/src/app.rs, apps/hermes-native/src/layout.rs, app docs and agent UI capture.
+  **type:** feature and validation
+  **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 134 library + 11 protocol tests; all-target feature check and `git diff --check` passed. Tests cover root/nested ignore rules, negations, nested repositories, reveal-floor exclusions and persisted project scoping. An accessible agent click revealed `ignored-preview.txt`; the distinct 1440×900 screen was visually inspected.
+  **performance:** Directory enumeration and matching run on the Files worker; reveal mode skips Gitignore matching; each listing is bounded to 1,000 entries.
+  **risks:** Ignore matchers are rebuilt per directory request rather than cached; remote filesystem semantics and live/source-paired Windows acceptance remain open. Synthetic screenshots do not close parity rows.
+  **follow_up:** Add cache invalidation and source-paired acceptance while progressing remaining Files features.

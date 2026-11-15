@@ -5,6 +5,9 @@
 //! directories are enumerated.
 
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
+#[cfg(test)]
+use std::process::Command;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -22,21 +25,71 @@ const MAX_PDF_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PDF_RENDER_WIDTH: i32 = 1_280;
 const MAX_PDF_RENDER_HEIGHT: i32 = 1_800;
 const IMAGE_EXTENSIONS: &[&str] = &["bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"];
-const EXCLUDED_NAMES: &[&str] = &[
+const ALWAYS_EXCLUDED_NAMES: &[&str] = &[
     ".git",
     ".hg",
     ".svn",
-    ".cache",
-    ".next",
-    ".turbo",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
     "node_modules",
-    "target",
+    "bower_components",
+    ".venv",
     "venv",
+    "env",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".gradle",
+    ".idea",
+    "dist",
+    "build",
+    "out",
+    "target",
+    "vendor",
+    "Pods",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".output",
+    ".turbo",
+    ".parcel-cache",
+    ".cache",
+    ".terraform",
+    ".expo",
+    ".angular",
+    "coverage",
 ];
+const SHOW_IGNORED_EXCLUDED_NAMES: &[&str] = &[
+    ".git",
+    ".hg",
+    ".svn",
+    "node_modules",
+    "bower_components",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".tox",
+    ".gradle",
+    ".idea",
+    "dist",
+    "build",
+    "target",
+    "Pods",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".output",
+    ".turbo",
+    ".parcel-cache",
+    ".cache",
+    ".terraform",
+    ".expo",
+    ".angular",
+];
+const NEVER_IGNORED_NAMES: &[&str] = &[".DS_Store", "Thumbs.db"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileEntry {
@@ -50,6 +103,7 @@ struct DirectoryRequest {
     generation: u64,
     root: PathBuf,
     path: PathBuf,
+    show_ignored: bool,
 }
 
 #[derive(Debug)]
@@ -404,6 +458,7 @@ pub struct FileBrowserState {
     generation: u64,
     errors: BTreeMap<PathBuf, String>,
     selected: Option<PathBuf>,
+    show_ignored: bool,
     request_tx: Sender<DirectoryRequest>,
     result_rx: Receiver<DirectoryResult>,
 }
@@ -416,7 +471,7 @@ impl Default for FileBrowserState {
             .name("hermes-files-tree".into())
             .spawn(move || {
                 while let Ok(request) = request_rx.recv() {
-                    let result = read_directory(&request.path);
+                    let result = read_directory(&request.path, &request.root, request.show_ignored);
                     if result_tx
                         .send(DirectoryResult {
                             generation: request.generation,
@@ -439,6 +494,7 @@ impl Default for FileBrowserState {
             generation: 0,
             errors: BTreeMap::new(),
             selected: None,
+            show_ignored: false,
             request_tx,
             result_rx,
         }
@@ -477,13 +533,25 @@ impl FileBrowserState {
 
     pub fn refresh(&mut self) {
         if let Some(root) = self.root.clone() {
+            let mut expanded = self.expanded.iter().cloned().collect::<Vec<_>>();
+            expanded.push(root);
+            expanded.sort_by_key(|path| path.components().count());
+            expanded.dedup();
             self.generation = self.generation.saturating_add(1);
             self.entries.clear();
             self.pending.clear();
             self.errors.clear();
-            self.expanded.clear();
-            self.expanded.insert(root.clone());
-            self.request_directory(root);
+            self.expanded = expanded.iter().cloned().collect();
+            for path in expanded {
+                self.request_directory(path);
+            }
+        }
+    }
+
+    pub fn set_show_ignored(&mut self, show: bool) {
+        if self.show_ignored != show {
+            self.show_ignored = show;
+            self.refresh();
         }
     }
 
@@ -539,10 +607,7 @@ impl FileBrowserState {
         let Some(root) = self.root.clone() else {
             return;
         };
-        if self.pending.len() >= 8
-            || self.pending.contains_key(&path)
-            || self.entries.contains_key(&path)
-        {
+        if self.pending.contains_key(&path) || self.entries.contains_key(&path) {
             return;
         }
         self.errors.remove(&path);
@@ -553,6 +618,7 @@ impl FileBrowserState {
                 generation: self.generation,
                 root,
                 path: path.clone(),
+                show_ignored: self.show_ignored,
             })
             .is_err()
         {
@@ -885,16 +951,36 @@ fn decode_svg_preview(bytes: &[u8]) -> Result<FilePreviewContent, String> {
     })
 }
 
-fn read_directory(path: &Path) -> Result<Vec<FileEntry>, String> {
+fn read_directory(
+    path: &Path,
+    project_root: &Path,
+    show_ignored: bool,
+) -> Result<Vec<FileEntry>, String> {
     if !path.is_absolute() {
         return Err("Project path is not absolute".into());
     }
+    if !project_root.is_absolute() {
+        return Err("Project root is not absolute".into());
+    }
+    let ignore_rules = if show_ignored {
+        None
+    } else {
+        git_root(path)
+            .or_else(|| git_root(project_root))
+            .and_then(|root| gitignore_rules(&root, path))
+    };
     let iterator = fs::read_dir(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
     let mut entries = Vec::new();
     for item in iterator {
         let item = item.map_err(|error| format!("{} ({})", error, error.kind()))?;
         let name = item.file_name().to_string_lossy().into_owned();
-        if EXCLUDED_NAMES.contains(&name.as_str()) {
+        if NEVER_IGNORED_NAMES.contains(&name.as_str())
+            || if show_ignored {
+                SHOW_IGNORED_EXCLUDED_NAMES.contains(&name.as_str())
+            } else {
+                ALWAYS_EXCLUDED_NAMES.contains(&name.as_str())
+            }
+        {
             continue;
         }
         let file_type = item
@@ -907,8 +993,18 @@ fn read_directory(path: &Path) -> Result<Vec<FileEntry>, String> {
         } else {
             false
         };
+        let entry_path = item.path();
+        if ignore_rules.as_ref().is_some_and(|(root, matcher)| {
+            entry_path.strip_prefix(root).ok().is_some_and(|relative| {
+                matcher
+                    .matched_path_or_any_parents(relative, is_directory)
+                    .is_ignore()
+            }) && !(is_directory && is_git_root(&entry_path))
+        }) {
+            continue;
+        }
         entries.push(FileEntry {
-            path: item.path(),
+            path: entry_path,
             name,
             is_directory,
         });
@@ -921,6 +1017,53 @@ fn read_directory(path: &Path) -> Result<Vec<FileEntry>, String> {
     });
     entries.truncate(MAX_DIRECTORY_ENTRIES);
     Ok(entries)
+}
+
+fn git_root(path: &Path) -> Option<PathBuf> {
+    let mut current = path;
+    loop {
+        let marker = current.join(".git");
+        if marker.is_dir() || marker.is_file() {
+            return Some(current.to_path_buf());
+        }
+        current = current.parent()?;
+    }
+}
+
+fn is_git_root(path: &Path) -> bool {
+    git_root(path).is_some_and(|root| same_path(&root, path))
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    let left = left.components().collect::<PathBuf>();
+    let right = right.components().collect::<PathBuf>();
+    if cfg!(windows) {
+        left.to_string_lossy()
+            .eq_ignore_ascii_case(&right.to_string_lossy())
+    } else {
+        left == right
+    }
+}
+
+fn gitignore_rules(repo_root: &Path, directory: &Path) -> Option<(PathBuf, Gitignore)> {
+    let relative = directory.strip_prefix(repo_root).ok()?;
+    let mut builder = GitignoreBuilder::new(repo_root);
+    let mut current = repo_root.to_path_buf();
+    let root_ignore = current.join(".gitignore");
+    if root_ignore.is_file() {
+        let _ = builder.add(root_ignore);
+    }
+    for component in relative.components() {
+        current.push(component);
+        let ignore_file = current.join(".gitignore");
+        if ignore_file.is_file() {
+            let _ = builder.add(ignore_file);
+        }
+    }
+    builder
+        .build()
+        .ok()
+        .map(|matcher| (repo_root.to_path_buf(), matcher))
 }
 
 #[cfg(test)]
@@ -945,7 +1088,7 @@ mod tests {
         fs::write(root.join(".secret"), "hidden").unwrap();
         fs::write(root.join("target").join("artifact"), "ignored").unwrap();
 
-        let entries = read_directory(&root).unwrap();
+        let entries = read_directory(&root, &root, false).unwrap();
         assert_eq!(
             entries
                 .iter()
@@ -955,6 +1098,80 @@ mod tests {
         );
         assert!(entries[0].is_directory);
         assert!(!entries[1].is_directory);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn project_tree_applies_gitignore_with_project_override_and_nested_repo_boundary() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "hermes-files-gitignore-{}-{nonce}",
+            std::process::id()
+        ));
+        let nested = root.join("nested-repo");
+        fs::create_dir_all(nested.join("src")).unwrap();
+        fs::create_dir_all(root.join("ignored-dir")).unwrap();
+        fs::create_dir_all(root.join("out")).unwrap();
+        fs::write(
+            root.join(".gitignore"),
+            "*.txt\n!important.txt\nignored-dir/\nnested-repo/\n",
+        )
+        .unwrap();
+        fs::write(root.join("ignored.txt"), "hidden by default").unwrap();
+        fs::write(root.join("visible.md"), "visible").unwrap();
+        fs::write(root.join("important.txt"), "unignored by a negated pattern").unwrap();
+        fs::write(root.join("out").join("artifact.txt"), "build output").unwrap();
+        fs::write(nested.join(".gitignore"), "nested-hidden.log\n").unwrap();
+        fs::write(nested.join("nested-hidden.log"), "nested ignore").unwrap();
+        fs::write(nested.join("visible.rs"), "fn main() {}\n").unwrap();
+        for path in [&root, &nested] {
+            let status = Command::new("git")
+                .args(["init", "--quiet"])
+                .current_dir(path)
+                .status()
+                .expect("git must be available for repository ignore behavior");
+            assert!(status.success());
+        }
+
+        let default_names = read_directory(&root, &root, false)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect::<BTreeSet<_>>();
+        assert!(default_names.contains("visible.md"));
+        assert!(default_names.contains("important.txt"));
+        assert!(
+            default_names.contains("nested-repo"),
+            "nested repos remain visible"
+        );
+        assert!(!default_names.contains("ignored.txt"));
+        assert!(!default_names.contains("ignored-dir"));
+        assert!(!default_names.contains("out"));
+        assert!(!default_names.contains(".git"));
+
+        let expanded_names = read_directory(&root, &root, true)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect::<BTreeSet<_>>();
+        assert!(expanded_names.contains("ignored.txt"));
+        assert!(expanded_names.contains("ignored-dir"));
+        assert!(
+            expanded_names.contains("out"),
+            "source allows reveal of out/"
+        );
+        assert!(!expanded_names.contains(".git"));
+
+        let nested_names = read_directory(&nested, &root, false)
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.name)
+            .collect::<BTreeSet<_>>();
+        assert!(nested_names.contains("visible.rs"));
+        assert!(!nested_names.contains("nested-hidden.log"));
         fs::remove_dir_all(root).unwrap();
     }
 
