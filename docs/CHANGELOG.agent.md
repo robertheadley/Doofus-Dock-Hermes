@@ -723,3 +723,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
 - **performance:** Fixture capture completed in under ten seconds including incremental build.
 - **risks:** Synthetic target-only capture does not establish source parity or live Windows behavior.
 - **follow_up:** Continue remaining pinned Files behaviors and source-paired acceptance.
+- **id:** HUI-060
+- **timestamp:** 2026-11-15T14:20:52Z
+- **what:** Added bounded SVG parsing and vector rasterization to the native image preview, plus a distinct offline SVG fixture.
+- **why:** The pinned Hermes Desktop treats SVG as an image preview; the raster-only slice left a recognized source format incomplete.
+- **components:** Hermes Native preview worker, `resvg`/`usvg`, automation runner, documentation and screenshot artifact.
+- **type:** feature slice and validation.
+- **validation:** `cargo fmt --all -- --check`; `cargo test -p hermes-native --all-targets --features agent-automation` passed 131 library + 11 automation tests; all-target feature check and `git diff --check` passed; SVG capture visually inspected at 1440×900.
+- **performance:** SVG parsing/rendering runs on the existing background worker; file bytes, edge length and output pixels are bounded.
+- **risks:** PDF/HTML and source-paired/native-host acceptance remain open; unusual SVG features follow usvg support limits; PAR-0105 remains pending.
+- **follow_up:** Publish the capture with hash metadata; continue PDF/HTML preview and remaining Files semantics.

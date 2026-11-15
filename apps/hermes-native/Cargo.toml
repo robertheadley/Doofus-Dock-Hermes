@@ -24,6 +24,7 @@ ureq = { version = "3.5", default-features = false, features = ["rustls"] }
 zeroize = "1"
 egui_commonmark = { version = "0.26.0", default-features = false, features = ["pulldown_cmark", "better_syntax_highlighting"] }
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
+resvg = { version = "0.49.0", default-features = false, features = ["raster-images", "system-fonts", "text"] }
 time = { version = "0.3.55", features = ["formatting", "local-offset"] }
 
 [[bin]]

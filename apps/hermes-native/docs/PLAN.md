@@ -467,4 +467,8 @@ The pinned file preview uses Shiki for recognized source types. For UTF-8 source
 
 Match the pinned Desktop image path for BMP, GIF, JPEG, PNG and WebP files. Read and decode off the UI thread, reject files over 16 MiB and decoded images above 64 megapixels, then display through a cached egui texture. The isolated `--image-preview-fixture` creates a synthetic PNG and captures a visibly distinct image pane. Tests verify pixel decoding and the encoded-size refusal. SVG, PDF, HTML, full source size behavior, source-paired comparison and native Windows acceptance remain open; PAR-0105 remains pending.
 
+### Revision 90 — SVG preview rendering
+
+Extend the fixed-source image formats to SVG. Parse with `usvg::Tree::from_data_nested` so external image references are ignored, render on the existing image worker, and enforce a 16 MiB input, 16,384-pixel edge and 64-megapixel canvas bound before allocation. Test rendered SVG pixel output, malformed-document errors, and that an external `file:` image reference does not prevent local vector rendering. PDF/HTML, full source comparison, source-paired visuals and native Windows acceptance remain open; PAR-0105 remains pending.
+
 Add `actions.fill` for accessible single- and multiline-text inputs. It validates a unique semantic locator, enabled state, payload length and current UI generation, then sends AccessKit `SetValue` through egui to replace the complete field value (including clearing it). Tests prove fill, replacement, clearing, and the structured action receipt. This complements typed keystrokes while preserving the normal widget path.

@@ -695,6 +695,7 @@ fn render_message() -> &'static str {
         &mut self,
         root: &std::path::Path,
         image_preview: bool,
+        svg_preview: bool,
     ) -> Result<(), String> {
         std::fs::create_dir_all(root)
             .map_err(|error| format!("create fixture project: {error}"))?;
@@ -725,6 +726,12 @@ fn render_message() -> &'static str {
         })
         .save(&image_path)
         .map_err(|error| format!("write fixture image: {error}"))?;
+        let svg_path = root.join("vector.svg");
+        std::fs::write(
+            &svg_path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"><rect width="320" height="180" fill="#252d3a"/><circle cx="160" cy="90" r="64" fill="#4990e0"/><path d="M120 90h80M160 50v80" stroke="#ffffff" stroke-width="8"/></svg>"##,
+        )
+        .map_err(|error| format!("write fixture vector: {error}"))?;
 
         let session_id = "files-preview-fixture";
         let profile = "fixture-profile";
@@ -748,7 +755,7 @@ fn render_message() -> &'static str {
         });
         self.transcript = vec![
             json!({"role":"user","content":"Show the project files."}),
-            json!({"role":"assistant","content": if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
+            json!({"role":"assistant","content": if svg_preview { "The SVG image is open in a transient preview pane." } else if image_preview { "The PNG image is open in a transient preview pane." } else { "The Rust source file is open with syntax highlighting in a transient preview pane." }}),
         ];
         self.workspace
             .preferences
@@ -757,7 +764,9 @@ fn render_message() -> &'static str {
         self.workspace.apply_active_profile()?;
         self.files.set_root(Some(root.to_path_buf()));
 
-        let preview_path = if image_preview {
+        let preview_path = if svg_preview {
+            svg_path
+        } else if image_preview {
             image_path
         } else {
             root.join("main.rs")

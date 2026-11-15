@@ -18,7 +18,7 @@ const MAX_DIRECTORY_ENTRIES: usize = 1_000;
 const MAX_PREVIEW_BYTES: u64 = 512 * 1024;
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_IMAGE_PIXELS: u64 = 64 * 1024 * 1024;
-const IMAGE_EXTENSIONS: &[&str] = &["bmp", "gif", "jpeg", "jpg", "png", "webp"];
+const IMAGE_EXTENSIONS: &[&str] = &["bmp", "gif", "jpeg", "jpg", "png", "svg", "webp"];
 const EXCLUDED_NAMES: &[&str] = &[
     ".git",
     ".hg",
@@ -634,6 +634,13 @@ fn read_image_preview(path: &Path, file_size: u64) -> Result<FilePreviewContent,
         ));
     }
     let bytes = fs::read(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
+    if path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
+    {
+        return decode_svg_preview(&bytes);
+    }
     let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|error| format!("Unable to identify image format: {error}"))?;
@@ -658,6 +665,41 @@ fn read_image_preview(path: &Path, file_size: u64) -> Result<FilePreviewContent,
             width: image.width() as usize,
             height: image.height() as usize,
             rgba: image.into_raw(),
+        },
+    })
+}
+
+fn decode_svg_preview(bytes: &[u8]) -> Result<FilePreviewContent, String> {
+    let options = resvg::usvg::Options::default();
+    // Nested mode deliberately ignores external image references. Previewing an
+    // untrusted project SVG must never turn into arbitrary local-file reads.
+    let tree = resvg::usvg::Tree::from_data_nested(bytes, &options)
+        .map_err(|error| format!("Unable to parse SVG: {error}"))?;
+    let size = tree.size();
+    let width = size.width().ceil() as u64;
+    let height = size.height().ceil() as u64;
+    if width == 0 || height == 0 || width > 16_384 || height > 16_384 {
+        return Err("SVG dimensions exceed the supported 16384-pixel edge limit".into());
+    }
+    if width.saturating_mul(height) > MAX_IMAGE_PIXELS {
+        return Err(format!(
+            "SVG dimensions exceed the {MAX_IMAGE_PIXELS}-pixel preview limit"
+        ));
+    }
+    let width = width as u32;
+    let height = height as u32;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
+        .ok_or_else(|| format!("Unable to allocate {width}x{height} SVG preview"))?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::identity(),
+        &mut pixmap.as_mut(),
+    );
+    Ok(FilePreviewContent {
+        kind: FilePreviewKind::Image {
+            width: width as usize,
+            height: height as usize,
+            rgba: pixmap.take(),
         },
     })
 }
@@ -842,6 +884,37 @@ mod tests {
             read_file_preview(&oversized, false)
                 .unwrap_err()
                 .contains("preview limit")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn svg_preview_renders_vectors_and_ignores_external_image_references() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("hermes-svg-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let image_path = root.join("vector.svg");
+        fs::write(
+            &image_path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10" viewBox="0 0 20 10"><rect width="20" height="10" fill="#ff0000"/><image href="file:///should-not-be-read.png" width="1" height="1"/></svg>"##,
+        )
+        .unwrap();
+        let preview = read_file_preview(&image_path, false).unwrap();
+        assert!(matches!(
+            preview.kind,
+            FilePreviewKind::Image { width: 20, height: 10, ref rgba }
+                if rgba[0..4] == [255, 0, 0, 255]
+        ));
+
+        let malformed = root.join("broken.svg");
+        fs::write(&malformed, "<svg>").unwrap();
+        assert!(
+            read_file_preview(&malformed, false)
+                .unwrap_err()
+                .contains("Unable to parse SVG")
         );
         fs::remove_dir_all(root).unwrap();
     }
