@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 44 (published canonical workspace to the user-provided repository).
+- **Working revision:** 45 (published canonical workspace to the user-provided repository).
 - **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -240,3 +240,17 @@ Added an accessible earlier-history action for long sessions. The native HTTP ac
 ### Revision 44 — legacy transcript page compatibility
 
 Corrected the bounded-read response guard: current paginated responses remain limited to 120 and must echo `latest`, offset and returned count; a legacy response with no pagination metadata may contain the complete transcript (subject to the existing 512 KiB transport limit and an additional 10,000-row cap) and replaces the loaded transcript. A regression fixture returns 121 legacy rows to prove it is not mistaken for an oversized current page. The fixed-source target and live-gateway acceptance remain unchanged.
+
+### Revision 45 — source-faithful session-tab architecture plan
+
+Source inspection confirmed that the pinned Desktop does not implement session tabs as a separate list: existing sessions are dynamic pane-tree entries (`session-tile:<stored-id>`) stacked into DoofusDock's workspace group or docked into other zones. The workspace tab is a special primary chat pane. Opening a new session creates an unlisted tile, with one untouched default-owner draft and a per-window single-flight create latch. Closing a main tab promotes the next tile or resets an occupied main pane to a fresh draft; closing a busy tile requires confirmation and does not terminate the Hermes session. Bot-mode new tabs carry exact owner/profile scope when available.
+
+Implementation sequence (ordered):
+
+1. Extend the canonical `LayoutDocument`/panel registry and `DockingService` transaction path to support dynamic, stable session-pane IDs without a parallel app-owned layout tree. Add pane metadata for stored session ID, profile, title, runtime session and close state. Ensure workspace serialization/reload and existing fixed pane profiles remain valid.
+2. Make each dynamic pane own a session view model (draft, transcript window/cursor, runtime identity, pending/uncertain send, approval/clarify state and scroll position). Route gateway events and action receipts by `(profile, stored_session_id, runtime_session_id)` even when the pane is hidden. Re-selecting a pane must restore its visible state without duplicate `session.resume` or prompt submission.
+3. Implement open existing session (front an already-open pane), new unlisted draft creation, per-window single-flight creation, default-owner untouched-draft reuse, Bot Mode exact-owner scope and first-message listing. Keep failures attached to the originating pane.
+4. Implement active pane selection/reorder and close semantics through DoofusDock's canonical tab/docking transactions. Include busy/awaiting-input close confirmation, workspace promotion/reset behavior, close-other/right/all commands, keyboard shortcuts, focus precedence, accessibility names, narrow overflow, and no-window-close guarantees.
+5. Add shared semantic UI/agent actions and stable locators for open/select/reorder/close. Add deterministic fixtures for multiple simultaneous sessions, cross-profile duplicate stored IDs, background streaming and stale receipts, draft reuse, close/promotion and failure recovery. Capture a 1440px source-paired screenshot only after source and target have matched session fixtures.
+
+Acceptance: layout revision and persisted pane order/active selection change only through canonical Dock transactions; session ownership and messages never bleed across tabs/profiles; source close/open rules match the pinned implementation; all tab actions work through both UI and semantic agent control; paired source/target functional receipts and Windows screenshots are reviewable. Do not replace this architecture with a separate session-tab vector or count the current single-item strip as parity.

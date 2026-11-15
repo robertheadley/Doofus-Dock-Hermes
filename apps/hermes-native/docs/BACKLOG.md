@@ -19,6 +19,7 @@ The fixed parity target is downloaded Hermes snapshot 8783054ef6cbafd86f10892241
 
 The first shell passed compile and two layout-policy tests and was opened on Windows. A manual Simple → Advanced round trip and Files reveal/hide check passed. The route slice adds four route-classification tests. These checks cover shell contracts only; they do not count as visual parity receipts. The upstream source preview later displayed its backend-start timeout recovery dialog, so its initial setup screen needs to be recaptured in a fresh isolated profile for paired evidence.
 
+- [ ] Replace the current one-item placeholder chat strip with source-faithful session panes in the canonical DoofusDock layout tree. Preserve independent profile/session runtime, transcript, composer draft, pending interaction and scroll state; match source open/reuse/create/list/close/promote semantics and provide UI plus agent-control parity. Implementation order and acceptance are recorded in PLAN.md revision 45.
 ## Stage 2 — gateway and core UI
 
 - [x] Implement credential-free `gateway ensure --json` discovery and reject non-ready, non-loopback, wrong-protocol or non-authority endpoints.

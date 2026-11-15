@@ -634,3 +634,16 @@
 - **performance:** Complete response bounded by 512 KiB and 10,000 rows; normal paginated reads remain 120 rows.
 - **risks:** Live source gateway compatibility remains unverified.
 - **follow_up:** Exercise current and legacy page shapes against an isolated gateway from the pinned snapshot.
+
+### Revision 45 — source-faithful session-tab architecture plan
+
+- **id:** HUR-001-057
+- **timestamp:** 2026-11-15T05:11:13Z
+- **what:** Recorded a source-backed implementation sequence for dynamic session panes, independent per-session state, session lifecycle, close/promotion, and agent-operated controls.
+- **why:** The current one-item chat strip cannot satisfy the pinned Desktop's dynamic session tiles; duplicating tab state outside DoofusDock would split canonical layout ownership.
+- **components:** apps/hermes-native/src/app.rs; DoofusDock pane registry and DockingService; gateway event routing; automation protocol; PLAN.md; BACKLOG.md; root README and architecture.
+- **type:** parity architecture plan.
+- **validation:** Inspected pinned Hermes files `apps/desktop/src/app/chat/new-session-tab.ts`, `apps/desktop/src/app/chat/close-tab.ts`, `apps/desktop/src/app/chat/session-tile.tsx`, and `apps/desktop/src/components/pane-shell/tree/store.ts`; verified current native strip and route state in `apps/hermes-native/src/app.rs`. Documentation diff, fixed-source pins and package validation checked; no implementation was claimed.
+- **performance:** No runtime change or benchmark.
+- **risks:** Dynamic pane support and background session event isolation touch shared workspace and gateway state; implement in dependency order with multi-profile tests before exposing capability.
+- **follow_up:** Begin with canonical dynamic-pane identity/transaction support, then independent session view models before adding lifecycle controls.
