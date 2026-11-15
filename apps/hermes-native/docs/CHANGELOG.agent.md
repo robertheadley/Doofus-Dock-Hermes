@@ -1415,3 +1415,13 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** Background app lifecycle and capture completed in under six seconds.
   **risks:** egui renderer capture includes the full Hermes shell but not its separate native WebView2 child. The HTML body is held in a separately labeled child-render capture; neither is source-paired evidence.
   **follow_up:** Add a dual-renderer composition or viewport-capture path that records the native child alongside the full shell; continue the 499-row fixed-source acceptance.
+- **id:** HUR-001-110
+  **timestamp:** 2026-11-15T16:34:09.3378911Z
+  **what:** Captured the session pane after activating Show archived sessions and recorded the rendered offline archived view with the click receipt and content hash.
+  **why:** Scenario-labeled screenshots had identical pixels because the capture runner was launched on the unchanged initial fixture; visual evidence must correspond to the actual exercised state.
+  **components:** apps/hermes-native/docs/PLAN.md, apps/hermes-native/docs/AGENT_AUTOMATION.md, apps/hermes-native/docs/CHANGELOG.agent.md, artifacts/agent-ui/session-pane-archived-view-20261115.png, artifacts/agent-ui/session-pane-archived-view-20261115.json, docs/EXECUTION_LOGS.md.
+  **type:** target-only workflow screenshot evidence.
+  **validation:** One-shot AccessKit click returned success; the 1440x900 screenshot was visually inspected and SHA-256 differs from the unchanged session pane capture; JSON sidecar parsed and binds action, image, binary, fixed sources and target commit.
+  **performance:** Semantic interaction and capture completed in under three seconds after incremental build.
+  **risks:** Gateway is intentionally disabled, so archived sessions show unavailable/no items. This does not prove pinned-source parity or live gateway behavior.
+  **follow_up:** Build matched source and Rust captures for this workflow, then continue the fixed 499-row parity matrix.

@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-11-15T16:32:40.4167500Z",
+  "hermes_parity_source": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_source": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "447a5b2f5c39e760cd7e06ea0d06bb6fcf3c3cff",
+  "executable_sha256": "f498b8dfd493c1975ef0e7afc164d18e5aace3fb1b4836c7f59ae521e4b28e0b",
+  "fixture": "session-pane-fixture",
+  "fixture_profile": "fresh isolated temporary profile; gateway disabled",
+  "process_generation": "one-shot hermes-automation",
+  "app_route": "/",
+  "active_dock_pane": "Native session pane",
+  "viewport_px": "1440x900",
+  "dpi": "headless egui logical scale 1.0; Windows DPI not measured",
+  "state_revision": null,
+  "layout_revision": null,
+  "interaction_receipts": [
+    {
+      "observed_state": [
+        "Show active sessions",
+        "Archived sessions unavailable: Hermes gateway is unavailable",
+        "No archived sessions"
+      ],
+      "role": "Button",
+      "accessible_name": "Show archived sessions",
+      "result": "succeeded",
+      "action": "click"
+    }
+  ],
+  "screenshot": "session-pane-archived-view-20261115.png",
+  "screenshot_sha256": "9c28a3601859e4b5dad44768f05034df89ca1aab3a70d619a244a97cf1d95ac3",
+  "comparison_baseline": "session-pane-current-20261115.png",
+  "comparison_baseline_sha256": "64b0933fbb7c1fe39be437aa6bc46d660ddaf374c91ba6a93612735373f2a01c",
+  "distinct_from_baseline": true,
+  "evidence_limit": "Target-only deterministic fixture; click and rendered view observed, but no source-paired or physical Windows parity evidence."
+}

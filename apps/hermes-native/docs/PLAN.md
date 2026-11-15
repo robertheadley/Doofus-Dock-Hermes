@@ -508,3 +508,5 @@ Capture the Hermes native HWND with Win32 `PrintWindow` after the actual Files p
 ### Revision 99 — full Hermes viewport capture from egui
 
 Use egui's screenshot callback to capture the Hermes native renderer framebuffer on the isolated desktop, including the application shell and the navigated Files/HTML Preview layout, without foregrounding the window. Validate and atomically save the PNG and bind it to its JSON lifecycle receipt. The WebView2 child is a separate native HWND and is not present in the egui framebuffer; pair the full-shell screenshot with the separately labeled child-WebView capture from Revision 98. Keep both artifacts target-only until matched fixed-source evidence is reviewed.
+
+The session-pane archived-view capture at `artifacts/agent-ui/session-pane-archived-view-20261115.png` follows the semantic click for `Show archived sessions` and displays the archived view offline/unavailable state. Its sidecar binds the action receipt and image hash and proves it differs from the unchanged pane fixture. This remains target-only evidence; source pairing and live-gateway behavior remain open.
