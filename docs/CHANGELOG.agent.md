@@ -2128,3 +2128,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No benchmark change; request cap remains bounded to 2,000 and response body remains bounded to 512 KiB.
 - risks: 180 ms query debounce, live Hermes runtime, Windows and source-matched visual evidence remain open; no strict source acceptance changed.
 - follow_up: Continue exact source behavior gaps (including the 180 ms search debounce), then live/runtime and source-paired validation; publish this verified slice on `main`.
+
+
+### Hermes Native Command Center publication — 2026-11-18T22:14:35Z
+
+- id: `hermes-command-center-pagination-publish-20261118`
+- timestamp: `2026-11-18T22:14:35Z`
+- what: Published `fa9b2f0a5e64ad4dbf096beec463bd5559673d55` to `origin/main`.
+- why: The operator specified main-only work and requested the repository remain current.
+- components: Hermes Native Command Center implementation and parity documentation.
+- type: Repository publication.
+- validation: Push succeeded; a subsequent fetch confirmed `HEAD == origin/main == fa9b2f0a5e64ad4dbf096beec463bd5559673d55`; checkout was clean.
+- performance: No performance measurement was part of publication.
+- risks: The change is partial fixed-source parity; 38/499 rows reviewed, 0/499 formally accepted, live runtime and visual source pairs unverified.
+- follow_up: Continue the next pinned-source gap on `main` only.
