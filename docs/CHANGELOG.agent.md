@@ -2114,3 +2114,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No performance measurement was part of this synchronization.
 - risks: The published project is still partial: 38/499 source requirements reviewed, 0/499 accepted, live runtime and source-paired visual evidence remain unverified.
 - follow_up: Continue with the next fixed-source parity slice on `main` only.
+
+
+### Hermes Native Command Center profile-union pagination — 2026-11-18T22:08:45Z
+
+- id: `hermes-command-center-profile-pagination-20261118`
+- timestamp: `2026-11-18T22:08:45Z`
+- what: Replaced the ineffective fixed-200 refresh with the pinned 50-row `/api/profiles/sessions/sidebar` window, profile-specific truncation state, a 404 legacy route fallback, partial-failure row/flag retention, a visible partial error, and `+50` Load more that issues the larger next request.
+- why: Match the downloaded Hermes snapshot; its Command Center uses `SIDEBAR_SESSIONS_PAGE_SIZE=50` and server truncation metadata.
+- components: `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/SOURCE_AUDIT.md`, `apps/hermes-native/docs/backlog.md`.
+- type: Fixed-source parity behavior slice.
+- validation: PASS focused batched/legacy HTTP, cross-profile carry-forward, refresh ownership and headless Load more tests; full suite 334 library + 15 automation protocol + 3 launcher tests; locked workspace check (pre-existing dead-code warnings only); continuity 18/18; pinned package validation 491 pending; progress 38/499 reviewed and 0/499 accepted; Python compileall, rustfmt and diff checks pass.
+- performance: No benchmark change; request cap remains bounded to 2,000 and response body remains bounded to 512 KiB.
+- risks: 180 ms query debounce, live Hermes runtime, Windows and source-matched visual evidence remain open; no strict source acceptance changed.
+- follow_up: Continue exact source behavior gaps (including the 180 ms search debounce), then live/runtime and source-paired validation; publish this verified slice on `main`.

@@ -13,7 +13,7 @@ use crate::{
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt,
     io::{self, Read, Write},
     net::TcpStream,
@@ -115,6 +115,14 @@ pub struct SessionSummary {
     pub unread: bool,
     #[serde(default)]
     pub archived: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CommandCenterSessionSnapshot {
+    pub sessions: Vec<SessionSummary>,
+    pub profiles_truncated: BTreeMap<String, bool>,
+    pub failed_profiles: BTreeSet<String>,
+    pub error: Option<String>,
 }
 
 impl SessionSummary {
@@ -1667,7 +1675,7 @@ pub enum GatewayEvent {
     SessionsRefreshed {
         request_id: String,
         profile_id: String,
-        result: Result<Vec<SessionSummary>, String>,
+        result: Result<CommandCenterSessionSnapshot, String>,
     },
     CommandPaletteSessionsLoaded {
         request_id: String,
@@ -2182,6 +2190,7 @@ enum GatewayHttpCommand {
     LoadSessions,
     RefreshSessions {
         request_id: String,
+        limit: usize,
     },
     LoadArchivedSessions {
         request_id: String,
@@ -2414,7 +2423,7 @@ struct AgentPluginUpdateAllCommand {
 
 impl GatewayDiscovery {
     #[cfg(test)]
-    pub(crate) fn for_test_session_refresh() -> (Self, Receiver<String>) {
+    pub(crate) fn for_test_session_refresh() -> (Self, Receiver<(String, usize)>) {
         let (_status_sender, status_receiver) = mpsc::channel();
         let (_event_sender, event_receiver) = mpsc::channel();
         let (command_sender, _command_receiver) = mpsc::channel();
@@ -2428,8 +2437,8 @@ impl GatewayDiscovery {
         let (refresh_sender, refresh_receiver) = mpsc::channel();
         thread::spawn(move || {
             while let Ok(command) = http_receiver.recv() {
-                if let GatewayHttpCommand::RefreshSessions { request_id } = command
-                    && refresh_sender.send(request_id).is_err()
+                if let GatewayHttpCommand::RefreshSessions { request_id, limit } = command
+                    && refresh_sender.send((request_id, limit)).is_err()
                 {
                     break;
                 }
@@ -2989,9 +2998,9 @@ impl GatewayDiscovery {
     /// Refresh the session list after a backend change signal. Each native
     /// window owns its own GatewayDiscovery, so every window must re-read the
     /// backend snapshot independently.
-    pub fn refresh_sessions(&self, request_id: String) -> Result<(), String> {
+    pub fn refresh_sessions(&self, request_id: String, limit: usize) -> Result<(), String> {
         self.http_sender
-            .send(GatewayHttpCommand::RefreshSessions { request_id })
+            .send(GatewayHttpCommand::RefreshSessions { request_id, limit })
             .map_err(|_| "Hermes session list worker has closed".to_owned())
     }
 
@@ -6831,11 +6840,13 @@ fn gateway_http_actor(
             GatewayHttpCommand::LoadSessions => {
                 GatewayEvent::SessionsLoaded(load_sessions_http(&endpoint))
             }
-            GatewayHttpCommand::RefreshSessions { request_id } => GatewayEvent::SessionsRefreshed {
-                request_id,
-                profile_id: endpoint.profile_id.clone(),
-                result: load_sessions_http(&endpoint),
-            },
+            GatewayHttpCommand::RefreshSessions { request_id, limit } => {
+                GatewayEvent::SessionsRefreshed {
+                    request_id,
+                    profile_id: endpoint.profile_id.clone(),
+                    result: load_command_center_sessions_http(&endpoint, limit),
+                }
+            }
             GatewayHttpCommand::LoadArchivedSessions { request_id } => {
                 GatewayEvent::ArchivedSessionsLoaded {
                     request_id,
@@ -7429,6 +7440,175 @@ fn load_sessions_http(endpoint: &GatewayEndpoint) -> Result<Vec<SessionSummary>,
     Ok(sessions)
 }
 
+fn load_command_center_sessions_http(
+    endpoint: &GatewayEndpoint,
+    limit: usize,
+) -> Result<CommandCenterSessionSnapshot, String> {
+    const RECENTS_EXCLUDED: &str = "acp%2Ccron%2Ckanban%2Coneshot%2Csubagent%2Ctool%2Ctelegram%2Cdiscord%2Cslack%2Cmattermost%2Cmatrix%2Csignal%2Cwhatsapp%2Cbluebubbles%2Cphoton%2Chomeassistant%2Cemail%2Csms%2Cwebhook%2Capi_server%2Cweixin%2Cwecom%2Cqqbot%2Cyuanbao%2Cdingtalk%2Cfeishu";
+    const MESSAGING_EXCLUDED: &str =
+        "cron%2Cacp%2Ccli%2Ccodex%2Cdesktop%2Cgateway%2Ckanban%2Clocal%2Coneshot%2Ctui";
+    let limit = limit.clamp(1, 2_000);
+    let profile = encode_query_component(&endpoint.profile_id);
+    let url = format!(
+        "{}/api/profiles/sessions/sidebar?recents_profile={profile}&recents_limit={limit}&cron_limit=50&messaging_limit=100&recents_exclude={RECENTS_EXCLUDED}&messaging_exclude={MESSAGING_EXCLUDED}",
+        endpoint.api_origin.trim_end_matches('/')
+    );
+    let response: SidebarSessionsResponse = if endpoint.remote_auth.is_some() {
+        match request_remote_gateway_json_with_timeout(endpoint, &url, Duration::from_secs(60)) {
+            Ok(response) => response,
+            Err(error) if is_missing_sidebar_endpoint(&error) => {
+                return load_command_center_sessions_legacy(endpoint, limit, &profile);
+            }
+            Err(error) => return Err(error),
+        }
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes session list requires the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        match request_gateway_json_with_timeout(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            &url,
+            Duration::from_secs(60),
+        ) {
+            Ok(response) => response,
+            Err(error) if is_missing_sidebar_endpoint(&error) => {
+                return load_command_center_sessions_legacy(endpoint, limit, &profile);
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    let mut rows = response.recents.sessions;
+    let mut sessions = Vec::with_capacity(rows.len());
+    for row in rows.drain(..) {
+        let mut session = row.into_summary();
+        if session.profile.is_none() {
+            if endpoint.profile_id.eq_ignore_ascii_case("all") {
+                return Err(format!(
+                    "Hermes all-profile session {} has no profile owner",
+                    session.id
+                ));
+            }
+            session.profile = Some(endpoint.profile_id.clone());
+        }
+        sessions.push(session);
+    }
+    let mut failed_profiles = BTreeSet::new();
+    for error in response.errors.iter().chain(response.recents.errors.iter()) {
+        failed_profiles.insert(error.profile.clone());
+    }
+    failed_profiles.extend(response.profiles_failed.keys().cloned());
+    failed_profiles.extend(response.recents.profiles_failed.keys().cloned());
+    if response.recents.failed && failed_profiles.is_empty() {
+        return Err("Hermes Command Center session list failed without profile details".into());
+    }
+    let error = response
+        .errors
+        .iter()
+        .chain(response.recents.errors.iter())
+        .filter(|error| !error.error.trim().is_empty())
+        .map(|error| format!("{}: {}", error.profile, error.error.trim()))
+        .collect::<Vec<_>>();
+    Ok(CommandCenterSessionSnapshot {
+        sessions,
+        profiles_truncated: response.recents.profiles_truncated,
+        failed_profiles,
+        error: (!error.is_empty()).then(|| error.join("; ")),
+    })
+}
+
+fn is_missing_sidebar_endpoint(error: &str) -> bool {
+    error.contains("404")
+}
+
+fn load_command_center_sessions_legacy(
+    endpoint: &GatewayEndpoint,
+    limit: usize,
+    encoded_profile: &str,
+) -> Result<CommandCenterSessionSnapshot, String> {
+    const RECENTS_EXCLUDED: &str = "acp%2Ccron%2Ckanban%2Coneshot%2Csubagent%2Ctool%2Ctelegram%2Cdiscord%2Cslack%2Cmattermost%2Cmatrix%2Csignal%2Cwhatsapp%2Cbluebubbles%2Cphoton%2Chomeassistant%2Cemail%2Csms%2Cwebhook%2Capi_server%2Cweixin%2Cwecom%2Cqqbot%2Cyuanbao%2Cdingtalk%2Cfeishu";
+    let limit = limit.clamp(1, 2_000);
+    let url = format!(
+        "{}/api/profiles/sessions?limit={limit}&offset=0&min_messages=1&archived=exclude&order=recent&profile={encoded_profile}&exclude_sources={RECENTS_EXCLUDED}",
+        endpoint.api_origin.trim_end_matches('/')
+    );
+    let response: SessionListResponse = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json_with_timeout(endpoint, &url, Duration::from_secs(60))?
+    } else {
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        request_gateway_json_with_timeout(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            &url,
+            Duration::from_secs(60),
+        )?
+    };
+    let mut sessions = response
+        .sessions
+        .into_iter()
+        .map(SessionListRow::into_summary)
+        .collect::<Vec<_>>();
+    for session in &mut sessions {
+        if session.profile.is_none() {
+            if endpoint.profile_id.eq_ignore_ascii_case("all") {
+                return Err(format!(
+                    "Hermes all-profile session {} has no profile owner",
+                    session.id
+                ));
+            }
+            session.profile = Some(endpoint.profile_id.clone());
+        }
+    }
+    let mut counts = BTreeMap::<String, usize>::new();
+    for session in &sessions {
+        *counts
+            .entry(session.profile.clone().unwrap_or_else(|| "default".into()))
+            .or_default() += 1;
+    }
+    Ok(CommandCenterSessionSnapshot {
+        sessions,
+        profiles_truncated: counts
+            .into_iter()
+            .map(|(profile, count)| (profile, count >= limit))
+            .collect(),
+        ..Default::default()
+    })
+}
+
+#[derive(Deserialize, Default)]
+struct SidebarSessionsResponse {
+    #[serde(default)]
+    recents: SidebarSessionSlice,
+    #[serde(default)]
+    errors: Vec<SidebarSessionError>,
+    #[serde(default)]
+    profiles_failed: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize, Default)]
+struct SidebarSessionSlice {
+    #[serde(default)]
+    sessions: Vec<SessionListRow>,
+    #[serde(default)]
+    profiles_truncated: BTreeMap<String, bool>,
+    #[serde(default)]
+    errors: Vec<SidebarSessionError>,
+    #[serde(default)]
+    profiles_failed: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    failed: bool,
+}
+
+#[derive(Deserialize)]
+struct SidebarSessionError {
+    profile: String,
+    #[serde(default)]
+    error: String,
+}
+
 fn load_command_palette_sessions_http(
     endpoint: &GatewayEndpoint,
 ) -> Result<Vec<SessionSummary>, String> {
@@ -7597,6 +7777,26 @@ struct SessionListRow {
     unread: bool,
     #[serde(default)]
     archived: bool,
+}
+
+impl SessionListRow {
+    fn into_summary(self) -> SessionSummary {
+        SessionSummary {
+            id: self.id,
+            lineage_root_id: self.lineage_root_id,
+            cwd: self.cwd,
+            profile: self.profile,
+            title: self.title.unwrap_or_default(),
+            preview: self.preview.unwrap_or_default(),
+            message_count: self.message_count,
+            source: self.source.unwrap_or_default(),
+            started_at: self.started_at,
+            last_active: self.last_active,
+            pinned: self.pinned,
+            unread: self.unread,
+            archived: self.archived,
+        }
+    }
 }
 
 fn request_session_list(api_origin: &str, ticket: &str) -> Result<Vec<SessionSummary>, String> {
@@ -10472,12 +10672,43 @@ fn request_gateway_json_with_limit<T: DeserializeOwned>(
     url: &str,
     response_limit: u64,
 ) -> Result<T, String> {
+    request_gateway_json_with_timeout_and_limit(
+        api_origin,
+        ticket,
+        url,
+        Duration::from_secs(5),
+        response_limit,
+    )
+}
+
+fn request_gateway_json_with_timeout<T: DeserializeOwned>(
+    api_origin: &str,
+    ticket: &str,
+    url: &str,
+    timeout: Duration,
+) -> Result<T, String> {
+    request_gateway_json_with_timeout_and_limit(
+        api_origin,
+        ticket,
+        url,
+        timeout,
+        GATEWAY_HTTP_RESPONSE_LIMIT,
+    )
+}
+
+fn request_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
+    api_origin: &str,
+    ticket: &str,
+    url: &str,
+    timeout: Duration,
+    response_limit: u64,
+) -> Result<T, String> {
     if !is_bare_loopback_origin(api_origin) || !url.starts_with(api_origin) {
         return Err("Hermes API request target is outside the verified loopback origin".into());
     }
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .proxy(None)
-        .timeout_global(Some(Duration::from_secs(5)))
+        .timeout_global(Some(timeout))
         .max_redirects(0)
         .build()
         .into();
@@ -10486,7 +10717,7 @@ fn request_gateway_json_with_limit<T: DeserializeOwned>(
         .header("X-Hermes-Gateway-Ticket", ticket)
         .header("Accept", "application/json")
         .call()
-        .map_err(|_| "Hermes API read request failed".to_owned())?;
+        .map_err(|error| format!("Hermes API read request failed: {error}"))?;
     let mut bytes = Vec::new();
     response
         .into_body()
@@ -10512,11 +10743,38 @@ fn request_remote_gateway_json_with_limit<T: DeserializeOwned>(
     url: &str,
     response_limit: u64,
 ) -> Result<T, String> {
+    request_remote_gateway_json_with_timeout_and_limit(
+        endpoint,
+        url,
+        Duration::from_secs(8),
+        response_limit,
+    )
+}
+
+fn request_remote_gateway_json_with_timeout<T: DeserializeOwned>(
+    endpoint: &GatewayEndpoint,
+    url: &str,
+    timeout: Duration,
+) -> Result<T, String> {
+    request_remote_gateway_json_with_timeout_and_limit(
+        endpoint,
+        url,
+        timeout,
+        GATEWAY_HTTP_RESPONSE_LIMIT,
+    )
+}
+
+fn request_remote_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
+    endpoint: &GatewayEndpoint,
+    url: &str,
+    timeout: Duration,
+    response_limit: u64,
+) -> Result<T, String> {
     if endpoint.remote_auth.is_none() || !api_url_is_within_origin(&endpoint.api_origin, url) {
         return Err("Remote Hermes API request target is invalid".into());
     }
     let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(8)))
+        .timeout_global(Some(timeout))
         .max_redirects(0)
         .build()
         .into();
@@ -10534,7 +10792,7 @@ fn request_remote_gateway_json_with_limit<T: DeserializeOwned>(
     let response = request
         .header("Accept", "application/json")
         .call()
-        .map_err(|_| "Remote Hermes API read request failed".to_owned())?;
+        .map_err(|error| format!("Remote Hermes API read request failed: {error}"))?;
     let mut bytes = Vec::new();
     response
         .into_body()
@@ -14634,6 +14892,111 @@ mod tests {
         assert!(!sessions[1].pinned);
         assert!(!sessions[1].unread);
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn command_center_sidebar_uses_profile_owned_window_and_truncation_metadata() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind sidebar fixture");
+        let address = listener.local_addr().expect("sidebar fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept sidebar request");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with("GET /api/profiles/sessions/sidebar?recents_profile=all&recents_limit=100&cron_limit=50&messaging_limit=100&recents_exclude=acp%2Ccron%2Ckanban%2Coneshot%2Csubagent%2Ctool%2Ctelegram%2Cdiscord%2Cslack%2Cmattermost%2Cmatrix%2Csignal%2Cwhatsapp%2Cbluebubbles%2Cphoton%2Chomeassistant%2Cemail%2Csms%2Cwebhook%2Capi_server%2Cweixin%2Cwecom%2Cqqbot%2Cyuanbao%2Cdingtalk%2Cfeishu&messaging_exclude=cron%2Cacp%2Ccli%2Ccodex%2Cdesktop%2Cgateway%2Ckanban%2Clocal%2Coneshot%2Ctui HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let body = json!({
+                "recents": {
+                    "sessions": [
+                        {"id":"a1","profile":"profile-a","title":"A one","message_count":2},
+                        {"id":"b1","profile":"profile-b","title":"B one","message_count":1}
+                    ],
+                    "profiles_truncated":{"profile-a":true,"profile-b":false},
+                    "errors":[{"profile":"profile-c","error":"state database unavailable"}]
+                },
+                "errors":[],
+                "profiles_failed":{"profile-c":{"failed":true,"retry":true}}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write sidebar fixture response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "sidebar-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        let snapshot = load_command_center_sessions_http(&endpoint, 100)
+            .expect("read cross-profile sidebar snapshot");
+        assert_eq!(snapshot.sessions.len(), 2);
+        assert_eq!(snapshot.sessions[0].profile.as_deref(), Some("profile-a"));
+        assert_eq!(snapshot.profiles_truncated.get("profile-a"), Some(&true));
+        assert_eq!(snapshot.profiles_truncated.get("profile-b"), Some(&false));
+        assert!(snapshot.failed_profiles.contains("profile-c"));
+        assert!(
+            snapshot
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("state database unavailable")
+        );
+        server.join().expect("sidebar fixture server exits");
+    }
+
+    #[test]
+    fn command_center_sidebar_falls_back_to_legacy_list_when_batch_route_is_missing() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind legacy sidebar fixture");
+        let address = listener.local_addr().expect("legacy sidebar address");
+        let server = thread::spawn(move || {
+            let (mut batch_stream, _) = listener.accept().expect("accept batch request");
+            let batch_request = read_http_fixture_request(&mut batch_stream);
+            assert!(batch_request.starts_with("GET /api/profiles/sessions/sidebar?"));
+            write!(
+                batch_stream,
+                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            )
+            .expect("write route-missing response");
+            drop(batch_stream);
+
+            let (mut legacy_stream, _) = listener.accept().expect("accept legacy request");
+            let legacy_request = read_http_fixture_request(&mut legacy_stream);
+            assert!(legacy_request.starts_with("GET /api/profiles/sessions?limit=2&offset=0&min_messages=1&archived=exclude&order=recent&profile=all&exclude_sources=acp%2Ccron%2Ckanban%2Coneshot%2Csubagent%2Ctool"));
+            let body = json!({"sessions":[
+                {"id":"a1","profile":"profile-a","message_count":1},
+                {"id":"a2","profile":"profile-a","message_count":1},
+                {"id":"b1","profile":"profile-b","message_count":1}
+            ],"total":3})
+            .to_string();
+            write!(legacy_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write legacy list response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "legacy-sidebar-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        let snapshot = load_command_center_sessions_http(&endpoint, 2)
+            .expect("legacy endpoint fallback loads rows");
+        assert_eq!(snapshot.sessions.len(), 3);
+        assert_eq!(snapshot.profiles_truncated.get("profile-a"), Some(&true));
+        assert_eq!(snapshot.profiles_truncated.get("profile-b"), Some(&false));
+        server.join().expect("legacy sidebar fixture server exits");
     }
 
     #[test]

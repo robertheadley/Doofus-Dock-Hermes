@@ -7,17 +7,17 @@ use crate::gateway::{
     ArtifactImagePreviewRequest, BotRosterSnapshot, CapabilitiesSnapshot,
     CommandCenterDebugShareResponse, CommandCenterMaintenanceAction,
     CommandCenterMaintenanceOperation, CommandCenterMaintenanceResult,
-    CommandCenterMaintenanceSnapshot, CommandCenterMemoryResetTarget, CommandCenterSystemAction,
-    CommandCenterSystemActionResult, CommandCenterSystemOperation, CommandCenterSystemSnapshot,
-    CommandCenterUsageSnapshot, ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload,
-    CronDeliveryTarget, CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload,
-    GatewayActionStatus, GatewayDiscovery, GatewayEndpoint, GatewayEvent, MessagingEnvVarInfo,
-    MessagingPlatformInfo, MessagingPlatformUpdate, MessagingPlatformsSnapshot,
-    ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
-    ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
-    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillInfo,
-    TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
-    project_tree_session_colors,
+    CommandCenterMaintenanceSnapshot, CommandCenterMemoryResetTarget, CommandCenterSessionSnapshot,
+    CommandCenterSystemAction, CommandCenterSystemActionResult, CommandCenterSystemOperation,
+    CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ConnectorsSnapshot, CronBlueprint,
+    CronBlueprintInstantiatePayload, CronDeliveryTarget, CronJobCreatePayload, CronJobInfo,
+    CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus, GatewayDiscovery, GatewayEndpoint,
+    GatewayEvent, MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformUpdate,
+    MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot,
+    PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot,
+    PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult,
+    SessionSummary, SkillInfo, TelegramOnboardingApplyReceipt, TelegramOnboardingStart,
+    TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
 };
 use crate::layout::{
     BOTS, FILES, InterfaceMode, REVIEW, SESSION_COLOR_HUES, SESSIONS, TERMINAL, WORKSPACE,
@@ -1062,6 +1062,7 @@ pub struct HermesNativeApp {
     session_list_error: Option<String>,
     session_list_refresh_pending: Option<(String, String)>,
     session_list_refresh_again: bool,
+    session_profiles_truncated: BTreeMap<String, bool>,
     active_session_statuses: BTreeMap<(String, String), ActiveSessionStatus>,
     active_status_refresh: Option<PendingActiveStatusRefresh>,
     active_status_refresh_again: bool,
@@ -3242,6 +3243,7 @@ fn render_message() -> &'static str {
             session_list_error: None,
             session_list_refresh_pending: None,
             session_list_refresh_again: false,
+            session_profiles_truncated: BTreeMap::new(),
             active_session_statuses: BTreeMap::new(),
             active_status_refresh: None,
             active_status_refresh_again: false,
@@ -3418,7 +3420,7 @@ fn render_message() -> &'static str {
             pending_session_deletes: BTreeMap::new(),
             pending_session_exports: BTreeMap::new(),
             last_exported_session_path: None,
-            session_list_limit: 200,
+            session_list_limit: 50,
             pending_session_renames: BTreeMap::new(),
             runtime_session_renames: BTreeMap::new(),
             uncertain_session_renames: BTreeSet::new(),
@@ -11311,6 +11313,7 @@ fn render_message() -> &'static str {
                                     self.gateway_endpoint = None;
                                     self.session_list_refresh_pending = None;
                                     self.session_list_refresh_again = false;
+                                    self.session_profiles_truncated.clear();
                                     self.sessions.clear();
                                     self.first_run_setup_visible = true;
                                     self.first_run_remote_setup_open = false;
@@ -14513,7 +14516,7 @@ fn render_message() -> &'static str {
         };
         let request_id = operation_id("sessions-refresh");
         let profile_id = endpoint.profile_id.clone();
-        match gateway.refresh_sessions(request_id.clone()) {
+        match gateway.refresh_sessions(request_id.clone(), self.session_list_limit) {
             Ok(()) => {
                 self.session_list_refresh_pending = Some((request_id, profile_id));
             }
@@ -14669,7 +14672,7 @@ fn render_message() -> &'static str {
         &mut self,
         request_id: String,
         profile_id: String,
-        result: Result<Vec<SessionSummary>, String>,
+        result: Result<CommandCenterSessionSnapshot, String>,
     ) {
         let Some((pending_request, pending_profile)) = self.session_list_refresh_pending.as_ref()
         else {
@@ -14691,13 +14694,31 @@ fn render_message() -> &'static str {
         }
         self.session_list_refresh_pending = None;
         match result {
-            Ok(loaded) => {
-                self.sessions = replace_profile_sessions(
-                    loaded,
+            Ok(snapshot) => {
+                let snapshot_error = snapshot.error.clone();
+                self.sessions = replace_sidebar_profile_sessions(
+                    snapshot
+                        .sessions
+                        .into_iter()
+                        .filter(|session| {
+                            !session
+                                .profile
+                                .as_ref()
+                                .is_some_and(|profile| snapshot.failed_profiles.contains(profile))
+                        })
+                        .collect(),
                     std::mem::take(&mut self.sessions),
                     &profile_id,
+                    &snapshot.failed_profiles,
                 );
-                self.session_list_error = None;
+                self.session_profiles_truncated
+                    .retain(|profile, _| snapshot.failed_profiles.contains(profile));
+                for (profile, truncated) in snapshot.profiles_truncated {
+                    if !snapshot.failed_profiles.contains(&profile) {
+                        self.session_profiles_truncated.insert(profile, truncated);
+                    }
+                }
+                self.session_list_error = snapshot_error;
                 self.project_session_color_requests.clear();
                 self.project_session_color_profiles_loaded.clear();
                 self.load_project_session_colors();
@@ -17750,6 +17771,9 @@ fn render_message() -> &'static str {
                 });
 
                 ui.label(format!("{} sessions", sessions.len()));
+                if let Some(error) = self.session_list_error.as_deref() {
+                    ui.colored_label(Color32::from_rgb(220, 150, 100), error);
+                }
                 if sessions.is_empty() {
                     let message = if !query.is_empty() {
                         "No sessions match your search."
@@ -17765,8 +17789,8 @@ fn render_message() -> &'static str {
                 let mut pin_update = None;
                 let mut export_request = None;
                 let mut delete_confirmation = None;
-                let has_more_sessions =
-                    query.is_empty() && sessions.len() >= self.session_list_limit;
+                let has_more_sessions = query.is_empty()
+                    && self.session_profiles_truncated.values().any(|value| *value);
                 egui::ScrollArea::vertical()
                     .id_salt("command-center-sessions")
                     .max_height(620.0)
@@ -17873,12 +17897,12 @@ fn render_message() -> &'static str {
                     && ui
                         .add_enabled(
                             self.gateway_connected && self.session_list_refresh_pending.is_none(),
-                            egui::Button::new("Load more (+200)"),
+                            egui::Button::new("Load more (+50)"),
                         )
                         .accessible_name("Load more Command Center sessions")
                         .clicked()
                 {
-                    self.session_list_limit = (self.session_list_limit + 200).min(2_000);
+                    self.session_list_limit = (self.session_list_limit + 50).min(2_000);
                     self.request_session_list_refresh();
                 }
                 if let Some((session, pinned)) = pin_update {
@@ -19398,6 +19422,8 @@ fn render_message() -> &'static str {
                             format!("Gateway connected · {} sessions", connection.sessions.len());
                         self.session_list_refresh_pending = None;
                         self.session_list_refresh_again = false;
+                        self.session_list_limit = 50;
+                        self.session_profiles_truncated.clear();
                         self.gateway_endpoint = Some(connection.endpoint);
                         for view in self.session_chat_views.values_mut() {
                             if view.resume_error.is_some() {
@@ -23494,19 +23520,27 @@ fn merge_sessions_by_profile(
         .collect()
 }
 
-fn replace_profile_sessions(
+fn replace_sidebar_profile_sessions(
     loaded: Vec<SessionSummary>,
     existing: Vec<SessionSummary>,
     refreshed_profile: &str,
+    failed_profiles: &BTreeSet<String>,
 ) -> Vec<SessionSummary> {
+    let all_profiles = refreshed_profile.eq_ignore_ascii_case("all");
     let mut seen = BTreeSet::new();
     loaded
         .into_iter()
-        .chain(
-            existing
-                .into_iter()
-                .filter(|session| session.profile.as_deref() != Some(refreshed_profile)),
-        )
+        .chain(existing.into_iter().filter(|session| {
+            let profile = session.profile.as_deref().unwrap_or("default");
+            if failed_profiles.contains(profile) {
+                return true;
+            }
+            if all_profiles {
+                false
+            } else {
+                profile != refreshed_profile
+            }
+        }))
         .filter(|session| {
             seen.insert(session_identity_key(
                 &session.id,
@@ -28689,6 +28723,7 @@ mod tests {
         app.route = AppRoute::CommandCenter;
         app.command_center_section = CommandCenterSection::Sessions;
         app.gateway_connected = true;
+        let load_requests = install_session_refresh_gateway(&mut app);
         app.gateway_endpoint = Some(GatewayEndpoint {
             profile_id: "worker".into(),
             instance_id: "session-export-instance".into(),
@@ -28699,7 +28734,7 @@ mod tests {
             control_home: None,
             remote_auth: None,
         });
-        app.session_list_limit = 1;
+        app.session_profiles_truncated.insert("worker".into(), true);
         app.sessions = vec![SessionSummary {
             id: "sess-1".into(),
             lineage_root_id: None,
@@ -28727,12 +28762,18 @@ mod tests {
                 .query_by_label("Export Command Center session sess-1")
                 .is_some()
         );
+        while load_requests.try_recv().is_ok() {}
+        app.borrow_mut().session_list_refresh_pending = None;
         harness
             .query_by_label("Load more Command Center sessions")
-            .expect("Load more (+200) is visible when loaded count reaches limit")
+            .expect("Load more (+50) is visible when the backend reports a truncated profile")
             .click();
         harness.run();
-        assert_eq!(app.borrow().session_list_limit, 201);
+        assert_eq!(app.borrow().session_list_limit, 100);
+        let (_, requested_limit) = load_requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("Load more requests a larger backend window");
+        assert_eq!(requested_limit, 100);
 
         let action_key = session_identity_key("sess-1", Some("worker"));
         app.borrow_mut()
@@ -30806,7 +30847,7 @@ mod tests {
 
     fn install_session_refresh_gateway(
         app: &mut HermesNativeApp,
-    ) -> std::sync::mpsc::Receiver<String> {
+    ) -> std::sync::mpsc::Receiver<(String, usize)> {
         let (gateway, requests) = GatewayDiscovery::for_test_session_refresh();
         app.gateway_discovery = Some(gateway);
         app.gateway_endpoint = Some(GatewayEndpoint {
@@ -30917,9 +30958,13 @@ mod tests {
         ];
 
         app.handle_server_event(json!({"type":"sessions.changed"}));
-        let first_request = requests
+        let (first_request, first_limit) = requests
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("first refresh requested");
+        assert_eq!(
+            first_limit, 50,
+            "initial session window matches pinned page size"
+        );
         assert_eq!(
             app.session_list_refresh_pending
                 .as_ref()
@@ -30952,7 +30997,10 @@ mod tests {
         app.handle_sessions_refreshed(
             format!("{first_request}-stale"),
             "profile-a".into(),
-            Ok(vec![session_summary("new", "profile-a", "After")]),
+            Ok(CommandCenterSessionSnapshot {
+                sessions: vec![session_summary("new", "profile-a", "After")],
+                ..Default::default()
+            }),
         );
         assert_eq!(
             app.sessions[0].id, "old",
@@ -30968,11 +31016,15 @@ mod tests {
         app.handle_sessions_refreshed(
             first_request,
             "profile-a".into(),
-            Ok(vec![session_summary("new", "profile-a", "After")]),
+            Ok(CommandCenterSessionSnapshot {
+                sessions: vec![session_summary("new", "profile-a", "After")],
+                ..Default::default()
+            }),
         );
-        let trailing_request = requests
+        let (trailing_request, trailing_limit) = requests
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("one trailing refresh requested");
+        assert_eq!(trailing_limit, 50);
         assert_ne!(trailing_request, "");
         assert_eq!(
             app.session_list_refresh_pending
@@ -31039,9 +31091,10 @@ mod tests {
         assert!(requests.try_recv().is_err(), "unfocused state does no work");
 
         app.recover_after_focus(true, now);
-        let first = requests
+        let (first, first_limit) = requests
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("focus regain refreshes canonical session list");
+        assert_eq!(first_limit, 50);
         assert_eq!(
             app.session_list_refresh_pending
                 .as_ref()
@@ -31797,16 +31850,25 @@ mod tests {
         let requests = install_session_refresh_gateway(&mut app);
         app.sessions = vec![session_summary("old", "profile-a", "Before")];
         app.handle_server_event(json!({"type":"sessions.changed"}));
-        let request_id = requests
+        let (request_id, request_limit) = requests
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("refresh request");
+        assert_eq!(request_limit, 50);
 
-        app.handle_sessions_refreshed(request_id.clone(), "profile-b".into(), Ok(Vec::new()));
+        app.handle_sessions_refreshed(
+            request_id.clone(),
+            "profile-b".into(),
+            Ok(CommandCenterSessionSnapshot::default()),
+        );
         assert_eq!(app.sessions[0].id, "old");
         assert!(app.session_list_refresh_pending.is_some());
 
         app.gateway_endpoint.as_mut().unwrap().profile_id = "profile-b".into();
-        app.handle_sessions_refreshed(request_id, "profile-a".into(), Ok(Vec::new()));
+        app.handle_sessions_refreshed(
+            request_id,
+            "profile-a".into(),
+            Ok(CommandCenterSessionSnapshot::default()),
+        );
         assert_eq!(
             app.sessions[0].id, "old",
             "a result from the previous gateway profile must be ignored"
@@ -31817,15 +31879,65 @@ mod tests {
         );
 
         app.handle_server_event(json!({"type":"sessions.changed","profile":"profile-b"}));
-        let replacement_request = requests
+        let (replacement_request, replacement_limit) = requests
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("a current-profile event must start a fresh request");
+        assert_eq!(replacement_limit, 50);
         app.handle_sessions_refreshed(
             replacement_request,
             "profile-b".into(),
-            Ok(vec![session_summary("replacement", "profile-b", "Current")]),
+            Ok(CommandCenterSessionSnapshot {
+                sessions: vec![session_summary("replacement", "profile-b", "Current")],
+                ..Default::default()
+            }),
         );
         assert_eq!(app.sessions[0].id, "replacement");
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn command_center_all_profile_refresh_keeps_failed_profile_rows_and_truncation() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "all-session-fixture".into(),
+            authority_epoch: 2,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.sessions = vec![
+            session_summary("a-old", "profile-a", "Old A"),
+            session_summary("b-old", "profile-b", "Old B"),
+        ];
+        app.session_profiles_truncated
+            .extend([("profile-a".into(), false), ("profile-b".into(), true)]);
+        app.session_list_refresh_pending = Some(("all-refresh".into(), "all".into()));
+
+        app.handle_sessions_refreshed(
+            "all-refresh".into(),
+            "all".into(),
+            Ok(CommandCenterSessionSnapshot {
+                sessions: vec![session_summary("a-new", "profile-a", "New A")],
+                profiles_truncated: BTreeMap::from([("profile-a".into(), true)]),
+                failed_profiles: BTreeSet::from(["profile-b".into()]),
+                error: Some("profile-b: state database unavailable".into()),
+            }),
+        );
+
+        assert!(app.sessions.iter().any(|session| session.id == "a-new"));
+        assert!(app.sessions.iter().any(|session| session.id == "b-old"));
+        assert!(!app.sessions.iter().any(|session| session.id == "a-old"));
+        assert_eq!(app.session_profiles_truncated.get("profile-a"), Some(&true));
+        assert_eq!(app.session_profiles_truncated.get("profile-b"), Some(&true));
+        assert_eq!(
+            app.session_list_error.as_deref(),
+            Some("profile-b: state database unavailable")
+        );
 
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");

@@ -33,7 +33,43 @@
     },
     {
       "change_type": "modified",
+      "owner": "codex",
+      "path": "README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/SOURCE_AUDIT.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
       "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
@@ -45,21 +81,24 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation; cargo check --workspace --all-targets --locked; python apps/hermes-native/tools/test_doofus_task.py; pinned validate_package.py; compileall; cargo fmt --all -- --check; git diff --check",
+    "command": "cargo test -p hermes-native --features agent-automation --locked; cargo check --workspace --all-targets --locked; python apps/hermes-native/tools/test_doofus_task.py; pinned validate_package.py; compileall; cargo fmt --all -- --check; git diff --check",
     "evidence": [
-      "apps/hermes-native/docs/PLAN.md#Revision 220"
+      "apps/hermes-native/src/gateway.rs#command_center_sidebar_uses_profile_owned_window_and_truncation_metadata",
+      "apps/hermes-native/src/gateway.rs#command_center_sidebar_falls_back_to_legacy_list_when_batch_route_is_missing",
+      "apps/hermes-native/src/app.rs#command_center_sessions_export_and_load_more_follow_pinned_contract",
+      "apps/hermes-native/src/app.rs#command_center_all_profile_refresh_keeps_failed_profile_rows_and_truncation"
     ],
     "state": "in_progress",
-    "summary": "Resumed the validated revision-104 handoff, published its completed accumulated parity work to main as 95198cd, and verified origin/main is exactly current. Full feature suite and task/package/workspace validators pass; strict parity acceptance remains 0/499.",
-    "verified_at": "2026-11-18T21:43:43Z"
+    "summary": "Implemented and validated the pinned Command Center 50-row, profile-aware session window. Exact batch query, truncation, partial-failure retention, legacy 404 fallback, and Load more=100 are covered by headless fixtures. Full native/workspace/task/package/format validations pass; source acceptance remains 0/499.",
+    "verified_at": "2026-11-18T22:13:52Z"
   },
   "completed_subtasks": [
     "hermes-cross-provider-handoff"
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-18T22:43:43Z",
-    "lease_id": "6d978810-7db8-41bb-941e-2791a8c25aeb",
+    "lease_expires_at": "2026-11-18T23:13:52Z",
+    "lease_id": "9e09badc-587b-4ef1-aa8f-735eabcdd14d",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -122,9 +161,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "codex-main-publish-checkpoint-20261118",
+  "last_event_id": "91a97f04-b2e1-4d89-a887-e9f10980e02f",
   "last_operation": {
-    "request_id": "codex-main-publish-checkpoint-20261118",
+    "request_id": "91a97f04-b2e1-4d89-a887-e9f10980e02f",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -143,7 +182,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue next uncompleted fixed-source parity slice after revision 220; inspect the remaining Command Center cross-profile session union and pagination contract before implementing it. Keep all work on main and preserve the 38/499 reviewed, 0/499 accepted boundary.",
+  "recommended_next_action": "Continue fixed-snapshot Command Center parity with the exact 180 ms search debounce and remaining source UI state details; then proceed to the next dependency-ready parity slice. Keep all changes on main.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -649,7 +688,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "f29ec49c7c4f36566e1ca2f5c6d84ea86e1ec1dc6d62e5b2e85da07b76641805",
+    "change_fingerprint": "077b43089fb2f2d1bd28f9fca09d8518d8726235bc0ca58c07a9fc91bd4abf3b",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -657,6 +696,30 @@
       },
       {
         "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": "README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/SOURCE_AUDIT.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
         "status": " M"
       },
       {
@@ -668,14 +731,14 @@
         "status": " M"
       }
     ],
-    "head_commit": "95198cda1b92ae4c56eb795a8586b138c88801d5",
+    "head_commit": "3f0b11beb5fd503c32535d6e15f9512d1d5e4aa2",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 112,
+  "revision": 115,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 112,
+  "state_revision": 115,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0011",
   "task_ledger_revision": 9,
@@ -1488,5 +1551,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-18T21:43:43Z"
+  "updated_at": "2026-11-18T22:13:52Z"
 }

@@ -227,3 +227,10 @@ Native now renders `"Delete…"` (`Delete Command Center session {id}`) on each 
 - Native parity status:
   - Command Center Sessions now renders `"Export"` (`Export Command Center session {id}`) and `"Load more (+200)"` (`Load more Command Center sessions`), pages full session transcripts on the authenticated HTTP worker, and atomically writes the source-formatted export JSON under `<data_directory>/exports/`.
   - Command Center System now renders `"Restart gateway"` (`Restart Command Center gateway`), `"Update Hermes"` (`Update Command Center Hermes`), and the `{name} · Running / Done / Failed` status card with 18-poll / 1.2s polling and post-action System refresh.
+
+
+## Command Center profile-union pagination correction (2026-11-18T22:08:45Z)
+
+The earlier Revision 220 audit incorrectly recorded the pinned Load more step as 200. The fixed source `.staging/hermes-upstream-8358fc/apps/desktop/src/app/command-center/index.tsx#onLoadMore` passes `SIDEBAR_SESSIONS_PAGE_SIZE` into `SidebarLoadMoreRow`, and `.staging/hermes-upstream-8358fc/apps/desktop/src/store/layout.ts` defines that value as 50. The source shows the button only when any `sessionProfilesTruncated` flag is true and the debounced query is empty; pending disables it and a `finally` clears pending. The shared refresh uses `listSidebarSessions`, initially scoped to the active profile or explicit `all` scope, with per-profile truncation from `/api/profiles/sessions/sidebar`.
+
+Hermes Native now sends the selected profile scope and requested row window to the batched route, uses the pinned recents/messaging source exclusions, retains profile-owned row identities, derives truncation on the 404 legacy route, and keeps failed-profile rows plus truncation metadata across partial scans. A profile-union fixture covers A=truncated, B=not-truncated, C=failed; a headless app fixture verifies A updates while C's previous rows/flag survive. Load more grows a 50-row request to 100. Full-source visual pairing, the 180 ms search debounce, live runtime and Windows remain unverified; no fixed-snapshot row is newly accepted by these headless fixtures.
