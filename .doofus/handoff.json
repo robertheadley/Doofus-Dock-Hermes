@@ -81,22 +81,22 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation --locked; cargo check --workspace --all-targets --locked; python apps/hermes-native/tools/test_doofus_task.py; pinned validate_package.py; progress generator; compileall; cargo fmt --all -- --check; git diff --check",
+    "command": "cargo test -p hermes-native --features agent-automation --locked; cargo check --workspace --all-targets --locked; python apps/hermes-native/tools/test_doofus_task.py; pinned validate_package.py; progress generation; compileall; cargo fmt --all -- --check; git diff --check",
     "evidence": [
-      "apps/hermes-native/docs/PLAN.md#Revision 222",
-      "docs/CHANGELOG.agent.md#Hermes Native Command Center search debounce",
-      "docs/EXECUTION_LOGS.md#hermes-command-center-search-debounce-20261118"
+      "apps/hermes-native/docs/PLAN.md#Revision 223",
+      "docs/CHANGELOG.agent.md#Hermes Native Command Center section route state",
+      "docs/EXECUTION_LOGS.md#hermes-command-center-route-state-20261118"
     ],
     "state": "tested",
-    "summary": "Implemented the pinned Command Center 180 ms search debounce and title/preview/Untitled plus ID matching; full feature and workspace validation passed, with fixed-snapshot evidence unchanged at 38/499 reviewed and 0/499 accepted.",
-    "verified_at": "2026-11-18T22:30:21Z"
+    "summary": "Command Center section route readback now follows pinned replace-style enum query; real overlay clicks System and default Sessions. Full suite and continuity/package/progress/format checks pass. Search debounce commit 8daf857 is published; next slice is ready for main publication.",
+    "verified_at": "2026-11-18T22:39:03Z"
   },
   "completed_subtasks": [
     "hermes-cross-provider-handoff"
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-18T23:30:21Z",
+    "lease_expires_at": "2026-11-18T23:39:03Z",
     "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
     "model": null,
     "ownership_state": "active",
@@ -170,13 +170,27 @@
         "provider": "codex"
       },
       "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/CHANGELOG.agent.md#Hermes Native Command Center search debounce"
+      ],
+      "kind": "git_push",
+      "note": "Pushed validated Command Center search debounce commit 8daf857946add06c4ea2131d1c5e2205ed407566 to origin/main; fetched origin/main and verified exact HEAD equality with clean worktree.",
+      "observed_at": "2026-11-18T22:32:05Z",
+      "operation_id": "hermes-publish-8daf857-main-20261118",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
     }
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-command-center-search-debounce-20261118",
+  "last_event_id": "hermes-command-center-route-state-20261118",
   "last_operation": {
-    "request_id": "hermes-command-center-search-debounce-20261118",
+    "request_id": "hermes-command-center-route-state-20261118",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -195,7 +209,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Complete canonical task-state validation, commit and push this verified slice to main, fetch origin/main, and continue the next incomplete pinned-source Command Center behavior.",
+  "recommended_next_action": "Commit and push the tested route-state slice to main; verify origin/main, then continue remaining pinned Command Center/session behavior, including pending-load semantics and route persistence boundaries.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -701,7 +715,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "088efdd186996e2cb53dabc9f8f34cf6a7348a2a9b749a66615baa88b0811572",
+    "change_fingerprint": "b7bb29fd9faa2bd637aff0bf27f9d0d07bbc20762a1e4612c8702715ac14736f",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -744,14 +758,14 @@
         "status": " M"
       }
     ],
-    "head_commit": "d99739cb4c17d24121ffb8c25c4419dcb80aaf6d",
+    "head_commit": "8daf857946add06c4ea2131d1c5e2205ed407566",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 121,
+  "revision": 124,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 121,
+  "state_revision": 124,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0011",
   "task_ledger_revision": 9,
@@ -1565,9 +1579,19 @@
       "command": "Command Center debounce focused headless tests; full Hermes Native feature suite; workspace/all-targets check; continuity/package/progress/format/diff validators",
       "result": "PASS: focused 2; 336 library + 15 automation protocol + 3 launcher; workspace check (existing dead-code warnings only); continuity 18/18; package 491 pending; progress 38/499 reviewed and 0 accepted; compileall/fmt/diff pass.",
       "timestamp": "2026-11-18T22:30:21Z"
+    },
+    {
+      "command": "Full Hermes Native feature suite and workspace checks from checkpoint 121.",
+      "result": "PASS publication commit 8daf857; fetched HEAD equals origin/main; working tree was clean before task ledger recorded the operation.",
+      "timestamp": "2026-11-18T22:32:27Z"
+    },
+    {
+      "command": "app::tests::command_center_section_selection_updates_replace_style_route_query; full Hermes Native feature suite and complete source-task validators",
+      "result": "PASS: 337 library + 15 automation protocol + 3 launcher tests; locked workspace check with only pre-existing dead-code warnings; continuity 18/18; package 491 pending; progress 38/499 reviewed and 0 accepted; compileall/fmt/diff and task schema validation pass.",
+      "timestamp": "2026-11-18T22:39:03Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-18T22:30:21Z"
+  "updated_at": "2026-11-18T22:39:03Z"
 }

@@ -151,3 +151,9 @@ Command Center session rows now expose an `"Export"` action (`Export Command Cen
 ### Latest verified Command Center slice — 2026-11-18T22:26Z
 
 The Sessions search now matches the pinned 180 ms query debounce, including preservation of the previous results and Load more state while a query is pending, and restoration of the full loaded list after a cleared query settles. Search text uses the pinned trimmed title → preview → `Untitled session` fallback and checks the session ID case-insensitively. Full validation passes: 336 library, 15 automation-protocol and 3 launcher tests; workspace/all-target check; task continuity 18/18; pinned package validator 491 pending; progress generator; Python compile, rustfmt and diff checks. Fixed-snapshot review remains 38/499, with 0/499 formally accepted, 499 live states unverified and 499 visual pairs absent. No live Hermes gateway or installed UI was opened.
+
+### Command Center section route readback — 2026-11-18T22:35Z
+
+Clicking a Command Center section now updates the native agent-visible route state using the pinned query shape: `/command-center?section=system` for System and `/command-center` for default Sessions. The regression clicks both tabs in the actual egui overlay. This validates native route-state reporting; browser navigation history is not part of the native shell. Formal source-matrix acceptance and source-paired visuals remain unverified.
+
+Full validation passes: 337 library tests, 15 automation-protocol tests, 3 launcher tests, locked workspace/all-target check, task continuity 18/18, package validation (491 pending), progress generation, Python compileall, rustfmt and diff checks. Existing workspace dead-code warnings remain; no additional warning was introduced.

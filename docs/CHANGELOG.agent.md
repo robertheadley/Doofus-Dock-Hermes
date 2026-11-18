@@ -2156,3 +2156,31 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No performance benchmark change; one repaint is scheduled for the remaining debounce duration.
 - risks: Live Hermes runtime, Windows behavior, all 499 source-paired visual captures and formal source acceptance remain unverified.
 - follow_up: Continue the next incomplete pinned Command Center/session state on `main` only.
+
+
+### Hermes Native Command Center section route state — 2026-11-18T22:35Z
+
+- id: `hermes-command-center-section-route-state-20261118`
+- timestamp: `2026-11-18T22:35:00Z`
+- what: Reflected the selected Command Center section in the agent-visible canonical route query, matching replace-style section routing: nondefault sections include `?section=...`; Sessions removes the query.
+- why: The pinned UI encodes active section in the route so state remains externally observable and reproducible.
+- components: `apps/hermes-native/src/app.rs`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/SOURCE_AUDIT.md`, `apps/hermes-native/docs/backlog.md`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, `apps/hermes-native/README.md`.
+- type: Fixed-source route-state parity.
+- validation: PASS headless real-overlay click regression verifies System and default Sessions route readback; PASS full suite (337 library + 15 automation protocol + 3 launcher), locked workspace check, continuity 18/18, pinned package/progress validators, Python compileall, rustfmt and diff checks.
+- performance: No material runtime or performance change.
+- risks: This validates native application route readback, not browser URL/history; formal acceptance and source-paired visuals remain pending.
+- follow_up: Run the complete validators and continue the next pinned Command Center state on `main` only.
+
+
+### Hermes Native main publication — 2026-11-18T22:32Z
+
+- id: `hermes-main-publish-8daf857-20261118`
+- timestamp: `2026-11-18T22:32:00Z`
+- what: Published tested search-debounce commit `8daf857946add06c4ea2131d1c5e2205ed407566` to `origin/main`.
+- why: The operator specified main-only work and requested that the repository stay current.
+- components: Hermes Native Command Center Sessions search and parity documentation.
+- type: Repository publication.
+- validation: Push succeeded; fetch verified local `HEAD` equals `origin/main`; worktree was clean at verification.
+- performance: No performance benchmark was part of publication.
+- risks: This is partial fixed-source parity; formal acceptance remains 0/499 and runtime/visual evidence remains unverified.
+- follow_up: Continue native parity on `main` only.

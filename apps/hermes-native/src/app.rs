@@ -187,6 +187,16 @@ impl CommandCenterSection {
             _ => Self::Sessions,
         }
     }
+
+    #[cfg(feature = "agent-automation")]
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Sessions => "sessions",
+            Self::System => "system",
+            Self::Usage => "usage",
+            Self::Maintenance => "maintenance",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -16523,6 +16533,13 @@ fn render_message() -> &'static str {
             format!("/artifacts?tab={}", self.artifacts_filter.as_str())
         } else if self.route == AppRoute::Capabilities {
             format!("/capabilities?tab={}", self.capabilities_tab.as_str())
+        } else if self.route == AppRoute::CommandCenter
+            && self.command_center_section != CommandCenterSection::Sessions
+        {
+            format!(
+                "/command-center?section={}",
+                self.command_center_section.as_str()
+            )
         } else {
             self.route.path()
         }
@@ -28460,6 +28477,40 @@ mod tests {
             app.borrow().active_session_profile.as_deref(),
             Some("worker")
         );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_section_selection_updates_replace_style_route_query() {
+        let (mut app, profile_dir) = isolated_app();
+        app.navigate_path("/command-center")
+            .expect("Command Center route should be recognized");
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        assert_eq!(app.borrow().automation_state()["route"], "/command-center");
+        harness
+            .query_by_label("Command Center section: System")
+            .expect("System section is navigable")
+            .click();
+        harness.run();
+        assert_eq!(
+            app.borrow().automation_state()["route"],
+            "/command-center?section=system"
+        );
+        harness
+            .query_by_label("Command Center section: Sessions")
+            .expect("Sessions is the default section")
+            .click();
+        harness.run();
+        assert_eq!(app.borrow().automation_state()["route"], "/command-center");
 
         drop(harness);
         drop(app);
