@@ -9,14 +9,19 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 pub const SESSIONS: &str = "sessions";
+pub const BOTS: &str = "hermes-bots:pane";
 pub const WORKSPACE: &str = "workspace";
 pub const REVIEW: &str = "review";
 pub const FILES: &str = "files";
 pub const TERMINAL: &str = "terminal";
+pub const SESSION_COLOR_HUES: [u16; 12] = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InterfaceMode {
@@ -25,14 +30,36 @@ pub enum InterfaceMode {
     Simple,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PhysicalSide {
+    Left,
+    Right,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiPreferences {
     pub mode: InterfaceMode,
     pub advanced_profile: String,
     pub simple_sidebar_right: bool,
+    #[serde(default = "default_true")]
+    pub sessions_sidebar_open: bool,
+    #[serde(default)]
+    collapsed_sides: BTreeSet<PhysicalSide>,
+    #[serde(default)]
+    pub file_browser_open: bool,
+    pub show_all_project_sessions: bool,
+    pub dismissed_auto_project_ids: Vec<String>,
     pub pane_open: BTreeMap<String, bool>,
     pub show_ignored_files_roots: BTreeSet<String>,
+    pub pinned_session_order: BTreeMap<String, Vec<String>>,
+    pub sidebar_session_order: BTreeMap<String, Vec<String>>,
+    pub session_color_overrides: BTreeMap<String, String>,
+    #[serde(default)]
+    pub master_detail_width_overrides: BTreeMap<String, f32>,
+    #[serde(default)]
+    pub last_remote_gateway_url: Option<String>,
 }
 
 impl Default for UiPreferences {
@@ -41,12 +68,23 @@ impl Default for UiPreferences {
             mode: InterfaceMode::Advanced,
             advanced_profile: "default".into(),
             simple_sidebar_right: false,
+            sessions_sidebar_open: true,
+            collapsed_sides: BTreeSet::new(),
+            file_browser_open: false,
+            show_all_project_sessions: false,
+            dismissed_auto_project_ids: Vec::new(),
             pane_open: BTreeMap::from([
+                (BOTS.into(), false),
                 (REVIEW.into(), false),
                 (FILES.into(), false),
                 (TERMINAL.into(), false),
             ]),
             show_ignored_files_roots: BTreeSet::new(),
+            pinned_session_order: BTreeMap::new(),
+            sidebar_session_order: BTreeMap::new(),
+            session_color_overrides: BTreeMap::new(),
+            master_detail_width_overrides: BTreeMap::new(),
+            last_remote_gateway_url: None,
         }
     }
 }
@@ -56,13 +94,45 @@ pub struct Workspace {
     store: LayoutStore,
     pub preferences: UiPreferences,
     pub persistence_error: Option<String>,
+    dismissed_auto_project_ids_path: PathBuf,
     profiles: Vec<WorkspaceProfile>,
     session_reveals: BTreeMap<String, bool>,
     closed_session_panes: BTreeMap<String, VecDeque<ClosedSessionPane>>,
     data_directory: PathBuf,
+    preferences_path: PathBuf,
 }
 
 const CLOSED_SESSION_PANE_LIMIT: usize = 64;
+const AUTO_PROJECT_DISMISSAL_LIMIT: usize = 4096;
+const AUTO_PROJECT_STATE_BYTES_LIMIT: u64 = 1024 * 1024;
+const AUTO_PROJECT_LOCK_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+const AUTO_PROJECT_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+static AUTO_PROJECT_STATE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct AutoProjectDismissalState {
+    version: u8,
+    ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct AutoProjectDismissalLock {
+    version: u8,
+    process_id: u32,
+    expires_unix_ms: u128,
+}
+
+struct AutoProjectDismissalLockGuard {
+    path: PathBuf,
+}
+
+impl Drop for AutoProjectDismissalLockGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
 
 fn layout_command(kind: &str, revision: u64) -> CommandId {
     CommandId::from(format!("hermes-native-{kind}-{revision}"))
@@ -83,6 +153,10 @@ pub struct RestoredSessionPane {
 }
 
 impl Workspace {
+    pub fn data_directory(&self) -> &Path {
+        &self.data_directory
+    }
+
     pub fn shows_ignored_files(&self, root: &Path) -> bool {
         self.preferences
             .show_ignored_files_roots
@@ -100,8 +174,7 @@ impl Workspace {
             self.preferences.show_ignored_files_roots.remove(&key)
         };
         if changed {
-            let path = self.data_directory.join("ui-preferences.json");
-            match write_preferences_atomic(&path, &self.preferences) {
+            match write_preferences_atomic(&self.preferences_path, &self.preferences) {
                 Ok(()) => self.persistence_error = None,
                 Err(error) => {
                     if show {
@@ -141,15 +214,47 @@ impl Workspace {
             ),
             preferences: UiPreferences::default(),
             persistence_error: None,
+            dismissed_auto_project_ids_path: directory.join("dismissed-auto-projects.json"),
             profiles: source_profiles(),
             session_reveals: BTreeMap::new(),
             closed_session_panes: BTreeMap::new(),
+            preferences_path: directory.join("ui-preferences.json"),
             data_directory: directory,
         }
     }
 
     pub fn load() -> Result<Self, String> {
-        Self::load_from(data_directory())
+        let directory = data_directory();
+        Self::load_from_with(
+            directory.clone(),
+            LayoutId::from("hermes-native-main"),
+            directory.join("ui-preferences.json"),
+        )
+    }
+
+    /// Give each native window an independent layout and UI preference file,
+    /// while sharing the profile directory used for gateway credentials.
+    pub fn load_window(window_id: u64) -> Result<Self, String> {
+        Self::load_window_from(data_directory(), window_id)
+    }
+
+    fn load_window_from(directory: PathBuf, window_id: u64) -> Result<Self, String> {
+        if window_id == 0 {
+            return Err("Native window ID must be greater than zero".into());
+        }
+        let window_directory = directory.join("windows").join(window_id.to_string());
+        fs::create_dir_all(&window_directory).map_err(|error| error.to_string())?;
+        let preferences_path = window_directory.join("ui-preferences.json");
+        if !preferences_path.exists() {
+            let initial =
+                read_preferences(&directory.join("ui-preferences.json")).unwrap_or_default();
+            write_preferences_atomic(&preferences_path, &initial)?;
+        }
+        Self::load_from_with(
+            directory.clone(),
+            LayoutId::from(format!("hermes-native-window-{window_id}")),
+            preferences_path,
+        )
     }
 
     #[cfg(feature = "agent-automation")]
@@ -158,19 +263,58 @@ impl Workspace {
     }
 
     fn load_from(directory: PathBuf) -> Result<Self, String> {
+        Self::load_from_with(
+            directory.clone(),
+            LayoutId::from("hermes-native-main"),
+            directory.join("ui-preferences.json"),
+        )
+    }
+
+    fn load_from_with(
+        directory: PathBuf,
+        layout_id: LayoutId,
+        preferences_path: PathBuf,
+    ) -> Result<Self, String> {
         fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
         let store = LayoutStore::new(directory.join("layouts"), PersistenceLimits::default());
-        let preferences_path = directory.join("ui-preferences.json");
         let mut preferences = read_preferences(&preferences_path).unwrap_or_default();
+        let dismissed_auto_project_ids_path = directory.join("dismissed-auto-projects.json");
+        match read_auto_project_dismissal_state(&dismissed_auto_project_ids_path)? {
+            Some(ids) => preferences.dismissed_auto_project_ids = ids,
+            None => {
+                let seed_ids = if preferences_path == directory.join("ui-preferences.json") {
+                    preferences.dismissed_auto_project_ids.clone()
+                } else {
+                    read_preferences(&directory.join("ui-preferences.json"))
+                        .map(|preferences| preferences.dismissed_auto_project_ids)
+                        .unwrap_or_default()
+                };
+                if !seed_ids.is_empty() {
+                    let _lock =
+                        acquire_auto_project_dismissal_lock(&dismissed_auto_project_ids_path)?;
+                    if let Some(ids) =
+                        read_auto_project_dismissal_state(&dismissed_auto_project_ids_path)?
+                    {
+                        preferences.dismissed_auto_project_ids = ids;
+                    } else {
+                        write_auto_project_dismissal_state(
+                            &dismissed_auto_project_ids_path,
+                            &seed_ids,
+                        )?;
+                        preferences.dismissed_auto_project_ids = seed_ids;
+                    }
+                }
+            }
+        }
         let profiles = source_profiles();
         if preferences.mode == InterfaceMode::Simple {
             preferences.simple_sidebar_right = preferences.advanced_profile == "sidebar-right";
         }
 
-        let layout_id = LayoutId::from("hermes-native-main");
         let loaded = store.load(&layout_id).ok();
         let is_new = loaded.is_none();
-        let document = loaded.unwrap_or_else(base_document);
+        let mut document = loaded.unwrap_or_else(base_document);
+        document.id = layout_id.clone();
         let mut dock = DockingService::new(document, 128).map_err(|error| error.to_string())?;
 
         if is_new {
@@ -184,6 +328,7 @@ impl Workspace {
         }
         let mut workspace = Self {
             data_directory: directory.clone(),
+            dismissed_auto_project_ids_path,
             dock,
             store,
             preferences,
@@ -191,6 +336,7 @@ impl Workspace {
             profiles,
             session_reveals: BTreeMap::new(),
             closed_session_panes: BTreeMap::new(),
+            preferences_path,
         };
         workspace.save_layout();
         Ok(workspace)
@@ -626,6 +772,30 @@ impl Workspace {
             .collect()
     }
 
+    /// Returns the stored identity for each session pane that is open in the
+    /// current Dock tree. Closed or profile-hidden descriptors are excluded.
+    pub fn open_session_pane_identities(&self) -> Vec<(String, Option<String>)> {
+        let document = self.dock.snapshot().document;
+        document
+            .panels
+            .iter()
+            .filter(|descriptor| {
+                descriptor.role == "hermes_session_tile"
+                    && !document.closed_panels.contains(&descriptor.id)
+                    && find_panel_node(document.root.as_deref(), &descriptor.id.0).is_some()
+            })
+            .filter_map(|descriptor| {
+                let session_id = descriptor.metadata.get("hermes.session.id")?.clone();
+                let profile = descriptor
+                    .metadata
+                    .get("hermes.session.profile")
+                    .filter(|profile| !profile.is_empty())
+                    .cloned();
+                Some((session_id, profile))
+            })
+            .collect()
+    }
+
     pub fn profile_ids(&self) -> Vec<&'static str> {
         match self.preferences.mode {
             InterfaceMode::Advanced => vec!["default", "basic", "focus", "terminal-deck", "quad"],
@@ -635,6 +805,20 @@ impl Workspace {
 
     pub fn active_profile(&self) -> &str {
         active_profile_id(&self.preferences)
+    }
+
+    pub fn last_remote_gateway_url(&self) -> Option<&str> {
+        self.preferences.last_remote_gateway_url.as_deref()
+    }
+
+    pub fn save_remote_gateway_url(&mut self, url: &str) -> Result<(), String> {
+        let normalized = crate::remote_probe::normalize_remote_base_url(url)?;
+        let mut next = self.preferences.clone();
+        next.last_remote_gateway_url = Some(normalized);
+        write_preferences_atomic(&self.preferences_path, &next)?;
+        self.preferences = next;
+        self.persistence_error = None;
+        Ok(())
     }
 
     pub fn set_profile(&mut self, id: &str) -> Result<(), String> {
@@ -651,6 +835,316 @@ impl Workspace {
         Ok(())
     }
 
+    pub fn set_show_all_project_sessions(&mut self, show: bool) -> Result<(), String> {
+        if self.preferences.show_all_project_sessions == show {
+            return Ok(());
+        }
+        let mut next = self.preferences.clone();
+        next.show_all_project_sessions = show;
+        match write_preferences_atomic(&self.preferences_path, &next) {
+            Ok(()) => {
+                self.preferences = next;
+                self.persistence_error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.persistence_error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    pub fn set_auto_project_dismissed(
+        &mut self,
+        project_id: &str,
+        dismissed: bool,
+    ) -> Result<bool, String> {
+        validate_auto_project_id(project_id)?;
+        let _lock = acquire_auto_project_dismissal_lock(&self.dismissed_auto_project_ids_path)?;
+        let mut ids = read_auto_project_dismissal_state(&self.dismissed_auto_project_ids_path)?
+            .unwrap_or_else(|| self.preferences.dismissed_auto_project_ids.clone());
+        let already_dismissed = ids.iter().any(|id| id == project_id);
+        if already_dismissed == dismissed {
+            self.preferences.dismissed_auto_project_ids = ids;
+            return Ok(false);
+        }
+        if dismissed {
+            if ids.len() >= AUTO_PROJECT_DISMISSAL_LIMIT {
+                return Err(format!(
+                    "Dismissed auto-project list exceeds {AUTO_PROJECT_DISMISSAL_LIMIT} entries"
+                ));
+            }
+            ids.push(project_id.to_owned());
+        } else {
+            ids.retain(|id| id != project_id);
+        }
+        write_auto_project_dismissal_state(&self.dismissed_auto_project_ids_path, &ids)?;
+        self.preferences.dismissed_auto_project_ids = ids;
+        self.persistence_error = None;
+        Ok(true)
+    }
+
+    pub fn refresh_auto_project_dismissals(&mut self) -> Result<bool, String> {
+        let Some(ids) = read_auto_project_dismissal_state(&self.dismissed_auto_project_ids_path)?
+        else {
+            return Ok(false);
+        };
+        if ids == self.preferences.dismissed_auto_project_ids {
+            return Ok(false);
+        }
+        self.preferences.dismissed_auto_project_ids = ids;
+        Ok(true)
+    }
+
+    pub fn pinned_session_order(&self, connection_key: &str) -> Vec<String> {
+        self.preferences
+            .pinned_session_order
+            .get(connection_key)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn sidebar_session_order(&self, scope_key: &str) -> Vec<String> {
+        self.preferences
+            .sidebar_session_order
+            .get(scope_key)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn master_detail_width_override(&self, resize_id: &str) -> Option<f32> {
+        self.preferences
+            .master_detail_width_overrides
+            .get(resize_id)
+            .copied()
+    }
+
+    pub fn set_master_detail_width_override(
+        &mut self,
+        resize_id: &str,
+        width: Option<f32>,
+    ) -> Result<(), String> {
+        if resize_id.is_empty() || resize_id.len() > 128 || resize_id.chars().any(char::is_control)
+        {
+            return Err("Master/detail resize ID is invalid".into());
+        }
+        if width.is_some_and(|width| !width.is_finite() || !(0.0..=100_000.0).contains(&width)) {
+            return Err("Master/detail width override is outside the safe range".into());
+        }
+        let current = self.master_detail_width_override(resize_id);
+        if current == width {
+            return Ok(());
+        }
+        let mut next = self.preferences.clone();
+        if let Some(width) = width {
+            next.master_detail_width_overrides
+                .insert(resize_id.to_owned(), width);
+        } else {
+            next.master_detail_width_overrides.remove(resize_id);
+        }
+        match write_preferences_atomic(&self.preferences_path, &next) {
+            Ok(()) => {
+                self.preferences = next;
+                self.persistence_error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.persistence_error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    pub fn set_sidebar_session_order(
+        &mut self,
+        scope_key: &str,
+        order: Vec<String>,
+    ) -> Result<(), String> {
+        validate_sidebar_session_key(scope_key, "session-order")?;
+        if order.len() > 20_000 {
+            return Err("Recent-session order exceeds 20000 entries".into());
+        }
+        let mut unique = BTreeSet::new();
+        for session_id in &order {
+            validate_sidebar_session_key(scope_key, session_id)?;
+            if !unique.insert(session_id.as_str()) {
+                return Err("Recent-session order contains duplicate IDs".into());
+            }
+        }
+        if !order.is_empty()
+            && !self
+                .preferences
+                .sidebar_session_order
+                .contains_key(scope_key)
+            && self.preferences.sidebar_session_order.len() >= 64
+        {
+            return Err("Recent-session ordering scope limit of 64 was reached".into());
+        }
+        if order.is_empty() {
+            self.preferences.sidebar_session_order.remove(scope_key);
+        } else {
+            self.preferences
+                .sidebar_session_order
+                .insert(scope_key.to_owned(), order);
+        }
+        self.save_preferences();
+        if let Some(error) = &self.persistence_error {
+            Err(error.clone())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn session_color(&self, session_id: &str) -> Option<&str> {
+        self.preferences
+            .session_color_overrides
+            .get(session_id)
+            .map(String::as_str)
+    }
+
+    pub fn set_session_color(
+        &mut self,
+        session_id: &str,
+        color: Option<&str>,
+    ) -> Result<(), String> {
+        if session_id.is_empty()
+            || session_id.len() > 1024
+            || session_id.chars().any(char::is_control)
+        {
+            return Err("Session color requires a valid session ID".into());
+        }
+        if let Some(color) = color {
+            if !SESSION_COLOR_HUES
+                .iter()
+                .any(|hue| color == format!("hsl({hue} 68% 58%)"))
+            {
+                return Err("Session color is not one of the Hermes desktop swatches".into());
+            }
+            if !self
+                .preferences
+                .session_color_overrides
+                .contains_key(session_id)
+                && self.preferences.session_color_overrides.len() >= 20_000
+            {
+                return Err("Session color override limit of 20000 was reached".into());
+            }
+            self.preferences
+                .session_color_overrides
+                .insert(session_id.to_owned(), color.to_owned());
+        } else {
+            self.preferences.session_color_overrides.remove(session_id);
+        }
+        self.save_preferences();
+        if let Some(error) = &self.persistence_error {
+            Err(error.clone())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn set_pinned_session_state(
+        &mut self,
+        connection_key: &str,
+        session_id: &str,
+        pinned: bool,
+    ) -> Result<(), String> {
+        validate_pinned_session_key(connection_key, session_id)?;
+        let mut order = self.pinned_session_order(connection_key);
+        if pinned {
+            if order.iter().any(|id| id == session_id) {
+                return Ok(());
+            }
+            order.push(session_id.to_owned());
+        } else {
+            let previous_len = order.len();
+            order.retain(|id| id != session_id);
+            if order.len() == previous_len {
+                return Ok(());
+            }
+        }
+        self.set_pinned_session_order(connection_key, order)
+    }
+
+    pub fn set_pinned_session_order(
+        &mut self,
+        connection_key: &str,
+        order: Vec<String>,
+    ) -> Result<(), String> {
+        if connection_key.is_empty()
+            || connection_key.len() > 2048
+            || connection_key.chars().any(char::is_control)
+        {
+            return Err("Pinned-session connection key is invalid".into());
+        }
+        if order.len() > 20_000 {
+            return Err("Pinned-session order exceeds 20000 entries".into());
+        }
+        let mut unique = BTreeSet::new();
+        for session_id in &order {
+            validate_pinned_session_key(connection_key, session_id)?;
+            if !unique.insert(session_id.as_str()) {
+                return Err("Pinned-session order contains duplicate IDs".into());
+            }
+        }
+        if !order.is_empty()
+            && !self
+                .preferences
+                .pinned_session_order
+                .contains_key(connection_key)
+            && self.preferences.pinned_session_order.len() >= 64
+        {
+            return Err("Pinned-session connection limit of 64 was reached".into());
+        }
+        if order.is_empty() {
+            self.preferences.pinned_session_order.remove(connection_key);
+        } else {
+            self.preferences
+                .pinned_session_order
+                .insert(connection_key.to_owned(), order);
+        }
+        self.save_preferences();
+        if let Some(error) = &self.persistence_error {
+            Err(error.clone())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn reorder_pinned_session_order(
+        &mut self,
+        connection_key: &str,
+        resolved_order: Vec<String>,
+    ) -> Result<(), String> {
+        let mut order = self.pinned_session_order(connection_key);
+        let mut moving = Vec::with_capacity(resolved_order.len());
+        let mut seen = BTreeSet::new();
+        for session_id in resolved_order {
+            validate_pinned_session_key(connection_key, &session_id)?;
+            if !seen.insert(session_id.clone()) {
+                return Err("Pinned-session reorder contains duplicate IDs".into());
+            }
+            if !order.iter().any(|known| known == &session_id) {
+                order.push(session_id.clone());
+            }
+            moving.push(session_id);
+        }
+
+        if moving.is_empty() {
+            return Ok(());
+        }
+        if order.len() > 20_000 {
+            return Err("Pinned-session order exceeds 20000 entries".into());
+        }
+        let moving_set = moving.iter().collect::<BTreeSet<_>>();
+        let mut cursor = 0;
+        for session_id in &mut order {
+            if moving_set.contains(session_id) {
+                *session_id = moving[cursor].clone();
+                cursor += 1;
+            }
+        }
+        self.set_pinned_session_order(connection_key, order)
+    }
     pub fn set_mode(&mut self, mode: InterfaceMode) -> Result<(), String> {
         if self.preferences.mode == mode {
             return Ok(());
@@ -663,8 +1157,12 @@ impl Workspace {
     }
 
     pub fn pane_is_open(&self, panel: &str) -> bool {
-        if matches!(panel, SESSIONS | WORKSPACE) {
-            return true;
+        match panel {
+            SESSIONS => return self.preferences.sessions_sidebar_open,
+            WORKSPACE => return true,
+            FILES => return self.preferences.file_browser_open,
+            BOTS => return *self.preferences.pane_open.get(BOTS).unwrap_or(&false),
+            _ => {}
         }
         if let Some(open) = self.session_reveals.get(panel) {
             return *open;
@@ -676,17 +1174,377 @@ impl Workspace {
     }
 
     pub fn toggle_pane(&mut self, panel: &str) -> Result<(), String> {
+        if !matches!(panel, SESSIONS | FILES | REVIEW | TERMINAL | BOTS) {
+            return Err(format!(
+                "Pane {panel:?} is not registered for toggle actions"
+            ));
+        }
+        if matches!(panel, SESSIONS | FILES) && self.toggle_semantic_side(panel)? {
+            return Ok(());
+        }
         let open = !self.pane_is_open(panel);
-        match self.preferences.mode {
-            InterfaceMode::Advanced => {
+        match panel {
+            SESSIONS => self.preferences.sessions_sidebar_open = open,
+            FILES => {
+                self.preferences.file_browser_open = open;
                 self.preferences.pane_open.insert(panel.into(), open);
                 self.save_preferences();
             }
-            InterfaceMode::Simple => {
-                self.session_reveals.insert(panel.into(), open);
+            REVIEW | TERMINAL => match self.preferences.mode {
+                InterfaceMode::Advanced => {
+                    self.preferences.pane_open.insert(panel.into(), open);
+                    self.save_preferences();
+                }
+                InterfaceMode::Simple => {
+                    self.session_reveals.insert(panel.into(), open);
+                }
+            },
+            BOTS => {
+                self.preferences.pane_open.insert(BOTS.into(), open);
+                self.save_preferences();
+            }
+            _ => unreachable!("toggle panel allowlist is exhaustive"),
+        }
+        if matches!(panel, SESSIONS) {
+            self.save_preferences();
+        }
+        self.apply_active_profile()?;
+        if panel == BOTS && open {
+            self.select_panel(&PanelId::from(BOTS))?;
+        }
+        Ok(())
+    }
+
+    fn toggle_semantic_side(&mut self, panel: &str) -> Result<bool, String> {
+        let snapshot = self.dock.snapshot();
+        let panel_id = PanelId::from(panel);
+        if find_panel_node(snapshot.document.root.as_deref(), &panel_id.0).is_none() {
+            return Ok(false);
+        }
+        let Some(side) = root_side_for_panel(&snapshot.document, &panel_id) else {
+            return Ok(false);
+        };
+        let minimized = minimized_groups_on_side(&snapshot.document, side);
+        let side_was_collapsed = self.preferences.collapsed_sides.contains(&side);
+        let currently_open = self.pane_is_open(panel);
+        let open = if side_was_collapsed || !minimized.is_empty() {
+            // Like the pinned tree store, a semantic toggle first restores a
+            // physically folded side, even when its pane preference is true.
+            true
+        } else {
+            !currently_open
+        };
+
+        let mut next_preferences = self.preferences.clone();
+        match panel {
+            SESSIONS => next_preferences.sessions_sidebar_open = open,
+            FILES => {
+                next_preferences.file_browser_open = open;
+                next_preferences.pane_open.insert(FILES.into(), open);
+            }
+            _ => unreachable!("semantic side allowlist is exhaustive"),
+        }
+        if open {
+            next_preferences.collapsed_sides.remove(&side);
+        } else {
+            next_preferences.collapsed_sides.insert(side);
+        }
+
+        if !minimized.is_empty() {
+            self.dock
+                .transact(
+                    snapshot.revision,
+                    layout_command("restore-semantic-side", snapshot.revision),
+                    minimized
+                        .iter()
+                        .cloned()
+                        .map(|group| Operation::SetGroupMinimized {
+                            group,
+                            minimized: false,
+                        }),
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        if let Err(error) = write_preferences_atomic(&self.preferences_path, &next_preferences) {
+            if !minimized.is_empty() {
+                let restored = self.dock.snapshot();
+                let rollback = self.dock.transact(
+                    restored.revision,
+                    layout_command("rollback-semantic-side-restore", restored.revision),
+                    minimized
+                        .into_iter()
+                        .map(|group| Operation::SetGroupMinimized {
+                            group,
+                            minimized: true,
+                        }),
+                );
+                if let Err(rollback_error) = rollback {
+                    return Err(format!(
+                        "Persist semantic side state failed ({error}); Dock rollback also failed ({rollback_error})"
+                    ));
+                }
+            }
+            self.persistence_error = Some(error.clone());
+            return Err(error);
+        }
+        self.preferences = next_preferences;
+        self.persistence_error = None;
+        if !minimized.is_empty() {
+            self.save_layout();
+        }
+        Ok(true)
+    }
+
+    /// Fold the direct outer group at one edge of the live root row. Returns
+    /// `false` when that edge is not an eligible side group so callers can
+    /// apply the source's semantic-pane fallback.
+    pub fn toggle_positional_edge(&mut self, left: bool) -> Result<bool, String> {
+        let snapshot = self.dock.snapshot();
+        let Some((edge, side)) = positional_edge_node(&snapshot.document, left) else {
+            return Ok(false);
+        };
+        let group_minimized = match &edge.kind {
+            NodeKind::Tabs { minimized, .. } => Some(*minimized),
+            NodeKind::Panel { .. } => None,
+            _ => return Ok(false),
+        };
+        let side_collapsed = self.preferences.collapsed_sides.contains(&side);
+        let shown = !side_collapsed && group_minimized.is_none_or(|minimized| !minimized);
+        let mut next_preferences = self.preferences.clone();
+        if shown {
+            if let Some(_) = group_minimized {
+                self.dock
+                    .transact(
+                        snapshot.revision,
+                        layout_command(
+                            if left {
+                                "minimize-left-group"
+                            } else {
+                                "minimize-right-group"
+                            },
+                            snapshot.revision,
+                        ),
+                        [Operation::SetGroupMinimized {
+                            group: edge.id.clone(),
+                            minimized: true,
+                        }],
+                    )
+                    .map_err(|error| error.to_string())?;
+                self.save_layout();
+            } else {
+                next_preferences.collapsed_sides.insert(side);
+                self.persist_preferences(next_preferences)?;
+            }
+            return Ok(true);
+        }
+
+        if group_minimized == Some(true) {
+            self.dock
+                .transact(
+                    snapshot.revision,
+                    layout_command(
+                        if left {
+                            "restore-left-group"
+                        } else {
+                            "restore-right-group"
+                        },
+                        snapshot.revision,
+                    ),
+                    [Operation::SetGroupMinimized {
+                        group: edge.id.clone(),
+                        minimized: false,
+                    }],
+                )
+                .map_err(|error| error.to_string())?;
+            self.save_layout();
+        }
+        next_preferences.collapsed_sides.remove(&side);
+        let owner = semantic_owner_for_side(&snapshot.document, side, &self.preferences);
+        set_semantic_owner_open(&mut next_preferences, owner, true);
+        if let Err(error) = self.persist_preferences(next_preferences) {
+            if group_minimized == Some(true) {
+                let restored = self.dock.snapshot();
+                let rollback = self.dock.transact(
+                    restored.revision,
+                    layout_command("rollback-positional-edge-restore", restored.revision),
+                    [Operation::SetGroupMinimized {
+                        group: edge.id.clone(),
+                        minimized: true,
+                    }],
+                );
+                if let Err(rollback_error) = rollback {
+                    return Err(format!(
+                        "Persist positional edge state failed ({error}); Dock rollback also failed ({rollback_error})"
+                    ));
+                }
+                self.save_layout();
+            }
+            return Err(error);
+        }
+        Ok(true)
+    }
+
+    pub fn positional_edge_open(&self, left: bool) -> bool {
+        let snapshot = self.dock.snapshot();
+        positional_edge_node(&snapshot.document, left)
+            .map(|(node, side)| {
+                if self.preferences.collapsed_sides.contains(&side) {
+                    return false;
+                }
+                match &node.kind {
+                    NodeKind::Tabs { minimized, .. } => !minimized,
+                    NodeKind::Panel { .. } => true,
+                    _ => false,
+                }
+            })
+            .unwrap_or_else(|| self.pane_is_open(if left { SESSIONS } else { FILES }))
+    }
+
+    /// Produce a presentation-only layout with semantically collapsed root
+    /// sides removed. The canonical document and its tree identity remain
+    /// untouched, so reopening restores the exact group and active tab.
+    pub fn presentation_layout(&self, document: LayoutDocument) -> LayoutDocument {
+        self.presentation_layout_with_collapsed_sides(document, &self.preferences.collapsed_sides)
+    }
+
+    /// Narrow viewports temporarily move both physical edge groups out of the
+    /// dock projection. This is presentation state only; the canonical tree
+    /// and saved collapse preferences remain untouched.
+    pub fn narrow_presentation_layout(&self, document: LayoutDocument) -> LayoutDocument {
+        let collapsed = BTreeSet::from([PhysicalSide::Left, PhysicalSide::Right]);
+        self.presentation_layout_with_collapsed_sides(document, &collapsed)
+    }
+
+    pub fn semantic_panel_is_right(&self, panel: &str) -> bool {
+        let document = self.dock.snapshot().document;
+        root_side_for_panel(&document, &PanelId::from(panel))
+            .map(|side| side == PhysicalSide::Right)
+            .unwrap_or_else(|| {
+                self.preferences.simple_sidebar_right
+                    || (self.preferences.mode == InterfaceMode::Advanced
+                        && self.preferences.advanced_profile == "sidebar-right")
+            })
+    }
+
+    /// Return source-collapsible built-in panes currently live on a physical
+    /// edge. This is presentation discovery only; narrow reveals do not open,
+    /// close, or otherwise mutate the canonical document.
+    pub fn narrow_collapsible_panels(&self, right: bool) -> Vec<String> {
+        let document = self.dock.snapshot().document;
+        [SESSIONS, BOTS, FILES, REVIEW]
+            .into_iter()
+            .filter(|panel| {
+                root_side_for_panel(&document, &PanelId::from(*panel))
+                    .is_some_and(|side| (side == PhysicalSide::Right) == right)
+            })
+            .map(str::to_owned)
+            .collect()
+    }
+
+    pub fn narrow_panel_is_right(&self, panel: &str) -> bool {
+        let document = self.dock.snapshot().document;
+        root_side_for_panel(&document, &PanelId::from(panel))
+            .map(|side| side == PhysicalSide::Right)
+            .unwrap_or_else(|| match panel {
+                SESSIONS => self.semantic_panel_is_right(SESSIONS),
+                BOTS | FILES | REVIEW => true,
+                _ => self.semantic_panel_is_right(panel),
+            })
+    }
+
+    fn presentation_layout_with_collapsed_sides(
+        &self,
+        mut document: LayoutDocument,
+        collapsed_sides: &BTreeSet<PhysicalSide>,
+    ) -> LayoutDocument {
+        if collapsed_sides.is_empty() {
+            return document;
+        }
+        let Some(root) = root_row(&document) else {
+            return document;
+        };
+        let NodeKind::Split {
+            orientation: Orientation::Horizontal,
+            weights,
+            children,
+        } = &root.kind
+        else {
+            return document;
+        };
+        let weights = weights.clone();
+        let children = children.clone();
+        let retained = children
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| {
+                root_child_side(&children, *index)
+                    .is_none_or(|side| !collapsed_sides.contains(&side))
+            })
+            .map(|(index, child)| (index, child.clone()))
+            .collect::<Vec<_>>();
+        if retained.len() == children.len() {
+            return document;
+        }
+        let row_id = root.id.clone();
+        let mut hidden_panels = BTreeSet::new();
+        for (index, child) in children.iter().enumerate() {
+            if root_child_side(&children, index).is_some_and(|side| collapsed_sides.contains(&side))
+            {
+                collect_node_panels(child, &mut hidden_panels);
             }
         }
-        self.apply_active_profile()
+        for panel in hidden_panels {
+            if !document.closed_panels.contains(&panel) {
+                document.closed_panels.push(panel);
+            }
+        }
+        if retained.len() == 1 {
+            replace_root_row(&mut document, &row_id, retained[0].1.clone());
+            return document;
+        }
+        if retained.is_empty() {
+            return document;
+        }
+        let total = retained
+            .iter()
+            .map(|(index, _)| weights.get(*index).copied().unwrap_or(0.0))
+            .sum::<f64>();
+        let next_weights = retained
+            .iter()
+            .map(|(index, _)| {
+                let weight = weights.get(*index).copied().unwrap_or(0.0);
+                if total > f64::EPSILON {
+                    weight / total
+                } else {
+                    1.0 / retained.len() as f64
+                }
+            })
+            .collect::<Vec<_>>();
+        replace_root_row(
+            &mut document,
+            &row_id,
+            Node::split(
+                row_id.clone(),
+                Orientation::Horizontal,
+                retained.into_iter().map(|(_, child)| child).collect(),
+                next_weights,
+            ),
+        );
+        document
+    }
+
+    fn persist_preferences(&mut self, next: UiPreferences) -> Result<(), String> {
+        match write_preferences_atomic(&self.preferences_path, &next) {
+            Ok(()) => {
+                self.preferences = next;
+                self.persistence_error = None;
+                Ok(())
+            }
+            Err(error) => {
+                self.persistence_error = Some(error.clone());
+                Err(error)
+            }
+        }
     }
 
     pub fn apply_active_profile(&mut self) -> Result<(), String> {
@@ -706,12 +1564,278 @@ impl Workspace {
     }
 
     fn save_preferences(&mut self) {
-        let path = self.data_directory.join("ui-preferences.json");
-        match write_preferences_atomic(&path, &self.preferences) {
+        match write_preferences_atomic(&self.preferences_path, &self.preferences) {
             Ok(()) => self.persistence_error = None,
             Err(error) => self.persistence_error = Some(error),
         }
     }
+}
+
+fn positional_edge_node(document: &LayoutDocument, left: bool) -> Option<(&Node, PhysicalSide)> {
+    let root = root_row(document)?;
+    let NodeKind::Split {
+        orientation: Orientation::Horizontal,
+        children,
+        ..
+    } = &root.kind
+    else {
+        return None;
+    };
+    let edge_index = if left {
+        0
+    } else {
+        children.len().checked_sub(1)?
+    };
+    let edge = children.get(edge_index)?;
+    if node_contains_main_surface(edge)
+        || !children
+            .iter()
+            .any(|child| node_contains_main_surface(child))
+    {
+        return None;
+    }
+    Some((
+        edge.as_ref(),
+        if left {
+            PhysicalSide::Left
+        } else {
+            PhysicalSide::Right
+        },
+    ))
+}
+
+fn root_side_for_panel(document: &LayoutDocument, panel: &PanelId) -> Option<PhysicalSide> {
+    let root = root_row(document)?;
+    let NodeKind::Split {
+        orientation: Orientation::Horizontal,
+        children,
+        ..
+    } = &root.kind
+    else {
+        return None;
+    };
+    let index = children
+        .iter()
+        .position(|child| node_contains_panel(child, panel))?;
+    root_child_side(children, index)
+}
+
+fn root_child_side(children: &[Arc<Node>], index: usize) -> Option<PhysicalSide> {
+    let main_indices = children
+        .iter()
+        .enumerate()
+        .filter_map(|(index, child)| node_contains_main_surface(child).then_some(index))
+        .collect::<Vec<_>>();
+    let first_main = *main_indices.first()?;
+    let last_main = *main_indices.last()?;
+    if index < first_main {
+        Some(PhysicalSide::Left)
+    } else if index > last_main {
+        Some(PhysicalSide::Right)
+    } else {
+        None
+    }
+}
+
+fn minimized_groups_on_side(document: &LayoutDocument, side: PhysicalSide) -> Vec<NodeId> {
+    fn collect(node: &Node, groups: &mut Vec<NodeId>) {
+        match &node.kind {
+            NodeKind::Tabs {
+                items, minimized, ..
+            } => {
+                if *minimized {
+                    groups.push(node.id.clone());
+                }
+                for child in items {
+                    collect(child, groups);
+                }
+            }
+            NodeKind::DocumentWell { groups: items, .. }
+            | NodeKind::Split {
+                children: items, ..
+            }
+            | NodeKind::Extension {
+                children: items, ..
+            } => {
+                for child in items {
+                    collect(child, groups);
+                }
+            }
+            NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => {}
+        }
+    }
+
+    let Some(root) = root_row(document) else {
+        return Vec::new();
+    };
+    let NodeKind::Split {
+        orientation: Orientation::Horizontal,
+        children,
+        ..
+    } = &root.kind
+    else {
+        return Vec::new();
+    };
+    let mut groups = Vec::new();
+    for (index, child) in children.iter().enumerate() {
+        if root_child_side(children, index) == Some(side) {
+            collect(child, &mut groups);
+        }
+    }
+    groups
+}
+
+/// Hermes side controls operate on the horizontal row containing the main
+/// surface. Column-root profiles place that row as a direct child of the root.
+/// A split at the row's physical edge is still not a foldable leaf group.
+fn root_row(document: &LayoutDocument) -> Option<&Node> {
+    let root = document.root.as_deref()?;
+    let NodeKind::Split {
+        orientation,
+        children,
+        ..
+    } = &root.kind
+    else {
+        return None;
+    };
+    if *orientation == Orientation::Horizontal {
+        return Some(root);
+    }
+    children.iter().find_map(|child| {
+        matches!(
+            child.kind,
+            NodeKind::Split {
+                orientation: Orientation::Horizontal,
+                ..
+            }
+        )
+        .then_some(child.as_ref())
+        .filter(|row| node_contains_main_surface(row))
+    })
+}
+
+fn replace_root_row(document: &mut LayoutDocument, row_id: &NodeId, replacement: Arc<Node>) {
+    let Some(root) = document.root.as_deref() else {
+        return;
+    };
+    if &root.id == row_id {
+        document.root = Some(replacement);
+        return;
+    }
+    let NodeKind::Split {
+        orientation,
+        weights,
+        children,
+    } = &root.kind
+    else {
+        return;
+    };
+    if !children.iter().any(|child| &child.id == row_id) {
+        return;
+    }
+    let children = children
+        .iter()
+        .map(|child| {
+            if &child.id == row_id {
+                replacement.clone()
+            } else {
+                child.clone()
+            }
+        })
+        .collect();
+    document.root = Some(Node::split(
+        root.id.clone(),
+        *orientation,
+        children,
+        weights.to_vec(),
+    ));
+}
+
+fn semantic_owner_for_side(
+    document: &LayoutDocument,
+    side: PhysicalSide,
+    preferences: &UiPreferences,
+) -> &'static str {
+    if root_side_for_panel(document, &PanelId::from(SESSIONS)) == Some(side) {
+        SESSIONS
+    } else if root_side_for_panel(document, &PanelId::from(FILES)) == Some(side) {
+        FILES
+    } else if (preferences.simple_sidebar_right
+        || (preferences.mode == InterfaceMode::Advanced
+            && preferences.advanced_profile == "sidebar-right"))
+        == (side == PhysicalSide::Right)
+    {
+        SESSIONS
+    } else {
+        FILES
+    }
+}
+
+fn set_semantic_owner_open(preferences: &mut UiPreferences, owner: &str, open: bool) {
+    match owner {
+        SESSIONS => preferences.sessions_sidebar_open = open,
+        FILES => {
+            preferences.file_browser_open = open;
+            preferences.pane_open.insert(FILES.into(), open);
+        }
+        _ => unreachable!("semantic side owner is a registered pane"),
+    }
+}
+
+fn node_contains_panel(node: &Node, panel: &PanelId) -> bool {
+    match &node.kind {
+        NodeKind::Panel { panel: id } | NodeKind::Placeholder { panel: id, .. } => id == panel,
+        NodeKind::Tabs { items, .. }
+        | NodeKind::DocumentWell { groups: items, .. }
+        | NodeKind::Split {
+            children: items, ..
+        }
+        | NodeKind::Extension {
+            children: items, ..
+        } => items.iter().any(|child| node_contains_panel(child, panel)),
+    }
+}
+
+fn collect_node_panels(node: &Node, panels: &mut BTreeSet<PanelId>) {
+    match &node.kind {
+        NodeKind::Panel { panel } | NodeKind::Placeholder { panel, .. } => {
+            panels.insert(panel.clone());
+        }
+        NodeKind::Tabs { items, .. }
+        | NodeKind::DocumentWell { groups: items, .. }
+        | NodeKind::Split {
+            children: items, ..
+        }
+        | NodeKind::Extension {
+            children: items, ..
+        } => {
+            for child in items {
+                collect_node_panels(child, panels);
+            }
+        }
+    }
+}
+
+fn node_contains_main_surface(node: &Node) -> bool {
+    match &node.kind {
+        NodeKind::Panel { panel } | NodeKind::Placeholder { panel, .. } => {
+            panel.0 == WORKSPACE
+                || panel.0.starts_with("session-tile:")
+                || panel.0.starts_with("route-tile:")
+        }
+        NodeKind::Tabs { items, .. }
+        | NodeKind::DocumentWell { groups: items, .. }
+        | NodeKind::Split {
+            children: items, ..
+        }
+        | NodeKind::Extension {
+            children: items, ..
+        } => items.iter().any(|child| node_contains_main_surface(child)),
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn file_preference_path_key(path: &Path) -> String {
@@ -727,6 +1851,31 @@ fn file_preference_path_key(path: &Path) -> String {
     }
 }
 
+fn validate_pinned_session_key(connection_key: &str, session_id: &str) -> Result<(), String> {
+    if connection_key.is_empty()
+        || connection_key.len() > 2048
+        || connection_key.chars().any(char::is_control)
+    {
+        return Err("Pinned-session connection key is invalid".into());
+    }
+    if session_id.is_empty() || session_id.len() > 512 || session_id.chars().any(char::is_control) {
+        return Err("Pinned session ID is invalid".into());
+    }
+    Ok(())
+}
+
+fn validate_sidebar_session_key(scope_key: &str, session_id: &str) -> Result<(), String> {
+    if scope_key.is_empty()
+        || scope_key.len() > 2048
+        || scope_key.chars().any(char::is_control)
+        || session_id.is_empty()
+        || session_id.len() > 1024
+        || session_id.chars().any(char::is_control)
+    {
+        return Err("Recent-session ordering key or session ID is invalid".into());
+    }
+    Ok(())
+}
 pub fn active_profile_id(preferences: &UiPreferences) -> &str {
     match preferences.mode {
         InterfaceMode::Advanced => &preferences.advanced_profile,
@@ -761,9 +1910,14 @@ fn apply_profile_to_service_with_reopen(
         .then(|| descriptor.id.clone())
     }));
     assignments.insert(WORKSPACE.to_owned(), workspace_panels);
-    for panel in [SESSIONS, REVIEW, FILES, TERMINAL] {
-        let open = matches!(panel, SESSIONS | WORKSPACE)
-            || reveals
+    for panel in [SESSIONS, BOTS, REVIEW, FILES, TERMINAL] {
+        let open = match panel {
+            // Sessions occupies a required profile region. Project it into the
+            // profile first, then apply HideOnly through the Dock operation.
+            SESSIONS => true,
+            BOTS => preferences.pane_open.get(BOTS).copied().unwrap_or(false),
+            FILES => preferences.file_browser_open,
+            _ => reveals
                 .get(panel)
                 .copied()
                 .unwrap_or_else(|| match preferences.mode {
@@ -771,7 +1925,8 @@ fn apply_profile_to_service_with_reopen(
                         preferences.pane_open.get(panel).copied().unwrap_or(false)
                     }
                     InterfaceMode::Simple => false,
-                });
+                }),
+        };
         assignments.insert(
             panel.to_owned(),
             if open {
@@ -786,6 +1941,23 @@ fn apply_profile_to_service_with_reopen(
         .map_err(|error| error.to_string())?;
     dock.apply_layout(observed.revision, &application.document)
         .map_err(|error| error.to_string())?;
+    if !preferences.sessions_sidebar_open {
+        let hidden = dock.snapshot();
+        if !hidden
+            .document
+            .closed_panels
+            .contains(&PanelId::from(SESSIONS))
+        {
+            dock.transact(
+                hidden.revision,
+                layout_command("hide-sessions-sidebar", hidden.revision),
+                [Operation::ClosePanel {
+                    panel: PanelId::from(SESSIONS),
+                }],
+            )
+            .map_err(|error| error.to_string())?;
+        }
+    }
     Ok(())
 }
 
@@ -923,6 +2095,7 @@ fn prune_ephemeral_node(node: &Node, ephemeral: &BTreeSet<PanelId>) -> Option<Ar
         NodeKind::Tabs {
             items,
             active_index,
+            minimized,
         } => {
             let items = items
                 .iter()
@@ -935,6 +2108,7 @@ fn prune_ephemeral_node(node: &Node, ephemeral: &BTreeSet<PanelId>) -> Option<Ar
                     id: node.id.clone(),
                     kind: NodeKind::Tabs {
                         active_index: (*active_index).min(items.len() - 1),
+                        minimized: *minimized,
                         items,
                     },
                 })),
@@ -1106,6 +2280,7 @@ fn find_tab_group(root: Option<&Node>, tabs: &NodeId) -> Option<(usize, usize)> 
                 NodeKind::Tabs {
                     items,
                     active_index,
+                    ..
                 } => Some((items.len(), *active_index)),
                 _ => None,
             };
@@ -1156,6 +2331,7 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
             &[
                 required(SESSIONS),
                 required(WORKSPACE),
+                optional(BOTS),
                 optional(REVIEW),
                 optional(FILES),
                 optional(TERMINAL),
@@ -1164,7 +2340,11 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
                 "spl-root",
                 Orientation::Horizontal,
                 vec![
-                    region(SESSIONS),
+                    tabs(
+                        "sessions-bots-tabs",
+                        0,
+                        vec![region(SESSIONS), region(BOTS)],
+                    ),
                     region(WORKSPACE),
                     split(
                         "spl-right",
@@ -1190,6 +2370,7 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
             &[
                 required(SESSIONS),
                 required(WORKSPACE),
+                optional(BOTS),
                 optional(REVIEW),
                 optional(FILES),
                 optional(TERMINAL),
@@ -1198,7 +2379,11 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
                 "basic-root",
                 Orientation::Horizontal,
                 vec![
-                    region(SESSIONS),
+                    tabs(
+                        "sessions-bots-tabs",
+                        0,
+                        vec![region(SESSIONS), region(BOTS)],
+                    ),
                     split(
                         "basic-center",
                         Orientation::Vertical,
@@ -1221,6 +2406,7 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
             &[
                 required(SESSIONS),
                 required(WORKSPACE),
+                optional(BOTS),
                 optional(FILES),
                 optional(REVIEW),
                 optional(TERMINAL),
@@ -1229,7 +2415,11 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
                 "focus-root",
                 Orientation::Horizontal,
                 vec![
-                    region(SESSIONS),
+                    tabs(
+                        "sessions-bots-tabs",
+                        0,
+                        vec![region(SESSIONS), region(BOTS)],
+                    ),
                     split(
                         "focus-main-terminal",
                         Orientation::Vertical,
@@ -1253,6 +2443,7 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
             &[
                 required(SESSIONS),
                 required(WORKSPACE),
+                optional(BOTS),
                 optional(FILES),
                 optional(REVIEW),
                 optional(TERMINAL),
@@ -1265,7 +2456,11 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
                         "terminal-deck-top",
                         Orientation::Horizontal,
                         vec![
-                            region(SESSIONS),
+                            tabs(
+                                "sessions-bots-tabs",
+                                0,
+                                vec![region(SESSIONS), region(BOTS)],
+                            ),
                             region(WORKSPACE),
                             tabs("terminal-deck-tabs", 0, vec![region(FILES), region(REVIEW)]),
                         ],
@@ -1282,6 +2477,7 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
             &[
                 required(SESSIONS),
                 required(WORKSPACE),
+                optional(BOTS),
                 optional(FILES),
                 optional(TERMINAL),
                 optional(REVIEW),
@@ -1294,7 +2490,11 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
                         "quad-top",
                         Orientation::Horizontal,
                         vec![
-                            tabs("quad-left-tabs", 0, vec![region(SESSIONS), region(FILES)]),
+                            tabs(
+                                "quad-left-tabs",
+                                0,
+                                vec![region(SESSIONS), region(BOTS), region(FILES)],
+                            ),
                             region(WORKSPACE),
                         ],
                         vec![1.0, 3.0],
@@ -1315,6 +2515,7 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
             &[
                 required(SESSIONS),
                 required(WORKSPACE),
+                optional(BOTS),
                 optional(REVIEW),
                 optional(FILES),
                 optional(TERMINAL),
@@ -1323,7 +2524,11 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
                 "simple-left-root",
                 Orientation::Horizontal,
                 vec![
-                    region(SESSIONS),
+                    tabs(
+                        "sessions-bots-tabs",
+                        0,
+                        vec![region(SESSIONS), region(BOTS)],
+                    ),
                     split(
                         "simple-left-center",
                         Orientation::Vertical,
@@ -1346,6 +2551,7 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
             &[
                 required(SESSIONS),
                 required(WORKSPACE),
+                optional(BOTS),
                 optional(REVIEW),
                 optional(FILES),
                 optional(TERMINAL),
@@ -1366,7 +2572,11 @@ fn source_profiles() -> Vec<WorkspaceProfile> {
                         vec![region(WORKSPACE), region(TERMINAL)],
                         vec![3.0, 1.0],
                     ),
-                    region(SESSIONS),
+                    tabs(
+                        "sessions-bots-tabs",
+                        0,
+                        vec![region(SESSIONS), region(BOTS)],
+                    ),
                 ],
                 vec![1.25, 3.4, 1.0],
             ),
@@ -1443,6 +2653,7 @@ fn base_document() -> LayoutDocument {
     let mut document = LayoutDocument::new("hermes-native-main", "hermes-native-default");
     let panels = [
         (SESSIONS, "Sessions"),
+        (BOTS, "Bots"),
         (WORKSPACE, "New session"),
         (REVIEW, "Review"),
         (FILES, "Files"),
@@ -1452,8 +2663,9 @@ fn base_document() -> LayoutDocument {
         .iter()
         .map(|(id, title)| {
             let mut descriptor = PanelDescriptor::new(*id, *title);
-            descriptor.minimum = doofusdock_core::Size::new(180, 140);
-            descriptor.close_policy = if *id == WORKSPACE {
+            descriptor.minimum =
+                doofusdock_core::Size::new(if *id == BOTS { 260 } else { 180 }, 140);
+            descriptor.close_policy = if matches!(*id, SESSIONS | BOTS | WORKSPACE) {
                 ClosePolicy::HideOnly
             } else {
                 ClosePolicy::Allowed
@@ -1481,7 +2693,12 @@ fn data_directory() -> PathBuf {
 
 fn read_preferences(path: &std::path::Path) -> Option<UiPreferences> {
     let bytes = fs::read(path).ok()?;
-    serde_json::from_slice(&bytes).ok()
+    let mut preferences: UiPreferences = serde_json::from_slice(&bytes).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    if value.get("file_browser_open").is_none() {
+        preferences.file_browser_open = preferences.pane_open.get(FILES).copied().unwrap_or(false);
+    }
+    Some(preferences)
 }
 
 fn write_preferences_atomic(
@@ -1508,10 +2725,951 @@ fn write_preferences_atomic(
     })
 }
 
+fn validate_auto_project_id(project_id: &str) -> Result<(), String> {
+    if project_id.is_empty() || project_id.len() > 1024 || project_id.chars().any(char::is_control)
+    {
+        return Err("Auto-project ID is invalid".into());
+    }
+    Ok(())
+}
+
+fn validate_auto_project_ids(ids: &[String]) -> Result<(), String> {
+    if ids.len() > AUTO_PROJECT_DISMISSAL_LIMIT {
+        return Err(format!(
+            "Dismissed auto-project list exceeds {AUTO_PROJECT_DISMISSAL_LIMIT} entries"
+        ));
+    }
+    let mut unique = BTreeSet::new();
+    for id in ids {
+        validate_auto_project_id(id)?;
+        if !unique.insert(id.as_str()) {
+            return Err("Dismissed auto-project list contains duplicate IDs".into());
+        }
+    }
+    Ok(())
+}
+
+fn read_auto_project_dismissal_state(path: &Path) -> Result<Option<Vec<String>>, String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("inspect shared auto-project state: {error}")),
+    };
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err("Shared auto-project state is not a regular file".into());
+    }
+    if metadata.len() > AUTO_PROJECT_STATE_BYTES_LIMIT {
+        return Err("Shared auto-project state exceeds the 1 MiB limit".into());
+    }
+    let bytes =
+        fs::read(path).map_err(|error| format!("read shared auto-project state: {error}"))?;
+    let state: AutoProjectDismissalState = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("parse shared auto-project state: {error}"))?;
+    if state.version != 1 {
+        return Err("Shared auto-project state has an unsupported version".into());
+    }
+    validate_auto_project_ids(&state.ids)?;
+    Ok(Some(state.ids))
+}
+
+fn write_auto_project_dismissal_state(path: &Path, ids: &[String]) -> Result<(), String> {
+    validate_auto_project_ids(ids)?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Shared auto-project state has no parent directory".to_owned())?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("create shared auto-project state directory: {error}"))?;
+    let state = AutoProjectDismissalState {
+        version: 1,
+        ids: ids.to_vec(),
+    };
+    let bytes = serde_json::to_vec(&state)
+        .map_err(|error| format!("encode shared auto-project state: {error}"))?;
+    if bytes.len() as u64 > AUTO_PROJECT_STATE_BYTES_LIMIT {
+        return Err("Shared auto-project state exceeds the 1 MiB limit".into());
+    }
+    let sequence = AUTO_PROJECT_STATE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let temporary = path.with_extension(format!("json.tmp-{}-{sequence}", std::process::id()));
+    let result = (|| {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| format!("create shared auto-project temp file: {error}"))?;
+        file.write_all(&bytes)
+            .and_then(|()| file.sync_all())
+            .map_err(|error| format!("write shared auto-project temp file: {error}"))?;
+        let parsed = read_auto_project_dismissal_state(&temporary)?
+            .ok_or_else(|| "shared auto-project temp file disappeared".to_owned())?;
+        if parsed != ids {
+            return Err("shared auto-project temp file failed readback validation".into());
+        }
+        fs::rename(&temporary, path)
+            .map_err(|error| format!("publish shared auto-project state: {error}"))
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+fn unix_time_millis() -> Result<u128, String> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .map_err(|error| format!("system clock is before Unix epoch: {error}"))
+}
+
+fn acquire_auto_project_dismissal_lock(
+    path: &Path,
+) -> Result<AutoProjectDismissalLockGuard, String> {
+    use std::io::Write;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Shared auto-project state has no parent directory".to_owned())?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("create shared auto-project state directory: {error}"))?;
+    let lock_path = path.with_extension("lock");
+    let deadline = std::time::Instant::now() + AUTO_PROJECT_LOCK_WAIT;
+    loop {
+        let now = unix_time_millis()?;
+        let record = AutoProjectDismissalLock {
+            version: 1,
+            process_id: std::process::id(),
+            expires_unix_ms: now + AUTO_PROJECT_LOCK_TTL.as_millis(),
+        };
+        let bytes = serde_json::to_vec(&record)
+            .map_err(|error| format!("encode auto-project lock receipt: {error}"))?;
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(mut file) => {
+                if let Err(error) = file.write_all(&bytes).and_then(|()| file.sync_all()) {
+                    let _ = fs::remove_file(&lock_path);
+                    return Err(format!("write auto-project lock receipt: {error}"));
+                }
+                return Ok(AutoProjectDismissalLockGuard { path: lock_path });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let expired = fs::read(&lock_path)
+                    .ok()
+                    .and_then(|bytes| {
+                        serde_json::from_slice::<AutoProjectDismissalLock>(&bytes).ok()
+                    })
+                    .is_some_and(|lock| lock.version == 1 && lock.expires_unix_ms <= now);
+                let malformed_stale = fs::metadata(&lock_path)
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok())
+                    .and_then(|modified| modified.elapsed().ok())
+                    .is_some_and(|age| age >= AUTO_PROJECT_LOCK_TTL);
+                if expired || malformed_stale {
+                    match fs::remove_file(&lock_path) {
+                        Ok(()) => continue,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => {
+                            return Err(format!("recover stale auto-project lock: {error}"));
+                        }
+                    }
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err(
+                        "timed out waiting for shared auto-project state lock after 2 seconds"
+                            .into(),
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(error) => return Err(format!("acquire shared auto-project state lock: {error}")),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn positional_edge_toggle_minimizes_and_restores_only_the_outer_group() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-positional-edge-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_fallback_at(directory.clone());
+        let mut document = base_document();
+        let files = PanelId::from(FILES);
+        let terminal = PanelId::from(TERMINAL);
+        let main = PanelId::from(WORKSPACE);
+        document
+            .closed_panels
+            .retain(|panel| panel != &files && panel != &terminal && panel != &main);
+        document.root = Some(Node::split(
+            "root-row",
+            Orientation::Horizontal,
+            vec![
+                Node::tabs(
+                    "left-group",
+                    vec![
+                        Node::panel("files-node", files),
+                        Node::panel("terminal-node", terminal),
+                    ],
+                    1,
+                ),
+                Node::panel("main-node", main),
+            ],
+            vec![0.35, 0.65],
+        ));
+        workspace.dock = DockingService::new(document, 32).unwrap();
+
+        assert!(!workspace.toggle_positional_edge(false).unwrap());
+        assert!(workspace.toggle_positional_edge(true).unwrap());
+        let folded = workspace.dock.snapshot();
+        let NodeKind::Split { children, .. } = &folded.document.root.as_ref().unwrap().kind else {
+            panic!("root row remains a split");
+        };
+        let NodeKind::Tabs {
+            active_index,
+            minimized,
+            ..
+        } = &children[0].kind
+        else {
+            panic!("left root edge remains a tab group");
+        };
+        assert!(*minimized);
+        assert_eq!(*active_index, 1);
+
+        assert!(workspace.toggle_positional_edge(true).unwrap());
+        let restored = workspace.dock.snapshot();
+        let NodeKind::Split { children, .. } = &restored.document.root.as_ref().unwrap().kind
+        else {
+            panic!("root row remains a split");
+        };
+        let NodeKind::Tabs {
+            active_index,
+            minimized,
+            ..
+        } = &children[0].kind
+        else {
+            panic!("left root edge remains a tab group");
+        };
+        assert!(!minimized);
+        assert_eq!(*active_index, 1);
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn semantic_file_visibility_restores_the_same_right_edge_group() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-semantic-side-restore-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_fallback_at(directory.clone());
+        workspace.preferences.file_browser_open = true;
+        workspace.preferences.pane_open.insert(FILES.into(), true);
+        let files = PanelId::from(FILES);
+        let terminal = PanelId::from(TERMINAL);
+        let main = PanelId::from(WORKSPACE);
+        let mut document = base_document();
+        document
+            .closed_panels
+            .retain(|panel| panel != &files && panel != &terminal && panel != &main);
+        document.root = Some(Node::split(
+            "root-row",
+            Orientation::Horizontal,
+            vec![
+                Node::panel("main-node", main),
+                Node::tabs(
+                    "right-group",
+                    vec![
+                        Node::panel("files-node", files),
+                        Node::panel("terminal-node", terminal),
+                    ],
+                    1,
+                ),
+            ],
+            vec![0.65, 0.35],
+        ));
+        workspace.dock = DockingService::new(document, 32).unwrap();
+
+        assert!(workspace.toggle_semantic_side(FILES).unwrap());
+        assert!(!workspace.preferences.file_browser_open);
+        assert!(!workspace.pane_is_open(FILES));
+        let canonical_while_hidden = workspace.dock.snapshot().document;
+        assert_eq!(
+            canonical_while_hidden.root.as_ref().unwrap().id.0,
+            "root-row"
+        );
+        let NodeKind::Split { children, .. } = &canonical_while_hidden.root.as_ref().unwrap().kind
+        else {
+            panic!("canonical root remains the same split");
+        };
+        let NodeKind::Tabs {
+            active_index,
+            minimized,
+            ..
+        } = &children[1].kind
+        else {
+            panic!("right edge group remains canonical tabs");
+        };
+        assert!(!minimized);
+        assert_eq!(*active_index, 1);
+        let presentation = workspace.presentation_layout(canonical_while_hidden.clone());
+        let NodeKind::Panel { panel } = &presentation.root.as_ref().unwrap().kind else {
+            panic!("only the visible main pane is presented while Files is hidden");
+        };
+        assert_eq!(panel.0, WORKSPACE);
+
+        assert!(workspace.toggle_positional_edge(false).unwrap());
+        assert!(workspace.preferences.file_browser_open);
+        assert!(workspace.pane_is_open(FILES));
+        let restored = workspace.dock.snapshot().document;
+        assert_eq!(restored.root.as_ref().unwrap().id.0, "root-row");
+        let NodeKind::Split { children, .. } = &restored.root.as_ref().unwrap().kind else {
+            panic!("restored root remains the same split");
+        };
+        let NodeKind::Tabs {
+            active_index,
+            minimized,
+            ..
+        } = &children[1].kind
+        else {
+            panic!("restored right edge group remains tabs");
+        };
+        assert!(!minimized);
+        assert_eq!(*active_index, 1);
+        let persisted: UiPreferences =
+            serde_json::from_slice(&std::fs::read(&workspace.preferences_path).unwrap()).unwrap();
+        assert!(persisted.file_browser_open);
+        assert!(!persisted.collapsed_sides.contains(&PhysicalSide::Right));
+
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn semantic_file_cross_restore_supports_main_row_inside_column_root() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-semantic-column-root-restore-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_fallback_at(directory.clone());
+        workspace.preferences.file_browser_open = true;
+        workspace.preferences.pane_open.insert(FILES.into(), true);
+        let files = PanelId::from(FILES);
+        let terminal = PanelId::from(TERMINAL);
+        let main = PanelId::from(WORKSPACE);
+        let review = PanelId::from(REVIEW);
+        let mut document = base_document();
+        document.closed_panels.retain(|panel| {
+            panel != &files && panel != &terminal && panel != &main && panel != &review
+        });
+        document.root = Some(Node::split(
+            "outer-column",
+            Orientation::Vertical,
+            vec![
+                Node::split(
+                    "root-row",
+                    Orientation::Horizontal,
+                    vec![
+                        Node::panel("main-node", main),
+                        Node::tabs(
+                            "right-group",
+                            vec![
+                                Node::panel("files-node", files),
+                                Node::panel("terminal-node", terminal),
+                            ],
+                            1,
+                        ),
+                    ],
+                    vec![0.65, 0.35],
+                ),
+                Node::panel("bottom-review", review),
+            ],
+            vec![0.8, 0.2],
+        ));
+        workspace.dock = DockingService::new(document, 32).unwrap();
+
+        assert!(workspace.toggle_semantic_side(FILES).unwrap());
+        let canonical = workspace.dock.snapshot().document;
+        assert!(
+            workspace
+                .preferences
+                .collapsed_sides
+                .contains(&PhysicalSide::Right)
+        );
+        let projected = workspace.presentation_layout(canonical.clone());
+        let NodeKind::Split {
+            orientation: Orientation::Vertical,
+            children,
+            ..
+        } = &projected.root.as_ref().unwrap().kind
+        else {
+            panic!("outer column layout is retained by the presentation projection");
+        };
+        let NodeKind::Panel { panel } = &children[0].kind else {
+            panic!("the hidden right edge is removed from the nested main row");
+        };
+        assert_eq!(panel.0, WORKSPACE);
+        assert_eq!(children[1].id.0, "bottom-review");
+
+        assert!(workspace.toggle_positional_edge(false).unwrap());
+        assert!(workspace.preferences.file_browser_open);
+        assert!(
+            !workspace
+                .preferences
+                .collapsed_sides
+                .contains(&PhysicalSide::Right)
+        );
+        let restored = workspace.dock.snapshot().document;
+        assert_eq!(restored.root.as_ref().unwrap().id.0, "outer-column");
+        let NodeKind::Split {
+            orientation: Orientation::Vertical,
+            children,
+            ..
+        } = &restored.root.as_ref().unwrap().kind
+        else {
+            panic!("outer column root is retained after restoring Files");
+        };
+        let NodeKind::Split {
+            orientation: Orientation::Horizontal,
+            children: row,
+            ..
+        } = &children[0].kind
+        else {
+            panic!("the canonical nested root row remains intact");
+        };
+        assert_eq!(row[0].id.0, "main-node");
+        let NodeKind::Tabs {
+            active_index,
+            minimized,
+            ..
+        } = &row[1].kind
+        else {
+            panic!("the original right-side tab group is restored");
+        };
+        assert!(!minimized);
+        assert_eq!(*active_index, 1);
+
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn nested_physical_edge_split_falls_back_to_semantic_file_toggle() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-nested-edge-fallback-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_fallback_at(directory.clone());
+        workspace.preferences.file_browser_open = true;
+        workspace.preferences.pane_open.insert(FILES.into(), true);
+        let files = PanelId::from(FILES);
+        let terminal = PanelId::from(TERMINAL);
+        let main = PanelId::from(WORKSPACE);
+        let mut document = base_document();
+        document
+            .closed_panels
+            .retain(|panel| panel != &files && panel != &terminal && panel != &main);
+        document.root = Some(Node::split(
+            "root-row",
+            Orientation::Horizontal,
+            vec![
+                Node::panel("main-node", main),
+                Node::split(
+                    "right-nested-split",
+                    Orientation::Vertical,
+                    vec![
+                        Node::panel("files-node", files),
+                        Node::panel("terminal-node", terminal),
+                    ],
+                    vec![0.7, 0.3],
+                ),
+            ],
+            vec![0.65, 0.35],
+        ));
+        workspace.dock = DockingService::new(document, 32).unwrap();
+
+        // A nested split is not a foldable leaf group, so the titlebar handler
+        // uses the same semantic Files fallback as the pinned Desktop.
+        assert!(!workspace.toggle_positional_edge(false).unwrap());
+        assert!(workspace.toggle_semantic_side(FILES).unwrap());
+        assert!(!workspace.preferences.file_browser_open);
+        let hidden = workspace.dock.snapshot().document;
+        let projected = workspace.presentation_layout(hidden);
+        let NodeKind::Panel { panel } = &projected.root.as_ref().unwrap().kind else {
+            panic!("nested right side is hidden in the presentation projection");
+        };
+        assert_eq!(panel.0, WORKSPACE);
+
+        assert!(!workspace.toggle_positional_edge(false).unwrap());
+        assert!(workspace.toggle_semantic_side(FILES).unwrap());
+        assert!(workspace.preferences.file_browser_open);
+        let restored = workspace.dock.snapshot().document;
+        let NodeKind::Split { children, .. } = &restored.root.as_ref().unwrap().kind else {
+            panic!("semantic fallback preserves the canonical root row");
+        };
+        assert_eq!(children[1].id.0, "right-nested-split");
+
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn last_remote_gateway_url_is_normalized_and_survives_workspace_reload() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-remote-gateway-preference-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .save_remote_gateway_url(" HTTPS://example.com/hermes/ ")
+            .unwrap();
+        assert_eq!(
+            workspace.last_remote_gateway_url(),
+            Some("https://example.com/hermes")
+        );
+        assert!(workspace.save_remote_gateway_url("file:///unsafe").is_err());
+        drop(workspace);
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.last_remote_gateway_url(),
+            Some("https://example.com/hermes")
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn show_all_project_sessions_preference_survives_workspace_reload() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-project-show-all-preference-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        assert!(!workspace.preferences.show_all_project_sessions);
+        workspace.set_show_all_project_sessions(true).unwrap();
+        drop(workspace);
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert!(reloaded.preferences.show_all_project_sessions);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn dismissed_auto_projects_persist_and_restore_idempotently() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-dismissed-auto-projects-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        assert!(
+            workspace
+                .set_auto_project_dismissed("C:/work/repo", true)
+                .unwrap()
+        );
+        assert!(
+            !workspace
+                .set_auto_project_dismissed("C:/work/repo", true)
+                .unwrap()
+        );
+        drop(workspace);
+
+        let mut reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.preferences.dismissed_auto_project_ids,
+            ["C:/work/repo"]
+        );
+        assert!(
+            reloaded
+                .set_auto_project_dismissed("C:/work/repo", false)
+                .unwrap()
+        );
+        assert!(
+            !reloaded
+                .set_auto_project_dismissed("C:/work/repo", false)
+                .unwrap()
+        );
+        assert!(reloaded.preferences.dismissed_auto_project_ids.is_empty());
+        assert!(
+            reloaded
+                .set_auto_project_dismissed("bad\nid", true)
+                .is_err()
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn auto_project_dismissals_are_shared_across_window_workspaces() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-shared-auto-projects-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut main = Workspace::load_from(directory.clone()).unwrap();
+        let mut child = Workspace::load_window_from(directory.clone(), 73).unwrap();
+
+        main.set_auto_project_dismissed("C:/work/one", true)
+            .unwrap();
+        assert!(child.refresh_auto_project_dismissals().unwrap());
+        assert_eq!(
+            child.preferences.dismissed_auto_project_ids,
+            ["C:/work/one"]
+        );
+        child
+            .set_auto_project_dismissed("C:/work/two", true)
+            .unwrap();
+        assert!(main.refresh_auto_project_dismissals().unwrap());
+        assert_eq!(
+            main.preferences.dismissed_auto_project_ids,
+            ["C:/work/one", "C:/work/two"],
+            "a stale window writer must merge with the latest shared snapshot"
+        );
+        child
+            .set_auto_project_dismissed("C:/work/one", false)
+            .unwrap();
+        assert!(main.refresh_auto_project_dismissals().unwrap());
+        assert_eq!(main.preferences.dismissed_auto_project_ids, ["C:/work/two"]);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn auto_project_state_recovers_expired_lock_and_rejects_invalid_state_atomically() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-auto-project-lock-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let state_path = workspace.dismissed_auto_project_ids_path.clone();
+        let lock_path = state_path.with_extension("lock");
+        std::fs::write(
+            &lock_path,
+            serde_json::to_vec(&AutoProjectDismissalLock {
+                version: 1,
+                process_id: u32::MAX,
+                expires_unix_ms: 0,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(
+            workspace
+                .set_auto_project_dismissed("C:/work/recovered", true)
+                .unwrap()
+        );
+        assert!(!lock_path.exists(), "recovered stale lock is released");
+
+        let before = workspace.preferences.dismissed_auto_project_ids.clone();
+        std::fs::remove_file(&state_path).unwrap();
+        std::fs::create_dir(&state_path).unwrap();
+        assert!(
+            workspace
+                .set_auto_project_dismissed("C:/work/blocked", true)
+                .is_err()
+        );
+        assert_eq!(workspace.preferences.dismissed_auto_project_ids, before);
+        assert!(
+            workspace
+                .set_auto_project_dismissed("bad\nid", true)
+                .is_err()
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn concurrent_auto_project_dismissal_updates_do_not_clobber() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-auto-project-concurrent-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let state_path = directory.join("dismissed-auto-projects.json");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let mut workers = Vec::new();
+        for id in ["C:/work/one", "C:/work/two"] {
+            let path = state_path.clone();
+            let barrier = barrier.clone();
+            workers.push(std::thread::spawn(move || {
+                barrier.wait();
+                let _lock = acquire_auto_project_dismissal_lock(&path).unwrap();
+                let mut ids = read_auto_project_dismissal_state(&path)
+                    .unwrap()
+                    .unwrap_or_default();
+                if !ids.iter().any(|existing| existing == id) {
+                    ids.push(id.to_owned());
+                }
+                write_auto_project_dismissal_state(&path, &ids).unwrap();
+            }));
+        }
+        barrier.wait();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        let ids = read_auto_project_dismissal_state(&state_path)
+            .unwrap()
+            .unwrap();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"C:/work/one".to_owned()));
+        assert!(ids.contains(&"C:/work/two".to_owned()));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn separate_window_uses_distinct_layout_and_preferences_but_inherits_gateway_url() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-window-workspace-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let mut main_preferences = UiPreferences::default();
+        main_preferences.last_remote_gateway_url = Some("https://shared.example".into());
+        write_preferences_atomic(&directory.join("ui-preferences.json"), &main_preferences)
+            .unwrap();
+
+        let mut window = Workspace::load_window_from(directory.clone(), 73).unwrap();
+        assert_eq!(
+            window.last_remote_gateway_url(),
+            Some("https://shared.example")
+        );
+        window
+            .save_remote_gateway_url("https://window.example")
+            .unwrap();
+        window.save_layout();
+
+        let mut main = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            main.last_remote_gateway_url(),
+            Some("https://shared.example")
+        );
+        main.save_layout();
+        assert!(
+            main.persistence_error.is_none(),
+            "{:?}",
+            main.persistence_error
+        );
+        assert!(
+            main.store
+                .load(&LayoutId::from("hermes-native-main"))
+                .is_ok(),
+            "main layout should use its fixed storage key: {:?}",
+            main.store.load(&LayoutId::from("hermes-native-main"))
+        );
+        assert!(
+            window
+                .store
+                .load(&LayoutId::from("hermes-native-window-73"))
+                .is_ok(),
+            "window layout should use its unique storage key"
+        );
+        let window_reloaded = Workspace::load_window_from(directory.clone(), 73).unwrap();
+        assert_eq!(
+            window_reloaded.last_remote_gateway_url(),
+            Some("https://window.example")
+        );
+        assert!(
+            window_reloaded
+                .store
+                .load(&LayoutId::from("hermes-native-window-73"))
+                .is_ok()
+        );
+        drop(window_reloaded);
+        drop(main);
+        drop(window);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn pinned_session_order_persists_per_gateway_without_profile_fragmentation() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-pinned-order-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .set_pinned_session_state("loopback|gateway-a", "session-b", true)
+            .unwrap();
+        workspace
+            .set_pinned_session_state("loopback|gateway-a", "session-a", true)
+            .unwrap();
+        workspace
+            .set_pinned_session_state("loopback|gateway-b", "session-c", true)
+            .unwrap();
+        workspace
+            .set_pinned_session_state("loopback|gateway-a", "session-b", false)
+            .unwrap();
+        assert_eq!(
+            workspace.pinned_session_order("loopback|gateway-a"),
+            ["session-a"]
+        );
+        assert_eq!(
+            workspace.pinned_session_order("loopback|gateway-b"),
+            ["session-c"]
+        );
+        drop(workspace);
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.pinned_session_order("loopback|gateway-a"),
+            ["session-a"]
+        );
+        assert_eq!(
+            reloaded.pinned_session_order("loopback|gateway-b"),
+            ["session-c"]
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn pinned_session_reorder_preserves_unresolved_slots_and_adds_server_pins() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-pinned-reorder-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .set_pinned_session_order(
+                "loopback|gateway-a",
+                vec!["a".into(), "unresolved".into(), "b".into(), "c".into()],
+            )
+            .unwrap();
+        workspace
+            .reorder_pinned_session_order(
+                "loopback|gateway-a",
+                vec!["c".into(), "a".into(), "server-pin".into(), "b".into()],
+            )
+            .unwrap();
+        assert_eq!(
+            workspace.pinned_session_order("loopback|gateway-a"),
+            ["c", "unresolved", "a", "server-pin", "b"]
+        );
+        assert!(
+            workspace
+                .reorder_pinned_session_order("loopback|gateway-a", vec!["c".into(), "c".into()])
+                .is_err()
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn recent_session_order_persists_per_profile_and_rejects_duplicates() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-recent-order-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let primary_scope = "http://127.0.0.1:8787|gateway-a|profile:research";
+        let other_profile_scope = "http://127.0.0.1:8787|gateway-a|profile:work";
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .set_sidebar_session_order(primary_scope, vec!["b".into(), "a".into()])
+            .unwrap();
+        workspace
+            .set_sidebar_session_order(other_profile_scope, vec!["c".into()])
+            .unwrap();
+        assert!(
+            workspace
+                .set_sidebar_session_order(
+                    primary_scope,
+                    vec!["duplicate".into(), "duplicate".into()]
+                )
+                .is_err()
+        );
+        drop(workspace);
+
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(reloaded.sidebar_session_order(primary_scope), ["b", "a"]);
+        assert_eq!(reloaded.sidebar_session_order(other_profile_scope), ["c"]);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn session_color_overrides_persist_and_reject_non_palette_values() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-session-color-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .set_session_color("session-a", Some("hsl(120 68% 58%)"))
+            .unwrap();
+        assert!(
+            workspace
+                .set_session_color("session-a", Some("#ff0000"))
+                .is_err()
+        );
+        assert!(
+            workspace
+                .set_session_color("", Some("hsl(0 68% 58%)"))
+                .is_err()
+        );
+        drop(workspace);
+
+        let mut reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.session_color("session-a"),
+            Some("hsl(120 68% 58%)")
+        );
+        reloaded.set_session_color("session-a", None).unwrap();
+        assert_eq!(reloaded.session_color("session-a"), None);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
     #[test]
     fn file_preview_tabs_are_transient_and_do_not_enter_persisted_layouts() {
         let nonce = std::time::SystemTime::now()
@@ -1918,10 +4076,12 @@ mod tests {
             let reveals = BTreeMap::new();
             let mut all_open = preferences.clone();
             all_open.pane_open = BTreeMap::from([
+                (BOTS.into(), true),
                 (REVIEW.into(), true),
                 (FILES.into(), true),
                 (TERMINAL.into(), true),
             ]);
+            all_open.file_browser_open = true;
             apply_profile_to_service(&mut dock, candidate, &all_open, &reveals)
                 .unwrap_or_else(|error| panic!("{}: {error}", candidate.id));
             let document = dock.snapshot().document;
@@ -1945,7 +4105,103 @@ mod tests {
                 "{} projects no panels",
                 candidate.id
             );
+            assert!(snapshot.panels.contains_key(&PanelId::from(BOTS)));
         }
+    }
+
+    #[test]
+    fn bots_pane_is_hide_only_and_joins_the_sessions_tab_group() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-bots-pane-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        assert!(!workspace.pane_is_open(BOTS));
+        assert_eq!(
+            workspace
+                .dock
+                .snapshot()
+                .document
+                .descriptor(&PanelId::from(BOTS))
+                .unwrap()
+                .close_policy,
+            ClosePolicy::HideOnly
+        );
+
+        workspace.toggle_pane(BOTS).unwrap();
+        assert!(workspace.pane_is_open(BOTS));
+        let document = workspace.dock.snapshot().document;
+        let (tabs, bot_index) = find_tab_for_panel(document.root.as_deref(), &PanelId::from(BOTS))
+            .expect("Bots shares a tab group");
+        assert_eq!(
+            find_active_tab_index(document.root.as_deref(), &tabs),
+            Some(bot_index)
+        );
+
+        workspace.toggle_pane(BOTS).unwrap();
+        assert!(!workspace.pane_is_open(BOTS));
+        assert!(
+            workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&PanelId::from(BOTS))
+        );
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn master_detail_width_override_persists_by_stable_resize_id_and_can_reset() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-master-detail-width-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            workspace.master_detail_width_override("capabilities-split"),
+            None
+        );
+        workspace
+            .set_master_detail_width_override("capabilities-split", Some(412.0))
+            .unwrap();
+        assert_eq!(
+            workspace.master_detail_width_override("capabilities-split"),
+            Some(412.0)
+        );
+        assert!(
+            workspace
+                .set_master_detail_width_override("capabilities-split", Some(f32::NAN))
+                .is_err()
+        );
+        assert!(
+            workspace
+                .set_master_detail_width_override("bad\nid", Some(400.0))
+                .is_err()
+        );
+        let mut reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.master_detail_width_override("capabilities-split"),
+            Some(412.0)
+        );
+        reloaded
+            .set_master_detail_width_override("capabilities-split", None)
+            .unwrap();
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.master_detail_width_override("capabilities-split"),
+            None
+        );
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -1986,7 +4242,7 @@ mod tests {
         let profiles = source_profiles();
         let mut dock = DockingService::new(base_document(), 128).unwrap();
         let mut preferences = UiPreferences::default();
-        preferences.pane_open.insert(FILES.into(), true);
+        preferences.pane_open.insert(REVIEW.into(), true);
         let advanced = profile(&profiles, "default").unwrap();
         apply_profile_to_service(&mut dock, advanced, &preferences, &BTreeMap::new()).unwrap();
         preferences.mode = InterfaceMode::Simple;
@@ -2002,8 +4258,83 @@ mod tests {
             snapshot
                 .document
                 .closed_panels
+                .contains(&PanelId::from(REVIEW))
+        );
+        assert!(preferences.pane_open[REVIEW]);
+    }
+
+    #[test]
+    fn semantic_sidebar_and_file_browser_visibility_persist_across_modes_and_reload() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-semantic-pane-visibility-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        assert!(workspace.pane_is_open(SESSIONS));
+        assert!(!workspace.pane_is_open(FILES));
+
+        workspace.toggle_pane(SESSIONS).unwrap();
+        workspace.toggle_pane(FILES).unwrap();
+        assert!(!workspace.pane_is_open(SESSIONS));
+        assert!(workspace.pane_is_open(FILES));
+        let snapshot = workspace.dock.snapshot();
+        assert!(
+            snapshot
+                .document
+                .closed_panels
+                .contains(&PanelId::from(SESSIONS))
+        );
+        assert!(
+            !snapshot
+                .document
+                .closed_panels
+                .contains(&PanelId::from(WORKSPACE))
+        );
+        assert!(
+            !snapshot
+                .document
+                .closed_panels
                 .contains(&PanelId::from(FILES))
         );
-        assert!(preferences.pane_open[FILES]);
+
+        workspace.set_mode(InterfaceMode::Simple).unwrap();
+        assert!(!workspace.pane_is_open(SESSIONS));
+        assert!(workspace.pane_is_open(FILES));
+        drop(workspace);
+
+        let mut reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert!(!reloaded.pane_is_open(SESSIONS));
+        assert!(reloaded.pane_is_open(FILES));
+        reloaded.toggle_pane(SESSIONS).unwrap();
+        reloaded.toggle_pane(FILES).unwrap();
+        assert!(reloaded.pane_is_open(SESSIONS));
+        assert!(!reloaded.pane_is_open(FILES));
+        drop(reloaded);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn legacy_file_visibility_migrates_from_optional_pane_preference() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "HermesNative-legacy-file-visibility-{}-{nonce}.json",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            br#"{"advanced_profile":"default","pane_open":{"files":true}}"#,
+        )
+        .unwrap();
+        let preferences = read_preferences(&path).expect("legacy preferences parse");
+        assert!(preferences.file_browser_open);
+        assert!(preferences.sessions_sidebar_open);
+        std::fs::remove_file(path).unwrap();
     }
 }

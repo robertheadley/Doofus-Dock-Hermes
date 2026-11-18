@@ -425,6 +425,121 @@ impl FilePreviewStore {
         }
     }
 
+    pub fn forget_remote_image_thumbnail(&mut self, artifact_id: &str) {
+        self.images
+            .remove(&(PathBuf::from(format!("remote-artifact:{artifact_id}")), 0));
+    }
+
+    pub fn show_remote_image_thumbnail(
+        &mut self,
+        ui: &mut egui::Ui,
+        artifact_id: &str,
+        preview: Option<&Result<FilePreviewContent, String>>,
+        max_size: egui::Vec2,
+    ) -> bool {
+        let Some(preview) = preview else {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+            ui.centered_and_justified(|ui| {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Loading image…");
+                });
+            });
+            return false;
+        };
+        let Ok(FilePreviewContent {
+            kind:
+                FilePreviewKind::Image {
+                    width,
+                    height,
+                    rgba,
+                },
+        }) = preview
+        else {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new("Image preview unavailable").color(egui::Color32::GRAY),
+                );
+            });
+            return false;
+        };
+        let key = (PathBuf::from(format!("remote-artifact:{artifact_id}")), 0);
+        let texture = self.images.entry(key).or_insert_with(|| {
+            let image = egui::ColorImage::from_rgba_unmultiplied([*width, *height], rgba);
+            ui.ctx().load_texture(
+                format!("hermes-remote-artifact-thumbnail:{artifact_id}"),
+                image,
+                egui::TextureOptions::LINEAR,
+            )
+        });
+        let scale = (max_size.x / *width as f32)
+            .min(max_size.y / *height as f32)
+            .min(1.0);
+        let size = egui::vec2(*width as f32 * scale, *height as f32 * scale);
+        ui.centered_and_justified(|ui| {
+            ui.add(egui::Image::new(&*texture).fit_to_exact_size(size));
+        });
+        true
+    }
+
+    pub fn show_image_thumbnail(
+        &mut self,
+        ui: &mut egui::Ui,
+        path: &Path,
+        max_size: egui::Vec2,
+    ) -> bool {
+        self.request(path);
+        self.poll();
+        let key = (
+            path.to_path_buf(),
+            self.pdf_page.get(path).copied().unwrap_or(0),
+        );
+        if !self.contents.contains_key(&key) {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+            ui.centered_and_justified(|ui| {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Loading image…");
+                });
+            });
+            return false;
+        }
+        let Some(Ok(FilePreviewContent {
+            kind:
+                FilePreviewKind::Image {
+                    width,
+                    height,
+                    rgba,
+                },
+        })) = self.contents.get(&key)
+        else {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new("Image preview unavailable").color(egui::Color32::GRAY),
+                );
+            });
+            return false;
+        };
+        let texture = self.images.entry(key).or_insert_with(|| {
+            let image = egui::ColorImage::from_rgba_unmultiplied([*width, *height], rgba);
+            ui.ctx().load_texture(
+                format!("hermes-artifact-thumbnail:{}", path.display()),
+                image,
+                egui::TextureOptions::LINEAR,
+            )
+        });
+        let scale = (max_size.x / *width as f32)
+            .min(max_size.y / *height as f32)
+            .min(1.0);
+        let size = egui::vec2(*width as f32 * scale, *height as f32 * scale);
+        ui.centered_and_justified(|ui| {
+            ui.add(egui::Image::new(&*texture).fit_to_exact_size(size));
+        });
+        true
+    }
+
     pub fn open(&mut self, ui: &mut egui::Ui, path: &Path, markdown_cache: &mut CommonMarkCache) {
         self.request(path);
         if is_pdf_path(path) {
@@ -1147,6 +1262,11 @@ impl FileBrowserState {
         opened
     }
 
+    fn activate_file(&mut self, path: &Path) -> PathBuf {
+        self.selected = Some(path.to_path_buf());
+        path.to_path_buf()
+    }
+
     fn request_directory(&mut self, path: PathBuf) {
         let Some(root) = self.root.clone() else {
             return;
@@ -1238,10 +1358,7 @@ impl FileBrowserState {
                         )
                     });
                     if response.clicked() {
-                        self.selected = Some(entry.path.clone());
-                    }
-                    if response.double_clicked() {
-                        open_file = Some(entry.path.clone());
+                        open_file = Some(self.activate_file(&entry.path));
                     }
                 }
             });
@@ -1443,32 +1560,74 @@ fn read_image_preview(path: &Path, file_size: u64) -> Result<FilePreviewContent,
         ));
     }
     let bytes = fs::read(path).map_err(|error| format!("{} ({})", error, error.kind()))?;
-    if path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
-    {
-        return decode_svg_preview(&bytes);
-    }
-    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|error| format!("Unable to identify image format: {error}"))?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(16_384);
-    limits.max_image_height = Some(16_384);
-    limits.max_alloc = Some((MAX_IMAGE_PIXELS * 4).min(256 * 1024 * 1024));
-    let mut reader = reader;
-    reader.limits(limits);
-    let decoded = reader
-        .decode()
-        .map_err(|error| format!("Unable to decode image: {error}"))?;
-    let (width, height) = (decoded.width() as u64, decoded.height() as u64);
-    if width.saturating_mul(height) > MAX_IMAGE_PIXELS {
+    decode_image_preview_bytes(
+        &bytes,
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("svg")),
+        false,
+    )
+}
+
+pub fn decode_artifact_image_preview(
+    bytes: &[u8],
+    is_svg: bool,
+) -> Result<FilePreviewContent, String> {
+    decode_image_preview_bytes(bytes, is_svg, true)
+}
+
+fn decode_image_preview_bytes(
+    bytes: &[u8],
+    is_svg: bool,
+    thumbnail: bool,
+) -> Result<FilePreviewContent, String> {
+    if bytes.len() as u64 > MAX_IMAGE_BYTES {
         return Err(format!(
-            "Image dimensions exceed the {MAX_IMAGE_PIXELS}-pixel preview limit"
+            "Image exceeds the {MAX_IMAGE_BYTES}-byte preview limit"
         ));
     }
-    let image = decoded.to_rgba8();
+    let image = if is_svg {
+        let FilePreviewContent { kind } = decode_svg_preview(bytes)?;
+        let FilePreviewKind::Image {
+            width,
+            height,
+            rgba,
+        } = kind
+        else {
+            return Err("SVG preview returned an invalid image".into());
+        };
+        image::RgbaImage::from_raw(width as u32, height as u32, rgba)
+            .ok_or_else(|| "SVG preview returned an invalid pixel buffer".to_owned())?
+    } else {
+        let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .map_err(|error| format!("Unable to identify image format: {error}"))?;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(16_384);
+        limits.max_image_height = Some(16_384);
+        limits.max_alloc = Some((MAX_IMAGE_PIXELS * 4).min(256 * 1024 * 1024));
+        let mut reader = reader;
+        reader.limits(limits);
+        let decoded = reader
+            .decode()
+            .map_err(|error| format!("Unable to decode image: {error}"))?;
+        if (decoded.width() as u64).saturating_mul(decoded.height() as u64) > MAX_IMAGE_PIXELS {
+            return Err(format!(
+                "Image dimensions exceed the {MAX_IMAGE_PIXELS}-pixel preview limit"
+            ));
+        }
+        decoded.to_rgba8()
+    };
+    let image = if thumbnail {
+        let scale = (512.0 / image.width() as f32)
+            .min(384.0 / image.height() as f32)
+            .min(1.0);
+        let width = (image.width() as f32 * scale).round().max(1.0) as u32;
+        let height = (image.height() as f32 * scale).round().max(1.0) as u32;
+        image::imageops::resize(&image, width, height, image::imageops::FilterType::Triangle)
+    } else {
+        image
+    };
     Ok(FilePreviewContent {
         kind: FilePreviewKind::Image {
             width: image.width() as usize,
@@ -1782,6 +1941,17 @@ mod tests {
         assert!(nested_names.contains("visible.rs"));
         assert!(!nested_names.contains("nested-hidden.log"));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn file_activation_selects_and_opens_the_same_path_on_first_activation() {
+        let mut state = FileBrowserState::default();
+        let path = PathBuf::from("project/src/main.rs");
+
+        let opened = state.activate_file(&path);
+
+        assert_eq!(opened, path);
+        assert_eq!(state.selected(), Some(Path::new("project/src/main.rs")));
     }
 
     #[test]

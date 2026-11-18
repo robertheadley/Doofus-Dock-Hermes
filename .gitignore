@@ -12,3 +12,6 @@
 
 # Interrupted atomic-write scratch files are never source artifacts
 **/*.tmp.*
+**/__pycache__/
+.doofus/.mutation.lock/
+.doofus/.mutation.lock.recovered-*/

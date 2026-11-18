@@ -28,4 +28,6 @@ resolver = "3"
 egui_commonmark_backend = { path = "apps/hermes-native/vendor/egui_commonmark_backend" }
 
 [patch."https://github.com/robertheadley/doofusdock"]
+doofusdock-core = { path = "apps/hermes-native/vendor/doofusdock-core" }
+doofusdock-presentation = { path = "apps/hermes-native/vendor/doofusdock-presentation" }
 doofusdock-render-egui = { path = "apps/hermes-native/vendor/doofusdock-render-egui" }

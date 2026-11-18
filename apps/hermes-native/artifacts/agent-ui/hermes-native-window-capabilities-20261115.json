@@ -1,0 +1,47 @@
+{
+  "schema": "hermes-native-window-ui-capture/1",
+  "timestamp_utc": "2026-11-15T13:56:44.4200725-06:00",
+  "request_id": null,
+  "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "target_commit": "b8db79bbd16b6258473638ab8130a77da2cb4d28",
+  "target_worktree_dirty": true,
+  "build_id": "c9264179273edbb4672e356451de173fde542d1f5869854fab1e5a76cc3e4bea",
+  "process_id": 11440,
+  "fixture": "isolated temporary native window",
+  "profile": "temporary HermesNative-Agent profile",
+  "gateway": "disabled",
+  "window": "visible off-screen, WS_EX_NOACTIVATE",
+  "route_before": "/",
+  "route_after": "/capabilities",
+  "route_title": "Capabilities",
+  "action": {
+    "outcome": "shared_app_handler_succeeded",
+    "type": "navigate",
+    "state_generation_before": 0,
+    "state_generation_after": 1,
+    "path": "/capabilities"
+  },
+  "viewport": {
+    "width": 2160,
+    "pixels_per_point": 1.5,
+    "physical_dpi": null,
+    "logical_width": 1440,
+    "height": 1350,
+    "logical_height": 900
+  },
+  "screenshot": "hermes-native-window-capabilities-20261115.png",
+  "screenshot_sha256": "d82f8e85934d71a72bb1cfda3771f536d7e789350bd03851fb44a311ec477ed8",
+  "screenshot_bytes": 387520,
+  "foreground_process_id_before": 5220,
+  "foreground_process_id_after": 5220,
+  "capture": "native-egui-renderer",
+  "evidence_limits": [
+    "Renderer pixels from the real off-screen native window; no OS activation.",
+    "Offline isolated profile with Hermes gateway disabled.",
+    "Target-only visual evidence, not a pinned-source parity comparison.",
+    "No user profile or installed Hermes runtime was used."
+  ],
+  "request_id_retained": false,
+  "receipt_note": "Native capture launcher did not retain the ephemeral stdio request IDs; no request ID is claimed here."
+}

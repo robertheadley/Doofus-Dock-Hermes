@@ -388,6 +388,7 @@ fn collect_tab_groups(
         NodeKind::Tabs {
             items,
             active_index,
+            ..
         } => {
             if let Some(bounds) = snapshot.nodes.get(&node.id) {
                 let tabs = items
@@ -428,6 +429,7 @@ fn first_panel(node: &Node) -> Option<PanelId> {
         NodeKind::Tabs {
             items,
             active_index,
+            ..
         } => items
             .get(*active_index)
             .and_then(|child| first_panel(child)),

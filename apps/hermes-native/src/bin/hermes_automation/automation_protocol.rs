@@ -1074,7 +1074,7 @@ fn matching_labels<'tree>(
         .collect()
 }
 
-fn parse_key(name: &str) -> Option<egui::Key> {
+pub(super) fn parse_key(name: &str) -> Option<egui::Key> {
     use egui::Key;
     Some(match name.to_ascii_uppercase().as_str() {
         "ENTER" => Key::Enter,
@@ -1121,7 +1121,7 @@ fn parse_key(name: &str) -> Option<egui::Key> {
     })
 }
 
-fn parse_modifiers(value: Option<&Value>) -> Result<egui::Modifiers, String> {
+pub(super) fn parse_modifiers(value: Option<&Value>) -> Result<egui::Modifiers, String> {
     let Some(value) = value else {
         return Ok(egui::Modifiers::NONE);
     };
@@ -1714,7 +1714,21 @@ mod tests {
             &app,
         );
         assert_eq!(registry["status"], "succeeded");
-        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 20);
+        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 22);
+        assert!(
+            registry["result"]["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "open_new_window")
+        );
+        assert!(
+            registry["result"]["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["type"] == "move_current_session_to_new_window")
+        );
         assert!(
             registry["result"]["actions"]
                 .as_array()
@@ -1863,6 +1877,22 @@ mod tests {
         assert_eq!(human_path["status"], "succeeded");
         assert_eq!(human_path["result"]["after"]["panels"]["files"], false);
 
+        let source_alias = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "source-file-browser-alias",
+                "method": "app.action.execute",
+                "params": {
+                    "action": {"type":"toggle_pane","panel":"file-browser"},
+                    "expected_state_generation": 2
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(source_alias["status"], "succeeded");
+        assert_eq!(source_alias["result"]["after"]["panels"]["files"], true);
+
         let rejected = protocol.handle(
             json!({
                 "version": 1,
@@ -1870,7 +1900,7 @@ mod tests {
                 "method": "app.action.execute",
                 "params": {
                     "action": {"type":"toggle_pane","panel":"workspace"},
-                    "expected_state_generation": 2
+                    "expected_state_generation": 3
                 }
             }),
             &mut harness,
@@ -1878,7 +1908,7 @@ mod tests {
         );
         assert_eq!(rejected["status"], "failed");
         assert_eq!(rejected["error"]["code"], "action_rejected");
-        assert_eq!(app.borrow().automation_state()["panels"]["files"], false);
+        assert_eq!(app.borrow().automation_state()["panels"]["files"], true);
 
         let rejected_toolset = protocol.handle(
             json!({
@@ -1887,7 +1917,7 @@ mod tests {
                 "method": "app.action.execute",
                 "params": {
                     "action": {"type":"set_toolset_enabled","name":"web","enabled":true},
-                    "expected_state_generation": 2
+                    "expected_state_generation": 3
                 }
             }),
             &mut harness,
@@ -1895,7 +1925,7 @@ mod tests {
         );
         assert_eq!(rejected_toolset["status"], "failed");
         assert_eq!(rejected_toolset["error"]["code"], "action_rejected");
-        assert_eq!(app.borrow().automation_state()["panels"]["files"], false);
+        assert_eq!(app.borrow().automation_state()["panels"]["files"], true);
 
         let rejected_stop = protocol.handle(
             json!({
@@ -1904,7 +1934,7 @@ mod tests {
                 "method": "app.action.execute",
                 "params": {
                     "action": {"type":"stop_generation"},
-                    "expected_state_generation": 2
+                    "expected_state_generation": 3
                 }
             }),
             &mut harness,
@@ -1912,7 +1942,7 @@ mod tests {
         );
         assert_eq!(rejected_stop["status"], "failed");
         assert_eq!(rejected_stop["error"]["code"], "action_rejected");
-        assert_eq!(app.borrow().automation_state()["panels"]["files"], false);
+        assert_eq!(app.borrow().automation_state()["panels"]["files"], true);
         drop(app);
         std::fs::remove_dir_all(profile.0.clone()).expect("remove isolated test profile");
     }
@@ -2241,6 +2271,257 @@ mod tests {
             "secondary-pointer interaction must be discoverable"
         );
 
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn pointer_drag_reorders_pinned_session_rows_and_preserves_unloaded_pins() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let mut app_value = HermesNativeApp::new_for_automation(profile.0.clone());
+        app_value.load_pinned_session_reorder_fixture_for_automation();
+        let app = Rc::new(RefCell::new(app_value));
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+        let target = matching_nodes(&harness, "Button", "Pinned beta, session pin-b")
+            .into_iter()
+            .next()
+            .expect("pinned session row is accessible");
+        let destination = target.rect().center();
+        assert_eq!(
+            matching_nodes(&harness, "Button", "Reorder pinned session pin-a").len(),
+            1,
+            "pinned row exposes a unique drag handle"
+        );
+
+        let dragged = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "reorder-pinned-session",
+                "method": "actions.drag",
+                "params": {
+                    "role": "Button",
+                    "name": "Reorder pinned session pin-a",
+                    "to_x": destination.x,
+                    "to_y": destination.y,
+                    "steps": 10,
+                    "expected_state_generation": 0
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(dragged["status"], "succeeded", "{dragged}");
+        let persisted: Value = serde_json::from_slice(
+            &std::fs::read(profile.0.join("ui-preferences.json"))
+                .expect("reorder persists preferences"),
+        )
+        .expect("valid persisted preferences");
+        assert_eq!(
+            persisted["pinned_session_order"]["http://127.0.0.1:8787|fixture-gateway"],
+            json!(["pin-b", "unresolved-pin", "pin-a"]),
+            "the UI drag persists its order without dropping an unloaded pin"
+        );
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn pointer_drag_reorders_recent_rows_within_date_groups() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let mut app_value = HermesNativeApp::new_for_automation(profile.0.clone());
+        app_value.load_recent_session_reorder_fixture_for_automation();
+        let app = Rc::new(RefCell::new(app_value));
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+        let target = matching_nodes(
+            &harness,
+            "Button",
+            "Native sidebar layout, session recent-b",
+        )
+        .into_iter()
+        .next()
+        .expect("recent session row is accessible");
+        let destination = target.rect().center();
+        assert_eq!(
+            matching_nodes(&harness, "Button", "Reorder recent session recent-a").len(),
+            1,
+            "recent rows expose a unique drag handle in the active profile"
+        );
+        assert_eq!(
+            matching_nodes(&harness, "Button", "Reorder recent session older-a").len(),
+            1,
+            "older date-group rows remain independently reorderable"
+        );
+
+        let dragged = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "reorder-recent-session",
+                "method": "actions.drag",
+                "params": {
+                    "role": "Button",
+                    "name": "Reorder recent session recent-a",
+                    "to_x": destination.x,
+                    "to_y": destination.y,
+                    "steps": 10,
+                    "expected_state_generation": 0
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(dragged["status"], "succeeded", "{dragged}");
+        let persisted: Value = serde_json::from_slice(
+            &std::fs::read(profile.0.join("ui-preferences.json"))
+                .expect("recent reorder persists preferences"),
+        )
+        .expect("valid persisted preferences");
+        assert_eq!(
+            persisted["sidebar_session_order"]["http://127.0.0.1:8787|fixture-gateway|profile:fixture-profile"],
+            json!([
+                "recent-b", "recent-a", "recent-c", "older-a", "older-b", "older-c"
+            ]),
+            "the saved manual order changes rows within the newest date group only"
+        );
+        let other_group = matching_nodes(
+            &harness,
+            "Button",
+            "Plugin catalog filtering, session older-a",
+        )
+        .into_iter()
+        .next()
+        .expect("other date group row is accessible")
+        .rect()
+        .center();
+        let crossed_group = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "reject-cross-date-reorder",
+                "method": "actions.drag",
+                "params": {
+                    "role": "Button",
+                    "name": "Reorder recent session recent-a",
+                    "to_x": other_group.x,
+                    "to_y": other_group.y,
+                    "steps": 10,
+                    "expected_state_generation": 1
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(crossed_group["status"], "succeeded", "{crossed_group}");
+        let after_crossing: Value = serde_json::from_slice(
+            &std::fs::read(profile.0.join("ui-preferences.json"))
+                .expect("recent reorder remains persisted"),
+        )
+        .expect("valid persisted preferences");
+        assert_eq!(
+            after_crossing["sidebar_session_order"]["http://127.0.0.1:8787|fixture-gateway|profile:fixture-profile"],
+            persisted["sidebar_session_order"]["http://127.0.0.1:8787|fixture-gateway|profile:fixture-profile"],
+            "dragging a recent row onto another date group cannot change either group order"
+        );
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn session_appearance_menu_sets_and_clears_a_persisted_color() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let mut app_value = HermesNativeApp::new_for_automation(profile.0.clone());
+        app_value.load_recent_session_reorder_fixture_for_automation();
+        let app = Rc::new(RefCell::new(app_value));
+        let frame_app = app.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut protocol = ProtocolState::default();
+
+        for (request_id, generation, role, name) in [
+            (
+                "open-session-appearance-actions",
+                0,
+                "Button",
+                "Session actions session recent-a",
+            ),
+            ("open-appearance-submenu", 1, "Button", "Appearance"),
+            (
+                "choose-session-color",
+                2,
+                "Button",
+                "Color hsl(120 68% 58%)",
+            ),
+        ] {
+            let result = protocol.handle(
+                json!({
+                    "version": 1,
+                    "id": request_id,
+                    "method": "actions.click",
+                    "params": {
+                        "role": role,
+                        "name": name,
+                        "expected_state_generation": generation
+                    }
+                }),
+                &mut harness,
+                &app,
+            );
+            assert_eq!(result["status"], "succeeded", "{result}");
+        }
+
+        let persisted: Value = serde_json::from_slice(
+            &std::fs::read(profile.0.join("ui-preferences.json"))
+                .expect("session color persists preferences"),
+        )
+        .expect("valid persisted preferences");
+        assert_eq!(
+            persisted["session_color_overrides"]["lineage-recent-a"],
+            "hsl(120 68% 58%)"
+        );
+        assert!(persisted["session_color_overrides"]["recent-a"].is_null());
+
+        for (request_id, generation, role, name) in [
+            (
+                "reopen-session-appearance-actions",
+                3,
+                "Button",
+                "Session actions session recent-a",
+            ),
+            ("reopen-appearance-submenu", 4, "Button", "Appearance"),
+            ("clear-session-color", 5, "Button", "No color"),
+        ] {
+            let result = protocol.handle(
+                json!({
+                    "version": 1,
+                    "id": request_id,
+                    "method": "actions.click",
+                    "params": {
+                        "role": role,
+                        "name": name,
+                        "expected_state_generation": generation
+                    }
+                }),
+                &mut harness,
+                &app,
+            );
+            assert_eq!(result["status"], "succeeded", "{result}");
+        }
+        let cleared: Value = serde_json::from_slice(
+            &std::fs::read(profile.0.join("ui-preferences.json"))
+                .expect("cleared session color persists preferences"),
+        )
+        .expect("valid persisted preferences");
+        assert!(cleared["session_color_overrides"]["lineage-recent-a"].is_null());
         drop(harness);
         drop(app);
         drop(profile);

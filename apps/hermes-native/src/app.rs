@@ -1,13 +1,38 @@
-use crate::files::{FileBrowserState, FilePreviewStore};
+use crate::artifacts::{ArtifactFilter, ArtifactIndexSnapshot, ArtifactKind, ArtifactRecord};
+use crate::files::{FileBrowserState, FilePreviewContent, FilePreviewStore};
 use crate::gateway::{
-    AgentPluginAutoUpdateSettings, AgentPluginInfo, AgentPluginInspection, AgentPluginScanFinding,
-    AgentPluginUpdateAllRow, AgentPluginUpdateOutcome, AgentPluginsSnapshot, CapabilitiesSnapshot,
-    ConnectorsSnapshot, GatewayDiscovery, GatewayEndpoint, GatewayEvent, PromptSubmitReceipt,
-    SessionSearchResult, SessionSummary, SkillInfo, ToolsetInfo,
+    ActiveSessionStatus, ActiveSessionStatusKind, AgentPluginAutoUpdateSettings, AgentPluginInfo,
+    AgentPluginInspection, AgentPluginScanFinding, AgentPluginUpdateAllRow,
+    AgentPluginUpdateOutcome, AgentPluginsSnapshot, ArtifactFileDownloadRequest,
+    ArtifactImagePreviewRequest, BotRosterSnapshot, CapabilitiesSnapshot,
+    CommandCenterDebugShareResponse, CommandCenterMaintenanceAction,
+    CommandCenterMaintenanceOperation, CommandCenterMaintenanceResult,
+    CommandCenterMaintenanceSnapshot, CommandCenterMemoryResetTarget, CommandCenterSystemAction,
+    CommandCenterSystemActionResult, CommandCenterSystemOperation, CommandCenterSystemSnapshot,
+    CommandCenterUsageSnapshot, ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload,
+    CronDeliveryTarget, CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload,
+    GatewayActionStatus, GatewayDiscovery, GatewayEndpoint, GatewayEvent, MessagingEnvVarInfo,
+    MessagingPlatformInfo, MessagingPlatformUpdate, MessagingPlatformsSnapshot,
+    ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
+    ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
+    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillInfo,
+    TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
+    project_tree_session_colors,
 };
-use crate::layout::{FILES, InterfaceMode, REVIEW, SESSIONS, TERMINAL, WORKSPACE, Workspace};
+use crate::layout::{
+    BOTS, FILES, InterfaceMode, REVIEW, SESSION_COLOR_HUES, SESSIONS, TERMINAL, WORKSPACE,
+    Workspace,
+};
+use crate::native_oauth::{NativeOAuthLoginWorker, NativeOAuthSession};
+use crate::native_window::{self, READINESS_TIMEOUT, ReadinessReceiver, ReadinessTarget};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
+use crate::remote_probe::{
+    RemoteAuthMode, RemoteConnectionTestReport, RemoteConnectionTestWorker, RemoteProbeReport,
+    RemoteProbeWorker,
+};
+use crate::repo_discovery::RepoScanPolicy;
 use crate::routes::AppRoute;
+use crate::session_peer_sync::{PeerEvent, SessionPeerSync};
 use doofusdock_core::{
     CommandId, DragSession, Node, NodeId, NodeKind, Operation, Orientation, PanelId,
 };
@@ -23,14 +48,22 @@ use egui::{Align, Color32, FontId, Id, Layout, Rect, RichText, Role, Stroke, Ui,
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    sync::Arc,
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    process::{Child, Command},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
+use zeroize::{Zeroize, Zeroizing};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RegisteredUiAction {
+    OpenNewWindow,
+    MoveCurrentSessionToNewWindow,
     Navigate {
         path: String,
     },
@@ -94,6 +127,165 @@ pub enum CapabilitiesTab {
     Plugins,
     Connectors,
     Toolsets,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum CommandCenterSection {
+    #[default]
+    Sessions,
+    System,
+    Usage,
+    Maintenance,
+}
+
+fn format_compact_count(value: u64) -> String {
+    match value {
+        value if value >= 1_000_000_000 => format!("{:.1}B", value as f64 / 1_000_000_000.0),
+        value if value >= 1_000_000 => format!("{:.1}M", value as f64 / 1_000_000.0),
+        value if value >= 10_000 => format!("{:.0}K", value as f64 / 1_000.0),
+        value if value >= 1_000 => format!("{:.1}K", value as f64 / 1_000.0),
+        value => value.to_string(),
+    }
+}
+
+fn format_optional_compact_count(value: Option<u64>) -> String {
+    value
+        .map(format_compact_count)
+        .unwrap_or_else(|| "—".into())
+}
+
+fn usage_stat(ui: &mut Ui, label: &str, value: String) {
+    ui.vertical(|ui| {
+        ui.label(RichText::new(label).small().color(MUTED));
+        ui.strong(value);
+    });
+    ui.add_space(24.0);
+}
+
+impl CommandCenterSection {
+    const ALL: [(Self, &'static str); 4] = [
+        (Self::Sessions, "Sessions"),
+        (Self::System, "System"),
+        (Self::Usage, "Usage"),
+        (Self::Maintenance, "Maintenance"),
+    ];
+
+    fn from_route(target: &str) -> Self {
+        let section = target
+            .split_once('?')
+            .map(|(_, query)| {
+                query
+                    .split('&')
+                    .find_map(|pair| pair.strip_prefix("section="))
+                    .unwrap_or("sessions")
+            })
+            .unwrap_or("sessions");
+        match section {
+            "system" => Self::System,
+            "usage" => Self::Usage,
+            "maintenance" => Self::Maintenance,
+            _ => Self::Sessions,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PendingCommandCenterSystem {
+    request_id: String,
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    generation: u64,
+    log_file: String,
+    log_level: String,
+}
+
+#[derive(Clone, Debug)]
+struct CachedCommandCenterSystem {
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    log_file: String,
+    log_level: String,
+    snapshot: CommandCenterSystemSnapshot,
+}
+
+#[derive(Clone, Debug)]
+struct PendingCommandCenterSystemAction {
+    request_id: String,
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    operation: CommandCenterSystemOperation,
+}
+
+#[derive(Clone, Debug)]
+struct PendingCommandCenterUsage {
+    request_id: String,
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    generation: u64,
+    period_days: usize,
+}
+
+#[derive(Clone, Debug)]
+struct CachedCommandCenterUsage {
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    snapshot: CommandCenterUsageSnapshot,
+}
+
+#[derive(Clone, Debug)]
+struct PendingCommandCenterMaintenance {
+    request_id: String,
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    operation: CommandCenterMaintenanceOperation,
+}
+
+#[derive(Clone, Debug)]
+struct CachedCommandCenterMaintenance {
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    snapshot: CommandCenterMaintenanceSnapshot,
+}
+
+#[derive(Clone, Debug)]
+struct CommandCenterMaintenanceConfirmation {
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    operation: CommandCenterMaintenanceOperation,
+}
+
+#[derive(Clone, Debug)]
+struct CommandCenterSessionDeleteConfirmation {
+    session: SessionSummary,
+    profile: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct CronJobEditor {
+    job_id: Option<String>,
+    blueprint_key: Option<String>,
+    blueprint_values: BTreeMap<String, String>,
+    blueprint_time_parts: BTreeMap<String, (Option<u32>, Option<u32>)>,
+    script_only: bool,
+    name: String,
+    prompt: String,
+    schedule: String,
+    delivery: String,
+    model: String,
+    provider: String,
+    catch_up: Option<bool>,
+    original_catch_up: Option<bool>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -161,9 +353,11 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
     json!({
         "version": 1,
         "actions": [
+            {"type":"open_new_window","permission":"ui_interaction","mutates":true,"schema":{}},
+            {"type":"move_current_session_to_new_window","permission":"ui_interaction","mutates":true,"schema":{}},
             {"type":"navigate","permission":"ui_interaction","mutates":true,"schema":{"path":"string, max 2048 bytes"}},
             {"type":"open_session","permission":"ui_interaction","mutates":true,"schema":{"session_id":"string, max 512 bytes","profile":"string, max 128 bytes, or null for the default profile"}},
-            {"type":"toggle_pane","permission":"ui_interaction","mutates":true,"schema":{"panel":[REVIEW,FILES,TERMINAL]}},
+            {"type":"toggle_pane","permission":"ui_interaction","mutates":true,"schema":{"panel":[SESSIONS,BOTS,REVIEW,FILES,TERMINAL,"chat-sidebar","file-browser","bots"]}},
             {"type":"set_interface_mode","permission":"ui_interaction","mutates":true,"schema":{"mode":["advanced","simple"]}},
             {"type":"select_layout_profile","permission":"ui_interaction","mutates":true,"schema":{"profile_id":"one of the profiles available in the selected interface mode"}}
             ,{"type":"select_capabilities_tab","permission":"ui_interaction","mutates":true,"schema":{"tab":["skills","plugins","connectors","toolsets"]}}
@@ -193,6 +387,83 @@ const TEXT: Color32 = Color32::from_rgb(225, 228, 234);
 const MUTED: Color32 = Color32::from_rgb(151, 158, 170);
 const ACCENT: Color32 = Color32::from_rgb(104, 164, 245);
 
+fn session_swatch_color(hue: u16) -> Color32 {
+    let hue = f32::from(hue % 360) / 360.0;
+    let saturation: f32 = 0.68;
+    let lightness: f32 = 0.58;
+    let chroma = (1.0 - (2.0 * lightness - 1.0).abs()) * saturation;
+    let sector = hue * 6.0;
+    let secondary = chroma * (1.0 - (sector.rem_euclid(2.0) - 1.0).abs());
+    let (red, green, blue) = match sector.floor() as u8 {
+        0 => (chroma, secondary, 0.0),
+        1 => (secondary, chroma, 0.0),
+        2 => (0.0, chroma, secondary),
+        3 => (0.0, secondary, chroma),
+        4 => (secondary, 0.0, chroma),
+        _ => (chroma, 0.0, secondary),
+    };
+    let offset = lightness - chroma / 2.0;
+    let channel = |value: f32| ((value + offset) * 255.0).round().clamp(0.0, 255.0) as u8;
+    Color32::from_rgb(channel(red), channel(green), channel(blue))
+}
+
+fn project_session_color(value: &str) -> Option<Color32> {
+    if let Some(hue) = SESSION_COLOR_HUES
+        .iter()
+        .find(|hue| value.eq_ignore_ascii_case(&format!("hsl({hue} 68% 58%)")))
+    {
+        return Some(session_swatch_color(*hue));
+    }
+    let hex = value.strip_prefix('#')?;
+    if hex.len() != 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let channel = |offset| u8::from_str_radix(&hex[offset..offset + 2], 16).ok();
+    Some(Color32::from_rgb(channel(0)?, channel(2)?, channel(4)?))
+}
+
+fn resolve_session_dot_color(
+    explicit_session_color: Option<&str>,
+    inherited_project_color: Option<&str>,
+) -> Color32 {
+    explicit_session_color
+        .and_then(project_session_color)
+        .or_else(|| inherited_project_color.and_then(project_session_color))
+        .unwrap_or(Color32::from_rgb(93, 98, 108))
+}
+
+fn session_dot_color(
+    explicit_session_color: Option<&str>,
+    profile: Option<&str>,
+    session_id: &str,
+    durable_session_id: &str,
+    project_colors: &BTreeMap<(String, String), Option<String>>,
+) -> Color32 {
+    let inherited = profile
+        .and_then(|profile| {
+            project_colors
+                .get(&(profile.to_owned(), session_id.to_owned()))
+                .or_else(|| {
+                    project_colors.get(&(profile.to_owned(), durable_session_id.to_owned()))
+                })
+        })
+        .and_then(Option::as_deref);
+    resolve_session_dot_color(explicit_session_color, inherited)
+}
+
+const MASTER_DETAIL_MIN_LEFT: f32 = 180.0;
+const MASTER_DETAIL_MIN_RIGHT: f32 = 320.0;
+const MASTER_DETAIL_RESIZE_ID: &str = "capabilities-split";
+
+fn clamp_master_detail_left_width(requested: f32, available: f32) -> f32 {
+    let max_left = (available - MASTER_DETAIL_MIN_RIGHT).max(MASTER_DETAIL_MIN_LEFT);
+    requested.clamp(MASTER_DETAIL_MIN_LEFT, max_left)
+}
+
+fn default_master_detail_left_width(available: f32) -> f32 {
+    (available * (0.75 / 1.75)).max(0.0)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DropEdge {
     Center,
@@ -215,6 +486,7 @@ struct DockTabGroup {
     node: NodeId,
     panels: Vec<PanelId>,
     active_index: usize,
+    minimized: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -230,6 +502,7 @@ enum DockTabContextCommand {
     Pin(SessionSummary, bool),
     Close(PanelId),
     CloseMany(Vec<PanelId>),
+    Minimize(NodeId),
 }
 
 #[derive(Clone, Debug)]
@@ -241,6 +514,26 @@ struct TabReorderSession {
 }
 
 #[derive(Clone, Debug)]
+struct PinnedSessionReorder {
+    connection_key: String,
+    source_session_id: String,
+    target_session_id: String,
+    visible_order: Vec<String>,
+    initial_persisted_order: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct RecentSessionReorder {
+    scope_key: String,
+    source_session_id: String,
+    target_session_id: String,
+    date_group_key: String,
+    date_group_ids: Vec<String>,
+    visible_order: Vec<String>,
+    initial_persisted_order: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 struct SplitResizeSession {
     split: NodeId,
     revision: u64,
@@ -249,6 +542,14 @@ struct SplitResizeSession {
     current_weights: Vec<f64>,
     extent: f32,
     start: egui::Pos2,
+}
+
+#[derive(Clone, Debug)]
+struct MasterDetailResizeSession {
+    resize_id: &'static str,
+    start_x: f32,
+    start_width: f32,
+    available_width: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -287,6 +588,34 @@ struct AgentPluginUpdateAllReport {
 struct PendingAgentPluginRemoval {
     request_id: String,
     profile: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TelegramSetupRequestKind {
+    Start,
+    Status,
+    Apply,
+    Cancel,
+}
+
+#[derive(Clone, Debug)]
+struct PendingTelegramSetupRequest {
+    request_id: String,
+    kind: TelegramSetupRequestKind,
+    profile: Option<String>,
+    pairing_id: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct MessagingGatewayRestart {
+    profile: Option<String>,
+    start_request_id: Option<String>,
+    action_name: Option<String>,
+    status_request_id: Option<String>,
+    attempts: u8,
+    next_poll: Option<std::time::Instant>,
+    completed: Option<bool>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -349,6 +678,136 @@ struct SessionChatViewState {
     older_transcript_request: Option<(String, String, Option<String>, usize)>,
     older_transcript_error: Option<String>,
     draft: String,
+}
+
+#[derive(Clone, Debug)]
+struct PendingActiveTranscriptRefresh {
+    request_id: String,
+    stored_session_id: String,
+    profile: Option<String>,
+    endpoint_profile_id: String,
+    runtime_session_id: String,
+    transcript_snapshot_hash: [u8; 32],
+    transcript_snapshot_len: usize,
+}
+
+#[derive(Clone, Debug)]
+struct PendingActiveStatusRefresh {
+    request_id: String,
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    revisions_at_request: BTreeMap<String, u64>,
+    runtimes_at_request: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingProjectTreeRefresh {
+    request_id: String,
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    generation: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingProjectListRefresh {
+    request_id: String,
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    generation: u64,
+}
+
+#[derive(Clone, Debug)]
+struct CachedProjectList {
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    snapshot: ProjectListSnapshot,
+}
+
+#[derive(Clone, Debug)]
+struct PendingBotRosterRefresh {
+    request_id: String,
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    generation: u64,
+}
+
+#[derive(Clone, Debug)]
+struct CachedBotRoster {
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    snapshot: BotRosterSnapshot,
+    fetched_at: std::time::Instant,
+}
+
+#[derive(Clone, Debug)]
+struct PendingProjectDelete {
+    request_id: String,
+    project_id: String,
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    previous_project_list: Option<CachedProjectList>,
+    previous_project_tree: Option<ProjectTreeSnapshot>,
+    previous_selected_project_id: Option<String>,
+    previous_selected_project_profile: Option<String>,
+    previous_entered_project_tree: Option<ProjectTreeProject>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingAutoProjectUndo {
+    project_id: String,
+    expires_at: std::time::Instant,
+}
+
+#[derive(Clone, Debug)]
+struct PendingProjectSessionsRefresh {
+    request_id: String,
+    project_id: String,
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    generation: u64,
+    lifecycle_generations_at_request: BTreeMap<String, u64>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingProjectPreviewRefresh {
+    key: (String, String, String),
+    request_id: String,
+    profile_id: String,
+    endpoint_instance_id: String,
+    authority_epoch: u64,
+    lifecycle_generations_at_request: BTreeMap<String, u64>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ProjectPreviewExpansion {
+    sessions: Vec<SessionSummary>,
+    visible_count: usize,
+}
+
+const PROJECT_SESSION_PAGE_SIZE: usize = 50;
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ProjectSessionLifecycle {
+    generation: u64,
+    removed: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PendingPeerTranscriptRefresh {
+    request_id: String,
+    stored_session_id: String,
+    profile: Option<String>,
+    endpoint_profile_id: String,
+    runtime_session_id: String,
+    transcript_snapshot_hash: [u8; 32],
+    transcript_snapshot_len: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -430,11 +889,95 @@ struct RecentSessionSwitcher {
     reveal_at: std::time::Instant,
 }
 
+#[derive(Clone, Debug)]
+struct CommandPaletteEntry {
+    group: &'static str,
+    label: String,
+    keywords: String,
+    action: RegisteredUiAction,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct NativeWindowLaunchRequest {
+    id: u64,
+    route: String,
+    profile: Option<String>,
+    move_session_panel: Option<PanelId>,
+}
+
+struct NativeWindowLaunchAttempt {
+    request: NativeWindowLaunchRequest,
+    child: Child,
+    receiver: ReadinessReceiver,
+    deadline: std::time::Instant,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum NativeWindowLaunchOutcome {
+    Ready,
+    Failed(String),
+    TimedOut,
+}
+
+struct ChildWindowReadinessReporter {
+    window_id: u64,
+    target: ReadinessTarget,
+    deadline: std::time::Instant,
+    next_attempt: std::time::Instant,
+    sent: bool,
+}
+
 pub struct HermesNativeApp {
     workspace: Workspace,
+    narrow_viewport: bool,
+    narrow_pane_overlay: Option<NarrowPaneOverlay>,
     load_error: Option<String>,
     status: String,
+    next_native_window_id: u64,
+    native_window_id: Option<u64>,
+    allow_native_window_launch: bool,
+    pending_native_window_launches: VecDeque<NativeWindowLaunchRequest>,
+    pending_native_window_attempts: Vec<NativeWindowLaunchAttempt>,
+    child_window_readiness: Option<ChildWindowReadinessReporter>,
+    session_peer_sync: Option<SessionPeerSync>,
+    session_peer_sync_next_poll: Option<std::time::Instant>,
+    session_peer_sync_error: Option<String>,
+    auto_project_dismissal_next_poll: Option<std::time::Instant>,
+    auto_project_dismissal_sync_error: Option<String>,
     route: AppRoute,
+    command_center_section: CommandCenterSection,
+    command_center_query: String,
+    command_center_system: Option<CachedCommandCenterSystem>,
+    command_center_system_pending: Option<PendingCommandCenterSystem>,
+    command_center_system_generation: u64,
+    command_center_system_error: Option<String>,
+    command_center_system_log_file: String,
+    command_center_system_log_level: String,
+    command_center_system_log_query: String,
+    command_center_system_action_pending: Option<PendingCommandCenterSystemAction>,
+    command_center_system_action_name: Option<String>,
+    command_center_system_action_owner: Option<(String, String, u64)>,
+    command_center_system_action_status: Option<GatewayActionStatus>,
+    command_center_system_action_polls: usize,
+    command_center_system_next_poll: Option<std::time::Instant>,
+    command_center_usage: Option<CachedCommandCenterUsage>,
+    command_center_usage_pending: Option<PendingCommandCenterUsage>,
+    command_center_usage_generation: u64,
+    command_center_usage_error: Option<String>,
+    command_center_usage_period_days: usize,
+    command_center_maintenance: Option<CachedCommandCenterMaintenance>,
+    command_center_maintenance_pending: Option<PendingCommandCenterMaintenance>,
+    command_center_maintenance_generation: u64,
+    command_center_maintenance_error: Option<String>,
+    command_center_maintenance_action_name: Option<String>,
+    command_center_maintenance_action_owner: Option<(String, String, u64)>,
+    command_center_maintenance_action_status: Option<GatewayActionStatus>,
+    command_center_maintenance_action_polls: usize,
+    command_center_maintenance_next_poll: Option<std::time::Instant>,
+    command_center_maintenance_confirmation: Option<CommandCenterMaintenanceConfirmation>,
+    command_center_maintenance_share: Option<CommandCenterDebugShareResponse>,
+    command_center_maintenance_notice: Option<String>,
+    command_center_delete_confirmation: Option<CommandCenterSessionDeleteConfirmation>,
     last_chat_route: AppRoute,
     last_chat_profile: Option<String>,
     overlay_return: AppRoute,
@@ -442,11 +985,48 @@ pub struct HermesNativeApp {
     gateway_discovery: Option<GatewayDiscovery>,
     gateway_endpoint: Option<GatewayEndpoint>,
     sessions: Vec<SessionSummary>,
+    project_session_colors: BTreeMap<(String, String), Option<String>>,
+    project_session_color_requests: BTreeMap<String, String>,
+    project_session_color_profiles_loaded: BTreeSet<String>,
+    project_trees: BTreeMap<String, ProjectTreeSnapshot>,
+    project_tree_refreshes: BTreeMap<String, PendingProjectTreeRefresh>,
+    project_tree_generations: BTreeMap<String, u64>,
+    project_tree_errors: BTreeMap<String, String>,
+    project_lists: BTreeMap<String, CachedProjectList>,
+    project_list_refreshes: BTreeMap<String, PendingProjectListRefresh>,
+    project_list_generations: BTreeMap<String, u64>,
+    project_list_errors: BTreeMap<String, String>,
+    bot_roster: Option<CachedBotRoster>,
+    bot_roster_refresh: Option<PendingBotRosterRefresh>,
+    bot_roster_generation: u64,
+    bot_roster_error: Option<String>,
+    project_delete_confirmation: Option<(String, String)>,
+    project_delete_pending: Option<PendingProjectDelete>,
+    project_delete_errors: BTreeMap<String, String>,
+    project_deletion_tombstones: BTreeSet<(String, String)>,
+    auto_project_undo: Option<PendingAutoProjectUndo>,
+    selected_project_id: Option<String>,
+    selected_project_profile: Option<String>,
+    entered_project_tree: Option<ProjectTreeProject>,
+    project_sessions_refresh: Option<PendingProjectSessionsRefresh>,
+    project_sessions_generation: u64,
+    project_session_lifecycle: BTreeMap<(String, String), ProjectSessionLifecycle>,
+    project_sessions_error: Option<String>,
+    project_preview_expansions: BTreeMap<(String, String, String), ProjectPreviewExpansion>,
+    project_preview_refreshes: BTreeMap<String, PendingProjectPreviewRefresh>,
+    project_preview_errors: BTreeMap<(String, String, String), String>,
     files: FileBrowserState,
     file_previews: FilePreviewStore,
     archived_sessions: Vec<SessionSummary>,
+    command_palette_sessions: Vec<SessionSummary>,
+    command_palette_sessions_request_id: Option<String>,
+    command_palette_sessions_error: Option<String>,
     show_archived_sessions: bool,
     recent_session_switcher: Option<RecentSessionSwitcher>,
+    command_palette_open: bool,
+    command_palette_query: String,
+    command_palette_selected_index: usize,
+    command_palette_focus_pending: bool,
     archived_sessions_request_id: Option<String>,
     archived_sessions_loading: bool,
     archived_sessions_error: Option<String>,
@@ -461,6 +1041,18 @@ pub struct HermesNativeApp {
     timestamps_override: Option<bool>,
     timestamps_config_request: Option<(String, String)>,
     timestamps_config_profile: Option<String>,
+    repo_scan_config: Option<RepoScanPolicy>,
+    repo_scan_config_profile: Option<String>,
+    repo_scan_config_request: Option<(String, String)>,
+    repo_scan_config_save_request: Option<(String, String, RepoScanPolicy)>,
+    repo_scan_config_error: Option<String>,
+    repo_scan_enabled_draft: bool,
+    repo_scan_roots_draft: String,
+    repo_scan_excludes_draft: String,
+    repo_scan_discovery_request: Option<(String, String, RepoScanPolicy)>,
+    repo_scan_completed_policy: Option<(String, RepoScanPolicy)>,
+    repo_scan_last_started_at: Option<std::time::Instant>,
+    repo_scan_generation: Arc<AtomicU64>,
     session_filter: String,
     session_search_changed_at: Option<std::time::Instant>,
     session_search_request_id: Option<String>,
@@ -468,6 +1060,92 @@ pub struct HermesNativeApp {
     session_search_pending: bool,
     session_search_error: Option<String>,
     session_list_error: Option<String>,
+    session_list_refresh_pending: Option<(String, String)>,
+    session_list_refresh_again: bool,
+    active_session_statuses: BTreeMap<(String, String), ActiveSessionStatus>,
+    active_status_refresh: Option<PendingActiveStatusRefresh>,
+    active_status_refresh_again: bool,
+    active_status_revisions: BTreeMap<(String, String), u64>,
+    active_status_last_refresh_at: Option<std::time::Instant>,
+    artifacts: Option<ArtifactIndexSnapshot>,
+    artifacts_request_id: Option<String>,
+    artifacts_error: Option<String>,
+    pending_artifact_downloads: BTreeMap<String, String>,
+    pending_artifact_image_previews: BTreeMap<String, String>,
+    artifact_image_previews: BTreeMap<String, Result<FilePreviewContent, String>>,
+    artifact_image_preview_order: VecDeque<String>,
+    artifacts_filter: ArtifactFilter,
+    artifacts_query: String,
+    artifacts_image_page: usize,
+    artifacts_file_page: usize,
+    cron_jobs: Option<Vec<CronJobInfo>>,
+    cron_jobs_request: Option<(String, Option<String>)>,
+    cron_job_mutation: Option<(String, Option<String>, String, bool)>,
+    cron_job_mutation_error: Option<String>,
+    cron_editor: Option<CronJobEditor>,
+    cron_delivery_targets: Option<Vec<CronDeliveryTarget>>,
+    cron_delivery_targets_request: Option<(String, Option<String>)>,
+    cron_delivery_targets_error: Option<String>,
+    cron_model_options: Option<ModelOptionsSnapshot>,
+    cron_model_options_request: Option<(String, Option<String>)>,
+    cron_model_options_error: Option<String>,
+    cron_blueprints: Option<Vec<CronBlueprint>>,
+    cron_blueprints_request: Option<(String, Option<String>)>,
+    cron_blueprints_error: Option<String>,
+    cron_blueprint_instantiate_request: Option<(String, Option<String>, String)>,
+    cron_editor_save_request: Option<(String, Option<String>, Option<String>)>,
+    cron_delete_confirmation: Option<String>,
+    cron_delete_request: Option<(String, Option<String>, String)>,
+    cron_delete_error: Option<String>,
+    cron_job_runs: Option<Vec<CronJobRunInfo>>,
+    cron_job_runs_request: Option<(String, Option<String>, String)>,
+    cron_job_runs_error: Option<String>,
+    cron_job_runs_owner: Option<(Option<String>, String)>,
+    cron_trigger_requests: BTreeMap<String, (String, Option<String>, u64)>,
+    cron_trigger_errors: BTreeMap<String, String>,
+    cron_queued_runs: BTreeMap<String, (u64, std::time::Instant)>,
+    cron_next_runs_poll: Option<std::time::Instant>,
+    cron_cancel_requests: BTreeMap<String, (String, Option<String>)>,
+    cron_stop_waiting: BTreeMap<String, (Option<String>, Option<String>)>,
+    cron_notice: Option<(String, String)>,
+    cron_next_live_poll: Option<std::time::Instant>,
+    cron_jobs_profile: Option<String>,
+    cron_jobs_error: Option<String>,
+    cron_jobs_query: String,
+    cron_selected_job_id: Option<String>,
+    messaging_platforms: Option<MessagingPlatformsSnapshot>,
+    messaging_request_id: Option<String>,
+    messaging_pending: bool,
+    messaging_error: Option<String>,
+    messaging_action_error: Option<String>,
+    messaging_toggle_request: Option<(String, String, Option<String>, bool)>,
+    messaging_restart_needed: bool,
+    messaging_config_edits: BTreeMap<String, BTreeMap<String, String>>,
+    messaging_config_save_request: Option<(String, String, Option<String>)>,
+    messaging_config_saving: bool,
+    messaging_config_error: Option<String>,
+    messaging_advanced_open: bool,
+    messaging_pairing: Option<PairingSnapshot>,
+    messaging_pairing_request: Option<(String, Option<String>)>,
+    messaging_pairing_error: Option<String>,
+    messaging_pairing_mutation:
+        Option<(String, String, String, PairingMutationKind, Option<String>)>,
+    messaging_pairing_action_error: Option<String>,
+    messaging_pairing_revoke_confirm: Option<PairingUser>,
+    telegram_setup: Option<TelegramOnboardingStart>,
+    telegram_setup_status: Option<TelegramOnboardingStatus>,
+    telegram_setup_profile: Option<String>,
+    telegram_setup_request: Option<PendingTelegramSetupRequest>,
+    telegram_setup_allowlist: String,
+    telegram_setup_new_user_id: String,
+    telegram_setup_allowlist_error: Option<String>,
+    telegram_setup_error: Option<String>,
+    telegram_setup_next_poll: Option<std::time::Instant>,
+    telegram_setup_success: Option<String>,
+    messaging_gateway_restart: Option<MessagingGatewayRestart>,
+    messaging_query: String,
+    messaging_status_filter: Option<MessagingStatus>,
+    messaging_selected_platform: Option<String>,
     capabilities_tab: CapabilitiesTab,
     capabilities_query: String,
     connectors_segment: ConnectorsSegment,
@@ -511,11 +1189,31 @@ pub struct HermesNativeApp {
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
+    window_was_focused: bool,
+    focus_recovery_last_at: Option<std::time::Instant>,
     first_run_logo_texture: Option<egui::TextureHandle>,
     first_run_setup_visible: bool,
     first_run_remote_setup_open: bool,
     first_run_setup_error: Option<String>,
     first_run_gateway_url: String,
+    first_run_remote_probe_worker: RemoteProbeWorker,
+    first_run_remote_probe_due: Option<std::time::Instant>,
+    first_run_remote_probe_request_id: Option<String>,
+    first_run_remote_probe_pending: bool,
+    first_run_remote_probe_report: Option<RemoteProbeReport>,
+    first_run_remote_probe_error: Option<String>,
+    first_run_remote_token: Zeroizing<String>,
+    first_run_remote_test_worker: RemoteConnectionTestWorker,
+    first_run_remote_test_request_id: Option<String>,
+    first_run_remote_test_pending: bool,
+    first_run_remote_test_report: Option<RemoteConnectionTestReport>,
+    first_run_remote_test_error: Option<String>,
+    first_run_remote_tested_payload_key: Option<String>,
+    first_run_oauth_worker: NativeOAuthLoginWorker,
+    first_run_oauth_request_id: Option<String>,
+    first_run_oauth_pending: bool,
+    first_run_oauth_session: Option<NativeOAuthSession>,
+    first_run_oauth_error: Option<String>,
     session_chat_views: BTreeMap<String, SessionChatViewState>,
     session_chat_view_order: VecDeque<String>,
     new_chat_draft: String,
@@ -524,6 +1222,8 @@ pub struct HermesNativeApp {
     transcript_has_more: bool,
     older_transcript_request: Option<(String, String, Option<String>, usize)>,
     older_transcript_error: Option<String>,
+    active_transcript_refresh: Option<PendingActiveTranscriptRefresh>,
+    peer_transcript_refreshes: BTreeMap<String, PendingPeerTranscriptRefresh>,
     markdown_cache: CommonMarkCache,
     active_runtime_session_id: Option<String>,
     active_session_profile: Option<String>,
@@ -536,6 +1236,10 @@ pub struct HermesNativeApp {
     pending_session_pins: BTreeMap<String, String>,
     pending_session_unreads: BTreeMap<String, String>,
     pending_session_archives: BTreeMap<String, String>,
+    pending_session_deletes: BTreeMap<String, String>,
+    pending_session_exports: BTreeMap<String, String>,
+    last_exported_session_path: Option<std::path::PathBuf>,
+    session_list_limit: usize,
     pending_session_renames: BTreeMap<String, String>,
     runtime_session_renames: BTreeMap<String, (String, String)>,
     uncertain_session_renames: BTreeSet<String>,
@@ -548,75 +1252,978 @@ pub struct HermesNativeApp {
     panel_drag: Option<DragSession<PanelDropTarget>>,
     panel_drag_source: Option<PanelId>,
     tab_reorder: Option<TabReorderSession>,
+    pinned_session_reorder: Option<PinnedSessionReorder>,
+    recent_session_reorder: Option<RecentSessionReorder>,
     dock_tabs: BTreeMap<String, TabStripState>,
     focused_dock_group: Option<NodeId>,
     hovered_dock_group: Option<NodeId>,
     split_resize: Option<SplitResizeSession>,
+    master_detail_resize: Option<MasterDetailResizeSession>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct NarrowPaneOverlay {
+    panel: String,
+    pinned: bool,
+}
+
+fn is_remote_artifact_image_source(value: &str) -> bool {
+    value
+        .get(..7)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("http://"))
+        || value
+            .get(..8)
+            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))
+        || value.starts_with("file:")
+        || value.starts_with('/')
+        || value.starts_with("~/")
+        || value.starts_with("./")
+        || value.starts_with("../")
+        || value.starts_with("\\\\")
+        || (value.as_bytes().get(1) == Some(&b':')
+            && value
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphabetic))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MessagingStatus {
+    Connected,
+    Attention,
+    Error,
+    Off,
+}
+
+fn messaging_status(platform: &MessagingPlatformInfo) -> MessagingStatus {
+    if !platform.enabled {
+        MessagingStatus::Off
+    } else {
+        match platform.state.as_deref() {
+            Some("connected") => MessagingStatus::Connected,
+            Some("fatal" | "startup_failed") => MessagingStatus::Error,
+            _ => MessagingStatus::Attention,
+        }
+    }
+}
+
+fn messaging_status_label(status: MessagingStatus) -> &'static str {
+    match status {
+        MessagingStatus::Connected => "Connected",
+        MessagingStatus::Attention => "Needs attention",
+        MessagingStatus::Error => "Error",
+        MessagingStatus::Off => "Off",
+    }
+}
+
+fn messaging_status_glyph(status: MessagingStatus) -> &'static str {
+    match status {
+        MessagingStatus::Connected => "●",
+        MessagingStatus::Attention => "◐",
+        MessagingStatus::Error => "●",
+        MessagingStatus::Off => "○",
+    }
+}
+
+fn messaging_status_color(status: MessagingStatus) -> Color32 {
+    match status {
+        MessagingStatus::Connected => Color32::from_rgb(108, 190, 133),
+        MessagingStatus::Attention => Color32::from_rgb(230, 180, 82),
+        MessagingStatus::Error => Color32::LIGHT_RED,
+        MessagingStatus::Off => MUTED,
+    }
+}
+
+fn messaging_field_is_advanced(field: &MessagingEnvVarInfo) -> bool {
+    field.advanced
+        || matches!(
+            field.key.as_str(),
+            "TELEGRAM_PROXY"
+                | "DISCORD_REPLY_TO_MODE"
+                | "DISCORD_ALLOW_ALL_USERS"
+                | "DISCORD_HOME_CHANNEL"
+                | "DISCORD_HOME_CHANNEL_NAME"
+                | "BLUEBUBBLES_ALLOW_ALL_USERS"
+                | "MATTERMOST_ALLOW_ALL_USERS"
+                | "MATTERMOST_HOME_CHANNEL"
+                | "QQ_ALLOW_ALL_USERS"
+                | "QQBOT_HOME_CHANNEL"
+                | "QQBOT_HOME_CHANNEL_NAME"
+                | "WHATSAPP_ENABLED"
+                | "WHATSAPP_MODE"
+        )
+}
+
+fn messaging_config_update(
+    platform: &MessagingPlatformInfo,
+    edits: &BTreeMap<String, String>,
+) -> MessagingPlatformUpdate {
+    let mut update = MessagingPlatformUpdate::default();
+    for field in &platform.env_vars {
+        let Some(draft) = edits.get(&field.key) else {
+            continue;
+        };
+        let value = if field.is_list {
+            normalize_messaging_allowlist(draft)
+        } else {
+            draft.trim().to_owned()
+        };
+        if value.is_empty() {
+            if field.is_set {
+                update.clear_env.push(field.key.clone());
+            }
+        } else {
+            update.env.insert(field.key.clone(), value);
+        }
+    }
+    update.clear_env.sort();
+    update
+}
+
+fn normalize_messaging_allowlist(value: &str) -> String {
+    let mut seen = HashSet::new();
+    value
+        .split([',', '\n'])
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty() && seen.insert((*entry).to_owned()))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn telegram_setup_user_ids(value: &str) -> Vec<String> {
+    value
+        .split(|character: char| character == ',' || character == ';' || character.is_whitespace())
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn cron_schedule_label(job: &CronJobInfo) -> &str {
+    job.schedule_display
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            job.schedule
+                .as_ref()
+                .and_then(|schedule| schedule.display.as_deref().or(schedule.expr.as_deref()))
+        })
+        .unwrap_or("Schedule unavailable")
+}
+
+fn cron_schedule_is_preset(expression: &str) -> bool {
+    matches!(
+        expression.trim(),
+        "0 9 * * *" | "0 9 * * 1-5" | "0 9 * * 1" | "0 9 1 * *" | "0 * * * *" | "*/15 * * * *"
+    )
+}
+
+fn cron_schedule_preset_label(expression: &str) -> &'static str {
+    match expression.trim() {
+        "0 9 * * *" => "Daily at 9:00 AM",
+        "0 9 * * 1-5" => "Weekdays at 9:00 AM",
+        "0 9 * * 1" => "Weekly on Monday at 9:00 AM",
+        "0 9 1 * *" => "Monthly on day 1 at 9:00 AM",
+        "0 * * * *" => "Every hour",
+        "*/15 * * * *" => "Every 15 minutes",
+        _ => "Custom",
+    }
+}
+
+fn cron_delivery_ids(delivery: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    for id in delivery
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
+        if !ids.iter().any(|existing| existing == id) {
+            ids.push(id.to_owned());
+        }
+    }
+    if ids.is_empty() {
+        vec!["local".into()]
+    } else {
+        ids
+    }
+}
+
+fn cron_toggle_delivery_target(delivery: &str, target_id: &str, enabled: bool) -> String {
+    let mut ids = cron_delivery_ids(delivery);
+    if enabled && !ids.iter().any(|id| id == target_id) {
+        ids.push(target_id.to_owned());
+    } else if !enabled && ids.iter().any(|id| id == target_id) && ids.len() > 1 {
+        ids.retain(|id| id != target_id);
+    }
+    ids.join(",")
+}
+
+fn cron_blueprint_initial_values(blueprint: &CronBlueprint) -> BTreeMap<String, String> {
+    blueprint
+        .fields
+        .iter()
+        .map(|field| {
+            let value = if field.name == "deliver" {
+                field
+                    .default
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty() && *value != "origin")
+                    .unwrap_or("local")
+                    .to_owned()
+            } else {
+                field.default.clone().unwrap_or_default()
+            };
+            (field.name.clone(), value)
+        })
+        .collect()
+}
+
+fn cron_blueprint_initial_time_parts(
+    blueprint: &CronBlueprint,
+    values: &BTreeMap<String, String>,
+) -> BTreeMap<String, (Option<u32>, Option<u32>)> {
+    blueprint
+        .fields
+        .iter()
+        .filter(|field| field.field_type == "time")
+        .map(|field| {
+            let parts = values
+                .get(&field.name)
+                .and_then(|value| cron_time_parts(value))
+                .map(|(hour, minute)| (Some(hour), Some(minute)))
+                .unwrap_or((None, None));
+            (field.name.clone(), parts)
+        })
+        .collect()
+}
+
+fn cron_blueprint_validation_error(
+    blueprint: &CronBlueprint,
+    values: &BTreeMap<String, String>,
+    time_parts: &BTreeMap<String, (Option<u32>, Option<u32>)>,
+) -> Option<String> {
+    for field in &blueprint.fields {
+        let value = values.get(&field.name).map(String::as_str).unwrap_or("");
+        if !field.optional && value.trim().is_empty() {
+            return Some(format!("{} is required.", field.label));
+        }
+        if value.trim().is_empty() {
+            if let Some((Some(_), None) | (None, Some(_))) = time_parts.get(&field.name) {
+                return Some(format!("Choose both hour and minute for {}.", field.label));
+            }
+            continue;
+        }
+
+        match field.field_type.as_str() {
+            "time" if cron_time_parts(value).is_none() => {
+                return Some(format!(
+                    "{} must be a valid 24-hour time (HH:MM).",
+                    field.label
+                ));
+            }
+            "enum" | "weekdays" if !field.options.iter().any(|option| option == value) => {
+                return Some(format!("Choose a listed option for {}.", field.label));
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn cron_model_option_label(model: &str, provider: &str) -> String {
+    if model.trim().is_empty() {
+        "Use Hermes default".into()
+    } else if provider.trim().is_empty() {
+        format!("{model} (saved override)")
+    } else {
+        format!("{model} · {provider}")
+    }
+}
+
+fn cron_time_parts(value: &str) -> Option<(u32, u32)> {
+    let (hour, minute) = value.split_once(':')?;
+    if hour.len() != 2 || minute.len() != 2 {
+        return None;
+    }
+    let hour = hour.parse::<u32>().ok()?;
+    let minute = minute.parse::<u32>().ok()?;
+    (hour <= 23 && minute <= 59).then_some((hour, minute))
+}
+
+fn cron_delivery_target_checkboxes(
+    ui: &mut Ui,
+    targets: &[CronDeliveryTarget],
+    value: &mut String,
+) {
+    let known = targets
+        .iter()
+        .map(|target| target.id.as_str())
+        .collect::<HashSet<_>>();
+    let selected = cron_delivery_ids(value);
+    let mut options = targets
+        .iter()
+        .map(|target| {
+            (
+                target.id.clone(),
+                target.name.clone(),
+                target.id != "local" && !target.home_target_set,
+            )
+        })
+        .collect::<Vec<_>>();
+    for id in selected.iter().filter(|id| !known.contains(id.as_str())) {
+        options.push((id.clone(), id.clone(), false));
+    }
+    if options.is_empty() {
+        ui.weak("No delivery targets are configured.");
+    }
+    for (id, name, needs_home_channel) in options {
+        let mut checked = selected.contains(&id);
+        let label = if needs_home_channel {
+            format!("{name} — set a home channel first")
+        } else {
+            name
+        };
+        if ui.checkbox(&mut checked, label).changed() {
+            *value = cron_toggle_delivery_target(value, &id, checked);
+        }
+    }
+}
+
+fn cron_delivery_label(delivery: &str, targets: Option<&[CronDeliveryTarget]>) -> String {
+    cron_delivery_ids(delivery)
+        .iter()
+        .map(|id| {
+            if id == "local" {
+                return "This desktop".to_owned();
+            }
+            targets
+                .and_then(|targets| targets.iter().find(|target| &target.id == id))
+                .map(|target| target.name.clone())
+                .unwrap_or_else(|| id.clone())
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn cron_execution_is_in_flight(status: &str) -> bool {
+    matches!(status, "claimed" | "running")
+}
+
+const CRON_PENDING_RUN_START_SLACK_MS: u64 = 2_000;
+const CRON_PENDING_RUN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+const CRON_PENDING_RUN_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+const CRON_RUNS_POLL: std::time::Duration = std::time::Duration::from_secs(8);
+
+fn cron_job_run_is_live(job: &CronJobInfo) -> bool {
+    job.live_execution.is_some()
+        || job
+            .latest_execution
+            .as_ref()
+            .is_some_and(|execution| cron_execution_is_in_flight(execution.status.as_str()))
+}
+
+fn cron_stop_outcome(
+    job: Option<&CronJobInfo>,
+    execution_id: Option<&str>,
+) -> Option<&'static str> {
+    let Some(job) = job else {
+        return Some("cancelled");
+    };
+    if let Some(execution_id) = execution_id.filter(|id| !id.is_empty()) {
+        let execution = [&job.live_execution, &job.latest_execution]
+            .into_iter()
+            .flatten()
+            .find(|execution| execution.id == execution_id);
+        let Some(execution) = execution else {
+            return Some("cancelled");
+        };
+        if cron_execution_is_in_flight(execution.status.as_str()) {
+            return None;
+        }
+        return Some(if execution.status == "cancelled" {
+            "cancelled"
+        } else {
+            "finished"
+        });
+    }
+    if cron_job_run_is_live(job) {
+        None
+    } else if job
+        .latest_execution
+        .as_ref()
+        .is_some_and(|execution| execution.status == "cancelled")
+    {
+        Some("cancelled")
+    } else {
+        Some("finished")
+    }
+}
+
+fn messaging_config_has_changes(update: &MessagingPlatformUpdate) -> bool {
+    !update.env.is_empty() || !update.clear_env.is_empty()
+}
+
+fn messaging_platform_detail(
+    ui: &mut Ui,
+    platform: &MessagingPlatformInfo,
+    can_toggle: bool,
+    toggle_pending: bool,
+    restart_needed: bool,
+    action_error: Option<&str>,
+    can_edit: bool,
+    config_saving: bool,
+    config_error: Option<&str>,
+    edits: &mut BTreeMap<String, String>,
+    show_advanced: &mut bool,
+    pairing_pending: &[PairingUser],
+    pairing_approved: &[PairingUser],
+    pairing_loading: bool,
+    pairing_error: Option<&str>,
+    pairing_action_error: Option<&str>,
+    pairing_mutating: bool,
+    can_pair_action: bool,
+) -> (
+    Option<bool>,
+    bool,
+    Option<(PairingMutationKind, String)>,
+    Option<PairingUser>,
+    bool,
+) {
+    let status = messaging_status(platform);
+    ui.heading(&platform.name);
+    ui.label(RichText::new(&platform.id).small().color(MUTED));
+    ui.label(
+        RichText::new(messaging_status_label(status))
+            .strong()
+            .color(messaging_status_color(status)),
+    );
+    ui.add_space(8.0);
+    if !platform.description.is_empty() {
+        ui.label(&platform.description);
+        ui.add_space(8.0);
+    }
+    let mut enabled = platform.enabled;
+    let toggle = ui
+        .add_enabled_ui(can_toggle, |ui| {
+            ui.checkbox(
+                &mut enabled,
+                if toggle_pending {
+                    "Updating channel…"
+                } else {
+                    "Channel enabled"
+                },
+            )
+        })
+        .inner;
+    if toggle_pending {
+        ui.spinner();
+    }
+    ui.add_space(8.0);
+    egui::Grid::new(("messaging-platform-state", &platform.id))
+        .num_columns(2)
+        .spacing([12.0, 6.0])
+        .show(ui, |ui| {
+            ui.label(RichText::new("Configured").color(MUTED));
+            ui.label(if platform.configured { "Yes" } else { "No" });
+            ui.end_row();
+            ui.label(RichText::new("Enabled").color(MUTED));
+            ui.label(if platform.enabled { "Yes" } else { "No" });
+            ui.end_row();
+            ui.label(RichText::new("Gateway").color(MUTED));
+            ui.label(if platform.gateway_running {
+                "Running"
+            } else {
+                "Stopped"
+            });
+            ui.end_row();
+            if let Some(state) = &platform.state {
+                ui.label(RichText::new("State").color(MUTED));
+                ui.label(state.replace('_', " "));
+                ui.end_row();
+            }
+            if platform.relay_exclusive || platform.disabled_by_relay {
+                ui.label(RichText::new("Managed by relay").color(MUTED));
+                ui.label(if platform.relay_exclusive {
+                    "Exclusive"
+                } else {
+                    "Fronted"
+                });
+                ui.end_row();
+            }
+        });
+    let mut pairing_action = None;
+    let mut revoke_user = None;
+    let mut retry_pairing = false;
+    let show_pairing = pairing_loading
+        || pairing_error.is_some()
+        || !pairing_pending.is_empty()
+        || !pairing_approved.is_empty();
+    if show_pairing {
+        ui.add_space(12.0);
+        ui.separator();
+        ui.heading("Pairing access");
+    }
+    if pairing_loading && show_pairing {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label(RichText::new("Loading pairing users…").color(MUTED));
+        });
+    }
+    if let Some(error) = pairing_error {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+            if ui
+                .add_enabled(can_pair_action, egui::Button::new("Retry pairing"))
+                .clicked()
+            {
+                retry_pairing = true;
+            }
+        });
+    }
+    if !pairing_pending.is_empty() {
+        ui.add_space(6.0);
+        ui.label(RichText::new(format!("Pending requests ({})", pairing_pending.len())).strong());
+        for user in pairing_pending {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(pairing_user_label(user));
+                    let waited = user.age_minutes.map(|age| {
+                        format!("{} min waiting", age.floor().clamp(0.0, 1_000_000.0) as u64)
+                    });
+                    let detail = match (&user.user_name, waited) {
+                        (Some(_), Some(waited)) => format!("{} · {waited}", user.user_id),
+                        (Some(_), None) => user.user_id.clone(),
+                        (None, Some(waited)) => waited,
+                        (None, None) => String::new(),
+                    };
+                    if !detail.is_empty() {
+                        ui.label(RichText::new(detail).small().color(MUTED));
+                    }
+                });
+                if ui
+                    .add_enabled(
+                        can_pair_action && user.request_id.is_some(),
+                        egui::Button::new("Approve"),
+                    )
+                    .clicked()
+                {
+                    pairing_action = user
+                        .request_id
+                        .as_ref()
+                        .map(|request_id| (PairingMutationKind::Approve, request_id.clone()));
+                }
+            });
+        }
+    }
+    if !pairing_approved.is_empty() {
+        ui.add_space(6.0);
+        ui.label(RichText::new(format!("Approved users ({})", pairing_approved.len())).strong());
+        for user in pairing_approved {
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(pairing_user_label(user));
+                    if user.user_name.is_some() {
+                        ui.label(RichText::new(&user.user_id).small().color(MUTED));
+                    }
+                });
+                if ui
+                    .add_enabled(can_pair_action, egui::Button::new("Revoke"))
+                    .clicked()
+                {
+                    revoke_user = Some(user.clone());
+                }
+            });
+        }
+    }
+    if pairing_mutating {
+        ui.horizontal(|ui| {
+            ui.spinner();
+            ui.label("Updating pairing access…");
+        });
+    }
+    if let Some(error) = pairing_action_error {
+        ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+    }
+    ui.add_space(14.0);
+    ui.separator();
+    ui.heading("Channel configuration");
+    if platform.relay_exclusive {
+        ui.label(RichText::new("This channel is managed by the Hermes relay.").color(MUTED));
+    } else {
+        if !platform.docs_url.is_empty() {
+            ui.hyperlink_to("Open setup guide", &platform.docs_url);
+        }
+        let required = platform
+            .env_vars
+            .iter()
+            .filter(|field| field.required)
+            .collect::<Vec<_>>();
+        let optional = platform
+            .env_vars
+            .iter()
+            .filter(|field| !field.required && !messaging_field_is_advanced(field))
+            .collect::<Vec<_>>();
+        let advanced = platform
+            .env_vars
+            .iter()
+            .filter(|field| !field.required && messaging_field_is_advanced(field))
+            .collect::<Vec<_>>();
+        for (section, fields) in [("Required", required), ("Recommended", optional)] {
+            if fields.is_empty() {
+                continue;
+            }
+            ui.add_space(8.0);
+            ui.label(RichText::new(section).strong());
+            for field in fields {
+                messaging_config_field(ui, field, edits, can_edit && !config_saving);
+            }
+        }
+        if !advanced.is_empty() {
+            ui.add_space(6.0);
+            if ui
+                .button(format!("Advanced settings ({})", advanced.len()))
+                .clicked()
+            {
+                *show_advanced = !*show_advanced;
+            }
+            if *show_advanced {
+                for field in advanced {
+                    messaging_config_field(ui, field, edits, can_edit && !config_saving);
+                }
+            }
+        }
+        if platform.env_vars.is_empty() {
+            ui.label(RichText::new("No editable configuration fields are available.").color(MUTED));
+        }
+        let update = messaging_config_update(platform, edits);
+        let save_clicked = ui
+            .add_enabled(
+                can_edit && !config_saving && messaging_config_has_changes(&update),
+                egui::Button::new(if config_saving {
+                    "Saving…"
+                } else {
+                    "Save changes"
+                }),
+            )
+            .clicked();
+        if config_saving {
+            ui.spinner();
+        }
+        if let Some(error) = config_error {
+            ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+        }
+        if platform.env_vars.iter().any(|field| {
+            edits
+                .get(&field.key)
+                .is_some_and(|value| !value.trim().is_empty())
+        }) {
+            ui.label(
+                RichText::new("Unsaved changes are kept only in this window until saved.")
+                    .small()
+                    .color(MUTED),
+            );
+        }
+        if let Some(error) = platform
+            .error_message
+            .as_deref()
+            .filter(|text| !text.trim().is_empty())
+        {
+            ui.add_space(8.0);
+            egui::Frame::group(ui.style()).show(ui, |ui| {
+                ui.label(
+                    RichText::new(platform.error_code.as_deref().unwrap_or("Connection error"))
+                        .strong()
+                        .color(Color32::LIGHT_RED),
+                );
+                ui.label(error);
+            });
+        }
+        if let Some(error) = action_error {
+            ui.add_space(8.0);
+            ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+        }
+        if restart_needed {
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new("Restart Hermes for this channel change to take effect.")
+                    .color(MUTED),
+            );
+        }
+        return (
+            toggle.changed().then_some(enabled),
+            save_clicked,
+            pairing_action,
+            revoke_user,
+            retry_pairing,
+        );
+    }
+    (
+        toggle.changed().then_some(enabled),
+        false,
+        pairing_action,
+        revoke_user,
+        retry_pairing,
+    )
+}
+
+fn pairing_user_label(user: &PairingUser) -> &str {
+    user.user_name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(&user.user_id)
+}
+
+fn telegram_qr(ui: &mut Ui, payload: &str) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(224.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 2.0, Color32::WHITE);
+    let Ok(qr) = qrcodegen::QrCode::encode_text(payload, qrcodegen::QrCodeEcc::Medium) else {
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "QR unavailable",
+            FontId::proportional(14.0),
+            Color32::DARK_RED,
+        );
+        return;
+    };
+    let border = 4;
+    let module_count = qr.size() + border * 2;
+    let module = rect.width() / module_count as f32;
+    let qr_origin = rect.min + Vec2::splat(module * border as f32);
+    for y in 0..qr.size() {
+        for x in 0..qr.size() {
+            if qr.get_module(x, y) {
+                let min = qr_origin + Vec2::new(x as f32 * module, y as f32 * module);
+                ui.painter().rect_filled(
+                    Rect::from_min_size(min, Vec2::splat(module + 0.15)),
+                    0.0,
+                    Color32::BLACK,
+                );
+            }
+        }
+    }
+}
+
+fn messaging_config_field(
+    ui: &mut Ui,
+    field: &MessagingEnvVarInfo,
+    edits: &mut BTreeMap<String, String>,
+    enabled: bool,
+) {
+    let label = if field.prompt.trim().is_empty() {
+        field.key.as_str()
+    } else {
+        field.prompt.as_str()
+    };
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(label).strong());
+        if field.is_set {
+            ui.label(RichText::new("Saved").small().color(Color32::LIGHT_GREEN));
+        }
+        if field.required {
+            ui.label(RichText::new("Required").small().color(Color32::YELLOW));
+        }
+    });
+    if !field.description.is_empty() {
+        ui.label(RichText::new(&field.description).small().color(MUTED));
+    }
+    let mut value = edits.get(&field.key).cloned().unwrap_or_else(|| {
+        if field.is_list {
+            field.value.clone().unwrap_or_default()
+        } else {
+            String::new()
+        }
+    });
+    let placeholder = if field.is_set && !field.is_list {
+        field
+            .redacted_value
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Saved value; enter a replacement")
+    } else if !field.prompt.is_empty() {
+        field.prompt.as_str()
+    } else {
+        "Enter a value"
+    };
+    let response = ui.add_enabled(
+        enabled,
+        if field.is_list {
+            egui::TextEdit::multiline(&mut value)
+                .desired_rows(2)
+                .hint_text("Separate entries with commas or new lines")
+        } else {
+            egui::TextEdit::singleline(&mut value)
+                .password(field.is_password)
+                .hint_text(placeholder)
+        },
+    );
+    if response.changed() {
+        edits.insert(field.key.clone(), value);
+    }
+    if field.is_set
+        && ui
+            .add_enabled(enabled, egui::Button::new(format!("Clear {}", field.key)))
+            .clicked()
+    {
+        edits.insert(field.key.clone(), String::new());
+    }
+    if let Some(url) = field
+        .url
+        .as_deref()
+        .filter(|url| url.starts_with("https://"))
+    {
+        ui.hyperlink_to("Field documentation", url);
+    }
+}
+
+fn is_hermes_session_id(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 22
+        && bytes[..8].iter().all(u8::is_ascii_digit)
+        && bytes[8] == b'_'
+        && bytes[9..15].iter().all(u8::is_ascii_digit)
+        && bytes[15] == b'_'
+        && bytes[16..]
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+fn command_palette_score(label: &str, keywords: &str, query: &str) -> Option<u8> {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return Some(0);
+    }
+    let label_lower = label.to_lowercase();
+    let keys_lower = keywords.to_lowercase();
+    let terms = needle.split_whitespace().collect::<Vec<_>>();
+    if terms
+        .iter()
+        .any(|term| !label_lower.contains(term) && !keys_lower.contains(term))
+    {
+        return None;
+    }
+    if label_lower == needle {
+        return Some(100);
+    }
+    if label_lower.starts_with(&needle) {
+        return Some(90);
+    }
+    let words = label_lower
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    if words.contains(&needle.as_str()) {
+        return Some(85);
+    }
+    if words.iter().any(|word| word.starts_with(&needle)) {
+        return Some(80);
+    }
+    if label_lower.contains(&needle) {
+        return Some(70);
+    }
+    if terms.iter().all(|term| label_lower.contains(term)) {
+        return Some(60);
+    }
+    Some(40)
 }
 
 fn is_valid_http_gateway_url(value: &str) -> bool {
     let value = value.trim();
-    if value.is_empty() || value.chars().any(char::is_whitespace) {
-        return false;
+    !value.is_empty()
+        && !value.chars().any(char::is_whitespace)
+        && crate::remote_probe::normalize_remote_base_url(value).is_ok()
+}
+
+fn native_oauth_login_supported(report: &RemoteProbeReport) -> bool {
+    report.supports_native_pkce
+        && (report.providers.is_empty()
+            || report
+                .providers
+                .iter()
+                .any(|provider| !provider.supports_password))
+}
+
+fn start_saved_gateway_connection(
+    workspace: &Workspace,
+    connect_gateway: bool,
+) -> Option<GatewayDiscovery> {
+    if !connect_gateway {
+        return None;
     }
-    let Some((scheme, remainder)) = value.split_once("://") else {
-        return false;
-    };
-    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
-        return false;
+    if let Some(url) = workspace.last_remote_gateway_url() {
+        if let Ok(Some(token)) =
+            crate::native_token_store::load_session_token(workspace.data_directory(), url)
+        {
+            return Some(GatewayDiscovery::start_remote(
+                url.to_owned(),
+                RemoteAuthMode::Token,
+                RemoteGatewayAuth::Token(token),
+            ));
+        }
+        if let Ok(Some(session)) = crate::native_token_store::load(workspace.data_directory(), url)
+        {
+            return Some(GatewayDiscovery::start_remote(
+                url.to_owned(),
+                RemoteAuthMode::OAuth,
+                RemoteGatewayAuth::OAuth {
+                    session: std::sync::Arc::new(std::sync::Mutex::new(session)),
+                    credential_store_directory: workspace.data_directory().to_path_buf(),
+                },
+            ));
+        }
     }
-    let authority = remainder.split(['/', '?', '#']).next().unwrap_or_default();
-    if authority.is_empty() || authority.contains('@') {
-        return false;
-    }
-    let (host, port) = if let Some((literal, suffix)) = authority
-        .strip_prefix('[')
-        .and_then(|tail| tail.split_once(']'))
-    {
-        let port = if suffix.is_empty() {
-            None
-        } else {
-            suffix.strip_prefix(':')
-        };
-        if !literal.contains(':') || (!suffix.is_empty() && port.is_none()) {
-            return false;
-        }
-        if literal.parse::<std::net::Ipv6Addr>().is_err() {
-            return false;
-        }
-        (literal, port)
-    } else {
-        let mut pieces = authority.split(':');
-        let host = pieces.next().unwrap_or_default();
-        let port = pieces.next();
-        if pieces.next().is_some() {
-            return false;
-        }
-        (host, port)
-    };
-    let valid_host = if authority.starts_with('[') {
-        host.parse::<std::net::Ipv6Addr>().is_ok()
-    } else {
-        !host.is_empty()
-            && host != "."
-            && !host.starts_with('.')
-            && !host.ends_with('.')
-            && host
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
-    };
-    let valid_port = port.is_none_or(|port| port.parse::<u16>().is_ok_and(|parsed| parsed > 0));
-    valid_host && valid_port
+    Some(GatewayDiscovery::start())
 }
 
 impl HermesNativeApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        Self::from_workspace_result(
+        let mut app = Self::from_workspace_result(
             true,
             Workspace::load(),
             Workspace::load_fallback(),
             FilePreviewStore::from_creation_context(cc),
-        )
+        );
+        app.allow_native_window_launch = true;
+        app.enable_session_peer_sync();
+        app
+    }
+
+    pub fn new_for_native_window(
+        cc: &eframe::CreationContext<'_>,
+        window_id: u64,
+        route: &str,
+        profile: Option<&str>,
+        readiness_target: ReadinessTarget,
+    ) -> Self {
+        let mut app = Self::from_workspace_result(
+            true,
+            Workspace::load_window(window_id),
+            Workspace::load_fallback(),
+            FilePreviewStore::from_creation_context(cc),
+        );
+        app.native_window_id = Some(window_id);
+        app.allow_native_window_launch = true;
+        app.enable_session_peer_sync();
+        let now = std::time::Instant::now();
+        app.child_window_readiness = Some(ChildWindowReadinessReporter {
+            window_id,
+            target: readiness_target,
+            deadline: now + READINESS_TIMEOUT,
+            next_attempt: now,
+            sent: false,
+        });
+        if let Some(profile) = profile
+            && !profile.is_empty()
+            && profile.len() <= 128
+            && !profile.chars().any(char::is_control)
+        {
+            app.active_session_profile = Some(profile.to_owned());
+        }
+        if route.len() <= 2048 && !route.chars().any(char::is_control) {
+            app.route = AppRoute::parse(route, &app.contributed_paths);
+            app.last_chat_route = app.route.clone();
+            app.last_chat_profile = app.active_session_profile.clone();
+        }
+        app
     }
 
     #[cfg(feature = "agent-automation")]
@@ -642,6 +2249,11 @@ impl HermesNativeApp {
             Workspace::load_fallback_isolated(fallback_dir),
             FilePreviewStore::from_creation_context(cc),
         )
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn automation_route(&self) -> (String, String) {
+        (self.route.title().to_owned(), self.route.path())
     }
 
     #[cfg(feature = "agent-automation")]
@@ -680,6 +2292,21 @@ fn render_message() -> &'static str {
         self.first_run_remote_setup_open = false;
         self.first_run_setup_error = None;
         self.first_run_gateway_url.clear();
+        self.first_run_remote_token.zeroize();
+        self.first_run_remote_probe_due = None;
+        self.first_run_remote_probe_request_id = None;
+        self.first_run_remote_probe_pending = false;
+        self.first_run_remote_probe_report = None;
+        self.first_run_remote_probe_error = None;
+        self.first_run_remote_test_request_id = None;
+        self.first_run_remote_test_pending = false;
+        self.first_run_remote_test_report = None;
+        self.first_run_remote_test_error = None;
+        self.first_run_remote_tested_payload_key = None;
+        self.first_run_oauth_request_id = None;
+        self.first_run_oauth_pending = false;
+        self.first_run_oauth_session = None;
+        self.first_run_oauth_error = None;
         self.status = "First-run setup fixture · gateway isolated".into();
     }
     #[cfg(feature = "agent-automation")]
@@ -748,6 +2375,7 @@ fn render_message() -> &'static str {
         self.sessions.push(SessionSummary {
             cwd: None,
             id: session_id.into(),
+            lineage_root_id: None,
             profile: Some(profile.into()),
             title: "Native session pane".into(),
             preview: "This pane has its own transcript and composer draft.".into(),
@@ -865,6 +2493,7 @@ fn render_message() -> &'static str {
         self.sessions.push(SessionSummary {
             cwd: Some(cwd),
             id: session_id.into(),
+            lineage_root_id: None,
             profile: Some(profile.into()),
             title: "Files preview fixture".into(),
             preview: "Inspect a project tree and transient file preview.".into(),
@@ -950,6 +2579,7 @@ fn render_message() -> &'static str {
         .map(|(id, title)| SessionSummary {
             cwd: None,
             id: id.into(),
+            lineage_root_id: None,
             profile: Some("fixture-profile".into()),
             title: title.into(),
             preview: String::new(),
@@ -971,6 +2601,114 @@ fn render_message() -> &'static str {
             reveal_at: std::time::Instant::now(),
         });
         self.status = "Recent session switcher fixture · gateway isolated".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn load_pinned_session_reorder_fixture_for_automation(&mut self) {
+        let endpoint = GatewayEndpoint {
+            profile_id: "fixture-profile".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8787".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        };
+        let connection_key = gateway_pin_order_scope(&endpoint);
+        self.gateway_endpoint = Some(endpoint);
+        self.sessions = [
+            ("pin-a", "Pinned alpha", true),
+            ("pin-b", "Pinned beta", true),
+            ("recent-c", "Recent work", false),
+        ]
+        .into_iter()
+        .map(|(id, title, pinned)| SessionSummary {
+            cwd: None,
+            id: id.into(),
+            lineage_root_id: None,
+            profile: Some("fixture-profile".into()),
+            title: title.into(),
+            preview: "Pinned row reorder fixture".into(),
+            message_count: 2,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned,
+            unread: false,
+            archived: false,
+        })
+        .collect();
+        self.workspace
+            .set_pinned_session_order(
+                &connection_key,
+                vec!["pin-a".into(), "unresolved-pin".into(), "pin-b".into()],
+            )
+            .expect("save isolated pinned reorder fixture");
+        self.status = "Pinned-session reorder fixture · gateway isolated".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    pub fn load_recent_session_reorder_fixture_for_automation(&mut self) {
+        let endpoint = GatewayEndpoint {
+            profile_id: "fixture-profile".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8787".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        };
+        let now = time::OffsetDateTime::now_utc().unix_timestamp() as f64;
+        self.gateway_endpoint = Some(endpoint);
+        self.sessions = [
+            ("recent-a", "Gateway connection review", now - 60.0),
+            ("recent-b", "Native sidebar layout", now - 600.0),
+            ("recent-c", "Agent screenshot workflow", now - 1200.0),
+            (
+                "older-a",
+                "Plugin catalog filtering",
+                now - 72.0 * 60.0 * 60.0,
+            ),
+            (
+                "older-b",
+                "Session transcript search",
+                now - 73.0 * 60.0 * 60.0,
+            ),
+            ("older-c", "Dock tab restoration", now - 74.0 * 60.0 * 60.0),
+        ]
+        .into_iter()
+        .map(|(id, title, timestamp)| SessionSummary {
+            id: id.into(),
+            lineage_root_id: match id {
+                "recent-a" => Some("lineage-recent-a".into()),
+                "older-a" => Some("lineage-older-a".into()),
+                _ => None,
+            },
+            cwd: Some("D:/AI/AIProjects/Doofus Dock Doofus Hermes".into()),
+            profile: Some("fixture-profile".into()),
+            title: title.into(),
+            preview: "Recent-session ordering fixture · synthetic offline data".into(),
+            message_count: 8,
+            source: "desktop".into(),
+            started_at: timestamp,
+            last_active: Some(timestamp),
+            pinned: false,
+            unread: false,
+            archived: false,
+        })
+        .collect();
+        self.workspace
+            .set_session_color("lineage-recent-a", Some("hsl(0 68% 58%)"))
+            .expect("save isolated recent-session color fixture");
+        self.workspace
+            .set_session_color("lineage-older-a", Some("hsl(180 68% 58%)"))
+            .expect("save isolated older-session color fixture");
+        self.load_session_pane_fixture_for_automation();
+        self.sessions
+            .retain(|session| session.id != "pane-fixture-session");
+        self.status = "Recent sessions + transcript fixture · gateway isolated".into();
     }
 
     #[cfg(feature = "agent-automation")]
@@ -1138,6 +2876,154 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_artifacts_fixture_for_automation(&mut self) -> Result<(), String> {
+        use crate::artifacts::{ArtifactIndexSnapshot, ArtifactRecord};
+        let root = self
+            .workspace
+            .data_directory()
+            .join("agent-fixtures")
+            .join("artifacts");
+        std::fs::create_dir_all(&root)
+            .map_err(|error| format!("create artifact fixture directory: {error}"))?;
+        let palette = [
+            "#3972b9", "#23a69a", "#c77d2a", "#a35c8f", "#7788d8", "#d05a54",
+        ];
+        let mut image_paths = Vec::new();
+        for index in 0..18 {
+            let color = palette[index % palette.len()];
+            let secondary = palette[(index + 2) % palette.len()];
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="{color}"/><stop offset="1" stop-color="#1d2026"/></linearGradient></defs><rect width="640" height="360" rx="20" fill="url(#g)"/><circle cx="{cx}" cy="{cy}" r="104" fill="{secondary}" opacity=".82"/><path d="M32 290 C150 195 248 337 365 232 S520 180 620 90" fill="none" stroke="#f4f1ea" stroke-width="12" opacity=".8"/><text x="32" y="52" fill="#fff" font-family="monospace" font-size="22">RENDER · {number:02}</text></svg>"##,
+                cx = 130 + index * 19,
+                cy = 130 + index * 7,
+                number = index + 1
+            );
+            let path = root.join(format!("render-{index:02}.svg"));
+            let temporary = path.with_extension("svg.tmp");
+            std::fs::write(&temporary, svg)
+                .map_err(|error| format!("write artifact image fixture: {error}"))?;
+            let check = std::fs::read_to_string(&temporary)
+                .map_err(|error| format!("validate artifact image fixture: {error}"))?;
+            if !check.contains("<svg") || !check.contains("RENDER") {
+                return Err("artifact image fixture validation failed".into());
+            }
+            std::fs::rename(&temporary, &path)
+                .map_err(|error| format!("install artifact image fixture: {error}"))?;
+            image_paths.push(path);
+        }
+        let titles = [
+            "Workspace redesign",
+            "Gateway audit",
+            "Release checklist",
+            "UI exploration",
+            "Build report",
+            "Session transcript",
+        ];
+        let mut artifacts = Vec::new();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp() * 1000;
+        for (index, path) in image_paths.iter().enumerate() {
+            let value = path.to_string_lossy().into_owned();
+            artifacts.push(ArtifactRecord {
+                id: format!("artifact-fixture:image:{index}"),
+                kind: ArtifactKind::Image,
+                label: path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("render.svg")
+                    .into(),
+                href: value.clone(),
+                value,
+                session_id: format!("artifact-session-{}", index % titles.len()),
+                profile: Some("fixture-profile".into()),
+                session_title: titles[index % titles.len()].into(),
+                timestamp_ms: now - (index as i64 * 73 * 60_000),
+            });
+        }
+        for index in 0..8 {
+            let value = format!(
+                "/workspace/exports/{}-{}.{}",
+                ["summary", "trace", "report", "manifest"][index % 4],
+                index + 1,
+                ["pdf", "json", "md", "csv"][index % 4]
+            );
+            artifacts.push(ArtifactRecord {
+                id: format!("artifact-fixture:file:{index}"),
+                kind: ArtifactKind::File,
+                label: value.rsplit('/').next().unwrap_or(&value).into(),
+                href: value.clone(),
+                value,
+                session_id: format!("artifact-session-{}", index % titles.len()),
+                profile: Some("fixture-profile".into()),
+                session_title: titles[index % titles.len()].into(),
+                timestamp_ms: now - ((index + 20) as i64 * 71 * 60_000),
+            });
+        }
+        for index in 0..8 {
+            let value = format!(
+                "https://example.com/research/{}?revision={}",
+                [
+                    "design-system",
+                    "gateway-api",
+                    "release-notes",
+                    "benchmark-results"
+                ][index % 4],
+                index + 1
+            );
+            artifacts.push(ArtifactRecord {
+                id: format!("artifact-fixture:link:{index}"),
+                kind: ArtifactKind::Link,
+                label: value
+                    .split(['?', '#'])
+                    .next()
+                    .unwrap_or(&value)
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&value)
+                    .into(),
+                href: value.clone(),
+                value,
+                session_id: format!("artifact-session-{}", index % titles.len()),
+                profile: Some("fixture-profile".into()),
+                session_title: titles[index % titles.len()].into(),
+                timestamp_ms: now - ((index + 40) as i64 * 57 * 60_000),
+            });
+        }
+        self.sessions = titles
+            .iter()
+            .enumerate()
+            .map(|(index, title)| SessionSummary {
+                id: format!("artifact-session-{index}"),
+                lineage_root_id: None,
+                cwd: None,
+                profile: Some("fixture-profile".into()),
+                title: (*title).into(),
+                preview: "Artifact index fixture session".into(),
+                message_count: 4,
+                source: "fixture".into(),
+                started_at: (now / 1000) as f64,
+                last_active: Some((now / 1000) as f64),
+                pinned: index == 0,
+                unread: index == 1,
+                archived: false,
+            })
+            .collect();
+        self.artifacts = Some(ArtifactIndexSnapshot {
+            session_count: 30,
+            artifacts,
+            failures: Vec::new(),
+        });
+        self.artifacts_request_id = None;
+        self.artifacts_error = None;
+        self.artifacts_filter = ArtifactFilter::All;
+        self.artifacts_query.clear();
+        self.artifacts_image_page = 1;
+        self.artifacts_file_page = 1;
+        self.gateway_connected = true;
+        self.route = AppRoute::Artifacts;
+        self.status = "Artifacts fixture · synthetic data across 6 sessions".into();
+        Ok(())
+    }
+
     pub fn load_connectors_fixture_for_automation(&mut self) {
         self.route = AppRoute::Capabilities;
         self.capabilities_tab = CapabilitiesTab::Connectors;
@@ -1215,8 +3101,11 @@ fn render_message() -> &'static str {
             Ok(workspace) => (workspace, None),
             Err(error) => (fallback, Some(error)),
         };
+        let gateway_discovery = start_saved_gateway_connection(&workspace, connect_gateway);
         Self {
             workspace,
+            narrow_viewport: false,
+            narrow_pane_overlay: None,
             load_error,
             status: if connect_gateway {
                 "Backend offline"
@@ -1224,19 +3113,100 @@ fn render_message() -> &'static str {
                 "Automation · gateway isolated"
             }
             .into(),
+            next_native_window_id: 1,
+            native_window_id: None,
+            allow_native_window_launch: false,
+            pending_native_window_launches: VecDeque::new(),
+            pending_native_window_attempts: Vec::new(),
+            child_window_readiness: None,
+            session_peer_sync: None,
+            session_peer_sync_next_poll: None,
+            session_peer_sync_error: None,
+            auto_project_dismissal_next_poll: None,
+            auto_project_dismissal_sync_error: None,
             route: AppRoute::NewChat,
+            command_center_section: CommandCenterSection::Sessions,
+            command_center_query: String::new(),
+            command_center_system: None,
+            command_center_system_pending: None,
+            command_center_system_generation: 0,
+            command_center_system_error: None,
+            command_center_system_log_file: "agent".into(),
+            command_center_system_log_level: "ALL".into(),
+            command_center_system_log_query: String::new(),
+            command_center_system_action_pending: None,
+            command_center_system_action_name: None,
+            command_center_system_action_owner: None,
+            command_center_system_action_status: None,
+            command_center_system_action_polls: 0,
+            command_center_system_next_poll: None,
+            command_center_usage: None,
+            command_center_usage_pending: None,
+            command_center_usage_generation: 0,
+            command_center_usage_error: None,
+            command_center_usage_period_days: 30,
+            command_center_maintenance: None,
+            command_center_maintenance_pending: None,
+            command_center_maintenance_generation: 0,
+            command_center_maintenance_error: None,
+            command_center_maintenance_action_name: None,
+            command_center_maintenance_action_owner: None,
+            command_center_maintenance_action_status: None,
+            command_center_maintenance_action_polls: 0,
+            command_center_maintenance_next_poll: None,
+            command_center_maintenance_confirmation: None,
+            command_center_maintenance_share: None,
+            command_center_maintenance_notice: None,
+            command_center_delete_confirmation: None,
             last_chat_route: AppRoute::NewChat,
             last_chat_profile: None,
             overlay_return: AppRoute::NewChat,
             contributed_paths: BTreeSet::new(),
-            gateway_discovery: connect_gateway.then(GatewayDiscovery::start),
+            gateway_discovery,
             gateway_endpoint: None,
             sessions: Vec::new(),
+            project_session_colors: BTreeMap::new(),
+            project_session_color_requests: BTreeMap::new(),
+            project_session_color_profiles_loaded: BTreeSet::new(),
+            project_trees: BTreeMap::new(),
+            project_tree_refreshes: BTreeMap::new(),
+            project_tree_generations: BTreeMap::new(),
+            project_tree_errors: BTreeMap::new(),
+            project_lists: BTreeMap::new(),
+            project_list_refreshes: BTreeMap::new(),
+            project_list_generations: BTreeMap::new(),
+            project_list_errors: BTreeMap::new(),
+            bot_roster: None,
+            bot_roster_refresh: None,
+            bot_roster_generation: 0,
+            bot_roster_error: None,
+            project_delete_confirmation: None,
+            project_delete_pending: None,
+            project_delete_errors: BTreeMap::new(),
+            project_deletion_tombstones: BTreeSet::new(),
+            auto_project_undo: None,
+            selected_project_id: None,
+            selected_project_profile: None,
+            entered_project_tree: None,
+            project_sessions_refresh: None,
+            project_sessions_generation: 0,
+            project_session_lifecycle: BTreeMap::new(),
+            project_sessions_error: None,
+            project_preview_expansions: BTreeMap::new(),
+            project_preview_refreshes: BTreeMap::new(),
+            project_preview_errors: BTreeMap::new(),
             files: FileBrowserState::default(),
             file_previews,
             archived_sessions: Vec::new(),
+            command_palette_sessions: Vec::new(),
+            command_palette_sessions_request_id: None,
+            command_palette_sessions_error: None,
             show_archived_sessions: false,
             recent_session_switcher: None,
+            command_palette_open: false,
+            command_palette_query: String::new(),
+            command_palette_selected_index: 0,
+            command_palette_focus_pending: false,
             archived_sessions_request_id: None,
             archived_sessions_loading: false,
             archived_sessions_error: None,
@@ -1251,6 +3221,18 @@ fn render_message() -> &'static str {
             timestamps_override: None,
             timestamps_config_request: None,
             timestamps_config_profile: None,
+            repo_scan_config: None,
+            repo_scan_config_profile: None,
+            repo_scan_config_request: None,
+            repo_scan_config_save_request: None,
+            repo_scan_config_error: None,
+            repo_scan_enabled_draft: true,
+            repo_scan_roots_draft: String::new(),
+            repo_scan_excludes_draft: String::new(),
+            repo_scan_discovery_request: None,
+            repo_scan_completed_policy: None,
+            repo_scan_last_started_at: None,
+            repo_scan_generation: Arc::new(AtomicU64::new(0)),
             session_filter: String::new(),
             session_search_changed_at: None,
             session_search_request_id: None,
@@ -1258,6 +3240,91 @@ fn render_message() -> &'static str {
             session_search_pending: false,
             session_search_error: None,
             session_list_error: None,
+            session_list_refresh_pending: None,
+            session_list_refresh_again: false,
+            active_session_statuses: BTreeMap::new(),
+            active_status_refresh: None,
+            active_status_refresh_again: false,
+            active_status_revisions: BTreeMap::new(),
+            active_status_last_refresh_at: None,
+            artifacts: None,
+            artifacts_request_id: None,
+            artifacts_error: None,
+            pending_artifact_downloads: BTreeMap::new(),
+            pending_artifact_image_previews: BTreeMap::new(),
+            artifact_image_previews: BTreeMap::new(),
+            artifact_image_preview_order: VecDeque::new(),
+            artifacts_filter: ArtifactFilter::All,
+            artifacts_query: String::new(),
+            artifacts_image_page: 1,
+            artifacts_file_page: 1,
+            cron_jobs: None,
+            cron_jobs_request: None,
+            cron_job_mutation: None,
+            cron_job_mutation_error: None,
+            cron_editor: None,
+            cron_delivery_targets: None,
+            cron_delivery_targets_request: None,
+            cron_delivery_targets_error: None,
+            cron_model_options: None,
+            cron_model_options_request: None,
+            cron_model_options_error: None,
+            cron_blueprints: None,
+            cron_blueprints_request: None,
+            cron_blueprints_error: None,
+            cron_blueprint_instantiate_request: None,
+            cron_editor_save_request: None,
+            cron_delete_confirmation: None,
+            cron_delete_request: None,
+            cron_delete_error: None,
+            cron_job_runs: None,
+            cron_job_runs_request: None,
+            cron_job_runs_error: None,
+            cron_job_runs_owner: None,
+            cron_trigger_requests: BTreeMap::new(),
+            cron_trigger_errors: BTreeMap::new(),
+            cron_queued_runs: BTreeMap::new(),
+            cron_next_runs_poll: None,
+            cron_cancel_requests: BTreeMap::new(),
+            cron_stop_waiting: BTreeMap::new(),
+            cron_notice: None,
+            cron_next_live_poll: None,
+            cron_jobs_profile: None,
+            cron_jobs_error: None,
+            cron_jobs_query: String::new(),
+            cron_selected_job_id: None,
+            messaging_platforms: None,
+            messaging_request_id: None,
+            messaging_pending: false,
+            messaging_error: None,
+            messaging_action_error: None,
+            messaging_toggle_request: None,
+            messaging_restart_needed: false,
+            messaging_config_edits: BTreeMap::new(),
+            messaging_config_save_request: None,
+            messaging_config_saving: false,
+            messaging_config_error: None,
+            messaging_advanced_open: false,
+            messaging_pairing: None,
+            messaging_pairing_request: None,
+            messaging_pairing_error: None,
+            messaging_pairing_mutation: None,
+            messaging_pairing_action_error: None,
+            messaging_pairing_revoke_confirm: None,
+            telegram_setup: None,
+            telegram_setup_status: None,
+            telegram_setup_profile: None,
+            telegram_setup_request: None,
+            telegram_setup_allowlist: String::new(),
+            telegram_setup_new_user_id: String::new(),
+            telegram_setup_allowlist_error: None,
+            telegram_setup_error: None,
+            telegram_setup_next_poll: None,
+            telegram_setup_success: None,
+            messaging_gateway_restart: None,
+            messaging_query: String::new(),
+            messaging_status_filter: None,
+            messaging_selected_platform: None,
             capabilities_tab: CapabilitiesTab::default(),
             capabilities_query: String::new(),
             connectors_segment: ConnectorsSegment::default(),
@@ -1301,11 +3368,31 @@ fn render_message() -> &'static str {
             pending_toolset_updates: BTreeMap::new(),
             fonts_installed: false,
             gateway_connected: false,
+            window_was_focused: false,
+            focus_recovery_last_at: None,
             first_run_logo_texture: None,
             first_run_setup_visible: false,
             first_run_remote_setup_open: false,
             first_run_setup_error: None,
             first_run_gateway_url: String::new(),
+            first_run_remote_probe_worker: RemoteProbeWorker::start(),
+            first_run_remote_probe_due: None,
+            first_run_remote_probe_request_id: None,
+            first_run_remote_probe_pending: false,
+            first_run_remote_probe_report: None,
+            first_run_remote_probe_error: None,
+            first_run_remote_token: Zeroizing::new(String::new()),
+            first_run_remote_test_worker: RemoteConnectionTestWorker::start(),
+            first_run_remote_test_request_id: None,
+            first_run_remote_test_pending: false,
+            first_run_remote_test_report: None,
+            first_run_remote_test_error: None,
+            first_run_remote_tested_payload_key: None,
+            first_run_oauth_worker: NativeOAuthLoginWorker::start(),
+            first_run_oauth_request_id: None,
+            first_run_oauth_pending: false,
+            first_run_oauth_session: None,
+            first_run_oauth_error: None,
             session_chat_views: BTreeMap::new(),
             session_chat_view_order: VecDeque::new(),
             new_chat_draft: String::new(),
@@ -1314,6 +3401,8 @@ fn render_message() -> &'static str {
             transcript_has_more: false,
             older_transcript_request: None,
             older_transcript_error: None,
+            active_transcript_refresh: None,
+            peer_transcript_refreshes: BTreeMap::new(),
             markdown_cache: CommonMarkCache::default(),
             active_runtime_session_id: None,
             active_session_profile: None,
@@ -1326,6 +3415,10 @@ fn render_message() -> &'static str {
             pending_session_pins: BTreeMap::new(),
             pending_session_unreads: BTreeMap::new(),
             pending_session_archives: BTreeMap::new(),
+            pending_session_deletes: BTreeMap::new(),
+            pending_session_exports: BTreeMap::new(),
+            last_exported_session_path: None,
+            session_list_limit: 200,
             pending_session_renames: BTreeMap::new(),
             runtime_session_renames: BTreeMap::new(),
             uncertain_session_renames: BTreeSet::new(),
@@ -1338,10 +3431,13 @@ fn render_message() -> &'static str {
             panel_drag: None,
             panel_drag_source: None,
             tab_reorder: None,
+            pinned_session_reorder: None,
+            recent_session_reorder: None,
             dock_tabs: BTreeMap::new(),
             focused_dock_group: None,
             hovered_dock_group: None,
             split_resize: None,
+            master_detail_resize: None,
         }
     }
 
@@ -1370,6 +3466,42 @@ fn render_message() -> &'static str {
                     ui.add_space(16.0);
                     ui.label(RichText::new(&self.status).size(12.0).color(MUTED));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.button("New window").clicked() {
+                            self.execute_registered_action(RegisteredUiAction::OpenNewWindow)
+                                .unwrap_or_else(|error| self.status = error);
+                        }
+                        if matches!(self.route, AppRoute::Session(_))
+                            && ui.button("Move session to new window").clicked()
+                        {
+                            self.execute_registered_action(
+                                RegisteredUiAction::MoveCurrentSessionToNewWindow,
+                            )
+                            .unwrap_or_else(|error| self.status = error);
+                        }
+                        let left_open = self.positional_side_open(true);
+                        if ui
+                            .button(if left_open {
+                                "Hide left side"
+                            } else {
+                                "Show left side"
+                            })
+                            .on_hover_text("Toggle the dock group at the physical left edge")
+                            .clicked()
+                        {
+                            self.toggle_positional_side(true);
+                        }
+                        let right_open = self.positional_side_open(false);
+                        if ui
+                            .button(if right_open {
+                                "Hide right side"
+                            } else {
+                                "Show right side"
+                            })
+                            .on_hover_text("Toggle the dock group at the physical right edge")
+                            .clicked()
+                        {
+                            self.toggle_positional_side(false);
+                        }
                         if ui.button("Settings").clicked() {
                             self.execute_registered_action(RegisteredUiAction::Navigate {
                                 path: "/settings".into(),
@@ -1437,11 +3569,27 @@ fn render_message() -> &'static str {
             |ui| {
                 ui.add_space(10.0);
                 ui.horizontal_centered(|ui| {
-                    for (id, label) in
-                        [(REVIEW, "Review"), (FILES, "Files"), (TERMINAL, "Terminal")]
-                    {
-                        let open = self.workspace.pane_is_open(id);
-                        let response = ui.selectable_label(open, label);
+                    for (id, label) in [
+                        (SESSIONS, "Sessions"),
+                        (BOTS, "Bots"),
+                        (REVIEW, "Review"),
+                        (FILES, "Files"),
+                        (TERMINAL, "Terminal"),
+                    ] {
+                        let open = if self.narrow_viewport
+                            && matches!(id, SESSIONS | BOTS | REVIEW | FILES)
+                        {
+                            self.narrow_pane_overlay
+                                .as_ref()
+                                .is_some_and(|overlay| overlay.panel == id)
+                        } else {
+                            self.workspace.pane_is_open(id)
+                        };
+                        let response = ui.selectable_label(open, label).on_hover_text(match id {
+                            SESSIONS => "Toggle sessions sidebar (Ctrl/Cmd+B)",
+                            FILES => "Toggle file browser (Ctrl/Cmd+J)",
+                            _ => label,
+                        });
                         if response.clicked() {
                             self.execute_registered_action(RegisteredUiAction::TogglePane {
                                 panel: id.into(),
@@ -1449,16 +3597,229 @@ fn render_message() -> &'static str {
                             .unwrap_or_else(|error| self.status = error);
                         }
                     }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new("Hermes Desktop · native Rust shell")
-                                .size(11.0)
-                                .color(MUTED),
-                        );
-                    });
                 });
             },
         );
+    }
+
+    fn toggle_positional_side(&mut self, left: bool) {
+        if self.narrow_viewport {
+            let panel = self.panel_on_physical_side(left);
+            self.toggle_narrow_pane(&panel);
+            return;
+        }
+        match self.workspace.toggle_positional_edge(left) {
+            Ok(true) => {
+                self.status = if left {
+                    "Left dock group minimized/restored".into()
+                } else {
+                    "Right dock group minimized/restored".into()
+                };
+            }
+            Ok(false) => {
+                let panel = if left { SESSIONS } else { FILES };
+                self.execute_registered_action(RegisteredUiAction::TogglePane {
+                    panel: panel.into(),
+                })
+                .unwrap_or_else(|error| self.status = error);
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    fn panel_on_physical_side(&self, left: bool) -> String {
+        if let Some(panel) = self
+            .workspace
+            .narrow_collapsible_panels(!left)
+            .into_iter()
+            .next()
+        {
+            return panel;
+        }
+        let sessions_on_right = self.workspace.semantic_panel_is_right(SESSIONS);
+        if sessions_on_right == !left {
+            SESSIONS.into()
+        } else {
+            FILES.into()
+        }
+    }
+
+    fn positional_side_open(&self, left: bool) -> bool {
+        if self.narrow_viewport {
+            self.narrow_pane_overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.panel == self.panel_on_physical_side(left))
+        } else {
+            self.workspace.positional_edge_open(left)
+        }
+    }
+
+    fn toggle_narrow_pane(&mut self, panel: &str) {
+        let current = self.narrow_pane_overlay.as_ref();
+        self.narrow_pane_overlay = match current {
+            Some(overlay) if overlay.panel == panel && overlay.pinned => None,
+            Some(overlay) if overlay.panel == panel => Some(NarrowPaneOverlay {
+                panel: panel.into(),
+                pinned: true,
+            }),
+            _ => Some(NarrowPaneOverlay {
+                panel: panel.into(),
+                pinned: true,
+            }),
+        };
+    }
+
+    fn show_narrow_pane_overlay(&mut self, ctx: &egui::Context) {
+        if !self.narrow_viewport {
+            return;
+        }
+        let modal_open = self.route.is_overlay()
+            || self.first_run_setup_visible
+            || self.find_in_page_open
+            || self.command_palette_open
+            || self.recent_session_switcher.is_some()
+            || self.rename_session.is_some();
+        let escape = ctx.input(|input| input.key_pressed(egui::Key::Escape));
+        if escape && !modal_open && self.narrow_pane_overlay.is_some() {
+            ctx.input_mut(|input| {
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+            });
+            self.narrow_pane_overlay = None;
+        }
+
+        let pointer = ctx.input(|input| input.pointer.hover_pos());
+        if let Some(pos) = pointer {
+            let screen = ctx.content_rect();
+            let edge_panel = if pos.x <= screen.left() + 6.0 {
+                Some(self.panel_on_physical_side(true))
+            } else if pos.x >= screen.right() - 6.0 {
+                Some(self.panel_on_physical_side(false))
+            } else {
+                None
+            };
+            if let Some(panel) = edge_panel {
+                if self
+                    .narrow_pane_overlay
+                    .as_ref()
+                    .is_none_or(|overlay| !overlay.pinned)
+                {
+                    self.narrow_pane_overlay = Some(NarrowPaneOverlay {
+                        panel: panel.into(),
+                        pinned: false,
+                    });
+                }
+            } else if self
+                .narrow_pane_overlay
+                .as_ref()
+                .is_some_and(|overlay| !overlay.pinned)
+            {
+                let inside = self
+                    .narrow_overlay_rect(ctx)
+                    .is_some_and(|rect| rect.contains(pos));
+                if !inside {
+                    self.narrow_pane_overlay = None;
+                }
+            }
+        }
+
+        let Some(overlay) = self.narrow_pane_overlay.clone() else {
+            return;
+        };
+        let screen = ctx.content_rect();
+        let panel_width = 237.0_f32.min(screen.width() * 0.85);
+        let right = self.workspace.narrow_panel_is_right(&overlay.panel);
+        let left = if right {
+            screen.right() - panel_width
+        } else {
+            screen.left()
+        };
+        let rect = Rect::from_min_size(
+            egui::pos2(left, screen.top()),
+            Vec2::new(panel_width, screen.height()),
+        );
+        let tab_panels = self
+            .workspace
+            .dock
+            .snapshot()
+            .document
+            .root
+            .as_deref()
+            .map(|root| collect_dock_tab_groups(Some(root)))
+            .unwrap_or_default()
+            .into_iter()
+            .find(|group| group.panels.iter().any(|panel| panel.0 == overlay.panel))
+            .map(|group| {
+                group
+                    .panels
+                    .into_iter()
+                    .filter(|panel| matches!(panel.0.as_str(), SESSIONS | BOTS | REVIEW | FILES))
+                    .map(|panel| panel.0)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        egui::Area::new(Id::NULL.with("hermes-narrow-pane-overlay"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(rect.min)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(PANEL)
+                    .stroke(Stroke::new(1.0, BORDER))
+                    .show(ui, |ui| {
+                        ui.set_min_size(rect.size());
+                        ui.set_max_size(rect.size());
+                        ui.horizontal(|ui| {
+                            ui.strong(panel_title(&overlay.panel));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.small_button("Close").clicked() {
+                                    self.narrow_pane_overlay = None;
+                                }
+                                if ui
+                                    .small_button(if overlay.pinned { "Pinned" } else { "Pin" })
+                                    .clicked()
+                                {
+                                    if let Some(current) = self.narrow_pane_overlay.as_mut() {
+                                        current.pinned = !current.pinned;
+                                    }
+                                }
+                            });
+                        });
+                        ui.separator();
+                        if tab_panels.len() > 1 {
+                            ui.horizontal(|ui| {
+                                for panel in &tab_panels {
+                                    let label = panel_title(panel);
+                                    if ui
+                                        .selectable_label(overlay.panel == *panel, label)
+                                        .clicked()
+                                    {
+                                        self.narrow_pane_overlay = Some(NarrowPaneOverlay {
+                                            panel: panel.clone(),
+                                            pinned: overlay.pinned,
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                        let panel_rect = ui.available_rect_before_wrap();
+                        self.draw_panel(ui, &overlay.panel, panel_rect, rect, false);
+                    });
+            });
+    }
+
+    fn narrow_overlay_rect(&self, ctx: &egui::Context) -> Option<Rect> {
+        let overlay = self.narrow_pane_overlay.as_ref()?;
+        let screen = ctx.content_rect();
+        let width = 237.0_f32.min(screen.width() * 0.85);
+        let right = self.workspace.narrow_panel_is_right(&overlay.panel);
+        let left = if right {
+            screen.right() - width
+        } else {
+            screen.left()
+        };
+        Some(Rect::from_min_size(
+            egui::pos2(left, screen.top()),
+            Vec2::new(width, screen.height()),
+        ))
     }
 
     fn draw_panel(
@@ -1493,6 +3854,7 @@ fn render_message() -> &'static str {
             .is_some_and(|descriptor| descriptor.role == "hermes_file_preview");
         let title = match id {
             SESSIONS => "Sessions",
+            BOTS => "Bots",
             WORKSPACE => self.route.title(),
             REVIEW => "Review",
             FILES => "Files",
@@ -1562,6 +3924,7 @@ fn render_message() -> &'static str {
         child.add_space(8.0);
         match id {
             SESSIONS => self.sessions_content(&mut child),
+            BOTS => self.bots_panel(&mut child),
             WORKSPACE => self.workspace_content(&mut child),
             REVIEW => self.empty_panel(&mut child, "No review is active"),
             FILES => self.files_panel(&mut child),
@@ -1589,6 +3952,116 @@ fn render_message() -> &'static str {
             }
             _ => {}
         }
+    }
+
+    fn bots_panel(&mut self, ui: &mut Ui) {
+        self.load_bot_roster(false);
+        let connected = self.gateway_connected && self.gateway_endpoint.is_some();
+        let snapshot = self.bot_roster_for_current_endpoint().cloned();
+        let pending = self.bot_roster_refresh.is_some();
+        let error = self.bot_roster_error.clone();
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+
+        ui.horizontal(|ui| {
+            ui.heading("Bots");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .add_enabled(connected, egui::Button::new("Refresh"))
+                    .clicked()
+                {
+                    self.load_bot_roster(true);
+                }
+            });
+        });
+        if let Some(profile) = profile.as_deref() {
+            ui.label(RichText::new(format!("Gateway profile · {profile}")).color(MUTED));
+        }
+        ui.separator();
+
+        if !connected {
+            ui.label(
+                RichText::new("Connect to your Hermes backend to load its bot roster.")
+                    .color(MUTED),
+            );
+            return;
+        }
+        if profile
+            .as_deref()
+            .is_some_and(|profile| profile.eq_ignore_ascii_case("all"))
+        {
+            ui.label(
+                RichText::new("Select a specific Hermes profile to view its bots.").color(MUTED),
+            );
+            return;
+        }
+        if let Some(error) = error.as_deref() {
+            ui.label(
+                RichText::new(format!("Bot roster refresh failed: {error}"))
+                    .color(Color32::from_rgb(231, 155, 108)),
+            );
+        }
+        let Some(snapshot) = snapshot else {
+            if pending {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Loading bots from the active gateway profile…");
+                });
+            } else if let Some(error) = error {
+                ui.label(RichText::new(format!("Could not load bots: {error}")).color(MUTED));
+                if ui.button("Retry").clicked() {
+                    self.load_bot_roster(true);
+                }
+            } else {
+                ui.label(RichText::new("Waiting for Hermes gateway…").color(MUTED));
+            }
+            return;
+        };
+        if snapshot.profiles.is_empty() {
+            ui.label(
+                RichText::new("No bots are configured for this gateway profile.").color(MUTED),
+            );
+            return;
+        }
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show_rows(ui, 78.0, snapshot.profiles.len(), |ui, rows| {
+                for index in rows {
+                    let bot = &snapshot.profiles[index];
+                    ui.push_id(&bot.name, |ui| {
+                        egui::Frame::group(ui.style()).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.strong(bot.display_name.as_deref().unwrap_or(&bot.name));
+                                if let Some(title) =
+                                    bot.title.as_deref().filter(|title| !title.is_empty())
+                                {
+                                    ui.label(RichText::new(title).color(MUTED));
+                                }
+                            });
+                            ui.label(
+                                RichText::new(format!(
+                                    "{}{}",
+                                    bot.name,
+                                    bot.handle
+                                        .as_deref()
+                                        .map(|handle| format!(" · {handle}"))
+                                        .unwrap_or_default()
+                                ))
+                                .small()
+                                .color(MUTED),
+                            );
+                            if let Some(description) =
+                                bot.description.as_deref().filter(|text| !text.is_empty())
+                            {
+                                ui.label(description);
+                            }
+                        });
+                        ui.add_space(4.0);
+                    });
+                }
+            });
     }
 
     fn files_panel(&mut self, ui: &mut Ui) {
@@ -1952,6 +4425,145 @@ fn render_message() -> &'static str {
         true
     }
 
+    fn finish_pinned_session_reorder(&mut self) {
+        let Some(reorder) = self.pinned_session_reorder.take() else {
+            return;
+        };
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.status =
+                "Pinned-session reorder cancelled because the gateway disconnected".into();
+            return;
+        };
+        if gateway_pin_order_scope(endpoint) != reorder.connection_key {
+            self.status = "Pinned-session reorder cancelled because the gateway changed".into();
+            return;
+        }
+        if self.workspace.pinned_session_order(&reorder.connection_key)
+            != reorder.initial_persisted_order
+        {
+            self.status = "Pinned-session reorder cancelled because the saved order changed".into();
+            return;
+        }
+        let mut order = reorder.visible_order;
+        if !move_session_id(
+            &mut order,
+            &reorder.source_session_id,
+            &reorder.target_session_id,
+        ) {
+            self.status = "Pinned-session order unchanged".into();
+            return;
+        }
+        match self
+            .workspace
+            .reorder_pinned_session_order(&reorder.connection_key, order)
+        {
+            Ok(()) => self.status = "Pinned sessions reordered".into(),
+            Err(error) => self.status = format!("Pinned-session reorder failed: {error}"),
+        }
+    }
+
+    fn finish_recent_session_reorder(&mut self) {
+        let Some(reorder) = self.recent_session_reorder.take() else {
+            return;
+        };
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.status =
+                "Recent-session reorder cancelled because the gateway disconnected".into();
+            return;
+        };
+        if sidebar_recent_order_scope(endpoint) != reorder.scope_key {
+            self.status = "Recent-session reorder cancelled because the profile changed".into();
+            return;
+        }
+        if self.workspace.sidebar_session_order(&reorder.scope_key)
+            != reorder.initial_persisted_order
+        {
+            self.status = "Recent-session reorder cancelled because the saved order changed".into();
+            return;
+        }
+        if self.show_archived_sessions || !self.session_filter.trim().is_empty() {
+            self.status =
+                "Recent-session reorder cancelled because the session view changed".into();
+            return;
+        }
+        let pin_order = self
+            .workspace
+            .pinned_session_order(&gateway_pin_order_scope(endpoint));
+        let (_, recent) = partition_sidebar_sessions(self.sessions.clone(), &pin_order, true);
+        let groups = session_date_groups_now(recent);
+        let Some(group) = groups
+            .iter()
+            .find(|group| group.key == reorder.date_group_key)
+        else {
+            self.status = "Recent-session reorder cancelled because its date group changed".into();
+            return;
+        };
+        let group_ids = group
+            .sessions
+            .iter()
+            .map(|session| session.id.clone())
+            .collect::<Vec<_>>();
+        if group_ids.len() != reorder.date_group_ids.len()
+            || group_ids.iter().cloned().collect::<BTreeSet<_>>()
+                != reorder
+                    .date_group_ids
+                    .iter()
+                    .cloned()
+                    .collect::<BTreeSet<_>>()
+            || !group_ids.iter().any(|id| id == &reorder.target_session_id)
+        {
+            self.status = "Recent-session reorder cancelled because its date group changed".into();
+            return;
+        }
+        let mut reordered_group = reorder.date_group_ids.clone();
+        if !move_session_id(
+            &mut reordered_group,
+            &reorder.source_session_id,
+            &reorder.target_session_id,
+        ) {
+            self.status = "Recent-session order unchanged".into();
+            return;
+        }
+        let mut all_order = reorder.visible_order;
+        let Some(first_slot) = all_order
+            .iter()
+            .position(|id| reorder.date_group_ids.contains(id))
+        else {
+            self.status =
+                "Recent-session reorder cancelled because the visible order changed".into();
+            return;
+        };
+        let group_slots = all_order
+            .iter()
+            .enumerate()
+            .filter_map(|(index, id)| reorder.date_group_ids.contains(id).then_some(index))
+            .collect::<Vec<_>>();
+        if group_slots.len() != reordered_group.len() {
+            self.status =
+                "Recent-session reorder cancelled because the visible order changed".into();
+            return;
+        }
+        for (slot, id) in group_slots.into_iter().zip(reordered_group) {
+            all_order[slot] = id;
+        }
+        if !all_order
+            .iter()
+            .skip(first_slot)
+            .any(|id| reorder.date_group_ids.contains(id))
+        {
+            self.status =
+                "Recent-session reorder cancelled because the visible order changed".into();
+            return;
+        }
+        match self
+            .workspace
+            .set_sidebar_session_order(&reorder.scope_key, all_order)
+        {
+            Ok(()) => self.status = "Recent sessions reordered within date group".into(),
+            Err(error) => self.status = format!("Recent-session reorder failed: {error}"),
+        }
+    }
+
     fn commit_panel_drop(&mut self, source: PanelId, target: PanelDropTarget) {
         let snapshot = self.workspace.dock.snapshot();
         let operation = panel_drop_operation(source, target);
@@ -2055,6 +4667,423 @@ fn render_message() -> &'static str {
             }
         }
         ui.add_space(8.0);
+        let tree_profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if !self.show_archived_sessions && query.is_empty() {
+            if let Some(profile) = tree_profile.as_deref() {
+                if let Some(tree) = self.project_trees.get(profile).cloned() {
+                    let mut open_project_session = None;
+                    let mut enter_project_id = None;
+                    let mut delete_project_id = None;
+                    let mut dismiss_auto_project_id = None;
+                    let mut leave_project_view = false;
+                    let mut retry_project_id = None;
+                    let mut retry_project_list = false;
+                    let mut request_preview_project_id = None;
+                    let mut show_more_project_key = None;
+                    let endpoint_instance_id = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.instance_id.clone())
+                        .unwrap_or_default();
+                    if let Some(error) = self.project_list_errors.get(profile) {
+                        ui.label(
+                            RichText::new(format!("Project list refresh issue: {error}"))
+                                .size(10.0)
+                                .color(MUTED),
+                        );
+                        retry_project_list = ui.button("Retry project list").clicked();
+                    }
+                    ui.collapsing("Projects", |ui| {
+                        if let Some(error) = &self.auto_project_dismissal_sync_error {
+                            ui.label(
+                                RichText::new(format!("Project visibility sync issue: {error}"))
+                                    .size(10.0)
+                                    .color(MUTED),
+                            );
+                        }
+                        if let Some(error) = self.project_tree_errors.get(profile) {
+                            ui.label(
+                                RichText::new(format!("Project tree refresh issue: {error}"))
+                                    .size(10.0)
+                                    .color(MUTED),
+                            );
+                        }
+                        if let Some(error) = self.project_delete_errors.get(profile) {
+                            ui.label(
+                                RichText::new(format!("Project deletion failed: {error}"))
+                                    .size(10.0)
+                                    .color(MUTED),
+                            );
+                        }
+                        let mut show_all_project_sessions =
+                            self.workspace.preferences.show_all_project_sessions;
+                        if ui
+                            .checkbox(&mut show_all_project_sessions, "Show all sessions")
+                            .accessible_name("Show all project sessions")
+                            .changed()
+                        {
+                            match self
+                                .workspace
+                                .set_show_all_project_sessions(show_all_project_sessions)
+                            {
+                                Ok(()) => self.refresh_project_tree_colors(None),
+                                Err(error) => self.status = error,
+                            }
+                        }
+                        if let Some(selected_id) = self
+                            .selected_project_id
+                            .as_deref()
+                            .filter(|_| self.selected_project_profile.as_deref() == Some(profile))
+                        {
+                            if ui.button("← All projects").clicked() {
+                                leave_project_view = true;
+                            }
+                            let project = self
+                                .entered_project_tree
+                                .as_ref()
+                                .filter(|project| project.id == selected_id)
+                                .or_else(|| {
+                                    tree.projects.iter().find(|project| project.id == selected_id)
+                                });
+                            if let Some(project) = project {
+                                ui.label(RichText::new(&project.label).strong());
+                                if project.is_auto
+                                    && !project.is_no_project
+                                    && ui
+                                        .button("Hide from sidebar")
+                                        .accessible_name(format!(
+                                            "Hide auto project {} from sidebar",
+                                            project.id
+                                        ))
+                                        .clicked()
+                                {
+                                    dismiss_auto_project_id =
+                                        Some((profile.to_owned(), project.id.clone()));
+                                }
+                                if let Some(path) = &project.path {
+                                    ui.label(RichText::new(path).size(10.0).color(MUTED));
+                                }
+                                if self.project_sessions_refresh.is_some() {
+                                    ui.label(
+                                        RichText::new("Loading project sessions…")
+                                            .size(10.0)
+                                            .color(MUTED),
+                                    );
+                                }
+                                if let Some(error) = &self.project_sessions_error {
+                                    ui.label(
+                                        RichText::new(format!("Project sessions unavailable: {error}"))
+                                            .size(10.0)
+                                            .color(MUTED),
+                                    );
+                                    if ui.button("Retry").clicked() {
+                                        retry_project_id = Some(selected_id.to_owned());
+                                    }
+                                }
+                                for repo in &project.repos {
+                                    let repo_name = if repo.label.trim().is_empty() {
+                                        repo.id.as_str()
+                                    } else {
+                                        repo.label.as_str()
+                                    };
+                                    ui.collapsing(
+                                        format!("{repo_name} · {}", repo.session_count),
+                                        |ui| {
+                                            for group in &repo.groups {
+                                                let group_name = if group.label.trim().is_empty() {
+                                                    group.id.as_str()
+                                                } else {
+                                                    group.label.as_str()
+                                                };
+                                                ui.collapsing(group_name, |ui| {
+                                                    if let Some(path) = &group.path {
+                                                        ui.label(
+                                                            RichText::new(path)
+                                                                .size(10.0)
+                                                                .color(MUTED),
+                                                        );
+                                                    }
+                                                    for session in &group.sessions {
+                                                        let title = if session.title.trim().is_empty() {
+                                                            session.id.as_str()
+                                                        } else {
+                                                            session.title.as_str()
+                                                        };
+                                                        if ui
+                                                            .selectable_label(false, title)
+                                                            .accessible_name(format!(
+                                                                "Open project session {} in profile {}",
+                                                                session.id,
+                                                                session.profile.as_deref().unwrap_or("unknown")
+                                                            ))
+                                                            .on_hover_text(&session.id)
+                                                            .clicked()
+                                                        {
+                                                            open_project_session = Some(session.clone());
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        },
+                                    );
+                                }
+                            }
+                        } else {
+                        let mut visible_project_count = 0;
+                        for project in &tree.projects {
+                            if !project_tree_entry_is_visible(
+                                project,
+                                &self.workspace.preferences.dismissed_auto_project_ids,
+                            ) {
+                                continue;
+                            }
+                            visible_project_count += 1;
+                            let preview_key = (
+                                profile.to_owned(),
+                                endpoint_instance_id.clone(),
+                                project.id.clone(),
+                            );
+                            let expansion = self.project_preview_expansions.get(&preview_key);
+                            let project_name = if project.label.trim().is_empty() {
+                                project.id.as_str()
+                            } else {
+                                project.label.as_str()
+                            };
+                            let label = format!("{project_name} · {}", project.session_count);
+                            let list_active_id = self.project_list_active_id(profile);
+                            let active_project = list_active_id == Some(project.id.as_str());
+                            let label = if active_project {
+                                format!("{label} · Active")
+                            } else {
+                                label
+                            };
+                            ui.collapsing(label, |ui| {
+                                if ui.button("Open project").clicked() {
+                                    enter_project_id = Some(project.id.clone());
+                                }
+                                if project.is_auto
+                                    && !project.is_no_project
+                                    && ui
+                                        .button("Hide from sidebar")
+                                        .accessible_name(format!(
+                                            "Hide auto project {} from sidebar",
+                                            project.id
+                                        ))
+                                        .clicked()
+                                {
+                                    dismiss_auto_project_id =
+                                        Some((profile.to_owned(), project.id.clone()));
+                                }
+                                if !profile.eq_ignore_ascii_case("all")
+                                    && !project.is_auto
+                                    && !project.is_no_project
+                                    && ui
+                                        .add_enabled(
+                                            self.project_delete_pending.is_none(),
+                                            egui::Button::new("Delete project…"),
+                                        )
+                                        .accessible_name(format!("Delete project {}", project.id))
+                                        .clicked()
+                                {
+                                    delete_project_id = Some((profile.to_owned(), project.id.clone()));
+                                }
+                                let preview_total = project.session_count.max(project.preview_sessions.len());
+                                if expansion.is_none()
+                                    && !self.workspace.preferences.show_all_project_sessions
+                                    && preview_total > project.preview_sessions.len()
+                                    && ui.button(format!("Show all {preview_total} sessions")).clicked()
+                                {
+                                    if profile.eq_ignore_ascii_case("all") {
+                                        enter_project_id = Some(project.id.clone());
+                                    } else {
+                                        request_preview_project_id = Some(project.id.clone());
+                                    }
+                                }
+                                if self.project_preview_refreshes.values().any(|pending| pending.key == preview_key) {
+                                    ui.label(RichText::new("Loading project sessions…").size(10.0).color(MUTED));
+                                }
+                                if let Some(error) = self.project_preview_errors.get(&preview_key) {
+                                    ui.label(RichText::new(format!("Project sessions unavailable: {error}")).size(10.0).color(MUTED));
+                                    if !profile.eq_ignore_ascii_case("all")
+                                        && ui.button("Retry project sessions").clicked()
+                                    {
+                                        request_preview_project_id = Some(project.id.clone());
+                                    }
+                                }
+                                if let Some(path) = &project.path {
+                                    ui.label(RichText::new(path).size(10.0).color(MUTED));
+                                }
+                                if let Some(expansion) = expansion {
+                                    let rows = merge_project_preview_sessions(
+                                        &project.preview_sessions,
+                                        &expansion.sessions,
+                                        profile,
+                                        &self.project_session_lifecycle,
+                                    );
+                                    for session in rows.iter().take(expansion.visible_count) {
+                                        let title = if session.title.trim().is_empty() {
+                                            session.id.as_str()
+                                        } else {
+                                            session.title.as_str()
+                                        };
+                                        if ui
+                                            .selectable_label(false, title)
+                                            .accessible_name(format!(
+                                                "Open project session {} in profile {}",
+                                                session.id,
+                                                session.profile.as_deref().unwrap_or("unknown")
+                                            ))
+                                            .on_hover_text(&session.id)
+                                            .clicked()
+                                        {
+                                            open_project_session = Some(session.clone());
+                                        }
+                                    }
+                                    let remaining = rows.len().saturating_sub(expansion.visible_count);
+                                    if remaining > 0 {
+                                        let next_count = remaining.min(PROJECT_SESSION_PAGE_SIZE);
+                                        if ui.button(format!("Show more {next_count} sessions")).clicked() {
+                                            show_more_project_key = Some(preview_key.clone());
+                                        }
+                                    }
+                                } else {
+                                    for session in &project.preview_sessions {
+                                        let title = if session.title.trim().is_empty() {
+                                            session.id.as_str()
+                                        } else {
+                                            session.title.as_str()
+                                        };
+                                        if ui
+                                            .selectable_label(false, title)
+                                            .accessible_name(format!(
+                                                "Open project session {} in profile {}",
+                                                session.id,
+                                                session.profile.as_deref().unwrap_or("unknown")
+                                            ))
+                                            .on_hover_text(&session.id)
+                                            .clicked()
+                                        {
+                                            open_project_session = Some(session.clone());
+                                        }
+                                    }
+                                }
+                                for repo in &project.repos {
+                                    let repo_name = if repo.label.trim().is_empty() {
+                                        repo.id.as_str()
+                                    } else {
+                                        repo.label.as_str()
+                                    };
+                                    ui.collapsing(
+                                        format!("{repo_name} · {}", repo.session_count),
+                                        |ui| {
+                                            if let Some(path) = &repo.path {
+                                                ui.label(
+                                                    RichText::new(path).size(10.0).color(MUTED),
+                                                );
+                                            }
+                                            for group in &repo.groups {
+                                                let group_name = if group.label.trim().is_empty() {
+                                                    group.id.as_str()
+                                                } else {
+                                                    group.label.as_str()
+                                                };
+                                                ui.collapsing(group_name, |ui| {
+                                                    if let Some(path) = &group.path {
+                                                        ui.label(
+                                                            RichText::new(path)
+                                                                .size(10.0)
+                                                                .color(MUTED),
+                                                        );
+                                                    }
+                                                    if expansion.is_none() {
+                                                    for session in &group.sessions {
+                                                        let title =
+                                                            if session.title.trim().is_empty() {
+                                                                session.id.as_str()
+                                                            } else {
+                                                                session.title.as_str()
+                                                            };
+                                                        if ui
+                                                            .selectable_label(false, title)
+                                                            .accessible_name(format!(
+                                                                "Open project session {} in profile {}",
+                                                                session.id,
+                                                                session.profile.as_deref().unwrap_or("unknown")
+                                                            ))
+                                                            .on_hover_text(&session.id)
+                                                            .clicked()
+                                                        {
+                                                            open_project_session =
+                                                                Some(session.clone());
+                                                        }
+                                                    }
+                                                    }
+                                                });
+                                            }
+                                        },
+                                    );
+                                }
+                            });
+                        }
+                        if visible_project_count == 0 {
+                            ui.label(RichText::new("No projects").size(11.0).color(MUTED));
+                        }
+                        }
+                    });
+                    if leave_project_view {
+                        self.leave_project_sessions();
+                    }
+                    if let Some((profile_id, project_id)) = dismiss_auto_project_id {
+                        self.dismiss_auto_project(&profile_id, &project_id);
+                    }
+                    if retry_project_list {
+                        self.load_project_list(true);
+                    }
+                    if let Some((profile, project_id)) = delete_project_id {
+                        self.project_delete_errors.remove(&profile);
+                        self.project_delete_confirmation = Some((profile, project_id));
+                    }
+                    if let Some(project_id) = enter_project_id.or(retry_project_id) {
+                        self.enter_project_sessions(&project_id);
+                    }
+                    if let Some(project_id) = request_preview_project_id {
+                        self.request_project_preview(&project_id);
+                    }
+                    if let Some(key) = show_more_project_key {
+                        self.reveal_more_project_preview(&key);
+                    }
+                    if let Some(session) = open_project_session {
+                        self.execute_registered_action(RegisteredUiAction::OpenSession {
+                            session_id: session.id,
+                            profile: session.profile.or_else(|| {
+                                (!profile.eq_ignore_ascii_case("all")).then(|| profile.to_owned())
+                            }),
+                        })
+                        .unwrap_or_else(|error| self.status = error);
+                    }
+                } else {
+                    ui.collapsing("Projects", |ui| {
+                        if let Some(error) = self.project_tree_errors.get(profile) {
+                            ui.label(
+                                RichText::new(format!("Project tree unavailable: {error}"))
+                                    .size(11.0)
+                                    .color(MUTED),
+                            );
+                        } else {
+                            ui.label(
+                                RichText::new("Loading project tree…")
+                                    .size(11.0)
+                                    .color(MUTED),
+                            );
+                        }
+                    });
+                }
+            }
+        }
+        self.project_delete_dialog(ui.ctx());
         let sessions = if self.show_archived_sessions {
             self.archived_sessions
                 .iter()
@@ -2069,6 +5098,83 @@ fn render_message() -> &'static str {
                 self.session_search_pending,
             )
         };
+        let no_sessions = sessions.is_empty();
+        let pin_order = if !self.show_archived_sessions && query.is_empty() {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| {
+                    self.workspace
+                        .pinned_session_order(&gateway_pin_order_scope(endpoint))
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let (pinned_sessions, recent_sessions) = partition_sidebar_sessions(
+            sessions,
+            &pin_order,
+            !self.show_archived_sessions && query.is_empty(),
+        );
+        let pinned_count = pinned_sessions.len();
+        if pinned_count > 0 {
+            ui.label(RichText::new("Pinned").size(12.0).color(MUTED));
+        }
+        let date_grouping_enabled = !self.show_archived_sessions && query.is_empty();
+        let mut recent_groups = if date_grouping_enabled {
+            session_date_groups_now(recent_sessions)
+        } else {
+            vec![RecentSessionDateGroup {
+                key: "unfiltered".into(),
+                label: None,
+                sessions: recent_sessions,
+            }]
+        };
+        let recent_reorder_enabled = date_grouping_enabled
+            && self
+                .gateway_endpoint
+                .as_ref()
+                .is_some_and(|endpoint| !endpoint.profile_id.eq_ignore_ascii_case("all"));
+        let recent_order_scope = self
+            .gateway_endpoint
+            .as_ref()
+            .filter(|_| recent_reorder_enabled)
+            .map(sidebar_recent_order_scope);
+        let persisted_recent_order = recent_order_scope
+            .as_deref()
+            .map(|scope| self.workspace.sidebar_session_order(scope))
+            .unwrap_or_default();
+        let current_recent_order = recent_groups
+            .iter()
+            .flat_map(|group| group.sessions.iter().map(|session| session.id.clone()))
+            .collect::<Vec<_>>();
+        let resolved_recent_order =
+            reconcile_recent_session_order(&current_recent_order, &persisted_recent_order);
+        order_recent_session_groups(&mut recent_groups, &resolved_recent_order);
+        let recent_visible_order = recent_groups
+            .iter()
+            .flat_map(|group| group.sessions.iter().map(|session| session.id.clone()))
+            .collect::<Vec<_>>();
+        let mut rendered_sessions = pinned_sessions
+            .iter()
+            .cloned()
+            .map(|session| (session, true, None, None, Vec::<String>::new()))
+            .collect::<Vec<_>>();
+        for group in &recent_groups {
+            let group_ids = group
+                .sessions
+                .iter()
+                .map(|session| session.id.clone())
+                .collect::<Vec<_>>();
+            for (index, session) in group.sessions.iter().cloned().enumerate() {
+                rendered_sessions.push((
+                    session,
+                    false,
+                    (index == 0).then(|| group.label.clone()).flatten(),
+                    Some(group.key.clone()),
+                    group_ids.clone(),
+                ));
+            }
+        }
         if self.archived_sessions_loading && self.show_archived_sessions {
             ui.label(
                 RichText::new("Loading archived sessions…")
@@ -2111,7 +5217,18 @@ fn render_message() -> &'static str {
                     .color(MUTED),
             );
         }
-        if sessions.is_empty() {
+        if let Some(error) = self
+            .session_peer_sync_error
+            .as_deref()
+            .filter(|_| self.session_list_error.is_none())
+        {
+            ui.label(
+                RichText::new(format!("Cross-window session updates unavailable: {error}"))
+                    .size(11.0)
+                    .color(MUTED),
+            );
+        }
+        if no_sessions {
             if self.show_archived_sessions && !self.archived_sessions_loading {
                 ui.label(
                     RichText::new(if query.is_empty() {
@@ -2132,11 +5249,47 @@ fn render_message() -> &'static str {
                 );
             }
         }
-        for session in sessions {
+        let mut pinned_row_rects = Vec::with_capacity(pinned_count);
+        let mut recent_row_rects = Vec::with_capacity(recent_visible_order.len());
+        let mut pinned_drag_stopped = false;
+        let mut recent_heading_shown = false;
+        for (session, pinned_row, date_group_label, date_group_key, date_group_ids) in
+            rendered_sessions.drain(..)
+        {
+            if !pinned_row && !recent_heading_shown {
+                if pinned_count > 0 {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new("Recent sessions").size(12.0).color(MUTED));
+                }
+                recent_heading_shown = true;
+            }
+            if !pinned_row && let Some(label) = date_group_label {
+                ui.add_space(8.0);
+                ui.label(RichText::new(label).size(11.0).color(MUTED));
+            }
             let title = if session.title.trim().is_empty() {
                 session.id.clone()
             } else {
                 session.title.clone()
+            };
+            let status_profile = session.profile.as_deref().or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+            let live_status = status_profile.and_then(|profile| {
+                self.active_session_statuses
+                    .get(&(profile.to_owned(), session.id.clone()))
+            });
+            let status_label = match live_status.map(|status| status.status) {
+                Some(ActiveSessionStatusKind::Working) => Some("working"),
+                Some(ActiveSessionStatusKind::Waiting) => Some("waiting for input"),
+                _ => None,
+            };
+            let visible_title = match status_label {
+                Some("working") => format!("◌ {title}"),
+                Some("waiting for input") => format!("! {title}"),
+                _ => title.clone(),
             };
             let profile_label = session.profile.as_deref().unwrap_or_default();
             let foreign_profile = session.profile.as_deref().is_some_and(|profile| {
@@ -2147,18 +5300,141 @@ fn render_message() -> &'static str {
             let scoped_profile_row =
                 !profile_label.is_empty() && (self.show_archived_sessions || foreign_profile);
             let row_name = if scoped_profile_row {
-                format!(
+                let owner = format!(
                     "{title}, profile {}, session {}",
                     session.profile.as_deref().unwrap_or_default(),
                     session.id
-                )
+                );
+                status_label.map_or(owner.clone(), |status| format!("{owner}, {status}"))
             } else {
-                format!("{title}, session {}", session.id)
+                let owner = format!("{title}, session {}", session.id);
+                status_label.map_or(owner.clone(), |status| format!("{owner}, {status}"))
             };
             let selected = self.route == AppRoute::Session(session.id.clone());
-            let row = ui
-                .selectable_label(selected, RichText::new(&title).color(TEXT))
+            let session_color_id = session.durable_session_id();
+            let explicit_session_color = self.workspace.session_color(session_color_id);
+            let project_profile = session.profile.as_deref().or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+            let session_color = session_dot_color(
+                explicit_session_color,
+                project_profile,
+                &session.id,
+                session_color_id,
+                &self.project_session_colors,
+            );
+            let mut row_response = None;
+            let recent_row_reorderable =
+                !pinned_row && recent_reorder_enabled && date_group_ids.len() > 1;
+            if pinned_row && pinned_count > 1 {
+                ui.horizontal(|ui| {
+                    let handle = ui
+                        .add_sized(
+                            [22.0, 24.0],
+                            egui::Button::new("⋮⋮")
+                                .frame(false)
+                                .sense(egui::Sense::drag()),
+                        )
+                        .accessible_name(format!("Reorder pinned session {}", session.id));
+                    if handle.drag_started()
+                        && let Some(endpoint) = self.gateway_endpoint.as_ref()
+                    {
+                        let connection_key = gateway_pin_order_scope(endpoint);
+                        self.pinned_session_reorder = Some(PinnedSessionReorder {
+                            initial_persisted_order: self
+                                .workspace
+                                .pinned_session_order(&connection_key),
+                            connection_key,
+                            source_session_id: session.id.clone(),
+                            target_session_id: session.id.clone(),
+                            visible_order: pinned_sessions
+                                .iter()
+                                .map(|session| session.id.clone())
+                                .collect(),
+                        });
+                        self.status = "Reordering pinned sessions · release to move".into();
+                    }
+                    pinned_drag_stopped |= handle.drag_stopped();
+                    ui.label(RichText::new("●").size(10.0).color(session_color));
+                    row_response = Some(
+                        ui.selectable_label(selected, RichText::new(&visible_title).color(TEXT)),
+                    );
+                });
+            } else if recent_row_reorderable {
+                ui.horizontal(|ui| {
+                    let handle = ui
+                        .add_sized(
+                            [22.0, 24.0],
+                            egui::Button::new("⋮⋮")
+                                .frame(false)
+                                .sense(egui::Sense::drag()),
+                        )
+                        .accessible_name(format!("Reorder recent session {}", session.id));
+                    if handle.drag_started()
+                        && let Some(scope_key) = recent_order_scope.as_ref()
+                    {
+                        self.recent_session_reorder = Some(RecentSessionReorder {
+                            scope_key: scope_key.clone(),
+                            source_session_id: session.id.clone(),
+                            target_session_id: session.id.clone(),
+                            date_group_key: date_group_key.clone().unwrap_or_default(),
+                            date_group_ids: date_group_ids.clone(),
+                            visible_order: recent_visible_order.clone(),
+                            initial_persisted_order: self
+                                .workspace
+                                .sidebar_session_order(scope_key),
+                        });
+                        self.status =
+                            "Reordering recent sessions within this date group · release to move"
+                                .into();
+                    }
+                    ui.label(RichText::new("●").size(10.0).color(session_color));
+                    row_response = Some(
+                        ui.selectable_label(selected, RichText::new(&visible_title).color(TEXT)),
+                    );
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("●").size(10.0).color(session_color));
+                    row_response = Some(
+                        ui.selectable_label(selected, RichText::new(&visible_title).color(TEXT)),
+                    );
+                });
+            }
+            let row = row_response
+                .expect("session row is rendered in either the pinned or recent list")
                 .accessible_name(row_name);
+            if pinned_row {
+                if self
+                    .pinned_session_reorder
+                    .as_ref()
+                    .is_some_and(|reorder| reorder.target_session_id == session.id)
+                {
+                    ui.painter().rect_stroke(
+                        row.rect,
+                        2.0,
+                        Stroke::new(1.5, ACCENT),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                pinned_row_rects.push((session.id.clone(), row.rect));
+            } else if recent_row_reorderable {
+                if self
+                    .recent_session_reorder
+                    .as_ref()
+                    .is_some_and(|reorder| reorder.target_session_id == session.id)
+                {
+                    ui.painter().rect_stroke(
+                        row.rect,
+                        2.0,
+                        Stroke::new(1.5, ACCENT),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                recent_row_rects.push((session.id.clone(), row.rect));
+            }
             if row.clicked() {
                 self.execute_registered_action(RegisteredUiAction::OpenSession {
                     session_id: session.id.clone(),
@@ -2176,10 +5452,11 @@ fn render_message() -> &'static str {
                         session.profile.as_deref(),
                     ));
             let rename_pending = self.pending_session_renames.contains_key(&action_key);
-            let pin_verb = if session.pinned { "Unpin" } else { "Pin" };
+            let is_pinned = session.pinned || pinned_row;
+            let pin_verb = if is_pinned { "Unpin" } else { "Pin" };
             let pin_label = if scoped_profile_row {
                 format!("{pin_verb} profile {profile_label} session {}", session.id)
-            } else if session.pinned {
+            } else if is_pinned {
                 format!("Unpin session {}", session.id)
             } else {
                 format!("Pin session {}", session.id)
@@ -2238,7 +5515,7 @@ fn render_message() -> &'static str {
                     )
                     .clicked()
                 {
-                    self.start_session_pin_update(session.clone(), !session.pinned);
+                    self.start_session_pin_update(session.clone(), !is_pinned);
                     ui.close();
                 }
                 if ui
@@ -2261,6 +5538,49 @@ fn render_message() -> &'static str {
                     self.start_session_archive_update(session.clone(), !session.archived);
                     ui.close();
                 }
+                ui.menu_button("Appearance", |ui| {
+                    let color_id = session.durable_session_id();
+                    let selected_color = self.workspace.session_color(color_id).map(str::to_owned);
+                    let mut chosen_color = None;
+                    for hues in SESSION_COLOR_HUES.chunks(6) {
+                        ui.horizontal(|ui| {
+                            for hue in hues {
+                                let color = format!("hsl({hue} 68% 58%)");
+                                let selected = selected_color.as_deref() == Some(color.as_str());
+                                let mut button = egui::Button::new(" ")
+                                    .fill(session_swatch_color(*hue))
+                                    .corner_radius(egui::CornerRadius::same(10));
+                                if selected {
+                                    button = button.stroke(Stroke::new(2.0, TEXT));
+                                }
+                                if ui
+                                    .add_sized([20.0, 20.0], button)
+                                    .accessible_name(format!("Color {color}"))
+                                    .clicked()
+                                {
+                                    chosen_color = Some(color);
+                                }
+                            }
+                        });
+                    }
+                    if let Some(color) = chosen_color {
+                        match self.workspace.set_session_color(color_id, Some(&color)) {
+                            Ok(()) => self.status = format!("Session color set to {color}"),
+                            Err(error) => self.status = error,
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_sized([132.0, 24.0], egui::Button::new("No color"))
+                        .clicked()
+                    {
+                        match self.workspace.set_session_color(color_id, None) {
+                            Ok(()) => self.status = "Session color cleared".into(),
+                            Err(error) => self.status = error,
+                        }
+                        ui.close();
+                    }
+                });
             });
             let menu_name = if scoped_profile_row {
                 format!(
@@ -2300,6 +5620,41 @@ fn render_message() -> &'static str {
             );
             ui.add_space(4.0);
         }
+        if let Some(pointer) = ui.input(|input| input.pointer.interact_pos())
+            && let Some((session_id, _)) = pinned_row_rects
+                .iter()
+                .find(|(_, rect)| rect.contains(pointer))
+            && let Some(reorder) = &mut self.pinned_session_reorder
+        {
+            reorder.target_session_id = session_id.clone();
+        }
+        if let Some(pointer) = ui.input(|input| input.pointer.interact_pos())
+            && let Some((session_id, _)) = recent_row_rects
+                .iter()
+                .find(|(_, rect)| rect.contains(pointer))
+            && let Some(reorder) = &mut self.recent_session_reorder
+        {
+            reorder.target_session_id = session_id.clone();
+        }
+        if self.pinned_session_reorder.is_some()
+            && (pinned_drag_stopped || ui.input(|input| input.pointer.primary_released()))
+        {
+            self.finish_pinned_session_reorder();
+        } else if self.pinned_session_reorder.is_some()
+            && ui.input(|input| input.key_pressed(egui::Key::Escape))
+        {
+            self.pinned_session_reorder = None;
+            self.status = "Pinned-session reorder cancelled".into();
+        } else if self.recent_session_reorder.is_some()
+            && (pinned_drag_stopped || ui.input(|input| input.pointer.primary_released()))
+        {
+            self.finish_recent_session_reorder();
+        } else if self.recent_session_reorder.is_some()
+            && ui.input(|input| input.key_pressed(egui::Key::Escape))
+        {
+            self.recent_session_reorder = None;
+            self.status = "Recent-session reorder cancelled".into();
+        }
     }
 
     fn sidebar_route(&mut self, ui: &mut egui::Ui, target: AppRoute) {
@@ -2312,17 +5667,17 @@ fn render_message() -> &'static str {
     }
 
     fn workspace_content(&mut self, ui: &mut egui::Ui) {
+        if self.route.is_overlay() {
+            return;
+        }
         ui.add_space(24.0);
         match self.route.clone() {
             AppRoute::NewChat => self.new_chat_content(ui),
             AppRoute::Session(session_id) => self.session_content(ui, &session_id),
             AppRoute::Capabilities => self.capabilities_content(ui),
-            AppRoute::Messaging => {
-                self.route_unavailable(ui, "Connect to Hermes to load messaging connections.")
-            }
-            AppRoute::Artifacts => {
-                self.route_unavailable(ui, "Connect to Hermes to load artifacts.")
-            }
+            AppRoute::Messaging => self.messaging_content(ui),
+            AppRoute::Artifacts => self.artifacts_content(ui),
+            AppRoute::Cron => self.cron_content(ui),
             AppRoute::Extension(_) => self.route_unavailable(
                 ui,
                 "This contributed route has no registered native renderer.",
@@ -2909,6 +6264,3135 @@ fn render_message() -> &'static str {
                     }
                 });
             });
+        }
+    }
+
+    fn load_artifacts(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before indexing artifacts".into());
+        }
+        let request_id = operation_id("artifacts");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway reader is unavailable".to_owned())?;
+        gateway.load_artifacts(request_id.clone())?;
+        self.artifacts_request_id = Some(request_id);
+        self.artifacts_error = None;
+        Ok(())
+    }
+
+    fn request_remote_artifact_image_preview(&mut self, artifact: &ArtifactRecord) {
+        if self.artifact_image_previews.contains_key(&artifact.id)
+            || self
+                .pending_artifact_image_previews
+                .values()
+                .any(|id| id == &artifact.id)
+        {
+            return;
+        }
+        let Some(endpoint) = self
+            .gateway_endpoint
+            .as_ref()
+            .filter(|endpoint| endpoint.remote_auth.is_some())
+        else {
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        let request_id = operation_id("artifact-image-preview");
+        let request = ArtifactImagePreviewRequest {
+            request_id: request_id.clone(),
+            artifact_id: artifact.id.clone(),
+            path: artifact.value.clone(),
+            session_id: artifact.session_id.clone(),
+            profile: artifact
+                .profile
+                .as_deref()
+                .unwrap_or(&endpoint.profile_id)
+                .to_owned(),
+        };
+        match gateway.load_artifact_image_preview(request) {
+            Ok(()) => {
+                self.pending_artifact_image_previews
+                    .insert(request_id, artifact.id.clone());
+            }
+            Err(error) => {
+                self.artifact_image_previews
+                    .insert(artifact.id.clone(), Err(error));
+            }
+        }
+    }
+
+    fn open_artifact(&mut self, artifact: &ArtifactRecord) {
+        let remote = self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.remote_auth.is_some());
+        if remote && artifact.kind != ArtifactKind::Link {
+            let Some(profile) = artifact.profile.clone().or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.clone())
+            }) else {
+                self.status = "The remote artifact has no originating profile".into();
+                return;
+            };
+            let request_id = operation_id("artifact-download");
+            let request = ArtifactFileDownloadRequest {
+                request_id: request_id.clone(),
+                path: artifact.value.clone(),
+                session_id: artifact.session_id.clone(),
+                profile,
+            };
+            let Some(gateway) = self.gateway_discovery.as_ref() else {
+                self.status = "Remote Hermes gateway is unavailable for file download".into();
+                return;
+            };
+            match gateway.download_artifact_file(request) {
+                Ok(()) => {
+                    self.pending_artifact_downloads
+                        .insert(request_id, artifact.label.clone());
+                    self.status = format!("Preparing {} for download…", artifact.label);
+                }
+                Err(error) => {
+                    self.status = format!("Could not start {} download: {error}", artifact.label)
+                }
+            }
+            return;
+        }
+        let target = if artifact.kind == ArtifactKind::Link {
+            &artifact.href
+        } else {
+            &artifact.value
+        };
+        match open::that(target) {
+            Ok(()) => self.status = format!("Opened {}", artifact.label),
+            Err(error) => self.status = format!("Could not open {}: {error}", artifact.label),
+        }
+    }
+
+    fn open_artifact_session(&mut self, artifact: &ArtifactRecord) {
+        if let Err(error) = self.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: artifact.session_id.clone(),
+            profile: artifact.profile.clone(),
+        }) {
+            self.status = error;
+        }
+    }
+
+    fn artifacts_content(&mut self, ui: &mut egui::Ui) {
+        if !self.gateway_connected {
+            self.route_unavailable(ui, "Connect to Hermes to index recent session artifacts.");
+            return;
+        }
+        if self.artifacts.is_none()
+            && self.artifacts_error.is_none()
+            && self.artifacts_request_id.is_none()
+        {
+            if let Err(error) = self.load_artifacts() {
+                self.artifacts_error = Some(error);
+            }
+        }
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.heading("Artifacts");
+                ui.label(
+                    RichText::new("Files, images, and links from your recent Hermes sessions")
+                        .color(MUTED),
+                );
+            });
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let loading = self.artifacts_request_id.is_some();
+                if ui
+                    .add_enabled(
+                        !loading,
+                        egui::Button::new(if loading { "Indexing…" } else { "Refresh" }),
+                    )
+                    .on_hover_text("Index the 30 most recent sessions")
+                    .clicked()
+                {
+                    if let Err(error) = self.load_artifacts() {
+                        self.artifacts_error = Some(error);
+                    }
+                }
+            });
+        });
+        ui.add_space(10.0);
+
+        let snapshot = self.artifacts.as_ref();
+        let counts = snapshot
+            .map(|snapshot| {
+                let images = snapshot
+                    .artifacts
+                    .iter()
+                    .filter(|item| item.kind == ArtifactKind::Image)
+                    .count();
+                let files = snapshot
+                    .artifacts
+                    .iter()
+                    .filter(|item| item.kind == ArtifactKind::File)
+                    .count();
+                let links = snapshot
+                    .artifacts
+                    .iter()
+                    .filter(|item| item.kind == ArtifactKind::Link)
+                    .count();
+                [snapshot.artifacts.len(), images, files, links]
+            })
+            .unwrap_or([0; 4]);
+        ui.horizontal_wrapped(|ui| {
+            for (index, filter) in ArtifactFilter::ALL.into_iter().enumerate() {
+                let selected = self.artifacts_filter == filter;
+                let label = format!(
+                    "{}  {}",
+                    match filter {
+                        ArtifactFilter::All => "All",
+                        ArtifactFilter::Image => "Images",
+                        ArtifactFilter::File => "Files",
+                        ArtifactFilter::Link => "Links",
+                    },
+                    counts[index]
+                );
+                if ui.selectable_label(selected, label).clicked() {
+                    self.artifacts_filter = filter;
+                    self.artifacts_image_page = 1;
+                    self.artifacts_file_page = 1;
+                }
+            }
+        });
+        if counts[0] > 0 {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.artifacts_query)
+                    .hint_text("Search files, links, and sessions…")
+                    .desired_width(ui.available_width()),
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::text_edit(
+                    true,
+                    &self.artifacts_query,
+                    &self.artifacts_query,
+                    "Search artifacts",
+                )
+            });
+            if response.changed() {
+                self.artifacts_image_page = 1;
+                self.artifacts_file_page = 1;
+            }
+        }
+        if let Some(error) = &self.artifacts_error {
+            ui.colored_label(
+                Color32::from_rgb(239, 131, 126),
+                format!("Artifacts could not be loaded: {error}"),
+            );
+        }
+        if let Some(snapshot) = snapshot {
+            if !snapshot.failures.is_empty() {
+                ui.colored_label(
+                    MUTED,
+                    format!(
+                        "Skipped {} of {} recent sessions while indexing artifacts",
+                        snapshot.failures.len(),
+                        snapshot.session_count
+                    ),
+                );
+            }
+        }
+        let Some(snapshot) = snapshot else {
+            if self.artifacts_request_id.is_some() {
+                ui.spinner();
+                ui.label("Indexing recent sessions…");
+            }
+            return;
+        };
+        let query = self.artifacts_query.trim().to_lowercase();
+        let matching = snapshot
+            .artifacts
+            .iter()
+            .filter(|item| {
+                self.artifacts_filter.matches(item.kind)
+                    && (query.is_empty()
+                        || item.label.to_lowercase().contains(&query)
+                        || item.value.to_lowercase().contains(&query)
+                        || item.session_title.to_lowercase().contains(&query))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if matching.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space((ui.available_height() * 0.28).max(12.0));
+                ui.label(RichText::new(if snapshot.artifacts.is_empty() { "No artifacts found" } else { "No artifacts match this search" }).strong());
+                ui.label(RichText::new("Artifacts are collected from assistant and tool messages in recent sessions.").color(MUTED));
+            });
+            return;
+        }
+        let image_items = matching
+            .iter()
+            .filter(|item| item.kind == ArtifactKind::Image)
+            .cloned()
+            .collect::<Vec<_>>();
+        let other_items = matching
+            .iter()
+            .filter(|item| item.kind != ArtifactKind::Image)
+            .cloned()
+            .collect::<Vec<_>>();
+        let image_page_count = image_items.len().div_ceil(24).max(1);
+        let file_page_count = other_items.len().div_ceil(100).max(1);
+        self.artifacts_image_page = self.artifacts_image_page.clamp(1, image_page_count);
+        self.artifacts_file_page = self.artifacts_file_page.clamp(1, file_page_count);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                if !image_items.is_empty() {
+                    let start = (self.artifacts_image_page - 1) * 24;
+                    let end = (start + 24).min(image_items.len());
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("{} images", image_items.len())).color(MUTED),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui
+                                .add_enabled(
+                                    self.artifacts_image_page < image_page_count,
+                                    egui::Button::new("Next →"),
+                                )
+                                .clicked()
+                            {
+                                self.artifacts_image_page += 1;
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.artifacts_image_page > 1,
+                                    egui::Button::new("← Previous"),
+                                )
+                                .clicked()
+                            {
+                                self.artifacts_image_page -= 1;
+                            }
+                            ui.label(format!(
+                                "Page {} of {}",
+                                self.artifacts_image_page, image_page_count
+                            ));
+                        });
+                    });
+                    let card_columns = (ui.available_width() / 218.0).floor().max(1.0) as usize;
+                    for row in image_items[start..end].chunks(card_columns) {
+                        ui.horizontal(|ui| {
+                            for artifact in row {
+                                ui.push_id(&artifact.id, |ui| {
+                                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                                        ui.set_width(210.0);
+                                        ui.set_min_height(138.0);
+                                        ui.vertical(|ui| {
+                                            let image_path = std::path::Path::new(&artifact.value);
+                                            ui.allocate_ui_with_layout(
+                                                Vec2::new(198.0, 94.0),
+                                                Layout::centered_and_justified(
+                                                    egui::Direction::LeftToRight,
+                                                ),
+                                                |ui| {
+                                                    let remote_gateway = self
+                                                        .gateway_endpoint
+                                                        .as_ref()
+                                                        .is_some_and(|endpoint| {
+                                                            endpoint.remote_auth.is_some()
+                                                        });
+                                                    if remote_gateway
+                                                        && is_remote_artifact_image_source(
+                                                            &artifact.value,
+                                                        )
+                                                    {
+                                                        self.request_remote_artifact_image_preview(
+                                                            artifact,
+                                                        );
+                                                        self.file_previews
+                                                            .show_remote_image_thumbnail(
+                                                                ui,
+                                                                &artifact.id,
+                                                                self.artifact_image_previews
+                                                                    .get(&artifact.id),
+                                                                Vec2::new(194.0, 90.0),
+                                                            );
+                                                    } else if image_path.is_absolute()
+                                                        && !remote_gateway
+                                                    {
+                                                        self.file_previews.show_image_thumbnail(
+                                                            ui,
+                                                            image_path,
+                                                            Vec2::new(194.0, 90.0),
+                                                        );
+                                                    } else {
+                                                        ui.label(
+                                                            RichText::new("▧")
+                                                                .size(34.0)
+                                                                .color(ACCENT),
+                                                        );
+                                                    }
+                                                },
+                                            );
+                                            ui.label(RichText::new(&artifact.label).strong());
+                                            ui.label(
+                                                RichText::new(&artifact.value).color(MUTED).small(),
+                                            );
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{} · {}",
+                                                    artifact.session_title,
+                                                    format_artifact_timestamp(
+                                                        artifact.timestamp_ms
+                                                    )
+                                                ))
+                                                .color(MUTED)
+                                                .small(),
+                                            );
+                                            ui.horizontal(|ui| {
+                                                if ui.button("Open").clicked() {
+                                                    self.open_artifact(artifact);
+                                                }
+                                                if ui.button("Open chat").clicked() {
+                                                    self.open_artifact_session(artifact);
+                                                }
+                                            });
+                                        });
+                                    });
+                                });
+                            }
+                        });
+                    }
+                }
+                if !other_items.is_empty() {
+                    let start = (self.artifacts_file_page - 1) * 100;
+                    let end = (start + 100).min(other_items.len());
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!(
+                                "{} {}",
+                                other_items.len(),
+                                if self.artifacts_filter == ArtifactFilter::Link {
+                                    "links"
+                                } else {
+                                    "files and links"
+                                }
+                            ))
+                            .color(MUTED),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui
+                                .add_enabled(
+                                    self.artifacts_file_page < file_page_count,
+                                    egui::Button::new("Next →"),
+                                )
+                                .clicked()
+                            {
+                                self.artifacts_file_page += 1;
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.artifacts_file_page > 1,
+                                    egui::Button::new("← Previous"),
+                                )
+                                .clicked()
+                            {
+                                self.artifacts_file_page -= 1;
+                            }
+                            ui.label(format!(
+                                "Page {} of {}",
+                                self.artifacts_file_page, file_page_count
+                            ));
+                        });
+                    });
+                    egui::Grid::new("artifacts-table")
+                        .striped(true)
+                        .num_columns(4)
+                        .min_col_width(140.0)
+                        .show(ui, |ui| {
+                            ui.strong("Artifact");
+                            ui.strong("Location");
+                            ui.strong("Session");
+                            ui.strong("Actions");
+                            ui.end_row();
+                            for artifact in &other_items[start..end] {
+                                ui.label(RichText::new(&artifact.label).strong());
+                                ui.label(RichText::new(&artifact.value).monospace().color(MUTED));
+                                ui.label(format!(
+                                    "{}
+{}",
+                                    artifact.session_title,
+                                    format_artifact_timestamp(artifact.timestamp_ms)
+                                ));
+                                ui.horizontal(|ui| {
+                                    if artifact.kind == ArtifactKind::Link {
+                                        if ui.button("Open link").clicked() {
+                                            self.open_artifact(artifact);
+                                        }
+                                    } else if ui.button("Open file").clicked() {
+                                        self.open_artifact(artifact);
+                                    }
+                                    if ui.button("Chat").clicked() {
+                                        self.open_artifact_session(artifact);
+                                    }
+                                });
+                                ui.end_row();
+                            }
+                        });
+                }
+            });
+    }
+
+    fn request_cron_jobs(&mut self) {
+        if self.cron_jobs_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_jobs_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("cron-jobs");
+        match gateway.load_cron_jobs(request_id.clone(), profile.clone()) {
+            Ok(()) => {
+                self.cron_jobs_request = Some((request_id, profile.clone()));
+                self.cron_jobs_profile = profile;
+                self.cron_jobs_error = None;
+            }
+            Err(error) => self.cron_jobs_error = Some(error),
+        }
+    }
+
+    fn request_cron_delivery_targets(&mut self) {
+        if self.cron_delivery_targets_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_delivery_targets_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("cron-delivery-targets");
+        match gateway.load_cron_delivery_targets(request_id.clone(), profile.clone()) {
+            Ok(()) => {
+                self.cron_delivery_targets_request = Some((request_id, profile));
+                self.cron_delivery_targets_error = None;
+            }
+            Err(error) => self.cron_delivery_targets_error = Some(error),
+        }
+    }
+
+    fn request_cron_model_options(&mut self) {
+        if self.cron_model_options_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_model_options_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("cron-model-options");
+        match gateway.load_model_options(request_id.clone(), profile.clone()) {
+            Ok(()) => {
+                self.cron_model_options_request = Some((request_id, profile));
+                self.cron_model_options_error = None;
+            }
+            Err(error) => self.cron_model_options_error = Some(error),
+        }
+    }
+
+    fn request_cron_blueprints(&mut self) {
+        if self.cron_blueprints_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_blueprints_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.cron_blueprints_error = Some("Hermes gateway profile is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("cron-blueprints");
+        match gateway.load_cron_blueprints(request_id.clone(), Some(profile.clone())) {
+            Ok(()) => {
+                self.cron_blueprints_request = Some((request_id, Some(profile)));
+                self.cron_blueprints_error = None;
+            }
+            Err(error) => self.cron_blueprints_error = Some(error),
+        }
+    }
+
+    fn open_cron_editor(&mut self, job: Option<&CronJobInfo>) {
+        self.cron_editor = Some(CronJobEditor {
+            job_id: job.map(|job| job.id.clone()),
+            blueprint_key: None,
+            blueprint_values: BTreeMap::new(),
+            blueprint_time_parts: BTreeMap::new(),
+            script_only: job.is_some_and(|job| {
+                job.no_agent && job.script.as_deref().is_some_and(|s| !s.trim().is_empty())
+            }),
+            name: job.and_then(|job| job.name.clone()).unwrap_or_default(),
+            prompt: job.and_then(|job| job.prompt.clone()).unwrap_or_default(),
+            schedule: job
+                .and_then(|job| job.schedule.as_ref()?.expr.clone())
+                .or_else(|| job.and_then(|job| job.schedule_display.clone()))
+                .unwrap_or_else(|| "0 9 * * *".into()),
+            delivery: job
+                .and_then(|job| job.deliver.clone())
+                .unwrap_or_else(|| "local".into()),
+            model: job.and_then(|job| job.model.clone()).unwrap_or_default(),
+            provider: job.and_then(|job| job.provider.clone()).unwrap_or_default(),
+            catch_up: job.and_then(|job| job.catch_up),
+            original_catch_up: job.and_then(|job| job.catch_up),
+            error: None,
+        });
+        self.cron_delete_error = None;
+        self.request_cron_delivery_targets();
+        if job.is_none() {
+            self.request_cron_blueprints();
+        }
+        if !job.is_some_and(|job| {
+            job.no_agent && job.script.as_deref().is_some_and(|s| !s.trim().is_empty())
+        }) {
+            self.request_cron_model_options();
+        }
+    }
+
+    fn save_cron_editor(&mut self) {
+        if self.cron_editor_save_request.is_some()
+            || self.cron_blueprint_instantiate_request.is_some()
+            || !self.gateway_connected
+        {
+            return;
+        }
+        let Some(editor) = self.cron_editor.as_ref() else {
+            return;
+        };
+        if let Some(blueprint_key) = editor.blueprint_key.as_deref() {
+            let Some(blueprint) = self
+                .cron_blueprints
+                .as_ref()
+                .and_then(|blueprints| blueprints.iter().find(|item| item.key == blueprint_key))
+            else {
+                if let Some(editor) = self.cron_editor.as_mut() {
+                    editor.error =
+                        Some("The selected scheduled-job template is unavailable.".into());
+                }
+                return;
+            };
+            if let Some(error) = cron_blueprint_validation_error(
+                blueprint,
+                &editor.blueprint_values,
+                &editor.blueprint_time_parts,
+            ) {
+                if let Some(editor) = self.cron_editor.as_mut() {
+                    editor.error = Some(error);
+                }
+                return;
+            }
+        }
+        if editor.blueprint_key.is_none() && editor.schedule.trim().is_empty() {
+            if let Some(editor) = self.cron_editor.as_mut() {
+                editor.error = Some("Enter a schedule expression.".into());
+            }
+            return;
+        }
+        if editor.blueprint_key.is_none() && !editor.script_only && editor.prompt.trim().is_empty()
+        {
+            if let Some(editor) = self.cron_editor.as_mut() {
+                editor.error = Some("Enter a prompt for the scheduled job.".into());
+            }
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            if let Some(editor) = self.cron_editor.as_mut() {
+                editor.error = Some("Hermes gateway reader is unavailable".into());
+            }
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("cron-job-save");
+        if let Some(blueprint) = editor.blueprint_key.clone() {
+            let Some(profile_id) = profile.clone() else {
+                if let Some(editor) = self.cron_editor.as_mut() {
+                    editor.error = Some("Hermes gateway profile is unavailable".into());
+                }
+                return;
+            };
+            let payload = CronBlueprintInstantiatePayload {
+                blueprint: blueprint.clone(),
+                values: editor.blueprint_values.clone(),
+            };
+            match gateway.instantiate_cron_blueprint(
+                request_id.clone(),
+                Some(profile_id.clone()),
+                payload,
+            ) {
+                Ok(()) => {
+                    self.cron_blueprint_instantiate_request =
+                        Some((request_id, Some(profile_id), blueprint));
+                    if let Some(editor) = self.cron_editor.as_mut() {
+                        editor.error = None;
+                    }
+                }
+                Err(error) => {
+                    if let Some(editor) = self.cron_editor.as_mut() {
+                        editor.error = Some(error);
+                    }
+                }
+            }
+            return;
+        }
+        let (job_id, result) = if let Some(job_id) = editor.job_id.clone() {
+            let updates = CronJobUpdatePayload {
+                name: Some(editor.name.trim().to_owned()),
+                prompt: (!editor.prompt.trim().is_empty()).then(|| editor.prompt.trim().to_owned()),
+                schedule: Some(editor.schedule.trim().to_owned()),
+                deliver: Some(editor.delivery.trim().to_owned()),
+                catch_up: (editor.catch_up != editor.original_catch_up).then_some(editor.catch_up),
+                model: (!editor.script_only).then(|| {
+                    (!editor.model.trim().is_empty()).then(|| editor.model.trim().to_owned())
+                }),
+                provider: (!editor.script_only).then(|| {
+                    (!editor.provider.trim().is_empty()).then(|| editor.provider.trim().to_owned())
+                }),
+            };
+            let result = gateway.update_cron_job(
+                request_id.clone(),
+                profile.clone(),
+                job_id.clone(),
+                updates,
+            );
+            (Some(job_id), result)
+        } else {
+            let payload = CronJobCreatePayload {
+                prompt: editor.prompt.trim().to_owned(),
+                schedule: editor.schedule.trim().to_owned(),
+                name: (!editor.name.trim().is_empty()).then(|| editor.name.trim().to_owned()),
+                deliver: Some(editor.delivery.trim().to_owned()),
+                catch_up: editor.catch_up,
+                model: (!editor.model.trim().is_empty()).then(|| editor.model.trim().to_owned()),
+                provider: (!editor.provider.trim().is_empty())
+                    .then(|| editor.provider.trim().to_owned()),
+            };
+            (
+                None,
+                gateway.create_cron_job(request_id.clone(), profile.clone(), payload),
+            )
+        };
+        match result {
+            Ok(()) => {
+                self.cron_editor_save_request = Some((request_id, profile, job_id));
+                if let Some(editor) = self.cron_editor.as_mut() {
+                    editor.error = None;
+                }
+            }
+            Err(error) => {
+                if let Some(editor) = self.cron_editor.as_mut() {
+                    editor.error = Some(error);
+                }
+            }
+        }
+    }
+
+    fn delete_cron_job(&mut self, job_id: String) {
+        if self.cron_delete_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_delete_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("cron-job-delete");
+        match gateway.delete_cron_job(request_id.clone(), profile.clone(), job_id.clone()) {
+            Ok(()) => {
+                self.cron_delete_request = Some((request_id, profile, job_id));
+                self.cron_delete_confirmation = None;
+                self.cron_delete_error = None;
+            }
+            Err(error) => self.cron_delete_error = Some(error),
+        }
+    }
+
+    fn reset_cron_state(&mut self) {
+        self.cron_jobs = None;
+        self.cron_jobs_request = None;
+        self.cron_job_mutation = None;
+        self.cron_job_mutation_error = None;
+        self.cron_editor = None;
+        self.cron_delivery_targets = None;
+        self.cron_delivery_targets_request = None;
+        self.cron_delivery_targets_error = None;
+        self.cron_model_options = None;
+        self.cron_model_options_request = None;
+        self.cron_model_options_error = None;
+        self.cron_blueprints = None;
+        self.cron_blueprints_request = None;
+        self.cron_blueprints_error = None;
+        self.cron_blueprint_instantiate_request = None;
+        self.cron_editor_save_request = None;
+        self.cron_delete_confirmation = None;
+        self.cron_delete_request = None;
+        self.cron_delete_error = None;
+        self.cron_job_runs = None;
+        self.cron_job_runs_request = None;
+        self.cron_job_runs_error = None;
+        self.cron_job_runs_owner = None;
+        self.cron_trigger_requests.clear();
+        self.cron_trigger_errors.clear();
+        self.cron_queued_runs.clear();
+        self.cron_next_runs_poll = None;
+        self.cron_cancel_requests.clear();
+        self.cron_stop_waiting.clear();
+        self.cron_notice = None;
+        self.cron_next_live_poll = None;
+        self.cron_jobs_profile = None;
+        self.cron_jobs_error = None;
+        self.cron_jobs_query.clear();
+        self.cron_selected_job_id = None;
+    }
+
+    fn request_cron_job_runs(&mut self, job_id: &str) {
+        if self.cron_job_runs_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.cron_job_runs_error = Some("Hermes gateway profile is unavailable".into());
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_job_runs_owner = Some((Some(profile), job_id.into()));
+            self.cron_job_runs_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("cron-runs");
+        match gateway.load_cron_job_runs(request_id.clone(), Some(profile.clone()), job_id.into()) {
+            Ok(()) => {
+                self.cron_job_runs_request = Some((request_id, Some(profile), job_id.into()));
+                self.cron_job_runs_error = None;
+            }
+            Err(error) => {
+                self.cron_job_runs_owner = Some((Some(profile), job_id.into()));
+                self.cron_job_runs_error = Some(error);
+            }
+        }
+    }
+
+    fn set_cron_job_paused(&mut self, job_id: String, paused: bool) {
+        if self.cron_job_mutation.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_job_mutation_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("cron-job-pause");
+        match gateway.set_cron_job_paused(
+            request_id.clone(),
+            profile.clone(),
+            job_id.clone(),
+            paused,
+        ) {
+            Ok(()) => {
+                self.cron_job_mutation = Some((request_id, profile, job_id, paused));
+                self.cron_job_mutation_error = None;
+            }
+            Err(error) => self.cron_job_mutation_error = Some(error),
+        }
+    }
+
+    fn trigger_cron_job(&mut self, job_id: String) {
+        if self.cron_trigger_requests.contains_key(&job_id) || !self.gateway_connected {
+            return;
+        }
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.cron_trigger_errors
+                .insert(job_id, "Hermes gateway profile is unavailable".into());
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_trigger_errors
+                .insert(job_id, "Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("cron-trigger");
+        match gateway.trigger_cron_job(request_id.clone(), Some(profile.clone()), job_id.clone()) {
+            Ok(()) => {
+                let started_at_ms =
+                    (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as u64;
+                self.cron_trigger_requests
+                    .insert(job_id.clone(), (request_id, Some(profile), started_at_ms));
+                self.cron_queued_runs.insert(
+                    job_id.clone(),
+                    (
+                        started_at_ms,
+                        std::time::Instant::now() + CRON_PENDING_RUN_TIMEOUT,
+                    ),
+                );
+                self.cron_trigger_errors.remove(&job_id);
+                self.cron_notice = None;
+                self.cron_next_live_poll = Some(std::time::Instant::now());
+                self.cron_next_runs_poll = Some(std::time::Instant::now());
+            }
+            Err(error) => {
+                self.cron_trigger_errors.insert(job_id, error);
+            }
+        }
+    }
+
+    fn cancel_cron_job_run(&mut self, job_id: String) {
+        if self.cron_cancel_requests.contains_key(&job_id)
+            || self.cron_stop_waiting.contains_key(&job_id)
+        {
+            return;
+        }
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.cron_notice = Some((job_id, "Hermes gateway profile is unavailable".into()));
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.cron_notice = Some((job_id, "Hermes gateway reader is unavailable".into()));
+            return;
+        };
+        let request_id = operation_id("cron-cancel");
+        match gateway.cancel_cron_job_run(request_id.clone(), Some(profile.clone()), job_id.clone())
+        {
+            Ok(()) => {
+                self.cron_cancel_requests
+                    .insert(job_id.clone(), (request_id, Some(profile)));
+                self.cron_notice = None;
+                self.cron_next_live_poll = Some(std::time::Instant::now());
+            }
+            Err(error) => self.cron_notice = Some((job_id, error)),
+        }
+    }
+
+    fn refresh_live_cron_jobs(&mut self) {
+        let live = !self.cron_trigger_requests.is_empty()
+            || !self.cron_stop_waiting.is_empty()
+            || self
+                .cron_jobs
+                .as_ref()
+                .is_some_and(|jobs| jobs.iter().any(cron_job_run_is_live));
+        if !live {
+            self.cron_next_live_poll = None;
+            return;
+        }
+        let now = std::time::Instant::now();
+        if self
+            .cron_next_live_poll
+            .is_none_or(|deadline| now >= deadline)
+        {
+            self.cron_next_live_poll = Some(now + std::time::Duration::from_millis(1500));
+            if self.cron_jobs_request.is_none() {
+                self.request_cron_jobs();
+            }
+        }
+    }
+
+    fn refresh_selected_cron_runs(&mut self, job_id: &str) {
+        let now = std::time::Instant::now();
+        let pending = self
+            .cron_queued_runs
+            .get(job_id)
+            .copied()
+            .filter(|(_, expires_at)| now < *expires_at);
+        if self.cron_queued_runs.contains_key(job_id) && pending.is_none() {
+            self.cron_queued_runs.remove(job_id);
+        }
+        let interval = if pending.is_some() {
+            CRON_PENDING_RUN_POLL
+        } else {
+            CRON_RUNS_POLL
+        };
+        if self
+            .cron_next_runs_poll
+            .is_none_or(|deadline| now >= deadline)
+        {
+            self.cron_next_runs_poll = Some(now + interval);
+            if self.cron_job_runs_request.is_none() {
+                self.request_cron_job_runs(job_id);
+            }
+        }
+    }
+
+    fn observe_queued_cron_run(&mut self, job_id: &str, runs: &[CronJobRunInfo]) {
+        let Some((started_at_ms, expires_at)) = self.cron_queued_runs.get(job_id).copied() else {
+            self.cron_next_runs_poll = Some(std::time::Instant::now() + CRON_RUNS_POLL);
+            return;
+        };
+        let threshold_seconds =
+            started_at_ms.saturating_sub(CRON_PENDING_RUN_START_SLACK_MS) as f64 / 1000.0;
+        let found = runs.iter().any(|run| {
+            run.started_at
+                .filter(|started| *started > 0.0)
+                .or(run.last_active)
+                .is_some_and(|started| started >= threshold_seconds)
+        });
+        if found || std::time::Instant::now() >= expires_at {
+            self.cron_queued_runs.remove(job_id);
+            self.cron_next_runs_poll = Some(std::time::Instant::now() + CRON_RUNS_POLL);
+        } else {
+            self.cron_next_runs_poll = Some(std::time::Instant::now() + CRON_PENDING_RUN_POLL);
+        }
+    }
+
+    fn request_messaging_platforms(&mut self) {
+        if self.messaging_pending || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.messaging_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("messaging-platforms");
+        match gateway.load_messaging_platforms(request_id.clone(), profile) {
+            Ok(()) => {
+                self.messaging_request_id = Some(request_id);
+                self.messaging_pending = true;
+                self.messaging_error = None;
+            }
+            Err(error) => self.messaging_error = Some(error),
+        }
+    }
+
+    fn reset_messaging_state(&mut self) {
+        self.reset_cron_state();
+        self.messaging_request_id = None;
+        self.messaging_pending = false;
+        self.messaging_platforms = None;
+        self.messaging_error = None;
+        self.messaging_action_error = None;
+        self.messaging_toggle_request = None;
+        self.messaging_restart_needed = false;
+        self.messaging_config_edits.clear();
+        self.messaging_config_save_request = None;
+        self.messaging_config_saving = false;
+        self.messaging_config_error = None;
+        self.messaging_advanced_open = false;
+        self.messaging_pairing = None;
+        self.messaging_pairing_request = None;
+        self.messaging_pairing_error = None;
+        self.messaging_pairing_mutation = None;
+        self.messaging_pairing_action_error = None;
+        self.messaging_pairing_revoke_confirm = None;
+        self.telegram_setup = None;
+        self.telegram_setup_status = None;
+        self.telegram_setup_profile = None;
+        self.telegram_setup_request = None;
+        self.telegram_setup_allowlist.clear();
+        self.telegram_setup_new_user_id.clear();
+        self.telegram_setup_allowlist_error = None;
+        self.telegram_setup_error = None;
+        self.telegram_setup_next_poll = None;
+        self.telegram_setup_success = None;
+        self.messaging_gateway_restart = None;
+        self.messaging_selected_platform = None;
+    }
+
+    fn request_messaging_pairing(&mut self) {
+        if self.messaging_pairing_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.messaging_pairing_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("messaging-pairing");
+        match gateway.load_pairing(request_id.clone(), profile.clone()) {
+            Ok(()) => {
+                self.messaging_pairing_request = Some((request_id, profile));
+                self.messaging_pairing_error = None;
+            }
+            Err(error) => self.messaging_pairing_error = Some(error),
+        }
+    }
+
+    fn cron_content(&mut self, ui: &mut Ui) {
+        let current_profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        if self
+            .cron_jobs_request
+            .as_ref()
+            .is_some_and(|(_, profile)| *profile != current_profile)
+            || (self.cron_jobs_request.is_none()
+                && self.cron_jobs_profile != current_profile
+                && (self.cron_jobs.is_some() || self.cron_jobs_profile.is_some()))
+        {
+            self.reset_cron_state();
+        }
+        if self.cron_jobs.is_none() && self.cron_jobs_request.is_none() && self.gateway_connected {
+            self.request_cron_jobs();
+        }
+        if self.cron_delivery_targets.is_none()
+            && self.cron_delivery_targets_request.is_none()
+            && self.gateway_connected
+        {
+            self.request_cron_delivery_targets();
+        }
+
+        let mut refresh = false;
+        let mut create_job = false;
+        ui.horizontal(|ui| {
+            ui.heading("Scheduled jobs");
+            if let Some(jobs) = &self.cron_jobs {
+                ui.label(RichText::new(format!("{} jobs", jobs.len())).color(MUTED));
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                refresh = ui
+                    .add_enabled(
+                        self.gateway_connected && self.cron_jobs_request.is_none(),
+                        egui::Button::new("Refresh"),
+                    )
+                    .clicked();
+                create_job = ui
+                    .add_enabled(
+                        self.gateway_connected
+                            && self.cron_editor_save_request.is_none()
+                            && self.cron_blueprint_instantiate_request.is_none(),
+                        egui::Button::new("New job"),
+                    )
+                    .clicked();
+            });
+        });
+        ui.separator();
+        if create_job {
+            self.open_cron_editor(None);
+        }
+        if refresh {
+            self.cron_jobs = None;
+            self.request_cron_jobs();
+        }
+        if !self.gateway_connected && self.cron_jobs.is_none() {
+            ui.vertical_centered(|ui| {
+                ui.add_space((ui.available_height() * 0.25).max(16.0));
+                ui.label(RichText::new("Connect to Hermes to load scheduled jobs.").color(MUTED));
+            });
+            return;
+        }
+        if self.cron_jobs_request.is_some() && self.cron_jobs.is_none() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(24.0);
+                ui.spinner();
+                ui.label("Loading scheduled jobs…");
+            });
+            return;
+        }
+        if let Some(error) = self.cron_jobs_error.clone() {
+            let mut retry = false;
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("Scheduled jobs could not be loaded: {error}"))
+                        .color(Color32::LIGHT_RED),
+                );
+                retry = ui
+                    .add_enabled(
+                        self.gateway_connected && self.cron_jobs_request.is_none(),
+                        egui::Button::new("Retry"),
+                    )
+                    .clicked();
+            });
+            if retry {
+                self.request_cron_jobs();
+            }
+            if self.cron_jobs.is_none() {
+                return;
+            }
+        }
+        let Some(jobs) = self.cron_jobs.clone() else {
+            return;
+        };
+        self.refresh_live_cron_jobs();
+        if let Some(deadline) = self.cron_next_live_poll {
+            ui.ctx().request_repaint_after(
+                deadline
+                    .saturating_duration_since(std::time::Instant::now())
+                    .max(std::time::Duration::from_millis(50)),
+            );
+        }
+        let query = self.cron_jobs_query.trim().to_lowercase();
+        let mut visible_jobs = jobs
+            .into_iter()
+            .filter(|job| {
+                query.is_empty()
+                    || job.id.to_lowercase().contains(&query)
+                    || job
+                        .name
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&query)
+                    || job
+                        .prompt
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&query)
+                    || job
+                        .schedule_display
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&query)
+            })
+            .collect::<Vec<_>>();
+        visible_jobs.sort_by_key(|job| {
+            job.name
+                .as_deref()
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or(&job.id)
+                .to_lowercase()
+        });
+        let selected_index = self
+            .cron_selected_job_id
+            .as_ref()
+            .and_then(|selected| visible_jobs.iter().position(|job| &job.id == selected))
+            .unwrap_or(0);
+        let selected_job = visible_jobs.get(selected_index).cloned();
+        if let Some(job) = &selected_job {
+            let owner = self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| (Some(endpoint.profile_id.clone()), job.id.clone()));
+            let request_matches =
+                self.cron_job_runs_request
+                    .as_ref()
+                    .is_some_and(|(_, profile, job_id)| {
+                        Some((profile.clone(), job_id.clone())) == owner
+                    });
+            if owner != self.cron_job_runs_owner && !request_matches {
+                self.cron_job_runs_request = None;
+                self.cron_job_runs = None;
+                self.cron_job_runs_error = None;
+                self.cron_next_runs_poll = None;
+                self.request_cron_job_runs(&job.id);
+            }
+            self.refresh_selected_cron_runs(&job.id);
+        }
+        if let Some(deadline) = self.cron_next_runs_poll {
+            ui.ctx().request_repaint_after(
+                deadline
+                    .saturating_duration_since(std::time::Instant::now())
+                    .max(std::time::Duration::from_millis(50)),
+            );
+        }
+        let cron_run_rows = self.cron_job_runs.clone();
+        let cron_run_error = self.cron_job_runs_error.clone();
+        let cron_runs_loading = self.cron_job_runs_request.is_some();
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.cron_jobs_query)
+                    .hint_text("Search scheduled jobs")
+                    .desired_width(f32::INFINITY),
+            )
+            .accessible_name("Search scheduled jobs");
+        });
+        if visible_jobs.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(24.0);
+                ui.label(if query.is_empty() {
+                    "No scheduled jobs yet."
+                } else {
+                    "No scheduled jobs match this search."
+                });
+            });
+            self.cron_job_editor_window(ui.ctx());
+            self.cron_job_delete_dialog(ui.ctx());
+            return;
+        }
+        ui.add_space(8.0);
+        let left_width = ui.available_width() * 0.46;
+        let mut pause_job = None;
+        let mut trigger_job = None;
+        let mut stop_job = None;
+        let mut edit_job = None;
+        let mut request_delete = None;
+        ui.columns(2, |columns| {
+            columns[0].set_min_width(250.0);
+            columns[0].set_max_width(left_width);
+            egui::ScrollArea::vertical()
+                .id_salt("scheduled-jobs-list")
+                .show(&mut columns[0], |ui| {
+                    for (index, job) in visible_jobs.iter().enumerate() {
+                        let title = job
+                            .name
+                            .as_deref()
+                            .filter(|name| !name.trim().is_empty())
+                            .unwrap_or(&job.id);
+                        let status = job.state.as_deref().unwrap_or(if job.enabled {
+                            "enabled"
+                        } else {
+                            "paused"
+                        });
+                        let selected = self.cron_selected_job_id.as_deref() == Some(&job.id)
+                            || (self.cron_selected_job_id.is_none() && index == selected_index);
+                        if ui
+                            .selectable_label(
+                                selected,
+                                format!("{title}\n{status} · {}", cron_schedule_label(job)),
+                            )
+                            .accessible_name(format!("Scheduled job {title}, {status}"))
+                            .clicked()
+                        {
+                            self.cron_selected_job_id = Some(job.id.clone());
+                        }
+                    }
+                });
+            egui::ScrollArea::vertical()
+                .id_salt("scheduled-job-detail")
+                .show(&mut columns[1], |ui| {
+                    if let Some(job) = &selected_job {
+                        let title = job
+                            .name
+                            .as_deref()
+                            .filter(|name| !name.trim().is_empty())
+                            .unwrap_or(&job.id);
+                        ui.heading(title);
+                        ui.label(format!("ID: {}", job.id));
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(
+                                    self.gateway_connected
+                                        && self.cron_editor_save_request.is_none()
+                                        && self.cron_blueprint_instantiate_request.is_none(),
+                                    egui::Button::new("Edit"),
+                                )
+                                .clicked()
+                            {
+                                edit_job = Some(job.clone());
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.gateway_connected
+                                        && self.cron_delete_request.is_none()
+                                        && self.cron_editor_save_request.is_none()
+                                        && self.cron_blueprint_instantiate_request.is_none(),
+                                    egui::Button::new("Delete"),
+                                )
+                                .clicked()
+                            {
+                                request_delete = Some(job.id.clone());
+                            }
+                        });
+                        let trigger_pending = self.cron_trigger_requests.contains_key(&job.id);
+                        let stop_pending = self.cron_cancel_requests.contains_key(&job.id)
+                            || self.cron_stop_waiting.contains_key(&job.id);
+                        let run_live = trigger_pending || cron_job_run_is_live(job);
+                        ui.label(format!(
+                            "{} · {}",
+                            if run_live || stop_pending {
+                                "running"
+                            } else {
+                                job.state.as_deref().unwrap_or(if job.enabled {
+                                    "enabled"
+                                } else {
+                                    "paused"
+                                })
+                            },
+                            cron_schedule_label(job)
+                        ));
+                        let paused = !job.enabled || job.state.as_deref() == Some("paused");
+                        let pause_pending = self
+                            .cron_job_mutation
+                            .as_ref()
+                            .is_some_and(|(_, _, job_id, _)| job_id == &job.id);
+                        let pause_label = if pause_pending {
+                            if paused { "Resuming…" } else { "Pausing…" }
+                        } else if paused {
+                            "Resume"
+                        } else {
+                            "Pause"
+                        };
+                        ui.horizontal(|ui| {
+                            if run_live || stop_pending {
+                                let stop_label = if stop_pending { "Stopping…" } else { "Stop" };
+                                if ui
+                                    .add_enabled(
+                                        self.gateway_connected && !stop_pending,
+                                        egui::Button::new(stop_label),
+                                    )
+                                    .clicked()
+                                {
+                                    stop_job = Some(job.id.clone());
+                                }
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.gateway_connected && self.cron_job_mutation.is_none(),
+                                    egui::Button::new(pause_label),
+                                )
+                                .clicked()
+                            {
+                                pause_job = Some((job.id.clone(), !paused));
+                            }
+                            let run_label = if trigger_pending {
+                                "Running…"
+                            } else {
+                                "Run now"
+                            };
+                            if ui
+                                .add_enabled(
+                                    self.gateway_connected && !trigger_pending,
+                                    egui::Button::new(run_label),
+                                )
+                                .clicked()
+                            {
+                                trigger_job = Some(job.id.clone());
+                            }
+                        });
+                        if let Some(error) = self.cron_trigger_errors.get(&job.id) {
+                            ui.colored_label(Color32::LIGHT_RED, error);
+                        }
+                        if let Some((notice_job, notice)) = &self.cron_notice
+                            && notice_job == &job.id
+                        {
+                            ui.label(notice);
+                        }
+                        if let Some(next) = &job.next_run_at {
+                            ui.label(format!("Next run: {next}"));
+                        }
+                        if let Some(last) = &job.last_run_at {
+                            ui.label(format!("Last run: {last}"));
+                        }
+                        if let Some(model) = &job.model {
+                            ui.label(format!("Model: {model}"));
+                        }
+                        if let Some(delivery) = &job.deliver {
+                            ui.label(format!(
+                                "Delivery: {}",
+                                cron_delivery_label(
+                                    delivery,
+                                    self.cron_delivery_targets.as_deref()
+                                )
+                            ));
+                        }
+                        if let Some(last_result) = &job.latest_execution {
+                            ui.label(format!("Last result: {}", last_result.status));
+                            if let Some(error) = &last_result.error {
+                                ui.colored_label(Color32::LIGHT_RED, error);
+                            }
+                        }
+                        ui.separator();
+                        ui.label(RichText::new("Prompt").strong());
+                        ui.label(job.prompt.as_deref().unwrap_or("No prompt was returned."));
+                        if let Some(error) = &job.last_error {
+                            ui.separator();
+                            ui.label(RichText::new("Last error").color(Color32::LIGHT_RED));
+                            ui.label(error);
+                        }
+                        if let Some(error) = &self.cron_job_mutation_error {
+                            ui.separator();
+                            ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+                        }
+                        ui.separator();
+                        ui.label(RichText::new("Run history").strong());
+                        let pending_start = self
+                            .cron_queued_runs
+                            .get(&job.id)
+                            .map(|(started_at_ms, _)| *started_at_ms);
+                        if let Some(started_at_ms) = pending_start {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Queued");
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        ui.weak(format_artifact_timestamp(
+                                            started_at_ms.min(i64::MAX as u64) as i64,
+                                        ));
+                                    },
+                                );
+                            });
+                        }
+                        if let Some(error) = &cron_run_error {
+                            ui.colored_label(Color32::LIGHT_RED, error);
+                            if ui.button("Retry run history").clicked() {
+                                self.cron_job_runs_owner = None;
+                                self.cron_job_runs = None;
+                                self.cron_job_runs_error = None;
+                                self.request_cron_job_runs(&job.id);
+                            }
+                        } else if cron_runs_loading {
+                            ui.label("Loading run history…");
+                        } else if let Some(runs) = &cron_run_rows {
+                            if runs.is_empty() && pending_start.is_none() {
+                                ui.label("No runs yet.");
+                            } else if !runs.is_empty() {
+                                for run in runs {
+                                    let label = run
+                                        .title
+                                        .as_deref()
+                                        .filter(|value| !value.trim().is_empty())
+                                        .or(run.preview.as_deref())
+                                        .unwrap_or(&run.id);
+                                    let timestamp = run
+                                        .last_active
+                                        .or(run.started_at)
+                                        .map(|value| {
+                                            format_artifact_timestamp((value * 1000.0) as i64)
+                                        })
+                                        .unwrap_or_else(|| "—".into());
+                                    ui.horizontal(|ui| {
+                                        ui.label(label);
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                ui.weak(timestamp);
+                                            },
+                                        );
+                                    });
+                                }
+                            }
+                        } else {
+                            ui.label("Run history is unavailable.");
+                        }
+                    }
+                });
+        });
+        if let Some((job_id, paused)) = pause_job {
+            self.set_cron_job_paused(job_id, paused);
+        }
+        if let Some(job_id) = trigger_job {
+            self.trigger_cron_job(job_id);
+        }
+        if let Some(job_id) = stop_job {
+            self.cancel_cron_job_run(job_id);
+        }
+        if let Some(job) = edit_job {
+            self.open_cron_editor(Some(&job));
+        }
+        if let Some(job_id) = request_delete {
+            self.cron_delete_confirmation = Some(job_id);
+        }
+        self.cron_job_editor_window(ui.ctx());
+        self.cron_job_delete_dialog(ui.ctx());
+    }
+
+    fn cron_job_editor_window(&mut self, ctx: &egui::Context) {
+        let Some(mut editor) = self.cron_editor.take() else {
+            return;
+        };
+        let mut open = true;
+        let mut save = false;
+        let mut cancel = false;
+        let mut retry_delivery_targets = false;
+        let mut retry_model_options = false;
+        let mut retry_blueprints = false;
+        egui::Window::new(if editor.job_id.is_some() {
+            "Edit scheduled job"
+        } else {
+            "New scheduled job"
+        })
+        .id(Id::NULL.with("cron-job-editor"))
+        .collapsible(false)
+        .resizable(true)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            ui.set_min_width(420.0);
+            if editor.job_id.is_none() {
+                let blueprints = self.cron_blueprints.clone().unwrap_or_default();
+                let selected_title = editor
+                    .blueprint_key
+                    .as_deref()
+                    .and_then(|key| blueprints.iter().find(|item| item.key == key))
+                    .map(|item| item.title.as_str())
+                    .unwrap_or("Custom");
+                egui::ComboBox::new("cron-blueprint-selector", "Start from")
+                    .selected_text(selected_title)
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(editor.blueprint_key.is_none(), "Custom")
+                            .clicked()
+                        {
+                            editor.blueprint_key = None;
+                            editor.blueprint_values.clear();
+                            editor.blueprint_time_parts.clear();
+                        }
+                        for blueprint in &blueprints {
+                            let label = if let Some(plugin) = &blueprint.plugin {
+                                format!("{} · {plugin}", blueprint.title)
+                            } else {
+                                blueprint.title.clone()
+                            };
+                            if ui
+                                .selectable_label(
+                                    editor.blueprint_key.as_deref() == Some(&blueprint.key),
+                                    label,
+                                )
+                                .clicked()
+                            {
+                                editor.blueprint_key = Some(blueprint.key.clone());
+                                editor.blueprint_values = cron_blueprint_initial_values(blueprint);
+                                editor.blueprint_time_parts = cron_blueprint_initial_time_parts(
+                                    blueprint,
+                                    &editor.blueprint_values,
+                                );
+                            }
+                        }
+                    });
+                if self.cron_blueprints_request.is_some() {
+                    ui.weak("Loading scheduled-job templates…");
+                } else if let Some(error) = &self.cron_blueprints_error {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                    if ui.button("Retry templates").clicked() {
+                        retry_blueprints = true;
+                    }
+                }
+            }
+
+            let selected_blueprint = editor
+                .blueprint_key
+                .as_deref()
+                .and_then(|key| self.cron_blueprints.as_ref()?.iter().find(|item| item.key == key));
+            if let Some(blueprint) = selected_blueprint {
+                if !blueprint.description.trim().is_empty() {
+                    ui.weak(&blueprint.description);
+                }
+                for field in &blueprint.fields {
+                    let value = editor
+                        .blueprint_values
+                        .entry(field.name.clone())
+                        .or_insert_with(|| field.default.clone().unwrap_or_default());
+                    match field.field_type.as_str() {
+                        _ if field.name == "deliver" => {
+                            ui.label(&field.label);
+                            if let Some(targets) = &self.cron_delivery_targets {
+                                cron_delivery_target_checkboxes(ui, targets, value);
+                            } else if self.cron_delivery_targets_request.is_some() {
+                                ui.weak("Loading delivery targets…");
+                            } else if let Some(error) = &self.cron_delivery_targets_error {
+                                ui.colored_label(Color32::LIGHT_RED, error);
+                                if ui.button("Retry delivery targets").clicked() {
+                                    retry_delivery_targets = true;
+                                }
+                            }
+                        }
+                        "enum" | "weekdays" => {
+                            let selected = if value.is_empty() {
+                                "Select…".to_owned()
+                            } else {
+                                value.clone()
+                            };
+                            egui::ComboBox::new(
+                                ("cron-blueprint-enum", &field.name),
+                                &field.label,
+                            )
+                                .selected_text(selected)
+                                .show_ui(ui, |ui| {
+                                    for option in &field.options {
+                                        ui.selectable_value(value, option.clone(), option);
+                                    }
+                                });
+                        }
+                        "time" => {
+                            ui.label(&field.label);
+                            let parts = editor
+                                .blueprint_time_parts
+                                .entry(field.name.clone())
+                                .or_insert_with(|| {
+                                    cron_time_parts(value)
+                                        .map(|(hour, minute)| (Some(hour), Some(minute)))
+                                        .unwrap_or((None, None))
+                                });
+                            let (mut hour, mut minute) = *parts;
+                            ui.horizontal(|ui| {
+                                egui::ComboBox::new(
+                                    ("cron-blueprint-hour", &field.name),
+                                    format!("{} hour", field.label),
+                                )
+                                .selected_text(
+                                    hour.map(|value| format!("{value:02}"))
+                                        .unwrap_or_else(|| "Hour…".into()),
+                                )
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut hour, None, "Hour…");
+                                    for value in 0..24 {
+                                        ui.selectable_value(
+                                            &mut hour,
+                                            Some(value),
+                                            format!("{value:02}"),
+                                        );
+                                    }
+                                });
+                                ui.label(":");
+                                egui::ComboBox::new(
+                                    ("cron-blueprint-minute", &field.name),
+                                    format!("{} minute", field.label),
+                                )
+                                .selected_text(
+                                    minute.map(|value| format!("{value:02}"))
+                                        .unwrap_or_else(|| "Minute…".into()),
+                                )
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut minute, None, "Minute…");
+                                    for value in 0..60 {
+                                        ui.selectable_value(
+                                            &mut minute,
+                                            Some(value),
+                                            format!("{value:02}"),
+                                        );
+                                    }
+                                });
+                            });
+                            let changed = *parts != (hour, minute);
+                            if changed {
+                                *parts = (hour, minute);
+                                *value = match (hour, minute) {
+                                    (Some(hour), Some(minute)) => format!("{hour:02}:{minute:02}"),
+                                    _ => String::new(),
+                                };
+                            }
+                        }
+                        "text" => {
+                            ui.label(&field.label);
+                            ui.text_edit_singleline(value)
+                                .accessible_name(format!("Blueprint field {}", field.label));
+                        }
+                        _ => {
+                            ui.label(&field.label);
+                            ui.text_edit_singleline(value)
+                                .accessible_name(format!("Blueprint field {}", field.label));
+                        }
+                    }
+                    if !field.help.trim().is_empty() {
+                        ui.weak(&field.help);
+                    }
+                }
+            } else {
+                if editor.script_only {
+                    ui.weak("Script-only job. Its script and execution mode are preserved while editing these fields.");
+                }
+                ui.label("Name (optional)");
+                ui.text_edit_singleline(&mut editor.name)
+                    .accessible_name("Scheduled job name");
+                ui.label("Prompt");
+                ui.add(
+                    egui::TextEdit::multiline(&mut editor.prompt)
+                        .desired_rows(5)
+                        .desired_width(f32::INFINITY),
+                )
+                .accessible_name("Scheduled job prompt");
+                ui.label("Frequency");
+                egui::ComboBox::new("cron-schedule-preset", "Frequency")
+                    .selected_text(cron_schedule_preset_label(&editor.schedule))
+                    .show_ui(ui, |ui| {
+                        for (label, expression) in [
+                            ("Daily at 9:00 AM", "0 9 * * *"),
+                            ("Weekdays at 9:00 AM", "0 9 * * 1-5"),
+                            ("Weekly on Monday at 9:00 AM", "0 9 * * 1"),
+                            ("Monthly on day 1 at 9:00 AM", "0 9 1 * *"),
+                            ("Every hour", "0 * * * *"),
+                            ("Every 15 minutes", "*/15 * * * *"),
+                        ] {
+                            if ui.selectable_label(editor.schedule == expression, label).clicked() {
+                                editor.schedule = expression.into();
+                            }
+                        }
+                        if ui
+                            .selectable_label(!cron_schedule_is_preset(&editor.schedule), "Custom")
+                            .clicked()
+                            && cron_schedule_is_preset(&editor.schedule)
+                        {
+                            editor.schedule.clear();
+                        }
+                    });
+                ui.label("Cron expression");
+                ui.text_edit_singleline(&mut editor.schedule)
+                    .accessible_name("Scheduled job cron expression");
+                ui.label("Deliver to");
+                if let Some(targets) = &self.cron_delivery_targets {
+                    cron_delivery_target_checkboxes(ui, targets, &mut editor.delivery);
+                } else if self.cron_delivery_targets_request.is_some() {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Loading delivery targets…");
+                    });
+                } else if let Some(error) = &self.cron_delivery_targets_error {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                    if ui.button("Retry delivery targets").clicked() {
+                        retry_delivery_targets = true;
+                    }
+                }
+                if !editor.script_only {
+                    ui.label("Model override (optional)");
+                    let selected_text = cron_model_option_label(&editor.model, &editor.provider);
+                    let current_model_is_available = self
+                        .cron_model_options
+                        .as_ref()
+                        .is_some_and(|options| {
+                            options.providers.iter().any(|provider| {
+                                provider.slug == editor.provider
+                                    && provider.models.iter().any(|model| model == &editor.model)
+                            })
+                        });
+                    egui::ComboBox::new("cron-model-options", "Model override (optional)")
+                        .selected_text(selected_text)
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_label(editor.model.is_empty(), "Use Hermes default")
+                                .clicked()
+                            {
+                                editor.model.clear();
+                                editor.provider.clear();
+                            }
+                            if !editor.model.is_empty() && !current_model_is_available {
+                                let saved_model = editor.model.clone();
+                                let saved_provider = editor.provider.clone();
+                                if ui
+                                    .selectable_label(
+                                        true,
+                                        format!(
+                                            "{} (saved, unavailable)",
+                                            cron_model_option_label(&saved_model, &saved_provider)
+                                        ),
+                                    )
+                                    .clicked()
+                                {
+                                    editor.model = saved_model;
+                                    editor.provider = saved_provider;
+                                }
+                            }
+                            if let Some(options) = &self.cron_model_options {
+                                for provider in options.providers.iter().filter(|provider| {
+                                    provider.authenticated != Some(false)
+                                        && !provider.models.is_empty()
+                                }) {
+                                    ui.label(RichText::new(&provider.name).strong());
+                                    for model in &provider.models {
+                                        let selected = editor.model == *model
+                                            && editor.provider == provider.slug;
+                                        if ui.selectable_label(selected, model).clicked() {
+                                            editor.model = model.clone();
+                                            editor.provider = provider.slug.clone();
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    if editor.model.trim().is_empty() && self.cron_model_options_request.is_some() {
+                        ui.weak("Loading available models…");
+                    } else if let Some(error) = &self.cron_model_options_error {
+                        ui.colored_label(Color32::LIGHT_RED, error);
+                        if ui.button("Retry model catalog").clicked() {
+                            retry_model_options = true;
+                        }
+                    } else if editor.model.trim().is_empty()
+                        && self.cron_model_options.as_ref().is_some_and(|options| {
+                            !options.providers.iter().any(|provider| {
+                                provider.authenticated != Some(false)
+                                    && !provider.models.is_empty()
+                            })
+                        })
+                    {
+                        ui.weak("No available models; Hermes default will be used.");
+                    }
+                }
+                egui::ComboBox::new("cron-catch-up", "Missed-run behavior")
+                    .selected_text(match editor.catch_up {
+                        Some(true) => "Run missed jobs",
+                        Some(false) => "Skip missed jobs",
+                        None => "Use Hermes default",
+                    })
+                    .show_ui(ui, |ui| {
+                        for (value, label) in [
+                            (None, "Use Hermes default"),
+                            (Some(true), "Run missed jobs"),
+                            (Some(false), "Skip missed jobs"),
+                        ] {
+                            if ui.selectable_label(editor.catch_up == value, label).clicked() {
+                                editor.catch_up = value;
+                            }
+                        }
+                    });
+            }
+            if let Some(error) = &editor.error {
+                ui.colored_label(Color32::LIGHT_RED, error);
+            }
+            let save_pending = self.cron_editor_save_request.is_some()
+                || self.cron_blueprint_instantiate_request.is_some();
+            if save_pending {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Saving scheduled job…");
+                });
+            }
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        self.gateway_connected && !save_pending,
+                        egui::Button::new(if editor.blueprint_key.is_some() {
+                            "Schedule it"
+                        } else {
+                            "Save"
+                        }),
+                    )
+                    .clicked()
+                {
+                    save = true;
+                }
+                if ui
+                    .add_enabled(
+                        !save_pending,
+                        egui::Button::new("Cancel"),
+                    )
+                    .clicked()
+                {
+                    cancel = true;
+                }
+            });
+        });
+        if cancel {
+            open = false;
+        }
+        if save {
+            self.cron_editor = Some(editor);
+            self.save_cron_editor();
+        } else if open {
+            self.cron_editor = Some(editor);
+        }
+        if retry_delivery_targets {
+            self.request_cron_delivery_targets();
+        }
+        if retry_model_options {
+            self.request_cron_model_options();
+        }
+        if retry_blueprints {
+            self.request_cron_blueprints();
+        }
+    }
+
+    fn cron_job_delete_dialog(&mut self, ctx: &egui::Context) {
+        let Some(job_id) = self.cron_delete_confirmation.clone() else {
+            return;
+        };
+        let title = self
+            .cron_jobs
+            .as_ref()
+            .and_then(|jobs| jobs.iter().find(|job| job.id == job_id))
+            .and_then(|job| job.name.as_deref())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or(&job_id)
+            .to_owned();
+        let mut confirm = false;
+        let mut cancel = false;
+        egui::Window::new("Delete scheduled job?")
+            .id(Id::NULL.with(("cron-delete-confirm", &job_id)))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!("Permanently delete {title}?"));
+                if let Some(error) = &self.cron_delete_error {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+                ui.horizontal(|ui| {
+                    confirm = ui
+                        .add_enabled(
+                            self.gateway_connected && self.cron_delete_request.is_none(),
+                            egui::Button::new(if self.cron_delete_request.is_some() {
+                                "Deleting…"
+                            } else {
+                                "Delete job"
+                            }),
+                        )
+                        .clicked();
+                    cancel = ui
+                        .add_enabled(
+                            self.cron_delete_request.is_none(),
+                            egui::Button::new("Cancel"),
+                        )
+                        .clicked();
+                });
+            });
+        if confirm {
+            self.delete_cron_job(job_id);
+        } else if cancel {
+            self.cron_delete_confirmation = None;
+            self.cron_delete_error = None;
+        }
+    }
+
+    fn start_telegram_setup(&mut self) {
+        if self.telegram_setup_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.telegram_setup_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("telegram-onboarding-start");
+        match gateway.start_telegram_onboarding(request_id.clone(), profile.clone(), None) {
+            Ok(()) => {
+                self.telegram_setup_request = Some(PendingTelegramSetupRequest {
+                    request_id,
+                    kind: TelegramSetupRequestKind::Start,
+                    profile: profile.clone(),
+                    pairing_id: None,
+                });
+                self.telegram_setup_profile = profile;
+                self.telegram_setup = None;
+                self.telegram_setup_status = None;
+                self.telegram_setup_error = None;
+                self.telegram_setup_success = None;
+                self.telegram_setup_next_poll = None;
+            }
+            Err(error) => self.telegram_setup_error = Some(error),
+        }
+    }
+
+    fn request_telegram_setup_status(&mut self) {
+        if self.telegram_setup_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(setup) = self.telegram_setup.as_ref() else {
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.telegram_setup_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let pairing_id = setup.pairing_id.clone();
+        let profile = self.telegram_setup_profile.clone();
+        let request_id = operation_id("telegram-onboarding-status");
+        match gateway.load_telegram_onboarding_status(
+            request_id.clone(),
+            pairing_id.clone(),
+            profile.clone(),
+        ) {
+            Ok(()) => {
+                self.telegram_setup_request = Some(PendingTelegramSetupRequest {
+                    request_id,
+                    kind: TelegramSetupRequestKind::Status,
+                    profile,
+                    pairing_id: Some(pairing_id),
+                });
+                self.telegram_setup_next_poll = None;
+            }
+            Err(error) => {
+                self.telegram_setup_error = Some(error);
+                self.telegram_setup_next_poll =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+            }
+        }
+    }
+
+    fn apply_telegram_setup(&mut self) {
+        if self.telegram_setup_request.is_some() {
+            return;
+        }
+        let ids = self
+            .telegram_setup_allowlist
+            .split(|character: char| {
+                character == ',' || character == ';' || character.is_whitespace()
+            })
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let mut unique = BTreeSet::new();
+        if ids.is_empty()
+            || ids.len() > 256
+            || ids.iter().any(|id| {
+                !(3..=20).contains(&id.len()) || !id.bytes().all(|byte| byte.is_ascii_digit())
+            })
+            || ids.iter().any(|id| !unique.insert(id.clone()))
+        {
+            self.telegram_setup_allowlist_error = Some(
+                "Enter 1–256 unique Telegram user IDs, each 3–20 digits, separated by commas or spaces.".into(),
+            );
+            return;
+        }
+        if !self.gateway_connected {
+            self.telegram_setup_error =
+                Some("Connect to Hermes before saving the Telegram bot.".into());
+            return;
+        }
+        let Some(setup) = self.telegram_setup.as_ref() else {
+            return;
+        };
+        if !matches!(
+            self.telegram_setup_status,
+            Some(TelegramOnboardingStatus::Ready { .. })
+        ) {
+            self.telegram_setup_error = Some("Telegram has not confirmed the new bot yet".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.telegram_setup_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let pairing_id = setup.pairing_id.clone();
+        let profile = self.telegram_setup_profile.clone();
+        let request_id = operation_id("telegram-onboarding-apply");
+        match gateway.apply_telegram_onboarding(
+            request_id.clone(),
+            pairing_id.clone(),
+            profile.clone(),
+            ids,
+        ) {
+            Ok(()) => {
+                self.telegram_setup_request = Some(PendingTelegramSetupRequest {
+                    request_id,
+                    kind: TelegramSetupRequestKind::Apply,
+                    profile,
+                    pairing_id: Some(pairing_id),
+                });
+                self.telegram_setup_allowlist_error = None;
+                self.telegram_setup_new_user_id.clear();
+                self.telegram_setup_error = None;
+            }
+            Err(error) => self.telegram_setup_error = Some(error),
+        }
+    }
+
+    fn add_telegram_setup_user(&mut self) {
+        let id = self.telegram_setup_new_user_id.trim().to_owned();
+        if !(3..=20).contains(&id.len()) || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+            self.telegram_setup_allowlist_error =
+                Some("Enter a Telegram user ID containing 3–20 digits.".into());
+            return;
+        }
+        let mut ids = telegram_setup_user_ids(&self.telegram_setup_allowlist);
+        if ids.iter().any(|existing| existing == &id) {
+            self.telegram_setup_allowlist_error =
+                Some("That Telegram user ID is already allowed.".into());
+            return;
+        }
+        if ids.len() >= 256 {
+            self.telegram_setup_allowlist_error =
+                Some("A Telegram bot can have at most 256 allowed user IDs.".into());
+            return;
+        }
+        ids.push(id);
+        self.telegram_setup_allowlist = ids.join(", ");
+        self.telegram_setup_new_user_id.clear();
+        self.telegram_setup_allowlist_error = None;
+    }
+
+    fn remove_telegram_setup_user(&mut self, user_id: &str) {
+        let ids = telegram_setup_user_ids(&self.telegram_setup_allowlist)
+            .into_iter()
+            .filter(|existing| existing != user_id)
+            .collect::<Vec<_>>();
+        self.telegram_setup_allowlist = ids.join(", ");
+        self.telegram_setup_allowlist_error = None;
+    }
+
+    fn cancel_telegram_setup(&mut self) {
+        if self.telegram_setup_request.is_some() {
+            return;
+        }
+        let Some(setup) = self.telegram_setup.as_ref() else {
+            self.telegram_setup_status = None;
+            self.telegram_setup_error = None;
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.telegram_setup = None;
+            self.telegram_setup_status = None;
+            self.telegram_setup_profile = None;
+            self.telegram_setup_next_poll = None;
+            return;
+        };
+        let pairing_id = setup.pairing_id.clone();
+        let profile = self.telegram_setup_profile.clone();
+        let request_id = operation_id("telegram-onboarding-cancel");
+        match gateway.cancel_telegram_onboarding(
+            request_id.clone(),
+            pairing_id.clone(),
+            profile.clone(),
+        ) {
+            Ok(()) => {
+                self.telegram_setup_request = Some(PendingTelegramSetupRequest {
+                    request_id,
+                    kind: TelegramSetupRequestKind::Cancel,
+                    profile,
+                    pairing_id: Some(pairing_id),
+                });
+                self.telegram_setup_error = None;
+            }
+            Err(error) => self.telegram_setup_error = Some(error),
+        }
+    }
+
+    fn clear_telegram_setup(&mut self) {
+        self.telegram_setup = None;
+        self.telegram_setup_status = None;
+        self.telegram_setup_profile = None;
+        self.telegram_setup_request = None;
+        self.telegram_setup_allowlist.clear();
+        self.telegram_setup_new_user_id.clear();
+        self.telegram_setup_allowlist_error = None;
+        self.telegram_setup_error = None;
+        self.telegram_setup_next_poll = None;
+    }
+
+    fn complete_telegram_setup(&mut self, receipt: TelegramOnboardingApplyReceipt) {
+        let restart_profile = self.telegram_setup_profile.clone();
+        self.messaging_restart_needed = receipt.needs_restart;
+        let success = if receipt.restart_started == Some(true) {
+            "Telegram bot saved. Hermes is restarting to apply the new configuration.".into()
+        } else if receipt.needs_restart {
+            "Telegram bot saved. Restart Hermes to apply the new configuration.".into()
+        } else {
+            "Telegram bot saved and applied.".into()
+        };
+        let restart_error = receipt.restart_error.map(|error| {
+            format!("Bot configuration was saved, but Hermes could not restart: {error}")
+        });
+        if let Some(username) = receipt.bot_username {
+            self.status = format!("Telegram bot @{username} configured");
+        } else {
+            self.status = "Telegram bot configured".into();
+        }
+        self.clear_telegram_setup();
+        self.telegram_setup_success = Some(success);
+        self.telegram_setup_error = restart_error;
+        if receipt.restart_started == Some(true) {
+            if let Some(action_name) = receipt.restart_action {
+                self.monitor_messaging_gateway_restart(action_name, restart_profile);
+            } else {
+                self.telegram_setup_error = Some(
+                    "Hermes saved the bot and started a restart, but returned no action status name.".into(),
+                );
+            }
+        } else if receipt.needs_restart && self.telegram_setup_error.is_none() {
+            self.start_messaging_gateway_restart(restart_profile);
+        }
+        self.request_messaging_platforms();
+        self.request_messaging_pairing();
+    }
+
+    fn start_messaging_gateway_restart(&mut self, profile: Option<String>) {
+        if self
+            .messaging_gateway_restart
+            .as_ref()
+            .is_some_and(|state| state.completed.is_none() && state.error.is_none())
+        {
+            return;
+        }
+        if !self.gateway_connected
+            || self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+                != profile
+        {
+            self.telegram_setup_error = Some(
+                "Gateway profile changed before restart; reconnect and retry the restart.".into(),
+            );
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.telegram_setup_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("messaging-gateway-restart");
+        match gateway.restart_gateway(request_id.clone(), profile.clone()) {
+            Ok(()) => {
+                self.messaging_gateway_restart = Some(MessagingGatewayRestart {
+                    profile,
+                    start_request_id: Some(request_id),
+                    action_name: None,
+                    status_request_id: None,
+                    attempts: 0,
+                    next_poll: None,
+                    completed: None,
+                    error: None,
+                });
+                self.telegram_setup_error = None;
+            }
+            Err(error) => self.telegram_setup_error = Some(error),
+        }
+    }
+
+    fn monitor_messaging_gateway_restart(&mut self, action_name: String, profile: Option<String>) {
+        if action_name.is_empty()
+            || action_name.len() > 256
+            || action_name.chars().any(char::is_control)
+        {
+            self.telegram_setup_error =
+                Some("Hermes returned an invalid restart action name".into());
+            return;
+        }
+        self.messaging_gateway_restart = Some(MessagingGatewayRestart {
+            profile,
+            start_request_id: None,
+            action_name: Some(action_name),
+            status_request_id: None,
+            attempts: 0,
+            next_poll: Some(std::time::Instant::now()),
+            completed: None,
+            error: None,
+        });
+    }
+
+    fn update_messaging_gateway_restart(&mut self) {
+        let due = self
+            .messaging_gateway_restart
+            .as_ref()
+            .is_some_and(|state| {
+                state.start_request_id.is_none()
+                    && state.action_name.is_some()
+                    && state.status_request_id.is_none()
+                    && state.completed.is_none()
+                    && state.error.is_none()
+                    && state
+                        .next_poll
+                        .is_some_and(|at| std::time::Instant::now() >= at)
+            });
+        if !due {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                state.error = Some("Hermes gateway reader is unavailable".into());
+            }
+            return;
+        };
+        let state = self
+            .messaging_gateway_restart
+            .as_ref()
+            .expect("restart state checked");
+        let action_name = state.action_name.clone().expect("action name checked");
+        let profile = state.profile.clone();
+        let request_id = operation_id("messaging-gateway-action-status");
+        match gateway.load_gateway_action_status(request_id.clone(), action_name.clone(), profile) {
+            Ok(()) => {
+                if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                    state.status_request_id = Some(request_id);
+                    state.next_poll = None;
+                }
+            }
+            Err(error) => {
+                if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                    state.attempts = state.attempts.saturating_add(1);
+                    state.error = (state.attempts >= 18).then_some(error.clone());
+                    state.next_poll = (state.error.is_none()).then(|| {
+                        std::time::Instant::now() + std::time::Duration::from_millis(1200)
+                    });
+                }
+            }
+        }
+    }
+
+    fn mutate_messaging_pairing(
+        &mut self,
+        platform: String,
+        user_id: String,
+        kind: PairingMutationKind,
+    ) {
+        if self.messaging_pairing_mutation.is_some()
+            || self.messaging_toggle_request.is_some()
+            || self.messaging_config_save_request.is_some()
+            || !self.gateway_connected
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.messaging_pairing_action_error =
+                Some("Hermes gateway writer is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("messaging-pairing-change");
+        match gateway.mutate_pairing(
+            request_id.clone(),
+            profile.clone(),
+            platform.clone(),
+            user_id.clone(),
+            kind,
+        ) {
+            Ok(()) => {
+                self.messaging_pairing_mutation =
+                    Some((request_id, platform, user_id, kind, profile));
+                self.messaging_pairing_action_error = None;
+                self.messaging_pairing_revoke_confirm = None;
+            }
+            Err(error) => self.messaging_pairing_action_error = Some(error),
+        }
+    }
+
+    fn set_messaging_platform_enabled(&mut self, platform_id: String, enabled: bool) {
+        if self.messaging_toggle_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.messaging_action_error = Some("Hermes gateway writer is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("messaging-platform-enabled");
+        match gateway.set_messaging_platform_enabled(
+            request_id.clone(),
+            profile.clone(),
+            platform_id.clone(),
+            enabled,
+        ) {
+            Ok(()) => {
+                self.messaging_toggle_request = Some((request_id, platform_id, profile, enabled));
+                self.messaging_action_error = None;
+            }
+            Err(error) => self.messaging_action_error = Some(error),
+        }
+    }
+
+    fn save_messaging_platform_config(
+        &mut self,
+        platform_id: String,
+        update: MessagingPlatformUpdate,
+    ) {
+        if self.messaging_config_save_request.is_some() || !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.messaging_config_error = Some("Hermes gateway writer is unavailable".into());
+            return;
+        };
+        let profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone());
+        let request_id = operation_id("messaging-platform-config");
+        match gateway.update_messaging_platform_config(
+            request_id.clone(),
+            profile.clone(),
+            platform_id.clone(),
+            update,
+        ) {
+            Ok(()) => {
+                self.messaging_config_save_request = Some((request_id, platform_id, profile));
+                self.messaging_config_saving = true;
+                self.messaging_config_error = None;
+            }
+            Err(error) => self.messaging_config_error = Some(error),
+        }
+    }
+
+    fn messaging_content(&mut self, ui: &mut egui::Ui) {
+        self.update_messaging_gateway_restart();
+        if self.messaging_platforms.is_none() && !self.messaging_pending && self.gateway_connected {
+            self.request_messaging_platforms();
+        }
+        if self.messaging_pairing.is_none()
+            && self.messaging_pairing_request.is_none()
+            && self.gateway_connected
+        {
+            self.request_messaging_pairing();
+        }
+        ui.horizontal(|ui| {
+            ui.heading("Messaging");
+            ui.label(RichText::new("Channels and connection status").color(MUTED));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .add_enabled(
+                        self.gateway_connected
+                            && !self.messaging_pending
+                            && self.messaging_pairing_request.is_none(),
+                        egui::Button::new("Refresh"),
+                    )
+                    .clicked()
+                {
+                    self.request_messaging_platforms();
+                    self.request_messaging_pairing();
+                }
+            });
+        });
+        ui.separator();
+        self.messaging_restart_content(ui);
+        if self.messaging_platforms.is_none() && !self.gateway_connected {
+            ui.vertical_centered(|ui| {
+                ui.add_space((ui.available_height() * 0.25).max(16.0));
+                ui.label(
+                    RichText::new("Connect to Hermes to load messaging channels.").color(MUTED),
+                );
+            });
+            return;
+        }
+        if self.messaging_platforms.is_none() && self.messaging_pending {
+            ui.vertical_centered(|ui| {
+                ui.add_space(24.0);
+                ui.spinner();
+                ui.label("Loading messaging channels…");
+            });
+            return;
+        }
+        if let Some(error) = self.messaging_error.clone() {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!("Messaging channels could not be loaded: {error}"))
+                        .color(Color32::LIGHT_RED),
+                );
+                if ui
+                    .add_enabled(
+                        self.gateway_connected && !self.messaging_pending,
+                        egui::Button::new("Retry"),
+                    )
+                    .clicked()
+                {
+                    self.request_messaging_platforms();
+                }
+            });
+            if self.messaging_platforms.is_none() {
+                return;
+            }
+        }
+        let Some(snapshot) = self.messaging_platforms.clone() else {
+            return;
+        };
+        if let Some(telegram) = snapshot
+            .platforms
+            .iter()
+            .find(|platform| platform.id == "telegram" && !platform.relay_exclusive)
+        {
+            self.telegram_setup_content(ui, telegram.configured);
+            ui.add_space(8.0);
+        }
+        let pairing_snapshot = self.messaging_pairing.clone().unwrap_or_default();
+        let query = self.messaging_query.trim().to_lowercase();
+        let active_filter = self.messaging_status_filter;
+        let visible = snapshot
+            .platforms
+            .iter()
+            .filter(|platform| {
+                active_filter.is_none_or(|filter| messaging_status(platform) == filter)
+                    && (query.is_empty()
+                        || platform.id.to_lowercase().contains(&query)
+                        || platform.name.to_lowercase().contains(&query)
+                        || platform.description.to_lowercase().contains(&query)
+                        || platform
+                            .state
+                            .as_deref()
+                            .unwrap_or_default()
+                            .to_lowercase()
+                            .contains(&query)
+                        || messaging_status_label(messaging_status(platform))
+                            .to_lowercase()
+                            .contains(&query)
+                        || platform
+                            .error_message
+                            .as_deref()
+                            .unwrap_or_default()
+                            .to_lowercase()
+                            .contains(&query))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let selected_id = self
+            .messaging_selected_platform
+            .as_deref()
+            .filter(|id| visible.iter().any(|row| row.id == **id))
+            .unwrap_or_else(|| {
+                visible
+                    .first()
+                    .map(|row| row.id.as_str())
+                    .unwrap_or_default()
+            })
+            .to_owned();
+        ui.horizontal(|ui| {
+            ui.label(format!("{} channels", snapshot.platforms.len()));
+            ui.label(
+                RichText::new(format!(
+                    "{} connected",
+                    snapshot
+                        .platforms
+                        .iter()
+                        .filter(|p| messaging_status(p) == MessagingStatus::Connected)
+                        .count()
+                ))
+                .color(Color32::LIGHT_GREEN),
+            );
+            ui.label(
+                RichText::new(format!(
+                    "{} need attention",
+                    snapshot
+                        .platforms
+                        .iter()
+                        .filter(|p| messaging_status(p) == MessagingStatus::Attention)
+                        .count()
+                ))
+                .color(Color32::YELLOW),
+            );
+            ui.label(
+                RichText::new(format!(
+                    "{} errors",
+                    snapshot
+                        .platforms
+                        .iter()
+                        .filter(|p| messaging_status(p) == MessagingStatus::Error)
+                        .count()
+                ))
+                .color(Color32::LIGHT_RED),
+            );
+            ui.label(
+                RichText::new(format!(
+                    "{} off",
+                    snapshot
+                        .platforms
+                        .iter()
+                        .filter(|p| messaging_status(p) == MessagingStatus::Off)
+                        .count()
+                ))
+                .color(MUTED),
+            );
+        });
+        ui.horizontal(|ui| {
+            for (filter, label) in [
+                (None, "All"),
+                (Some(MessagingStatus::Connected), "Connected"),
+                (Some(MessagingStatus::Attention), "Needs attention"),
+                (Some(MessagingStatus::Error), "Error"),
+                (Some(MessagingStatus::Off), "Off"),
+            ] {
+                if ui
+                    .selectable_label(self.messaging_status_filter == filter, label)
+                    .clicked()
+                {
+                    self.messaging_status_filter = filter;
+                }
+            }
+        });
+        ui.add_space(8.0);
+        ui.add(
+            egui::TextEdit::singleline(&mut self.messaging_query)
+                .hint_text("Search channels by name or status")
+                .desired_width(ui.available_width()),
+        )
+        .accessible_name("Search messaging channels");
+        ui.add_space(10.0);
+        if snapshot.platforms.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(40.0);
+                ui.label(
+                    RichText::new("No messaging channels are available for this profile.")
+                        .color(MUTED),
+                );
+            });
+            return;
+        }
+        let mut requested_toggle = None;
+        let mut requested_config_save = None;
+        let mut requested_pairing_action = None;
+        let mut requested_revoke_confirm = None;
+        let mut retry_pairing = false;
+        ui.columns(2, |columns| {
+            egui::ScrollArea::vertical()
+                .id_salt("messaging-platform-list")
+                .show(&mut columns[0], |ui| {
+                    for platform in &visible {
+                        let status = messaging_status(platform);
+                        let active = selected_id == platform.id;
+                        let color = messaging_status_color(status);
+                        let pending_count = pairing_snapshot
+                            .pending
+                            .iter()
+                            .filter(|user| user.platform == platform.id)
+                            .count();
+                        let response = ui
+                            .selectable_label(
+                                active,
+                                format!("{}   {}", messaging_status_glyph(status), platform.name),
+                            )
+                            .on_hover_text(format!(
+                                "{} · {}",
+                                platform.id,
+                                platform.state.as_deref().unwrap_or("unknown")
+                            ));
+                        ui.horizontal(|ui| {
+                            ui.add_space(22.0);
+                            ui.label(
+                                RichText::new(messaging_status_label(status))
+                                    .small()
+                                    .color(color),
+                            );
+                            if platform.enabled {
+                                ui.label(RichText::new("Enabled").small().color(MUTED));
+                            }
+                            if pending_count > 0 {
+                                ui.label(
+                                    RichText::new(format!("{pending_count} pending"))
+                                        .small()
+                                        .color(Color32::YELLOW),
+                                );
+                            }
+                        });
+                        if response.clicked() {
+                            self.messaging_selected_platform = Some(platform.id.clone());
+                        }
+                        ui.add_space(5.0);
+                    }
+                    if visible.is_empty() {
+                        ui.label(RichText::new("No channels match this search.").color(MUTED));
+                    }
+                });
+            egui::ScrollArea::vertical()
+                .id_salt("messaging-platform-details")
+                .show(&mut columns[1], |ui| {
+                    if let Some(platform) = snapshot.platforms.iter().find(|p| p.id == selected_id)
+                    {
+                        let edits = self
+                            .messaging_config_edits
+                            .entry(platform.id.clone())
+                            .or_default();
+                        let platform_pending = pairing_snapshot
+                            .pending
+                            .iter()
+                            .filter(|user| user.platform == platform.id)
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        let platform_approved = pairing_snapshot
+                            .approved
+                            .iter()
+                            .filter(|user| user.platform == platform.id)
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        let (toggle, save, pairing_action, revoke_user, retry) =
+                            messaging_platform_detail(
+                                ui,
+                                platform,
+                                self.gateway_connected
+                                    && self.messaging_toggle_request.is_none()
+                                    && self.messaging_config_save_request.is_none()
+                                    && !platform.disabled_by_relay
+                                    && !platform.relay_exclusive,
+                                self.messaging_toggle_request.is_some(),
+                                self.messaging_restart_needed,
+                                self.messaging_action_error.as_deref(),
+                                self.gateway_connected
+                                    && self.messaging_config_save_request.is_none()
+                                    && self.messaging_toggle_request.is_none()
+                                    && !platform.relay_exclusive,
+                                self.messaging_config_saving,
+                                self.messaging_config_error.as_deref(),
+                                edits,
+                                &mut self.messaging_advanced_open,
+                                &platform_pending,
+                                &platform_approved,
+                                self.messaging_pairing_request.is_some(),
+                                self.messaging_pairing_error.as_deref(),
+                                self.messaging_pairing_action_error.as_deref(),
+                                self.messaging_pairing_mutation.is_some(),
+                                self.gateway_connected
+                                    && self.messaging_pairing_mutation.is_none()
+                                    && self.messaging_toggle_request.is_none()
+                                    && self.messaging_config_save_request.is_none(),
+                            );
+                        requested_toggle = toggle.map(|enabled| (platform.id.clone(), enabled));
+                        if save {
+                            requested_config_save = Some((
+                                platform.id.clone(),
+                                messaging_config_update(platform, edits),
+                            ));
+                        }
+                        requested_pairing_action = pairing_action
+                            .map(|(kind, user_id)| (platform.id.clone(), user_id, kind));
+                        requested_revoke_confirm = revoke_user;
+                        retry_pairing = retry;
+                    }
+                });
+        });
+        if let Some((platform_id, enabled)) = requested_toggle {
+            self.set_messaging_platform_enabled(platform_id, enabled);
+        }
+        if let Some((platform_id, update)) = requested_config_save {
+            self.save_messaging_platform_config(platform_id, update);
+        }
+        if retry_pairing {
+            self.request_messaging_pairing();
+        }
+        if let Some((platform, user_id, kind)) = requested_pairing_action {
+            self.mutate_messaging_pairing(platform, user_id, kind);
+        }
+        if let Some(user) = requested_revoke_confirm {
+            self.messaging_pairing_revoke_confirm = Some(user);
+        }
+        if let Some(user) = self.messaging_pairing_revoke_confirm.clone() {
+            let mut confirm = false;
+            let mut cancel = false;
+            egui::Window::new("Revoke paired user?")
+                .id(Id::NULL.with(("messaging-revoke", &user.platform, &user.user_id)))
+                .collapsible(false)
+                .resizable(false)
+                .show(ui.ctx(), |ui| {
+                    ui.label(format!(
+                        "Remove {} from the approved users for {}?",
+                        pairing_user_label(&user),
+                        user.platform
+                    ));
+                    ui.horizontal(|ui| {
+                        confirm = ui
+                            .add_enabled(
+                                self.gateway_connected && self.messaging_pairing_mutation.is_none(),
+                                egui::Button::new("Revoke access"),
+                            )
+                            .clicked();
+                        cancel = ui.button("Cancel").clicked();
+                    });
+                });
+            if confirm {
+                self.mutate_messaging_pairing(
+                    user.platform.clone(),
+                    user.user_id.clone(),
+                    PairingMutationKind::Revoke,
+                );
+            } else if cancel {
+                self.messaging_pairing_revoke_confirm = None;
+            }
+        }
+    }
+
+    fn telegram_setup_content(&mut self, ui: &mut Ui, configured: bool) {
+        if let Some(status) = &self.telegram_setup_status {
+            let expires_at = match status {
+                TelegramOnboardingStatus::Waiting { expires_at }
+                | TelegramOnboardingStatus::Ready { expires_at, .. } => expires_at,
+            };
+            if let Ok(expiry) = time::OffsetDateTime::parse(
+                expires_at,
+                &time::format_description::well_known::Rfc3339,
+            ) {
+                let remaining = (expiry - time::OffsetDateTime::now_utc()).whole_seconds();
+                if remaining <= 0 {
+                    self.telegram_setup_error =
+                        Some("Telegram setup expired. Start again to get a new QR code.".into());
+                    self.cancel_telegram_setup();
+                } else {
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_secs(1));
+                }
+            }
+        }
+        if self.telegram_setup.is_some()
+            && self.telegram_setup_status.is_none()
+            && self.telegram_setup_request.is_none()
+        {
+            self.telegram_setup_next_poll.get_or_insert_with(|| {
+                std::time::Instant::now() + std::time::Duration::from_millis(1200)
+            });
+        }
+        if self.telegram_setup_status.is_some()
+            && self.telegram_setup_request.is_none()
+            && self
+                .telegram_setup_next_poll
+                .is_some_and(|at| std::time::Instant::now() >= at)
+        {
+            self.request_telegram_setup_status();
+        }
+
+        let mut start = false;
+        let mut open_link = None;
+        let mut apply = false;
+        let mut add_user = false;
+        let mut remove_user = None;
+        let mut cancel = false;
+        let allowed_user_ids = telegram_setup_user_ids(&self.telegram_setup_allowlist);
+        let detected_owner_id = match &self.telegram_setup_status {
+            Some(TelegramOnboardingStatus::Ready {
+                owner_user_id: Some(owner),
+                ..
+            }) => Some(owner.clone()),
+            _ => None,
+        };
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading("Telegram bot setup");
+            });
+            ui.label("Create a Telegram bot with a one-time QR pairing session.");
+            if configured && self.telegram_setup.is_none() {
+                ui.label(
+                    RichText::new("Creating another bot will replace the Telegram bot configured for this profile.")
+                        .color(MUTED),
+                );
+            }
+            if let Some(success) = &self.telegram_setup_success {
+                ui.label(RichText::new(success).color(Color32::LIGHT_GREEN));
+            }
+            if let Some(error) = &self.telegram_setup_error {
+                ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+            }
+            if let Some(setup) = self.telegram_setup.clone() {
+                let expiry_label = self.telegram_setup_status.as_ref().map(|status| {
+                    let expiry = match status {
+                        TelegramOnboardingStatus::Waiting { expires_at }
+                        | TelegramOnboardingStatus::Ready { expires_at, .. } => expires_at,
+                    };
+                    time::OffsetDateTime::parse(
+                        expiry,
+                        &time::format_description::well_known::Rfc3339,
+                    )
+                    .map(|at| {
+                        (at - time::OffsetDateTime::now_utc())
+                            .whole_seconds()
+                            .max(0)
+                    })
+                    .unwrap_or_default()
+                });
+                let is_waiting = matches!(
+                    self.telegram_setup_status,
+                    Some(TelegramOnboardingStatus::Waiting { .. })
+                );
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("Scan with Telegram").strong());
+                        match self.telegram_setup_status.clone() {
+                            Some(TelegramOnboardingStatus::Waiting { .. }) => {
+                                ui.label("Waiting for Telegram to confirm the bot…");
+                            }
+                            Some(TelegramOnboardingStatus::Ready { bot_username, .. }) => {
+                                ui.label(
+                                    RichText::new("Telegram connected").color(Color32::LIGHT_GREEN),
+                                );
+                                if let Some(username) = bot_username {
+                                    ui.label(format!("Bot: @{username}"));
+                                }
+                                ui.horizontal(|ui| {
+                                    ui.label("Allowed Telegram user IDs");
+                                    if detected_owner_id.as_ref().is_some_and(|owner| {
+                                        allowed_user_ids.iter().any(|id| id == owner)
+                                    }) {
+                                        ui.label(
+                                            RichText::new("Owner detected")
+                                                .color(Color32::LIGHT_GREEN),
+                                        );
+                                    }
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    for id in &allowed_user_ids {
+                                        if ui
+                                            .small_button(format!("{id}  ×"))
+                                            .accessible_name(format!("Remove {id}"))
+                                            .clicked()
+                                        {
+                                            remove_user = Some(id.clone());
+                                        }
+                                    }
+                                    if allowed_user_ids.is_empty() {
+                                        ui.label(
+                                            RichText::new("Add at least one user ID to continue.")
+                                                .color(MUTED),
+                                        );
+                                    }
+                                });
+                                ui.horizontal(|ui| {
+                                    let input = ui.add(
+                                        egui::TextEdit::singleline(
+                                            &mut self.telegram_setup_new_user_id,
+                                        )
+                                        .hint_text("Telegram user ID"),
+                                    )
+                                    .accessible_name("Telegram user ID");
+                                    if input.lost_focus()
+                                        && ui.input(|state| state.key_pressed(egui::Key::Enter))
+                                    {
+                                        add_user = true;
+                                    }
+                                    add_user |= ui.button("Add").clicked();
+                                });
+                                if let Some(error) = &self.telegram_setup_allowlist_error {
+                                    ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+                                }
+                                ui.horizontal(|ui| {
+                                    apply = ui
+                                        .add_enabled(
+                                            self.telegram_setup_request.is_none(),
+                                            egui::Button::new("Save and restart"),
+                                        )
+                                        .clicked();
+                                    cancel = ui
+                                        .add_enabled(
+                                            self.telegram_setup_request.is_none(),
+                                            egui::Button::new("Cancel"),
+                                        )
+                                        .clicked();
+                                });
+                            }
+                            None => {
+                                ui.spinner();
+                                ui.label("Starting setup session…");
+                            }
+                        }
+                        ui.horizontal(|ui| {
+                            if ui.button("Open Telegram").clicked() {
+                                open_link = Some(setup.deep_link.clone());
+                            }
+                            if is_waiting {
+                                cancel = ui
+                                    .add_enabled(
+                                        self.telegram_setup_request.is_none(),
+                                        egui::Button::new("Cancel"),
+                                    )
+                                    .clicked();
+                            }
+                        });
+                    });
+                    ui.add_space(12.0);
+                    ui.vertical_centered(|ui| {
+                        telegram_qr(ui, &setup.qr_payload);
+                        ui.label("Telegram setup QR code");
+                        if let Some(seconds) = expiry_label {
+                            ui.label(format!("Expires in {}:{:02}", seconds / 60, seconds % 60));
+                        }
+                    });
+                });
+            } else {
+                if ui
+                    .add_enabled(
+                        self.gateway_connected && self.telegram_setup_request.is_none(),
+                        egui::Button::new("Create bot with QR"),
+                    )
+                    .clicked()
+                {
+                    start = true;
+                }
+                if self
+                    .telegram_setup_request
+                    .as_ref()
+                    .is_some_and(|pending| pending.kind == TelegramSetupRequestKind::Start)
+                {
+                    ui.spinner();
+                    ui.label("Creating a secure pairing session…");
+                }
+            }
+            if self
+                .telegram_setup_request
+                .as_ref()
+                .is_some_and(|pending| pending.kind == TelegramSetupRequestKind::Apply)
+            {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Saving Telegram bot configuration…");
+                });
+            }
+        });
+        if let Some(user_id) = remove_user {
+            self.remove_telegram_setup_user(&user_id);
+        }
+        if add_user {
+            self.add_telegram_setup_user();
+        }
+        if start {
+            self.start_telegram_setup();
+        }
+        if let Some(link) = open_link {
+            if let Err(error) = open::that(link) {
+                self.telegram_setup_error = Some(format!("Could not open Telegram: {error}"));
+            }
+        }
+        if apply {
+            self.apply_telegram_setup();
+        }
+        if cancel {
+            self.cancel_telegram_setup();
+        }
+    }
+
+    fn messaging_restart_content(&mut self, ui: &mut Ui) {
+        if !self.messaging_restart_needed && self.messaging_gateway_restart.is_none() {
+            return;
+        }
+        let mut restart = false;
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if let Some(state) = &self.messaging_gateway_restart {
+                    if let Some(error) = &state.error {
+                        ui.label(
+                            RichText::new(format!("Gateway restart: {error}"))
+                                .color(Color32::LIGHT_RED),
+                        );
+                    } else if state.completed == Some(true) {
+                        ui.label(
+                            RichText::new("Hermes gateway restarted successfully.")
+                                .color(Color32::LIGHT_GREEN),
+                        );
+                    } else if state.completed == Some(false) {
+                        ui.label(
+                            RichText::new("Hermes gateway restart failed.")
+                                .color(Color32::LIGHT_RED),
+                        );
+                    } else {
+                        ui.spinner();
+                        ui.label(if state.start_request_id.is_some() {
+                            "Requesting Hermes gateway restart…"
+                        } else {
+                            "Restarting Hermes gateway…"
+                        });
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_millis(200));
+                    }
+                } else {
+                    ui.label("Restart Hermes to apply the saved messaging configuration.");
+                }
+                if self.messaging_restart_needed
+                    && self
+                        .messaging_gateway_restart
+                        .as_ref()
+                        .is_none_or(|state| state.completed.is_some() || state.error.is_some())
+                {
+                    restart = ui
+                        .add_enabled(self.gateway_connected, egui::Button::new("Restart Hermes"))
+                        .clicked();
+                }
+            });
+        });
+        if restart {
+            let profile = self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone());
+            self.start_messaging_gateway_restart(profile);
         }
     }
 
@@ -3846,145 +10330,293 @@ fn render_message() -> &'static str {
                 let filtered_count = filtered.len();
                 let visible_count = filtered_count.min(self.plugin_catalog_visible_limit);
                 let visible = filtered.into_iter().take(visible_count).collect::<Vec<_>>();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for entry in visible {
-                        let entry_id = plugin_catalog_entry_id(&entry);
-                        let selected = self.selected_plugin_id.as_deref() == Some(&entry_id);
-                        let mut open_repo = false;
-                        let mut install_plugin = false;
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                if ui
-                                    .selectable_label(
-                                        selected,
-                                        RichText::new(&entry.name).strong().color(TEXT),
-                                    )
-                                    .clicked()
-                                {
-                                    self.selected_plugin_id = Some(entry_id.clone());
-                                }
-                                ui.label(RichText::new(&entry.tier).color(ACCENT));
-                                if entry.installed_key.is_some() {
-                                    ui.label(RichText::new("Installed").color(ACCENT));
-                                }
-                                if entry.update_available {
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "Update · {}",
-                                            entry.update_target.as_deref().unwrap_or("available")
-                                        ))
-                                        .color(ACCENT),
-                                    );
-                                }
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if entry.installed_key.is_none() {
-                                        install_plugin = ui
-                                            .add_enabled(
-                                                self.gateway_connected,
-                                                egui::Button::new("Install"),
+                if !visible.iter().any(|entry| {
+                    self.selected_plugin_id.as_deref()
+                        == Some(plugin_catalog_entry_id(entry).as_str())
+                }) {
+                    self.selected_plugin_id = visible.first().map(plugin_catalog_entry_id);
+                }
+                let selected_detail = visible
+                    .iter()
+                    .find(|entry| {
+                        self.selected_plugin_id.as_deref()
+                            == Some(plugin_catalog_entry_id(entry).as_str())
+                    })
+                    .cloned();
+                let total_width = ui.available_width();
+                let content_height = ui.available_height().max(1.0);
+                let default_left = default_master_detail_left_width(total_width);
+                let saved_left = self
+                    .workspace
+                    .master_detail_width_override(MASTER_DETAIL_RESIZE_ID);
+                let left_width = saved_left.unwrap_or(default_left).min(total_width.max(0.0));
+                let divider_width = 8.0;
+                let right_width = (total_width - left_width - divider_width).max(0.0);
+                let mut install_selected = None;
+                let mut open_selected_repository = None;
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(left_width, content_height),
+                        Layout::top_down(Align::Min),
+                        |list_ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("capabilities-split-list")
+                                .show(list_ui, |list_ui| {
+                                    for entry in &visible {
+                                        let entry_id = plugin_catalog_entry_id(entry);
+                                        let selected = self.selected_plugin_id.as_deref()
+                                            == Some(entry_id.as_str());
+                                        let row = list_ui
+                                            .selectable_label(
+                                                selected,
+                                                RichText::new(&entry.name).strong().color(TEXT),
                                             )
                                             .accessible_name(format!(
-                                                "Install catalog plugin: {}",
+                                                "Plugin catalog result: {}",
                                                 entry.name
-                                            ))
-                                            .clicked();
+                                            ));
+                                        if row.clicked() {
+                                            self.selected_plugin_id = Some(entry_id);
+                                        }
+                                        list_ui.horizontal_wrapped(|list_ui| {
+                                            if !entry.category_label.is_empty() {
+                                                list_ui.label(
+                                                    RichText::new(&entry.category_label)
+                                                        .size(10.0)
+                                                        .color(ACCENT),
+                                                );
+                                            }
+                                            list_ui.label(
+                                                RichText::new(&entry.tier).size(10.0).color(MUTED),
+                                            );
+                                            if entry.installed_key.is_some() {
+                                                list_ui.label(
+                                                    RichText::new("Installed")
+                                                        .size(10.0)
+                                                        .color(ACCENT),
+                                                );
+                                            }
+                                        });
+                                        if !entry.description.is_empty() {
+                                            list_ui.label(
+                                                RichText::new(&entry.description)
+                                                    .size(11.0)
+                                                    .color(MUTED),
+                                            );
+                                        }
+                                        list_ui.separator();
                                     }
-                                    if !entry.repo.is_empty() {
-                                        open_repo = ui.small_button("Repository").clicked();
+                                    if visible_count < filtered_count {
+                                        let remaining =
+                                            filtered_count.saturating_sub(visible_count);
+                                        if list_ui
+                                            .button(format!(
+                                                "Show more plugins · {remaining} remaining"
+                                            ))
+                                            .clicked()
+                                        {
+                                            self.plugin_catalog_visible_limit = self
+                                                .plugin_catalog_visible_limit
+                                                .saturating_add(PLUGIN_CATALOG_PAGE_SIZE);
+                                        }
                                     }
                                 });
-                            });
-                            if !entry.category_label.is_empty() {
-                                ui.label(
-                                    RichText::new(&entry.category_label)
-                                        .size(11.0)
-                                        .color(ACCENT),
-                                );
-                            }
-                            if !entry.description.is_empty() {
-                                ui.label(RichText::new(&entry.description).size(12.0).color(MUTED));
-                            }
-                            if selected {
-                                if !entry.overview.is_empty() {
-                                    ui.separator();
-                                    ui.label(RichText::new(&entry.overview).size(12.0).color(TEXT));
-                                }
-                                if !entry.author.is_empty() {
-                                    ui.label(
-                                        RichText::new(format!("Maintainer · {}", entry.author))
-                                            .size(11.0)
-                                            .color(MUTED),
-                                    );
-                                }
-                                let version = entry
-                                    .installed_version
-                                    .as_deref()
-                                    .filter(|version| !version.is_empty())
-                                    .unwrap_or(&entry.version);
-                                if !version.is_empty() || !entry.sha.is_empty() {
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{}{}",
-                                            version,
-                                            if entry.sha.is_empty() {
-                                                String::new()
-                                            } else {
-                                                format!(
-                                                    " · {}",
-                                                    entry.sha.chars().take(8).collect::<String>()
-                                                )
-                                            }
-                                        ))
-                                        .size(10.0)
-                                        .color(MUTED),
-                                    );
-                                }
-                                for (label, values) in [
-                                    ("Tags", &entry.tags),
-                                    ("Tools", &entry.tools),
-                                    ("Hooks", &entry.hooks),
-                                    ("Requirements", &entry.requirements),
-                                ] {
-                                    if !values.is_empty() {
-                                        ui.label(
+                        },
+                    );
+
+                    let handle_response = ui
+                        .allocate_response(
+                            Vec2::new(divider_width, content_height),
+                            egui::Sense::click_and_drag(),
+                        )
+                        .accessible_name("Resize plugin catalog list and details");
+                    let handle_color = if handle_response.dragged() {
+                        Color32::from_rgb(132, 184, 255)
+                    } else if handle_response.hovered() {
+                        ACCENT
+                    } else {
+                        BORDER
+                    };
+                    ui.painter().line_segment(
+                        [
+                            egui::pos2(handle_response.rect.center().x, handle_response.rect.top()),
+                            egui::pos2(
+                                handle_response.rect.center().x,
+                                handle_response.rect.bottom(),
+                            ),
+                        ],
+                        Stroke::new(1.0, handle_color),
+                    );
+                    if handle_response.drag_started()
+                        && let Some(pointer) = handle_response.interact_pointer_pos()
+                    {
+                        self.master_detail_resize = Some(MasterDetailResizeSession {
+                            resize_id: MASTER_DETAIL_RESIZE_ID,
+                            start_x: pointer.x - handle_response.drag_delta().x,
+                            start_width: left_width,
+                            available_width: total_width,
+                        });
+                    }
+                    if handle_response.dragged()
+                        && let (Some(resize), Some(pointer)) = (
+                            self.master_detail_resize.as_ref(),
+                            handle_response.interact_pointer_pos(),
+                        )
+                    {
+                        let width = clamp_master_detail_left_width(
+                            resize.start_width + pointer.x - resize.start_x,
+                            resize.available_width,
+                        );
+                        if let Err(error) = self
+                            .workspace
+                            .set_master_detail_width_override(resize.resize_id, Some(width))
+                        {
+                            self.status = format!("Could not save catalog pane width: {error}");
+                        }
+                    }
+                    if handle_response.drag_stopped() {
+                        self.master_detail_resize = None;
+                    }
+                    if handle_response.double_clicked() {
+                        self.master_detail_resize = None;
+                        if let Err(error) = self
+                            .workspace
+                            .set_master_detail_width_override(MASTER_DETAIL_RESIZE_ID, None)
+                        {
+                            self.status = format!("Could not reset catalog pane width: {error}");
+                        }
+                    }
+
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(right_width, content_height),
+                        Layout::top_down(Align::Min),
+                        |detail_ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("capabilities-split-detail")
+                                .show(detail_ui, |detail_ui| {
+                                    let Some(entry) = &selected_detail else {
+                                        detail_ui.label("Select a plugin to view details.");
+                                        return;
+                                    };
+                                    detail_ui.heading(&entry.name);
+                                    detail_ui.horizontal_wrapped(|detail_ui| {
+                                        detail_ui.label(RichText::new(&entry.tier).color(ACCENT));
+                                        if !entry.category_label.is_empty() {
+                                            detail_ui.label(
+                                                RichText::new(&entry.category_label).color(MUTED),
+                                            );
+                                        }
+                                        if entry.installed_key.is_some() {
+                                            detail_ui
+                                                .label(RichText::new("Installed").color(ACCENT));
+                                        }
+                                        if entry.update_available {
+                                            detail_ui.label(
+                                                RichText::new(format!(
+                                                    "Update · {}",
+                                                    entry
+                                                        .update_target
+                                                        .as_deref()
+                                                        .unwrap_or("available")
+                                                ))
+                                                .color(ACCENT),
+                                            );
+                                        }
+                                    });
+                                    if !entry.description.is_empty() {
+                                        detail_ui
+                                            .label(RichText::new(&entry.description).color(MUTED));
+                                    }
+                                    if !entry.overview.is_empty() {
+                                        detail_ui.separator();
+                                        detail_ui.label(&entry.overview);
+                                    }
+                                    if !entry.author.is_empty() {
+                                        detail_ui.label(
+                                            RichText::new(format!("Maintainer · {}", entry.author))
+                                                .size(11.0)
+                                                .color(MUTED),
+                                        );
+                                    }
+                                    let version = entry
+                                        .installed_version
+                                        .as_deref()
+                                        .filter(|version| !version.is_empty())
+                                        .unwrap_or(&entry.version);
+                                    if !version.is_empty() || !entry.sha.is_empty() {
+                                        detail_ui.label(
                                             RichText::new(format!(
-                                                "{label} · {}",
-                                                values.join(" · ")
+                                                "{}{}",
+                                                version,
+                                                if entry.sha.is_empty() {
+                                                    String::new()
+                                                } else {
+                                                    format!(
+                                                        " · {}",
+                                                        entry
+                                                            .sha
+                                                            .chars()
+                                                            .take(8)
+                                                            .collect::<String>()
+                                                    )
+                                                }
                                             ))
                                             .size(10.0)
                                             .color(MUTED),
                                         );
                                     }
-                                }
-                            }
-                        });
-                        if install_plugin {
-                            self.execute_registered_action(
-                                RegisteredUiAction::RequestCatalogPluginInstall {
-                                    name: entry.name.clone(),
-                                },
-                            )
-                            .unwrap_or_else(|error| self.status = error);
-                        }
-                        if open_repo {
-                            if entry.repo.starts_with("https://") {
-                                ui.ctx().open_url(egui::OpenUrl::new_tab(&entry.repo));
-                            }
-                        }
-                        ui.add_space(5.0);
-                    }
-                    if visible_count < filtered_count {
-                        let remaining = filtered_count.saturating_sub(visible_count);
-                        if ui
-                            .button(format!("Show more plugins · {remaining} remaining"))
-                            .clicked()
-                        {
-                            self.plugin_catalog_visible_limit = self
-                                .plugin_catalog_visible_limit
-                                .saturating_add(PLUGIN_CATALOG_PAGE_SIZE);
-                        }
-                    }
+                                    for (label, values) in [
+                                        ("Tags", &entry.tags),
+                                        ("Tools", &entry.tools),
+                                        ("Hooks", &entry.hooks),
+                                        ("Requirements", &entry.requirements),
+                                    ] {
+                                        if !values.is_empty() {
+                                            detail_ui.label(
+                                                RichText::new(format!(
+                                                    "{label} · {}",
+                                                    values.join(" · ")
+                                                ))
+                                                .size(10.0)
+                                                .color(MUTED),
+                                            );
+                                        }
+                                    }
+                                    detail_ui.horizontal(|detail_ui| {
+                                        if entry.installed_key.is_none()
+                                            && detail_ui
+                                                .add_enabled(
+                                                    self.gateway_connected,
+                                                    egui::Button::new("Install"),
+                                                )
+                                                .accessible_name(format!(
+                                                    "Install catalog plugin: {}",
+                                                    entry.name
+                                                ))
+                                                .clicked()
+                                        {
+                                            install_selected = Some(entry.name.clone());
+                                        }
+                                        if entry.repo.starts_with("https://")
+                                            && detail_ui.button("Repository").clicked()
+                                        {
+                                            open_selected_repository = Some(entry.repo.clone());
+                                        }
+                                    });
+                                });
+                        },
+                    );
                 });
+                if let Some(name) = install_selected {
+                    self.execute_registered_action(
+                        RegisteredUiAction::RequestCatalogPluginInstall { name },
+                    )
+                    .unwrap_or_else(|error| self.status = error);
+                }
+                if let Some(url) = open_selected_repository {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                }
             }
             CapabilitiesTab::Connectors => {
                 let Some(snapshot) = self.connectors.clone() else {
@@ -4216,6 +10848,205 @@ fn render_message() -> &'static str {
         });
     }
 
+    fn first_run_remote_payload_key(&self) -> Option<String> {
+        let base_url =
+            crate::remote_probe::normalize_remote_base_url(&self.first_run_gateway_url).ok()?;
+        let report = self.first_run_remote_probe_report.as_ref()?;
+        let (auth_mode, secret) = match report.auth_mode {
+            RemoteAuthMode::Token if !self.first_run_remote_token.trim().is_empty() => {
+                ("token", self.first_run_remote_token.as_str())
+            }
+            RemoteAuthMode::OAuth => (
+                "oauth",
+                self.first_run_oauth_session.as_ref()?.access_token.as_str(),
+            ),
+            _ => return None,
+        };
+        let payload = format!("{base_url}\0{auth_mode}\0{secret}");
+        Some(format!("{:x}", Sha256::digest(payload.as_bytes())))
+    }
+
+    fn restore_saved_remote_credential(&mut self, report: &RemoteProbeReport) {
+        if self.workspace.last_remote_gateway_url() != Some(report.base_url.as_str()) {
+            return;
+        }
+        match report.auth_mode {
+            RemoteAuthMode::OAuth => {
+                self.first_run_remote_token.zeroize();
+                match crate::native_token_store::load(
+                    self.workspace.data_directory(),
+                    &report.base_url,
+                ) {
+                    Ok(Some(session)) => {
+                        self.first_run_oauth_session = Some(session);
+                        self.first_run_oauth_error = None;
+                    }
+                    Ok(None) => {
+                        self.first_run_oauth_session = None;
+                        self.first_run_oauth_error = None;
+                    }
+                    Err(error) => {
+                        self.first_run_oauth_session = None;
+                        self.first_run_oauth_error = Some(format!(
+                            "The saved Hermes sign-in could not be restored: {error}"
+                        ));
+                    }
+                }
+            }
+            RemoteAuthMode::Token => {
+                self.first_run_oauth_session = None;
+                match crate::native_token_store::load_session_token(
+                    self.workspace.data_directory(),
+                    &report.base_url,
+                ) {
+                    Ok(Some(token)) => {
+                        self.first_run_remote_token = token;
+                        self.first_run_oauth_error = None;
+                    }
+                    Ok(None) => {
+                        self.first_run_remote_token.zeroize();
+                        self.first_run_oauth_error = None;
+                    }
+                    Err(error) => {
+                        self.first_run_remote_token.zeroize();
+                        self.first_run_oauth_error = Some(format!(
+                            "The saved Hermes session token could not be restored: {error}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    fn update_first_run_remote_probe(&mut self, ctx: &egui::Context) {
+        while let Some(result) = self.first_run_remote_probe_worker.poll() {
+            if self.first_run_remote_probe_request_id.as_deref() != Some(&result.request_id) {
+                continue;
+            }
+            self.first_run_remote_probe_request_id = None;
+            self.first_run_remote_probe_pending = false;
+            match result.result {
+                Ok(report) => {
+                    self.restore_saved_remote_credential(&report);
+                    self.first_run_remote_probe_report = Some(report);
+                    self.first_run_remote_probe_error = None;
+                }
+                Err(error) => {
+                    self.first_run_remote_probe_report = None;
+                    self.first_run_remote_probe_error = Some(error);
+                }
+            }
+        }
+
+        if let Some(due) = self.first_run_remote_probe_due {
+            let now = std::time::Instant::now();
+            if now >= due {
+                self.first_run_remote_probe_due = None;
+                if is_valid_http_gateway_url(&self.first_run_gateway_url) {
+                    let request_id = operation_id("first-run-remote-probe");
+                    match self
+                        .first_run_remote_probe_worker
+                        .probe(request_id.clone(), self.first_run_gateway_url.clone())
+                    {
+                        Ok(()) => {
+                            self.first_run_remote_probe_request_id = Some(request_id);
+                            self.first_run_remote_probe_pending = true;
+                            self.first_run_remote_probe_error = None;
+                        }
+                        Err(error) => {
+                            self.first_run_remote_probe_pending = false;
+                            self.first_run_remote_probe_error = Some(error);
+                        }
+                    }
+                }
+            } else {
+                ctx.request_repaint_after(
+                    due.duration_since(now)
+                        .min(std::time::Duration::from_millis(100)),
+                );
+            }
+        }
+        if self.first_run_remote_probe_pending {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        while let Some(result) = self.first_run_remote_test_worker.poll() {
+            if self.first_run_remote_test_request_id.as_deref() != Some(&result.request_id) {
+                continue;
+            }
+            self.first_run_remote_test_request_id = None;
+            self.first_run_remote_test_pending = false;
+            if let Some(session) = result.oauth_session {
+                match crate::native_token_store::save(
+                    self.workspace.data_directory(),
+                    &self.first_run_gateway_url,
+                    &session,
+                ) {
+                    Ok(()) => {
+                        self.first_run_oauth_session = Some(session);
+                        self.first_run_oauth_error = None;
+                    }
+                    Err(error) => {
+                        self.first_run_oauth_session = None;
+                        self.first_run_oauth_error = Some(format!(
+                            "The refreshed sign-in could not be stored securely: {error}"
+                        ));
+                    }
+                }
+            }
+            match result.result {
+                Ok(report) => {
+                    self.first_run_remote_test_report = Some(report);
+                    self.first_run_remote_test_error = None;
+                    self.first_run_remote_tested_payload_key = self.first_run_remote_payload_key();
+                }
+                Err(error) => {
+                    self.first_run_remote_test_report = None;
+                    self.first_run_remote_test_error = Some(error);
+                    self.first_run_remote_tested_payload_key = None;
+                }
+            }
+        }
+        if self.first_run_remote_test_pending {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        while let Some(result) = self.first_run_oauth_worker.poll() {
+            if self.first_run_oauth_request_id.as_deref() != Some(&result.request_id) {
+                continue;
+            }
+            self.first_run_oauth_request_id = None;
+            self.first_run_oauth_pending = false;
+            match result.result {
+                Ok(session) => {
+                    match crate::native_token_store::save(
+                        self.workspace.data_directory(),
+                        &self.first_run_gateway_url,
+                        &session,
+                    ) {
+                        Ok(()) => {
+                            self.first_run_oauth_session = Some(session);
+                            self.first_run_oauth_error = None;
+                        }
+                        Err(error) => {
+                            self.first_run_oauth_session = None;
+                            self.first_run_oauth_error = Some(format!(
+                                "Sign-in succeeded, but Hermes could not store the session securely: {error}"
+                            ));
+                        }
+                    }
+                    self.first_run_remote_test_report = None;
+                    self.first_run_remote_tested_payload_key = None;
+                }
+                Err(error) => {
+                    self.first_run_oauth_session = None;
+                    self.first_run_oauth_error = Some(error);
+                }
+            }
+        }
+        if self.first_run_oauth_pending {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+    }
+
     fn show_first_run_setup(&mut self, ctx: &egui::Context) {
         if self.gateway_connected
             || !self.first_run_setup_visible
@@ -4223,6 +11054,7 @@ fn render_message() -> &'static str {
         {
             return;
         }
+        self.update_first_run_remote_probe(ctx);
 
         let mut modal_style = egui::Style::default();
         modal_style.visuals = egui::Visuals::light();
@@ -4265,10 +11097,144 @@ fn render_message() -> &'static str {
                         .strong()
                         .color(Color32::from_rgb(48, 52, 59)),
                 );
-                ui.add(egui::TextEdit::singleline(&mut self.first_run_gateway_url)
+                let url_response = ui.add(egui::TextEdit::singleline(&mut self.first_run_gateway_url)
                     .hint_text("https://gateway.example.com/hermes")
                     .desired_width(500.0))
                     .accessible_name("Gateway URL");
+                if url_response.changed() {
+                    self.first_run_remote_token.zeroize();
+                    self.first_run_oauth_request_id = None;
+                    self.first_run_oauth_pending = false;
+                    self.first_run_oauth_session = None;
+                    self.first_run_oauth_error = None;
+                    self.first_run_remote_test_request_id = None;
+                    self.first_run_remote_test_pending = false;
+                    self.first_run_remote_test_report = None;
+                    self.first_run_remote_test_error = None;
+                    self.first_run_remote_tested_payload_key = None;
+                    self.first_run_remote_probe_request_id = None;
+                    self.first_run_remote_probe_pending = false;
+                    self.first_run_remote_probe_report = None;
+                    self.first_run_remote_probe_error = None;
+                    self.first_run_remote_probe_due = if is_valid_http_gateway_url(&self.first_run_gateway_url) {
+                        Some(std::time::Instant::now() + std::time::Duration::from_millis(500))
+                    } else {
+                        None
+                    };
+                    if self.first_run_remote_probe_due.is_some() {
+                        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                    }
+                }
+                if self.first_run_remote_probe_pending {
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Detecting gateway authentication…");
+                    });
+                } else if let Some(report) = self.first_run_remote_probe_report.clone() {
+                    ui.add_space(8.0);
+                    let auth = match report.auth_mode {
+                        RemoteAuthMode::OAuth => {
+                            let names = report
+                                .providers
+                                .iter()
+                                .map(|provider| provider.display_name.as_str())
+                                .collect::<Vec<_>>();
+                            if names.is_empty() {
+                                "browser sign-in".to_owned()
+                            } else {
+                                format!("browser sign-in ({})", names.join(", "))
+                            }
+                        }
+                        RemoteAuthMode::Token => "session token".to_owned(),
+                    };
+                    let version = report
+                        .version
+                        .as_deref()
+                        .map(|version| format!(" · Hermes {version}"))
+                        .unwrap_or_default();
+                    let status = format!("Gateway reachable · {auth}{version}");
+                    ui.label(
+                        RichText::new(status.clone()).color(Color32::from_rgb(43, 130, 78)),
+                    )
+                    .accessible_name(status);
+                } else if let Some(error) = &self.first_run_remote_probe_error {
+                    ui.add_space(8.0);
+                    ui.label(
+                        RichText::new(format!("Gateway probe failed: {error}"))
+                            .color(Color32::from_rgb(181, 54, 54)),
+                    );
+                }
+                if let Some(report) = self.first_run_remote_probe_report.clone() {
+                    match report.auth_mode {
+                        RemoteAuthMode::Token => {
+                            ui.add_space(12.0);
+                            ui.label("Hermes session token");
+                            let token_response = ui.add(
+                                egui::TextEdit::singleline(&mut *self.first_run_remote_token)
+                                    .password(true)
+                                    .hint_text("Paste session token")
+                                    .desired_width(500.0),
+                            ).accessible_name("Hermes session token");
+                            if token_response.changed() {
+                                self.first_run_remote_test_request_id = None;
+                                self.first_run_remote_test_pending = false;
+                                self.first_run_remote_test_report = None;
+                                self.first_run_remote_test_error = None;
+                                self.first_run_remote_tested_payload_key = None;
+                            }
+                            if let Some(error) = &self.first_run_oauth_error {
+                                ui.label(RichText::new(error).color(Color32::from_rgb(181, 54, 54)));
+                            }
+                            if self.first_run_remote_test_pending {
+                                ui.horizontal(|ui| {
+                                    ui.spinner();
+                                    ui.label("Testing authenticated HTTP and WebSocket…");
+                                });
+                            } else if let Some(report) = &self.first_run_remote_test_report {
+                                let version = report.version.as_deref().map(|v| format!(" · Hermes {v}")).unwrap_or_default();
+                                ui.label(RichText::new(format!("Connection test passed · HTTP + WebSocket{version}")).color(Color32::from_rgb(43, 130, 78)));
+                            } else if let Some(error) = &self.first_run_remote_test_error {
+                                ui.label(RichText::new(error).color(Color32::from_rgb(181, 54, 54)));
+                            }
+                        }
+                        RemoteAuthMode::OAuth => {
+                            ui.add_space(12.0);
+                            if self.first_run_oauth_pending {
+                                ui.horizontal(|ui| {
+                                    ui.spinner();
+                                    ui.label("Waiting for browser sign-in…");
+                                });
+                            } else if self.first_run_oauth_session.is_some() {
+                                ui.label(RichText::new("Signed in to Hermes").color(Color32::from_rgb(43, 130, 78)));
+                            }
+                            if let Some(error) = &self.first_run_oauth_error {
+                                ui.label(RichText::new(error).color(Color32::from_rgb(181, 54, 54)));
+                            }
+                            let can_native_login = native_oauth_login_supported(&report);
+                            if self.first_run_oauth_session.is_none() {
+                                let provider = report.providers.iter().find(|provider| !provider.supports_password);
+                                let label = provider.map(|provider| format!("Sign in with {}", provider.display_name)).unwrap_or_else(|| "Sign in".to_owned());
+                                if ui.add_enabled(can_native_login && !self.first_run_oauth_pending, egui::Button::new(label)).clicked() {
+                                    let request_id = operation_id("first-run-native-oauth");
+                                    let provider = provider.map(|provider| provider.name.clone());
+                                    match self.first_run_oauth_worker.login(request_id.clone(), report.base_url.clone(), provider) {
+                                        Ok(()) => {
+                                            self.first_run_oauth_request_id = Some(request_id);
+                                            self.first_run_oauth_pending = true;
+                                            self.first_run_oauth_error = None;
+                                            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                                        }
+                                        Err(error) => self.first_run_oauth_error = Some(error),
+                                    }
+                                }
+                            }
+                            if !can_native_login {
+                                ui.label("This gateway does not advertise compatible native PKCE sign-in for its provider configuration.");
+                            }
+                        }
+                    }
+                }
                 if let Some(error) = &self.first_run_setup_error {
                     ui.add_space(10.0);
                     ui.label(RichText::new(error).color(Color32::LIGHT_RED));
@@ -4278,17 +11244,109 @@ fn render_message() -> &'static str {
                     if ui.button("Back to setup").clicked() {
                         self.first_run_remote_setup_open = false;
                         self.first_run_setup_error = None;
+                        self.first_run_remote_token.zeroize();
+                        self.first_run_oauth_session = None;
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let current_payload_key = self.first_run_remote_payload_key();
+                        let apply_is_currently_tested = current_payload_key.as_ref().is_some_and(|key| {
+                            self.first_run_remote_tested_payload_key.as_ref() == Some(key)
+                                && self.first_run_remote_test_report.is_some()
+                        });
                         let apply_clicked = ui
-                            .add_enabled(false, egui::Button::new("Apply remote"))
+                            .add_enabled(apply_is_currently_tested, egui::Button::new("Apply remote"))
                             .clicked();
-                        let test_enabled = is_valid_http_gateway_url(&self.first_run_gateway_url);
+                        let test_enabled = is_valid_http_gateway_url(&self.first_run_gateway_url)
+                            && self.first_run_remote_probe_report.as_ref().is_some_and(|report| match report.auth_mode {
+                                RemoteAuthMode::Token => !self.first_run_remote_token.trim().is_empty(),
+                                RemoteAuthMode::OAuth => self.first_run_oauth_session.is_some(),
+                            })
+                            && !self.first_run_remote_test_pending
+                            && !self.first_run_oauth_pending;
                         let test_clicked = ui
                             .add_enabled(test_enabled, egui::Button::new("Test connection"))
                             .clicked();
-                        if apply_clicked || test_clicked {
-                            self.first_run_setup_error = Some("Remote gateway setup is not implemented in this Rust client yet.".into());
+                        if apply_clicked {
+                            let tested_connection = self
+                                .first_run_remote_test_report
+                                .as_ref()
+                                .map(|report| (
+                                    report.base_url.clone(),
+                                    self.first_run_remote_probe_report.as_ref().map(|probe| probe.auth_mode),
+                                ));
+                            let attach_result = match tested_connection {
+                                Some((url, Some(RemoteAuthMode::Token))) => {
+                                    crate::native_token_store::save_session_token(
+                                        self.workspace.data_directory(),
+                                        &url,
+                                        &self.first_run_remote_token,
+                                    )
+                                    .and_then(|()| self.workspace.save_remote_gateway_url(&url))
+                                    .map(|()| (url, RemoteAuthMode::Token, RemoteGatewayAuth::Token(
+                                        Zeroizing::new(self.first_run_remote_token.to_string()),
+                                    )))
+                                }
+                                Some((url, Some(RemoteAuthMode::OAuth))) => self
+                                    .first_run_oauth_session
+                                    .as_ref()
+                                    .ok_or_else(|| "Sign in to Hermes before applying this connection".to_owned())
+                                    .and_then(|session| crate::native_token_store::save(
+                                        self.workspace.data_directory(), &url, session,
+                                    ))
+                                    .and_then(|()| self.workspace.save_remote_gateway_url(&url))
+                                    .and_then(|()| self.first_run_oauth_session.clone()
+                                        .map(|session| (url, RemoteAuthMode::OAuth, RemoteGatewayAuth::OAuth {
+                                            session: std::sync::Arc::new(std::sync::Mutex::new(session)),
+                                            credential_store_directory: self.workspace.data_directory().to_path_buf(),
+                                        }))
+                                        .ok_or_else(|| "Sign in to Hermes before applying this connection".to_owned())),
+                                Some((_, None)) => Err("Detect the gateway authentication mode before saving this connection".into()),
+                                None => Err("Run a successful connection test before saving this gateway".into()),
+                            };
+                            match attach_result {
+                                Ok((url, auth_mode, credential)) => {
+                    self.gateway_discovery = Some(GatewayDiscovery::start_remote(url, auth_mode, credential));
+                    self.reset_messaging_state();
+                                    self.gateway_connected = false;
+                                    self.gateway_endpoint = None;
+                                    self.session_list_refresh_pending = None;
+                                    self.session_list_refresh_again = false;
+                                    self.sessions.clear();
+                                    self.first_run_setup_visible = true;
+                                    self.first_run_remote_setup_open = false;
+                                    self.first_run_setup_error = None;
+                                    self.status = "Connecting to remote Hermes gateway…".into();
+                                }
+                                Err(error) => self.first_run_setup_error = Some(format!("Could not apply remote connection: {error}")),
+                            }
+                        }
+                        if test_clicked {
+                            let request_id = operation_id("first-run-remote-test");
+                            let result = match self.first_run_remote_probe_report.as_ref().map(|report| report.auth_mode) {
+                                Some(RemoteAuthMode::Token) => self.first_run_remote_test_worker.test_token(
+                                    request_id.clone(), self.first_run_gateway_url.clone(),
+                                    Zeroizing::new(self.first_run_remote_token.to_string()),
+                                ),
+                                Some(RemoteAuthMode::OAuth) => self.first_run_oauth_session.as_ref().map_or_else(
+                                    || Err("Sign in to Hermes before testing this connection".into()),
+                                    |session| self.first_run_remote_test_worker.test_oauth(
+                                        request_id.clone(), self.first_run_gateway_url.clone(),
+                                        session.clone(),
+                                    ),
+                                ),
+                                None => Err("Detect the gateway authentication mode before testing".into()),
+                            };
+                            match result {
+                                Ok(()) => {
+                                    self.first_run_remote_test_request_id = Some(request_id);
+                                    self.first_run_remote_test_pending = true;
+                                    self.first_run_remote_test_report = None;
+                                    self.first_run_remote_test_error = None;
+                                    self.first_run_remote_tested_payload_key = None;
+                                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                                }
+                                Err(error) => self.first_run_remote_test_error = Some(error),
+                            }
                         }
                     });
                 });
@@ -4321,8 +11379,18 @@ fn render_message() -> &'static str {
                 ).accessible_name("Connect to existing Hermes. Use a remote backend with a session token or browser sign-in. No local install will start.");
                 if connect.clicked() {
                     self.first_run_remote_setup_open = true;
-                    self.first_run_gateway_url.clear();
+                    self.first_run_gateway_url = self
+                        .workspace
+                        .last_remote_gateway_url()
+                        .unwrap_or_default()
+                        .to_owned();
                     self.first_run_setup_error = None;
+                    self.first_run_remote_probe_due = is_valid_http_gateway_url(&self.first_run_gateway_url)
+                        .then(|| std::time::Instant::now() + std::time::Duration::from_millis(500));
+                    self.first_run_remote_probe_request_id = None;
+                    self.first_run_remote_probe_pending = false;
+                    self.first_run_remote_probe_report = None;
+                    self.first_run_remote_probe_error = None;
                 }
 
                 let install = columns[1].add_sized(
@@ -4455,6 +11523,330 @@ fn render_message() -> &'static str {
         self.older_transcript_error = None;
         self.older_transcript_request = Some((request_id, session_id, profile, offset));
         self.save_active_chat_view();
+    }
+
+    fn refresh_active_transcript_after_change(&mut self) {
+        let AppRoute::Session(stored_session_id) = &self.route else {
+            return;
+        };
+        if self.active_transcript_refresh.is_some()
+            || self.older_transcript_request.is_some()
+            || self.transcript.iter().any(|message| {
+                message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            })
+            || transcript_contains_local_pending_or_error(&self.transcript)
+        {
+            return;
+        }
+        let Some(runtime_session_id) = self.active_runtime_session_id.clone() else {
+            return;
+        };
+        let profile = self.active_session_profile.clone();
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        if profile
+            .as_deref()
+            .is_some_and(|profile| profile != endpoint.profile_id)
+        {
+            return;
+        }
+        let runtime_key = session_identity_key(&runtime_session_id, profile.as_deref());
+        if self.pending_submissions.contains_key(&runtime_key)
+            || self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, session)| session == &runtime_session_id)
+        {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            return;
+        };
+        let request_id = operation_id("transcript-refresh");
+        if let Err(error) = gateway.refresh_active_transcript(
+            request_id.clone(),
+            stored_session_id.clone(),
+            profile.clone(),
+            runtime_session_id.clone(),
+        ) {
+            self.status = format!("Could not refresh the active transcript: {error}");
+            return;
+        }
+        self.active_transcript_refresh = Some(PendingActiveTranscriptRefresh {
+            request_id,
+            stored_session_id: stored_session_id.clone(),
+            profile,
+            endpoint_profile_id: endpoint.profile_id.clone(),
+            runtime_session_id,
+            transcript_snapshot_hash: transcript_fingerprint(&self.transcript),
+            transcript_snapshot_len: self.transcript.len(),
+        });
+    }
+
+    fn settle_active_transcript_refresh(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        profile: Option<String>,
+        endpoint_profile_id: &str,
+        runtime_session_id: &str,
+        result: Result<crate::gateway::OlderTranscriptPage, String>,
+    ) {
+        let Some(pending) = self.active_transcript_refresh.as_ref() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.stored_session_id != session_id
+            || pending.profile != profile
+            || pending.endpoint_profile_id != endpoint_profile_id
+            || pending.runtime_session_id != runtime_session_id
+        {
+            return;
+        }
+        let pending = self
+            .active_transcript_refresh
+            .take()
+            .expect("matched refresh");
+        let runtime_key = session_identity_key(runtime_session_id, profile.as_deref());
+        let same_owner = self.route == AppRoute::Session(session_id.to_owned())
+            && self.active_session_profile == profile
+            && self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && self
+                .gateway_endpoint
+                .as_ref()
+                .is_some_and(|endpoint| endpoint.profile_id == endpoint_profile_id);
+        let idle = !self.pending_submissions.contains_key(&runtime_key)
+            && !self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, session)| session == runtime_session_id)
+            && !transcript_contains_local_pending_or_error(&self.transcript)
+            && !self.transcript.iter().any(|message| {
+                message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            });
+        if !same_owner
+            || !idle
+            || self.transcript.len() != pending.transcript_snapshot_len
+            || transcript_fingerprint(&self.transcript) != pending.transcript_snapshot_hash
+        {
+            return;
+        }
+        match result.and_then(|page| {
+            merge_refreshed_transcript_tail(
+                page.messages,
+                self.transcript.clone(),
+                page.replace_all,
+            )
+            .map(|messages| (messages, page.has_more, page.replace_all))
+        }) {
+            Ok((messages, has_more, replace_all)) => {
+                let previous_has_more = self.transcript_has_more;
+                self.transcript = messages;
+                self.transcript_message_count =
+                    self.transcript_message_count.max(self.transcript.len());
+                self.transcript_has_more = if replace_all {
+                    false
+                } else {
+                    previous_has_more || has_more
+                };
+                self.save_active_chat_view();
+            }
+            Err(error) => {
+                self.status = format!("Could not refresh the active transcript: {error}");
+            }
+        }
+    }
+
+    fn refresh_peer_transcript_targets(&mut self, stored_session_id: &str) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        let endpoint_profile_id = endpoint.profile_id.clone();
+        let mut targets = self
+            .workspace
+            .open_session_pane_identities()
+            .into_iter()
+            .filter(|(stored_id, _)| stored_id == stored_session_id)
+            .collect::<Vec<_>>();
+        if let AppRoute::Session(active_id) = &self.route
+            && active_id == stored_session_id
+        {
+            targets.push((active_id.clone(), self.active_session_profile.clone()));
+        }
+
+        let mut scheduled = BTreeSet::new();
+        for (stored_id, profile) in targets {
+            if profile
+                .as_deref()
+                .is_some_and(|profile| profile != endpoint_profile_id)
+            {
+                continue;
+            }
+            let active_match = self.route == AppRoute::Session(stored_id.clone())
+                && self.active_session_profile == profile;
+            let (runtime_session_id, transcript, older_pending) = if active_match {
+                let Some(runtime) = self.active_runtime_session_id.clone() else {
+                    continue;
+                };
+                (
+                    runtime,
+                    self.transcript.clone(),
+                    self.older_transcript_request.is_some(),
+                )
+            } else {
+                let key = session_identity_key(&stored_id, profile.as_deref());
+                let Some(view) = self.session_chat_views.get(&key) else {
+                    continue;
+                };
+                let Some(runtime) = view.runtime_session_id.clone() else {
+                    continue;
+                };
+                (
+                    runtime,
+                    view.transcript.clone(),
+                    view.older_transcript_request.is_some(),
+                )
+            };
+            if !scheduled.insert((profile.clone(), runtime_session_id.clone())) {
+                continue;
+            }
+            if active_match {
+                self.refresh_active_transcript_after_change();
+                continue;
+            }
+            let key = session_identity_key(&runtime_session_id, profile.as_deref());
+            let view = self
+                .session_chat_views
+                .get(&session_identity_key(&stored_id, profile.as_deref()));
+            let Some(view) = view else { continue };
+            if older_pending
+                || view.transcript.iter().any(|message| {
+                    message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+                })
+                || transcript_contains_local_pending_or_error(&transcript)
+                || self.pending_submissions.contains_key(&key)
+                || self
+                    .pending_interrupt
+                    .as_ref()
+                    .is_some_and(|(_, session)| session == &runtime_session_id)
+                || self
+                    .approval_prompts
+                    .values()
+                    .any(|prompt| prompt.session_id == runtime_session_id)
+                || self
+                    .clarify_prompts
+                    .values()
+                    .any(|prompt| prompt.session_id == runtime_session_id)
+                || self
+                    .batch_clarify_prompts
+                    .values()
+                    .any(|prompt| prompt.session_id == runtime_session_id)
+                || self.peer_transcript_refreshes.values().any(|pending| {
+                    pending.stored_session_id == stored_id
+                        && pending.profile == profile
+                        && pending.runtime_session_id == runtime_session_id
+                })
+            {
+                continue;
+            }
+            let Some(gateway) = self.gateway_discovery.as_ref() else {
+                continue;
+            };
+            let request_id = operation_id("peer-transcript-refresh");
+            if let Err(error) = gateway.refresh_active_transcript(
+                request_id.clone(),
+                stored_id.clone(),
+                profile.clone(),
+                runtime_session_id.clone(),
+            ) {
+                self.session_peer_sync_error = Some(error);
+                continue;
+            }
+            self.peer_transcript_refreshes.insert(
+                request_id.clone(),
+                PendingPeerTranscriptRefresh {
+                    request_id,
+                    stored_session_id: stored_id,
+                    profile: profile.clone(),
+                    endpoint_profile_id: endpoint_profile_id.clone(),
+                    runtime_session_id,
+                    transcript_snapshot_hash: transcript_fingerprint(&transcript),
+                    transcript_snapshot_len: transcript.len(),
+                },
+            );
+        }
+    }
+
+    fn settle_peer_transcript_refresh(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        profile: Option<String>,
+        endpoint_profile_id: &str,
+        runtime_session_id: &str,
+        result: Result<crate::gateway::OlderTranscriptPage, String>,
+    ) {
+        let Some(pending) = self.peer_transcript_refreshes.remove(request_id) else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.stored_session_id != session_id
+            || pending.profile != profile
+            || pending.endpoint_profile_id != endpoint_profile_id
+            || pending.runtime_session_id != runtime_session_id
+            || !self.workspace.open_session_pane_identities().iter().any(
+                |(stored_id, pane_profile)| stored_id == session_id && pane_profile == &profile,
+            )
+            || self
+                .gateway_endpoint
+                .as_ref()
+                .is_none_or(|endpoint| endpoint.profile_id != endpoint_profile_id)
+        {
+            return;
+        }
+        let key = session_identity_key(session_id, profile.as_deref());
+        let runtime_key = session_identity_key(runtime_session_id, profile.as_deref());
+        let Some(view) = self.session_chat_views.get_mut(&key) else {
+            return;
+        };
+        let idle = view.profile == profile
+            && view.runtime_session_id.as_deref() == Some(runtime_session_id)
+            && view.older_transcript_request.is_none()
+            && !self.pending_submissions.contains_key(&runtime_key)
+            && !self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, current)| current == runtime_session_id)
+            && !view.transcript.iter().any(|message| {
+                message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            })
+            && !transcript_contains_local_pending_or_error(&view.transcript)
+            && view.transcript.len() == pending.transcript_snapshot_len
+            && transcript_fingerprint(&view.transcript) == pending.transcript_snapshot_hash;
+        if !idle {
+            return;
+        }
+        match result.and_then(|page| {
+            merge_refreshed_transcript_tail(
+                page.messages,
+                view.transcript.clone(),
+                page.replace_all,
+            )
+            .map(|messages| (messages, page.has_more, page.replace_all))
+        }) {
+            Ok((messages, has_more, replace_all)) => {
+                view.transcript = messages;
+                view.transcript_message_count =
+                    view.transcript_message_count.max(view.transcript.len());
+                view.transcript_has_more = if replace_all {
+                    false
+                } else {
+                    view.transcript_has_more || has_more
+                };
+            }
+            Err(error) => self.session_peer_sync_error = Some(error),
+        }
     }
 
     fn create_session_from_draft(&mut self) {
@@ -4731,6 +12123,1168 @@ fn render_message() -> &'static str {
         } else {
             "Restoring session…".into()
         };
+    }
+
+    fn start_session_delete(&mut self, session: SessionSummary) {
+        let session_id = session.id.clone();
+        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        if self.pending_session_deletes.contains_key(&action_key) {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            self.status = "Hermes gateway is unavailable".into();
+            return;
+        };
+        let request_id = operation_id("session-delete");
+        if let Err(error) =
+            gateway.delete_session(request_id.clone(), session_id, session.profile.clone())
+        {
+            self.status = error;
+            return;
+        }
+        self.pending_session_deletes.insert(action_key, request_id);
+        self.status = "Deleting session…".into();
+    }
+
+    fn start_session_export(&mut self, session: SessionSummary) {
+        let session_id = session.id.clone();
+        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        if self.pending_session_exports.contains_key(&action_key) {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            self.status = "Hermes gateway is unavailable".into();
+            return;
+        };
+        let request_id = operation_id("session-export");
+        if let Err(error) =
+            gateway.export_session(request_id.clone(), session_id, session.profile.clone())
+        {
+            self.status = error;
+            return;
+        }
+        self.pending_session_exports.insert(action_key, request_id);
+        self.status = "Exporting session…".into();
+    }
+
+    fn load_command_palette_sessions(&mut self) {
+        self.command_palette_sessions_error = None;
+        if !self.gateway_connected {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            return;
+        };
+        let request_id = operation_id("command-palette-sessions");
+        match gateway.load_command_palette_sessions(request_id.clone()) {
+            Ok(()) => self.command_palette_sessions_request_id = Some(request_id),
+            Err(error) => self.command_palette_sessions_error = Some(error),
+        }
+    }
+
+    fn enter_project_sessions(&mut self, project_id: &str) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref().cloned() else {
+            return;
+        };
+        let Some(project) = self
+            .project_trees
+            .get(&endpoint.profile_id)
+            .and_then(|tree| {
+                tree.projects
+                    .iter()
+                    .find(|project| project.id == project_id)
+            })
+            .cloned()
+        else {
+            return;
+        };
+        self.selected_project_id = Some(project_id.to_owned());
+        self.selected_project_profile = Some(endpoint.profile_id.clone());
+        self.entered_project_tree = Some(project);
+        self.project_sessions_error = None;
+        if endpoint.profile_id.eq_ignore_ascii_case("all") {
+            self.project_sessions_generation = self.project_sessions_generation.saturating_add(1);
+            self.project_sessions_refresh = None;
+            return;
+        }
+        self.request_entered_project_sessions();
+    }
+
+    fn request_project_preview(&mut self, project_id: &str) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref().cloned() else {
+            return;
+        };
+        if endpoint.profile_id.eq_ignore_ascii_case("all") {
+            // The pinned Desktop enters the aggregate project locally; it never
+            // sends projects.project_sessions with the synthetic profile "all".
+            self.enter_project_sessions(project_id);
+            return;
+        }
+        let key = (
+            endpoint.profile_id.clone(),
+            endpoint.instance_id.clone(),
+            project_id.to_owned(),
+        );
+        if self.project_preview_expansions.contains_key(&key)
+            || self
+                .project_preview_refreshes
+                .values()
+                .any(|pending| pending.key == key)
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.project_preview_errors
+                .insert(key, "Hermes gateway is unavailable".into());
+            return;
+        };
+        let lifecycle_generations_at_request = self
+            .project_session_lifecycle
+            .iter()
+            .filter(|((profile, _), _)| profile == &endpoint.profile_id)
+            .map(|((_, session_id), state)| (session_id.clone(), state.generation))
+            .collect();
+        let request_id = operation_id("project-preview");
+        match gateway.load_project_sessions(
+            request_id.clone(),
+            project_id.to_owned(),
+            endpoint.profile_id.clone(),
+        ) {
+            Ok(()) => {
+                self.project_preview_errors.remove(&key);
+                self.project_preview_refreshes.insert(
+                    request_id.clone(),
+                    PendingProjectPreviewRefresh {
+                        key,
+                        request_id,
+                        profile_id: endpoint.profile_id,
+                        endpoint_instance_id: endpoint.instance_id,
+                        authority_epoch: endpoint.authority_epoch,
+                        lifecycle_generations_at_request,
+                    },
+                );
+            }
+            Err(error) => {
+                self.project_preview_errors.insert(key, error);
+            }
+        }
+    }
+
+    fn reveal_more_project_preview(&mut self, key: &(String, String, String)) {
+        if let Some(expansion) = self.project_preview_expansions.get_mut(key) {
+            expansion.visible_count = expansion
+                .visible_count
+                .saturating_add(PROJECT_SESSION_PAGE_SIZE);
+        }
+    }
+
+    fn settle_project_preview(
+        &mut self,
+        request_id: &str,
+        project_id: &str,
+        profile_id: &str,
+        mut result: Result<Option<ProjectTreeProject>, String>,
+    ) {
+        let Some(pending) = self.project_preview_refreshes.remove(request_id) else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.profile_id != profile_id
+            || pending.key.2 != project_id
+        {
+            return;
+        }
+        let endpoint_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            endpoint.profile_id == profile_id
+                && endpoint.instance_id == pending.endpoint_instance_id
+                && endpoint.authority_epoch == pending.authority_epoch
+        });
+        if !endpoint_matches {
+            return;
+        }
+        if let Ok(Some(project)) = result.as_mut() {
+            for session in &mut project.preview_sessions {
+                if session.profile.is_none() {
+                    session.profile = Some(profile_id.to_owned());
+                }
+            }
+            for repo in &mut project.repos {
+                for group in &mut repo.groups {
+                    for session in &mut group.sessions {
+                        if session.profile.is_none() {
+                            session.profile = Some(profile_id.to_owned());
+                        }
+                    }
+                }
+            }
+            filter_removed_project_sessions(
+                project,
+                profile_id,
+                &pending.lifecycle_generations_at_request,
+                &self.project_session_lifecycle,
+            );
+        }
+        match result {
+            Ok(Some(project)) if project.id == project_id => {
+                let sessions = project_preview_sessions(&project);
+                self.project_preview_expansions.insert(
+                    pending.key.clone(),
+                    ProjectPreviewExpansion {
+                        sessions,
+                        visible_count: PROJECT_SESSION_PAGE_SIZE,
+                    },
+                );
+                self.project_preview_errors.remove(&pending.key);
+            }
+            Ok(Some(_)) => {
+                self.project_preview_errors
+                    .insert(pending.key, "Hermes returned a different project".into());
+            }
+            Ok(None) => {
+                self.project_preview_errors
+                    .insert(pending.key, "This project is no longer available".into());
+            }
+            Err(error) => {
+                self.project_preview_errors.insert(pending.key, error);
+            }
+        }
+    }
+
+    fn request_entered_project_sessions(&mut self) {
+        let (Some(project_id), Some(profile_id), Some(endpoint)) = (
+            self.selected_project_id.clone(),
+            self.selected_project_profile.clone(),
+            self.gateway_endpoint.as_ref().cloned(),
+        ) else {
+            return;
+        };
+        if endpoint.profile_id != profile_id || profile_id.eq_ignore_ascii_case("all") {
+            return;
+        }
+        self.project_sessions_generation = self.project_sessions_generation.saturating_add(1);
+        let generation = self.project_sessions_generation;
+        let lifecycle_generations_at_request = self
+            .project_session_lifecycle
+            .iter()
+            .filter(|((profile, _), _)| profile == &profile_id)
+            .map(|((_, session_id), state)| (session_id.clone(), state.generation))
+            .collect();
+        let request_id = operation_id("project-sessions");
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.project_sessions_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        match gateway.load_project_sessions(
+            request_id.clone(),
+            project_id.clone(),
+            profile_id.clone(),
+        ) {
+            Ok(()) => {
+                self.project_sessions_refresh = Some(PendingProjectSessionsRefresh {
+                    request_id,
+                    project_id,
+                    profile_id,
+                    endpoint_instance_id: endpoint.instance_id,
+                    authority_epoch: endpoint.authority_epoch,
+                    generation,
+                    lifecycle_generations_at_request,
+                });
+            }
+            Err(error) => self.project_sessions_error = Some(error),
+        }
+    }
+
+    fn leave_project_sessions(&mut self) {
+        self.project_sessions_generation = self.project_sessions_generation.saturating_add(1);
+        self.project_sessions_refresh = None;
+        self.selected_project_id = None;
+        self.selected_project_profile = None;
+        self.project_sessions_error = None;
+    }
+
+    fn record_project_session_lifecycle(
+        &mut self,
+        profile_id: &str,
+        session_id: &str,
+        removed: bool,
+    ) {
+        let lifecycle = self
+            .project_session_lifecycle
+            .entry((profile_id.to_owned(), session_id.to_owned()))
+            .or_default();
+        lifecycle.generation = lifecycle.generation.saturating_add(1);
+        lifecycle.removed = removed;
+    }
+
+    fn settle_project_sessions(
+        &mut self,
+        request_id: &str,
+        project_id: &str,
+        profile_id: &str,
+        mut result: Result<Option<ProjectTreeProject>, String>,
+    ) {
+        let Some(pending) = self.project_sessions_refresh.clone() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.project_id != project_id
+            || pending.profile_id != profile_id
+            || self.selected_project_id.as_deref() != Some(project_id)
+            || self.project_sessions_generation != pending.generation
+        {
+            return;
+        }
+        if self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+            endpoint.profile_id != profile_id
+                || endpoint.instance_id != pending.endpoint_instance_id
+                || endpoint.authority_epoch != pending.authority_epoch
+        }) {
+            self.project_sessions_refresh = None;
+            return;
+        }
+        self.project_sessions_refresh = None;
+        if let Ok(Some(project)) = result.as_mut() {
+            for session in &mut project.preview_sessions {
+                if session.profile.is_none() {
+                    session.profile = Some(profile_id.to_owned());
+                }
+            }
+            for repo in &mut project.repos {
+                for group in &mut repo.groups {
+                    for session in &mut group.sessions {
+                        if session.profile.is_none() {
+                            session.profile = Some(profile_id.to_owned());
+                        }
+                    }
+                }
+            }
+            filter_removed_project_sessions(
+                project,
+                profile_id,
+                &pending.lifecycle_generations_at_request,
+                &self.project_session_lifecycle,
+            );
+        }
+        match result {
+            Ok(Some(project)) if project.id == project_id => {
+                self.entered_project_tree = Some(project);
+                self.project_sessions_error = None;
+            }
+            Ok(Some(_)) => {
+                self.project_sessions_error = Some("Hermes returned a different project".into());
+            }
+            Ok(None) => {
+                self.project_sessions_error = Some("This project is no longer available".into());
+            }
+            Err(error) => self.project_sessions_error = Some(error),
+        }
+    }
+
+    fn load_project_session_colors(&mut self) {
+        self.ensure_repo_scan_config_loaded();
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        let profile = endpoint.profile_id.clone();
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        if self
+            .project_session_color_profiles_loaded
+            .contains(&profile)
+            || self.project_session_color_requests.contains_key(&profile)
+        {
+            return;
+        }
+        let request_id = operation_id("project-tree");
+        let generation = self
+            .project_tree_generations
+            .entry(profile.clone())
+            .or_default();
+        *generation = generation.saturating_add(1);
+        let generation = *generation;
+        let preview_limit = if self.workspace.preferences.show_all_project_sessions {
+            2000
+        } else {
+            3
+        };
+        let result = if profile.eq_ignore_ascii_case("all") {
+            gateway.load_all_profile_project_tree(request_id.clone(), preview_limit)
+        } else {
+            gateway.load_project_tree(request_id.clone(), profile.clone(), preview_limit)
+        };
+        match result {
+            Ok(()) => {
+                let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+                    return;
+                };
+                self.project_session_color_requests
+                    .insert(profile.clone(), request_id.clone());
+                self.project_tree_refreshes.insert(
+                    profile.clone(),
+                    PendingProjectTreeRefresh {
+                        request_id,
+                        profile_id: profile,
+                        endpoint_instance_id: endpoint.instance_id.clone(),
+                        authority_epoch: endpoint.authority_epoch,
+                        generation,
+                    },
+                );
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    fn load_project_list(&mut self, force: bool) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref().cloned() else {
+            return;
+        };
+        let profile = endpoint.profile_id.clone();
+        if profile.eq_ignore_ascii_case("all") || !self.gateway_connected {
+            return;
+        }
+        let cached_for_current_endpoint = self.project_lists.get(&profile).is_some_and(|cached| {
+            cached.endpoint_instance_id == endpoint.instance_id
+                && cached.authority_epoch == endpoint.authority_epoch
+        });
+        if !force && cached_for_current_endpoint {
+            return;
+        }
+        if !force
+            && self
+                .project_list_refreshes
+                .get(&profile)
+                .is_some_and(|pending| {
+                    pending.endpoint_instance_id == endpoint.instance_id
+                        && pending.authority_epoch == endpoint.authority_epoch
+                })
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.project_list_errors
+                .insert(profile, "Hermes gateway is unavailable".into());
+            return;
+        };
+        let generation = self
+            .project_list_generations
+            .entry(profile.clone())
+            .or_default();
+        *generation = generation.saturating_add(1);
+        let generation = *generation;
+        let request_id = operation_id("project-list");
+        match gateway.load_project_list(request_id.clone(), profile.clone()) {
+            Ok(()) => {
+                self.project_list_errors.remove(&profile);
+                self.project_list_refreshes.insert(
+                    profile.clone(),
+                    PendingProjectListRefresh {
+                        request_id,
+                        profile_id: profile,
+                        endpoint_instance_id: endpoint.instance_id,
+                        authority_epoch: endpoint.authority_epoch,
+                        generation,
+                    },
+                );
+            }
+            Err(error) => {
+                self.project_list_refreshes.remove(&profile);
+                self.project_list_errors.insert(profile, error);
+            }
+        }
+    }
+
+    fn load_bot_roster(&mut self, force: bool) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref().cloned() else {
+            return;
+        };
+        if !self.gateway_connected || endpoint.profile_id.eq_ignore_ascii_case("all") {
+            return;
+        }
+        let profile = endpoint.profile_id.clone();
+        let same_endpoint = self.bot_roster.as_ref().is_some_and(|cached| {
+            cached.profile_id == profile
+                && cached.endpoint_instance_id == endpoint.instance_id
+                && cached.authority_epoch == endpoint.authority_epoch
+        });
+        if !force
+            && same_endpoint
+            && self.bot_roster.as_ref().is_some_and(|cached| {
+                cached.fetched_at.elapsed() < std::time::Duration::from_secs(5)
+            })
+        {
+            return;
+        }
+        if !force
+            && self.bot_roster_refresh.as_ref().is_some_and(|pending| {
+                pending.endpoint_instance_id == endpoint.instance_id
+                    && pending.authority_epoch == endpoint.authority_epoch
+                    && pending.profile_id == profile
+            })
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.bot_roster_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        self.bot_roster_generation = self.bot_roster_generation.saturating_add(1);
+        let generation = self.bot_roster_generation;
+        let request_id = operation_id("bot-roster");
+        match gateway.load_bot_roster(request_id.clone(), profile.clone()) {
+            Ok(()) => {
+                self.bot_roster_error = None;
+                self.bot_roster_refresh = Some(PendingBotRosterRefresh {
+                    request_id,
+                    profile_id: profile,
+                    endpoint_instance_id: endpoint.instance_id,
+                    authority_epoch: endpoint.authority_epoch,
+                    generation,
+                });
+            }
+            Err(error) => {
+                self.bot_roster_error = Some(error);
+                self.bot_roster_refresh = None;
+            }
+        }
+    }
+
+    fn bot_roster_for_current_endpoint(&self) -> Option<&BotRosterSnapshot> {
+        let endpoint = self.gateway_endpoint.as_ref()?;
+        let cached = self.bot_roster.as_ref()?;
+        (cached.endpoint_instance_id == endpoint.instance_id
+            && cached.profile_id == endpoint.profile_id
+            && cached.authority_epoch == endpoint.authority_epoch
+            && self.gateway_connected)
+            .then_some(&cached.snapshot)
+    }
+
+    fn settle_bot_roster(
+        &mut self,
+        request_id: &str,
+        profile: &str,
+        result: Result<BotRosterSnapshot, String>,
+    ) {
+        let Some(pending) = self.bot_roster_refresh.as_ref().cloned() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.profile_id != profile
+            || pending.generation != self.bot_roster_generation
+        {
+            return;
+        }
+        let matches_endpoint = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            endpoint.instance_id == pending.endpoint_instance_id
+                && endpoint.authority_epoch == pending.authority_epoch
+                && endpoint.profile_id == pending.profile_id
+                && self.gateway_connected
+        });
+        self.bot_roster_refresh = None;
+        if !matches_endpoint {
+            return;
+        }
+        match result {
+            Ok(snapshot) => {
+                self.bot_roster = Some(CachedBotRoster {
+                    profile_id: pending.profile_id,
+                    endpoint_instance_id: pending.endpoint_instance_id,
+                    authority_epoch: pending.authority_epoch,
+                    snapshot,
+                    fetched_at: std::time::Instant::now(),
+                });
+                self.bot_roster_error = None;
+            }
+            Err(error) => self.bot_roster_error = Some(error),
+        }
+    }
+
+    fn project_list_active_id(&self, profile: &str) -> Option<&str> {
+        if !self.gateway_connected {
+            return None;
+        }
+        let endpoint = self.gateway_endpoint.as_ref()?;
+        if endpoint.profile_id != profile || profile.eq_ignore_ascii_case("all") {
+            return None;
+        }
+        let cached = self.project_lists.get(profile)?;
+        (cached.endpoint_instance_id == endpoint.instance_id
+            && cached.authority_epoch == endpoint.authority_epoch)
+            .then_some(cached.snapshot.active_id.as_deref())
+            .flatten()
+    }
+
+    fn dismiss_auto_project(&mut self, profile_id: &str, project_id: &str) {
+        let is_auto_project = self
+            .project_trees
+            .get(profile_id)
+            .and_then(|tree| {
+                tree.projects
+                    .iter()
+                    .find(|project| project.id == project_id)
+            })
+            .is_some_and(|project| project.is_auto && !project.is_no_project);
+        if !is_auto_project {
+            self.status = "Only an auto-discovered project can be hidden this way".into();
+            return;
+        }
+        match self.workspace.set_auto_project_dismissed(project_id, true) {
+            Ok(_) => {
+                if self.selected_project_profile.as_deref() == Some(profile_id)
+                    && self.selected_project_id.as_deref() == Some(project_id)
+                {
+                    self.leave_project_sessions();
+                    self.entered_project_tree = None;
+                }
+                self.auto_project_undo = Some(PendingAutoProjectUndo {
+                    project_id: project_id.to_owned(),
+                    expires_at: std::time::Instant::now() + std::time::Duration::from_secs(8),
+                });
+                self.status = "Hidden from sidebar".into();
+            }
+            Err(error) => self.status = format!("Could not hide project: {error}"),
+        }
+    }
+
+    fn restore_auto_project(&mut self, project_id: &str) {
+        match self.workspace.set_auto_project_dismissed(project_id, false) {
+            Ok(_) => {
+                if self
+                    .auto_project_undo
+                    .as_ref()
+                    .is_some_and(|pending| pending.project_id == project_id)
+                {
+                    self.auto_project_undo = None;
+                }
+                self.status = "Project restored to sidebar".into();
+            }
+            Err(error) => self.status = format!("Could not restore project: {error}"),
+        }
+    }
+
+    fn auto_project_undo_toast(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.auto_project_undo.clone() else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        if !auto_project_undo_active(&pending, now) {
+            self.auto_project_undo = None;
+            return;
+        }
+        let mut undo = false;
+        egui::Area::new(Id::NULL.with("auto-project-undo-toast"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, Vec2::new(-18.0, -18.0))
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Hidden from sidebar");
+                        undo = ui
+                            .button("Undo")
+                            .accessible_name(format!("Undo hiding project {}", pending.project_id))
+                            .clicked();
+                    });
+                });
+            });
+        if undo {
+            self.restore_auto_project(&pending.project_id);
+        }
+        ctx.request_repaint_after(pending.expires_at.saturating_duration_since(now));
+    }
+
+    fn project_delete_dialog(&mut self, ctx: &egui::Context) {
+        let Some((profile, project_id)) = self.project_delete_confirmation.clone() else {
+            return;
+        };
+        let project_name = self
+            .project_trees
+            .get(&profile)
+            .and_then(|tree| {
+                tree.projects
+                    .iter()
+                    .find(|project| project.id == project_id)
+            })
+            .map(|project| project.label.trim())
+            .filter(|label| !label.is_empty())
+            .unwrap_or(&project_id)
+            .to_owned();
+        let pending = self.project_delete_pending.as_ref().is_some_and(|pending| {
+            pending.profile_id == profile && pending.project_id == project_id
+        });
+        let mut confirm = false;
+        let mut cancel = false;
+        egui::Window::new("Delete project?")
+            .id(Id::NULL.with(("project-delete-confirm", &profile, &project_id)))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!("Remove {project_name} from Hermes?"));
+                ui.label(
+                    "This removes the project entry. Project files and session data are retained.",
+                );
+                if let Some(error) = self.project_delete_errors.get(&profile) {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+                ui.horizontal(|ui| {
+                    confirm = ui
+                        .add_enabled(
+                            self.gateway_connected && !pending,
+                            egui::Button::new(if pending {
+                                "Deleting…"
+                            } else {
+                                "Delete project"
+                            }),
+                        )
+                        .clicked();
+                    cancel = ui
+                        .add_enabled(!pending, egui::Button::new("Cancel"))
+                        .clicked();
+                });
+            });
+        if confirm {
+            self.request_project_delete(profile, project_id);
+        } else if cancel {
+            self.project_delete_confirmation = None;
+            self.project_delete_errors.remove(&profile);
+        }
+    }
+
+    fn request_project_delete(&mut self, profile_id: String, project_id: String) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref().cloned() else {
+            self.project_delete_errors
+                .insert(profile_id, "Hermes gateway is unavailable".into());
+            return;
+        };
+        if !self.gateway_connected
+            || endpoint.profile_id != profile_id
+            || profile_id.eq_ignore_ascii_case("all")
+        {
+            self.project_delete_errors.insert(
+                profile_id,
+                "Project deletion requires the matching connected profile".into(),
+            );
+            return;
+        }
+        let project = self
+            .project_trees
+            .get(&profile_id)
+            .and_then(|tree| {
+                tree.projects
+                    .iter()
+                    .find(|project| project.id == project_id)
+            })
+            .cloned();
+        if !project.is_some_and(|project| !project.is_auto && !project.is_no_project) {
+            self.project_delete_errors.insert(
+                profile_id,
+                "Only an explicit Hermes project can be deleted here".into(),
+            );
+            return;
+        }
+        if self.project_delete_pending.is_some() {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.project_delete_errors
+                .insert(profile_id, "Hermes gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("project-delete");
+        if let Err(error) =
+            gateway.delete_project(request_id.clone(), project_id.clone(), profile_id.clone())
+        {
+            self.project_delete_errors.insert(profile_id, error);
+            return;
+        }
+
+        let previous_project_list = self.project_lists.get(&profile_id).cloned();
+        let previous_project_tree = self.project_trees.get(&profile_id).cloned();
+        let previous_selected_project_id = self.selected_project_id.clone();
+        let previous_selected_project_profile = self.selected_project_profile.clone();
+        let previous_entered_project_tree = self.entered_project_tree.clone();
+        self.project_delete_pending = Some(PendingProjectDelete {
+            request_id,
+            project_id: project_id.clone(),
+            profile_id: profile_id.clone(),
+            endpoint_instance_id: endpoint.instance_id,
+            authority_epoch: endpoint.authority_epoch,
+            previous_project_list,
+            previous_project_tree,
+            previous_selected_project_id,
+            previous_selected_project_profile,
+            previous_entered_project_tree,
+        });
+        self.project_deletion_tombstones
+            .insert((profile_id.clone(), project_id.clone()));
+        for generation in [
+            self.project_list_generations
+                .entry(profile_id.clone())
+                .or_default(),
+            self.project_tree_generations
+                .entry(profile_id.clone())
+                .or_default(),
+        ] {
+            *generation = generation.saturating_add(1);
+        }
+        self.project_list_refreshes.remove(&profile_id);
+        self.project_tree_refreshes.remove(&profile_id);
+        self.project_session_color_requests.remove(&profile_id);
+        if let Some(cached) = self.project_lists.get_mut(&profile_id) {
+            cached
+                .snapshot
+                .projects
+                .retain(|project| project.id != project_id);
+            if cached.snapshot.active_id.as_deref() == Some(project_id.as_str()) {
+                cached.snapshot.active_id = None;
+            }
+        }
+        if let Some(tree) = self.project_trees.get_mut(&profile_id) {
+            tree.projects.retain(|project| project.id != project_id);
+            if tree.active_id.as_deref() == Some(project_id.as_str()) {
+                tree.active_id = None;
+            }
+        }
+        if self.selected_project_profile.as_deref() == Some(profile_id.as_str())
+            && self.selected_project_id.as_deref() == Some(project_id.as_str())
+        {
+            self.leave_project_sessions();
+            self.entered_project_tree = None;
+        }
+        self.project_delete_errors.remove(&profile_id);
+        self.project_delete_confirmation = None;
+        self.status = format!("Deleting project {project_id}…");
+    }
+
+    fn settle_project_delete(
+        &mut self,
+        request_id: &str,
+        project_id: &str,
+        profile_id: &str,
+        result: Result<ProjectListSnapshot, String>,
+    ) {
+        let Some(pending) = self.project_delete_pending.take() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.project_id != project_id
+            || pending.profile_id != profile_id
+        {
+            self.project_delete_pending = Some(pending);
+            return;
+        }
+        let endpoint_matches = self.gateway_connected
+            && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                endpoint.profile_id == profile_id
+                    && endpoint.instance_id == pending.endpoint_instance_id
+                    && endpoint.authority_epoch == pending.authority_epoch
+            });
+        if !endpoint_matches {
+            // The remote outcome can no longer be proven in this authority epoch.
+            // Keep the tombstone so reconnect reads cannot resurrect stale state.
+            self.project_delete_errors.insert(
+                profile_id.to_owned(),
+                "Delete outcome is unconfirmed after the gateway profile changed; refresh to reconcile".into(),
+            );
+            self.status = "Project deletion outcome needs reconciliation".into();
+            return;
+        }
+        match result {
+            Ok(mut snapshot) => {
+                snapshot.projects.retain(|project| {
+                    !self
+                        .project_deletion_tombstones
+                        .contains(&(profile_id.to_owned(), project.id.clone()))
+                });
+                if self
+                    .project_deletion_tombstones
+                    .contains(&(profile_id.to_owned(), project_id.to_owned()))
+                    && snapshot.active_id.as_deref() == Some(project_id)
+                {
+                    snapshot.active_id = None;
+                }
+                self.project_lists.insert(
+                    profile_id.to_owned(),
+                    CachedProjectList {
+                        endpoint_instance_id: pending.endpoint_instance_id,
+                        authority_epoch: pending.authority_epoch,
+                        snapshot,
+                    },
+                );
+                self.project_list_errors.remove(profile_id);
+                self.project_delete_errors.remove(profile_id);
+                self.project_delete_confirmation = None;
+                self.project_session_color_profiles_loaded
+                    .remove(profile_id);
+                self.load_project_session_colors();
+                self.status = format!("Project {project_id} removed; files and sessions retained");
+            }
+            Err(error) => {
+                if let Some(snapshot) = pending.previous_project_list {
+                    self.project_lists.insert(profile_id.to_owned(), snapshot);
+                }
+                if let Some(tree) = pending.previous_project_tree {
+                    self.project_trees.insert(profile_id.to_owned(), tree);
+                }
+                self.selected_project_id = pending.previous_selected_project_id;
+                self.selected_project_profile = pending.previous_selected_project_profile;
+                self.entered_project_tree = pending.previous_entered_project_tree;
+                self.project_deletion_tombstones
+                    .remove(&(profile_id.to_owned(), project_id.to_owned()));
+                self.project_delete_errors
+                    .insert(profile_id.to_owned(), error.clone());
+                self.project_delete_confirmation =
+                    Some((profile_id.to_owned(), project_id.to_owned()));
+                self.status = format!("Project deletion failed: {error}");
+            }
+        }
+    }
+
+    fn settle_project_list(
+        &mut self,
+        request_id: &str,
+        profile_id: &str,
+        result: Result<ProjectListSnapshot, String>,
+    ) {
+        let Some(pending) = self.project_list_refreshes.get(profile_id).cloned() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.profile_id != profile_id
+            || profile_id.eq_ignore_ascii_case("all")
+            || self.project_list_generations.get(profile_id).copied() != Some(pending.generation)
+        {
+            return;
+        }
+        let endpoint_matches = self.gateway_connected
+            && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                endpoint.profile_id == profile_id
+                    && endpoint.instance_id == pending.endpoint_instance_id
+                    && endpoint.authority_epoch == pending.authority_epoch
+            });
+        if !endpoint_matches {
+            self.project_list_refreshes.remove(profile_id);
+            return;
+        }
+        self.project_list_refreshes.remove(profile_id);
+        match result {
+            Ok(mut snapshot) => {
+                for (tombstone_profile, project_id) in &self.project_deletion_tombstones {
+                    if tombstone_profile == profile_id {
+                        snapshot
+                            .projects
+                            .retain(|project| project.id != *project_id);
+                        if snapshot.active_id.as_deref() == Some(project_id.as_str()) {
+                            snapshot.active_id = None;
+                        }
+                    }
+                }
+                self.project_lists.insert(
+                    profile_id.to_owned(),
+                    CachedProjectList {
+                        endpoint_instance_id: pending.endpoint_instance_id,
+                        authority_epoch: pending.authority_epoch,
+                        snapshot,
+                    },
+                );
+                self.project_list_errors.remove(profile_id);
+            }
+            Err(error) => {
+                // Keep the last successful list snapshot visible on transient failures.
+                self.project_list_errors
+                    .insert(profile_id.to_owned(), error);
+            }
+        }
+    }
+
+    fn settle_project_tree(
+        &mut self,
+        request_id: &str,
+        profile_id: &str,
+        mut result: Result<ProjectTreeSnapshot, String>,
+    ) {
+        let Some(pending) = self.project_tree_refreshes.get(profile_id).cloned() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.profile_id != profile_id
+            || self
+                .project_session_color_requests
+                .get(profile_id)
+                .map(String::as_str)
+                != Some(request_id)
+        {
+            return;
+        }
+        if self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+            endpoint.profile_id != profile_id
+                || endpoint.instance_id != pending.endpoint_instance_id
+                || endpoint.authority_epoch != pending.authority_epoch
+        }) || self.project_tree_generations.get(profile_id).copied() != Some(pending.generation)
+        {
+            self.project_tree_refreshes.remove(profile_id);
+            self.project_session_color_requests.remove(profile_id);
+            return;
+        }
+        self.project_tree_refreshes.remove(profile_id);
+        self.project_session_color_requests.remove(profile_id);
+        if let Ok(tree) = result.as_mut()
+            && !profile_id.eq_ignore_ascii_case("all")
+        {
+            for project in &mut tree.projects {
+                for session in &mut project.preview_sessions {
+                    if session.profile.is_none() {
+                        session.profile = Some(profile_id.to_owned());
+                    }
+                }
+                for repo in &mut project.repos {
+                    for group in &mut repo.groups {
+                        for session in &mut group.sessions {
+                            if session.profile.is_none() {
+                                session.profile = Some(profile_id.to_owned());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        match result {
+            Ok(mut tree) => {
+                let confirmed_absent = self
+                    .project_deletion_tombstones
+                    .iter()
+                    .filter(|(profile, _)| profile == profile_id)
+                    .filter(|(_, project_id)| {
+                        !tree
+                            .projects
+                            .iter()
+                            .any(|project| project.id == *project_id)
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                for tombstone in confirmed_absent {
+                    self.project_deletion_tombstones.remove(&tombstone);
+                }
+                for (tombstone_profile, project_id) in &self.project_deletion_tombstones {
+                    if tombstone_profile == profile_id {
+                        tree.projects.retain(|project| project.id != *project_id);
+                        if tree.active_id.as_deref() == Some(project_id.as_str()) {
+                            tree.active_id = None;
+                        }
+                    }
+                }
+                if profile_id.eq_ignore_ascii_case("all") {
+                    let errors = tree
+                        .errors
+                        .iter()
+                        .map(|entry| format!("{}: {}", entry.profile, entry.error))
+                        .collect::<Vec<_>>();
+                    if errors.is_empty() {
+                        self.project_tree_errors.remove(profile_id);
+                    } else {
+                        self.project_tree_errors
+                            .insert(profile_id.to_owned(), errors.join(" · "));
+                    }
+                } else {
+                    let colors = project_tree_session_colors(&tree);
+                    self.project_session_colors
+                        .retain(|(profile, _), _| profile != profile_id);
+                    self.apply_project_session_colors(profile_id, colors);
+                    self.project_tree_errors.remove(profile_id);
+                }
+                self.project_trees.insert(profile_id.to_owned(), tree);
+                self.project_session_color_profiles_loaded
+                    .insert(profile_id.to_owned());
+                if self.selected_project_profile.as_deref() == Some(profile_id) {
+                    let selected_project = self.selected_project_id.clone();
+                    let refreshed_project = selected_project.as_ref().and_then(|project_id| {
+                        self.project_trees
+                            .get(profile_id)
+                            .and_then(|tree| tree.projects.iter().find(|row| &row.id == project_id))
+                            .cloned()
+                    });
+                    if let Some(project) = refreshed_project {
+                        if self.entered_project_tree.as_ref() != Some(&project) {
+                            self.entered_project_tree = Some(project);
+                            self.project_sessions_error = None;
+                            self.request_entered_project_sessions();
+                        }
+                    } else if selected_project.is_some() {
+                        self.project_sessions_error =
+                            Some("This project is no longer available".into());
+                    }
+                }
+            }
+            Err(error) => {
+                // Keep the last valid tree/colors visible on transient reads.
+                self.project_tree_errors
+                    .insert(profile_id.to_owned(), error);
+            }
+        }
+    }
+
+    fn refresh_project_tree_colors(&mut self, profile: Option<&str>) {
+        let all_profiles_active = self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.profile_id.eq_ignore_ascii_case("all"));
+        let profiles = if all_profiles_active {
+            BTreeSet::from(["all".to_owned()])
+        } else if let Some(profile) = profile {
+            if profile.is_empty() || profile.len() > 128 || profile.chars().any(char::is_control) {
+                return;
+            }
+            BTreeSet::from([profile.to_owned()])
+        } else {
+            self.sessions
+                .iter()
+                .chain(self.archived_sessions.iter())
+                .filter_map(|session| session.profile.clone())
+                .chain(
+                    self.gateway_endpoint
+                        .iter()
+                        .map(|endpoint| endpoint.profile_id.clone()),
+                )
+                .collect()
+        };
+        for profile in profiles {
+            self.project_session_color_profiles_loaded.remove(&profile);
+            self.project_session_color_requests.remove(&profile);
+            self.project_tree_refreshes.remove(&profile);
+        }
+        self.load_project_session_colors();
+    }
+
+    fn apply_project_session_colors(&mut self, profile: &str, colors: Vec<ProjectSessionColor>) {
+        for entry in colors {
+            self.project_session_colors
+                .insert((profile.to_owned(), entry.session_id), entry.color);
+        }
+    }
+
+    fn settle_project_session_colors(
+        &mut self,
+        request_id: &str,
+        profile: Option<String>,
+        result: Result<Vec<ProjectSessionColor>, String>,
+    ) {
+        let Some(profile) = profile else {
+            return;
+        };
+        if self
+            .project_session_color_requests
+            .get(&profile)
+            .map(String::as_str)
+            != Some(request_id)
+        {
+            return;
+        }
+        self.project_session_color_requests.remove(&profile);
+        if let Ok(colors) = result {
+            self.project_session_colors
+                .retain(|(owner_profile, _), _| owner_profile != &profile);
+            self.apply_project_session_colors(&profile, colors);
+            self.project_session_color_profiles_loaded.insert(profile);
+        }
     }
 
     fn load_archived_sessions(&mut self) {
@@ -5091,6 +13645,7 @@ fn render_message() -> &'static str {
             SessionSummary {
                 cwd: None,
                 id: stored_id.into(),
+                lineage_root_id: None,
                 profile: profile.map(str::to_owned),
                 title,
                 preview: text.chars().take(120).collect(),
@@ -5634,6 +14189,74 @@ fn render_message() -> &'static str {
             .get("payload")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+        if matches!(
+            event_type,
+            "message.start"
+                | "message.delta"
+                | "message.complete"
+                | "tool.start"
+                | "tool.complete"
+                | "clarify.request"
+                | "clarify.settled"
+                | "approval.request"
+                | "approval.settled"
+                | "error"
+        ) && let Some(runtime_session_id) = session_id
+        {
+            self.note_active_status_event(
+                runtime_session_id,
+                event
+                    .get("profile")
+                    .or_else(|| payload.get("profile"))
+                    .and_then(|value| value.as_str()),
+            );
+        }
+        if matches!(
+            event_type,
+            "message.start"
+                | "message.complete"
+                | "clarify.request"
+                | "approval.request"
+                | "approval.settled"
+        ) {
+            self.request_active_session_statuses();
+        }
+        if event_type == "sessions.changed" {
+            let event_profile = event
+                .get("profile")
+                .or_else(|| payload.get("profile"))
+                .and_then(|value| value.as_str());
+            let active_profile = self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str());
+            let all_profiles_active =
+                active_profile.is_some_and(|value| value.eq_ignore_ascii_case("all"));
+            if event_profile.is_none() || event_profile == active_profile || all_profiles_active {
+                self.request_session_list_refresh();
+                self.request_active_session_statuses();
+                self.refresh_open_session_transcripts();
+            }
+        }
+        if event_type == "projects.changed" {
+            let event_profile = event
+                .get("profile")
+                .or_else(|| payload.get("profile"))
+                .and_then(|value| value.as_str());
+            let active_profile = self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str());
+            let all_profiles_active =
+                active_profile.is_some_and(|value| value.eq_ignore_ascii_case("all"));
+            let event_matches_active = event_profile.is_none() || event_profile == active_profile;
+            if event_matches_active || all_profiles_active {
+                self.refresh_project_tree_colors(event_profile);
+                if event_matches_active && !all_profiles_active {
+                    self.load_project_list(true);
+                }
+            }
+        }
         let execution_generation = event
             .get("execution_generation")
             .or_else(|| payload.get("execution_generation"))
@@ -5661,6 +14284,20 @@ fn render_message() -> &'static str {
                 self.pending_submissions.remove(&key);
             }
         }
+        if event_type == "message.complete"
+            && session_id.is_some_and(|session_id| {
+                self.session_chat_views.values().any(|view| {
+                    view.runtime_session_id.as_deref() == Some(session_id)
+                        && event
+                            .get("profile")
+                            .or_else(|| payload.get("profile"))
+                            .and_then(|value| value.as_str())
+                            .is_none_or(|profile| view.profile.as_deref() == Some(profile))
+                })
+            })
+        {
+            self.broadcast_local_sessions_changed();
+        }
         let Some(active_session) = self.active_runtime_session_id.as_deref() else {
             return;
         };
@@ -5672,6 +14309,17 @@ fn render_message() -> &'static str {
                 &payload,
                 execution_generation,
             );
+            if event_type == "message.complete"
+                && let Some(runtime_session_id) = session_id
+            {
+                self.broadcast_local_transcript_changed(
+                    runtime_session_id,
+                    event
+                        .get("profile")
+                        .or_else(|| payload.get("profile"))
+                        .and_then(|value| value.as_str()),
+                );
+            }
             return;
         }
         match event_type {
@@ -5840,6 +14488,228 @@ fn render_message() -> &'static str {
                     .to_owned();
             }
             _ => {}
+        }
+        if event_type == "message.complete"
+            && let Some(runtime_session_id) = session_id
+        {
+            self.broadcast_local_transcript_changed(
+                runtime_session_id,
+                event
+                    .get("profile")
+                    .or_else(|| payload.get("profile"))
+                    .and_then(|value| value.as_str()),
+            );
+        }
+    }
+
+    fn request_session_list_refresh(&mut self) {
+        if self.session_list_refresh_pending.is_some() {
+            self.session_list_refresh_again = true;
+            return;
+        }
+        let (Some(gateway), Some(endpoint)) = (&self.gateway_discovery, &self.gateway_endpoint)
+        else {
+            return;
+        };
+        let request_id = operation_id("sessions-refresh");
+        let profile_id = endpoint.profile_id.clone();
+        match gateway.refresh_sessions(request_id.clone()) {
+            Ok(()) => {
+                self.session_list_refresh_pending = Some((request_id, profile_id));
+            }
+            Err(error) => self.session_list_error = Some(error),
+        }
+    }
+
+    fn request_active_session_statuses(&mut self) {
+        if self.active_status_refresh.is_some() {
+            self.active_status_refresh_again = true;
+            return;
+        }
+        if !self.gateway_connected {
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        let profile_id = endpoint.profile_id.clone();
+        let endpoint_instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        let request_id = operation_id("active-session-statuses");
+        self.active_status_last_refresh_at = Some(std::time::Instant::now());
+        match gateway.load_active_session_statuses(request_id.clone(), profile_id.clone()) {
+            Ok(()) => {
+                let revisions_at_request = self
+                    .active_status_revisions
+                    .iter()
+                    .filter(|((profile, _), _)| profile == &profile_id)
+                    .map(|((_, runtime_id), revision)| (runtime_id.clone(), *revision))
+                    .collect();
+                let runtimes_at_request = self
+                    .active_session_statuses
+                    .iter()
+                    .filter(|((profile, _), _)| profile == &profile_id)
+                    .map(|(_, status)| status.runtime_session_id.clone())
+                    .collect();
+                self.active_status_refresh = Some(PendingActiveStatusRefresh {
+                    request_id,
+                    profile_id,
+                    endpoint_instance_id,
+                    authority_epoch,
+                    revisions_at_request,
+                    runtimes_at_request,
+                });
+            }
+            Err(error) => self.session_peer_sync_error = Some(error),
+        }
+    }
+
+    fn note_active_status_event(&mut self, runtime_session_id: &str, profile: Option<&str>) {
+        if runtime_session_id.is_empty() || runtime_session_id.len() > 512 {
+            return;
+        }
+        let Some(profile_id) = profile.map(str::to_owned).or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        }) else {
+            return;
+        };
+        let revision = self
+            .active_status_revisions
+            .entry((profile_id, runtime_session_id.to_owned()))
+            .or_default();
+        *revision = revision.saturating_add(1);
+        if self.active_status_refresh.is_some() {
+            self.active_status_refresh_again = true;
+        }
+    }
+
+    fn settle_active_session_statuses(
+        &mut self,
+        request_id: &str,
+        profile_id: &str,
+        result: Result<Vec<ActiveSessionStatus>, String>,
+    ) {
+        let Some(pending) = self.active_status_refresh.as_ref() else {
+            return;
+        };
+        if pending.request_id != request_id || pending.profile_id != profile_id {
+            return;
+        }
+        if self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+            endpoint.profile_id != pending.profile_id
+                || endpoint.instance_id != pending.endpoint_instance_id
+                || endpoint.authority_epoch != pending.authority_epoch
+        }) {
+            self.active_status_refresh = None;
+            self.active_status_refresh_again = false;
+            return;
+        }
+        let pending = self
+            .active_status_refresh
+            .take()
+            .expect("matched active status snapshot");
+        if let Ok(statuses) = result {
+            let seen_runtime_ids = statuses
+                .iter()
+                .map(|status| status.runtime_session_id.clone())
+                .collect::<BTreeSet<_>>();
+            for status in statuses {
+                let revision_at_request = pending
+                    .revisions_at_request
+                    .get(&status.runtime_session_id)
+                    .copied()
+                    .unwrap_or(0);
+                let revision_now = self
+                    .active_status_revisions
+                    .get(&(profile_id.to_owned(), status.runtime_session_id.clone()))
+                    .copied()
+                    .unwrap_or(0);
+                if revision_now != revision_at_request {
+                    continue;
+                }
+                self.active_session_statuses.insert(
+                    (profile_id.to_owned(), status.stored_session_id.clone()),
+                    status,
+                );
+            }
+            self.active_session_statuses.retain(|(profile, _), status| {
+                if profile != profile_id {
+                    return true;
+                }
+                if seen_runtime_ids.contains(&status.runtime_session_id) {
+                    return true;
+                }
+                let revision_at_request = pending
+                    .revisions_at_request
+                    .get(&status.runtime_session_id)
+                    .copied()
+                    .unwrap_or(0);
+                let revision_now = self
+                    .active_status_revisions
+                    .get(&(profile_id.to_owned(), status.runtime_session_id.clone()))
+                    .copied()
+                    .unwrap_or(0);
+                !pending
+                    .runtimes_at_request
+                    .contains(&status.runtime_session_id)
+                    || revision_now != revision_at_request
+            });
+        }
+        if std::mem::take(&mut self.active_status_refresh_again) {
+            self.request_active_session_statuses();
+        }
+    }
+
+    fn handle_sessions_refreshed(
+        &mut self,
+        request_id: String,
+        profile_id: String,
+        result: Result<Vec<SessionSummary>, String>,
+    ) {
+        let Some((pending_request, pending_profile)) = self.session_list_refresh_pending.as_ref()
+        else {
+            return;
+        };
+        if pending_request != &request_id || pending_profile != &profile_id {
+            return;
+        }
+        if self
+            .gateway_endpoint
+            .as_ref()
+            .is_none_or(|endpoint| endpoint.profile_id != profile_id)
+        {
+            self.session_list_refresh_pending = None;
+            if std::mem::take(&mut self.session_list_refresh_again) {
+                self.request_session_list_refresh();
+            }
+            return;
+        }
+        self.session_list_refresh_pending = None;
+        match result {
+            Ok(loaded) => {
+                self.sessions = replace_profile_sessions(
+                    loaded,
+                    std::mem::take(&mut self.sessions),
+                    &profile_id,
+                );
+                self.session_list_error = None;
+                self.project_session_color_requests.clear();
+                self.project_session_color_profiles_loaded.clear();
+                self.load_project_session_colors();
+                if self.command_palette_open {
+                    self.load_command_palette_sessions();
+                    self.load_archived_sessions();
+                }
+            }
+            Err(error) => self.session_list_error = Some(error),
+        }
+        if std::mem::take(&mut self.session_list_refresh_again) {
+            self.request_session_list_refresh();
         }
     }
 
@@ -6168,6 +15038,43 @@ fn render_message() -> &'static str {
             self.workspace.select_panel(&PanelId::from(WORKSPACE))?;
             self.navigate(route.clone());
         }
+        if route == AppRoute::CommandCenter {
+            self.command_center_section = CommandCenterSection::from_route(target);
+            if self.gateway_connected {
+                if self.command_center_section == CommandCenterSection::Sessions {
+                    self.request_session_list_refresh();
+                } else if self.command_center_section == CommandCenterSection::System {
+                    self.request_command_center_system();
+                } else if self.command_center_section == CommandCenterSection::Usage {
+                    self.request_command_center_usage();
+                } else if self.command_center_section == CommandCenterSection::Maintenance {
+                    self.request_command_center_maintenance_snapshot();
+                }
+            }
+        }
+        if route == AppRoute::Artifacts {
+            let tab = target
+                .split_once('?')
+                .map(|(_, query)| {
+                    query
+                        .split('&')
+                        .find_map(|pair| pair.strip_prefix("tab="))
+                        .unwrap_or("all")
+                })
+                .unwrap_or("all");
+            self.artifacts_filter = ArtifactFilter::parse(tab);
+            self.artifacts_image_page = 1;
+            self.artifacts_file_page = 1;
+            if self.gateway_connected
+                && self.artifacts.is_none()
+                && self.artifacts_request_id.is_none()
+                && self.artifacts_error.is_none()
+            {
+                if let Err(error) = self.load_artifacts() {
+                    self.artifacts_error = Some(error);
+                }
+            }
+        }
         let capabilities_tab =
             (route == AppRoute::Capabilities).then(|| CapabilitiesTab::from_query(target));
         if let Some(tab) = capabilities_tab {
@@ -6219,6 +15126,79 @@ fn render_message() -> &'static str {
 
     pub fn execute_registered_action(&mut self, action: RegisteredUiAction) -> Result<(), String> {
         match action {
+            RegisteredUiAction::OpenNewWindow => {
+                if self.native_window_launch_count() >= 16 {
+                    return Err("Hermes already has 16 pending or starting new windows".into());
+                }
+                let id = (u64::from(std::process::id()) << 32) | self.next_native_window_id;
+                self.next_native_window_id = self
+                    .next_native_window_id
+                    .checked_add(1)
+                    .ok_or_else(|| "Hermes window ID space is exhausted".to_owned())?;
+                self.pending_native_window_launches
+                    .push_back(NativeWindowLaunchRequest {
+                        id,
+                        route: self.route.path(),
+                        profile: self.active_session_profile.clone(),
+                        move_session_panel: None,
+                    });
+                self.status = format!("Opening Hermes window {id}");
+            }
+            RegisteredUiAction::MoveCurrentSessionToNewWindow => {
+                let AppRoute::Session(session_id) = &self.route else {
+                    return Err("Open a Hermes session before moving it to another window".into());
+                };
+                let session_id = session_id.clone();
+                if !self.draft.trim().is_empty() {
+                    return Err("Send or clear the current draft before moving this session".into());
+                }
+                let snapshot = self.workspace.dock.snapshot();
+                let panel = self
+                    .workspace
+                    .session_pane_ids()
+                    .into_iter()
+                    .find(|panel| {
+                        snapshot
+                            .document
+                            .descriptor(panel)
+                            .is_some_and(|descriptor| {
+                                descriptor.metadata.get("hermes.session.id") == Some(&session_id)
+                                    && descriptor
+                                        .metadata
+                                        .get("hermes.session.profile")
+                                        .map(String::as_str)
+                                        .unwrap_or_default()
+                                        == self
+                                            .active_session_profile
+                                            .as_deref()
+                                            .unwrap_or_default()
+                            })
+                    })
+                    .ok_or_else(|| {
+                        "The current session tab is not present in the workspace".to_owned()
+                    })?;
+                if self.session_pane_is_busy(&panel) {
+                    return Err(
+                        "Wait for the active response to finish before moving this session".into(),
+                    );
+                }
+                if self.native_window_launch_count() >= 16 {
+                    return Err("Hermes already has 16 pending or starting new windows".into());
+                }
+                let id = (u64::from(std::process::id()) << 32) | self.next_native_window_id;
+                self.next_native_window_id = self
+                    .next_native_window_id
+                    .checked_add(1)
+                    .ok_or_else(|| "Hermes window ID space is exhausted".to_owned())?;
+                self.pending_native_window_launches
+                    .push_back(NativeWindowLaunchRequest {
+                        id,
+                        route: self.route.path(),
+                        profile: self.active_session_profile.clone(),
+                        move_session_panel: Some(panel),
+                    });
+                self.status = format!("Moving session to Hermes window {id}");
+            }
             RegisteredUiAction::Navigate { path } => {
                 if path.len() > 2048 {
                     return Err("Navigation path exceeds 2048 bytes".into());
@@ -6259,10 +15239,17 @@ fn render_message() -> &'static str {
                 self.status = "Opened session tab".into();
             }
             RegisteredUiAction::TogglePane { panel } => {
-                if !matches!(panel.as_str(), REVIEW | FILES | TERMINAL) {
+                let panel = canonical_pane_action_id(&panel).to_owned();
+                if !matches!(panel.as_str(), SESSIONS | BOTS | REVIEW | FILES | TERMINAL) {
                     return Err(format!(
                         "Pane {panel:?} is not registered for toggle actions"
                     ));
+                }
+                if self.narrow_viewport
+                    && matches!(panel.as_str(), SESSIONS | BOTS | REVIEW | FILES)
+                {
+                    self.toggle_narrow_pane(&panel);
+                    return Ok(());
                 }
                 self.workspace.toggle_pane(&panel)?;
                 self.status = format!(
@@ -7507,10 +16494,1811 @@ fn render_message() -> &'static str {
 
     #[cfg(feature = "agent-automation")]
     fn current_route_path(&self) -> String {
-        if self.route == AppRoute::Capabilities {
+        if self.route == AppRoute::Artifacts {
+            format!("/artifacts?tab={}", self.artifacts_filter.as_str())
+        } else if self.route == AppRoute::Capabilities {
             format!("/capabilities?tab={}", self.capabilities_tab.as_str())
         } else {
             self.route.path()
+        }
+    }
+
+    fn ensure_repo_scan_config_loaded(&mut self) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            return;
+        }
+        if self
+            .repo_scan_config_request
+            .as_ref()
+            .is_some_and(|(_, pending)| pending != &profile)
+        {
+            self.repo_scan_config_request = None;
+        }
+        if self
+            .repo_scan_config_save_request
+            .as_ref()
+            .is_some_and(|(_, pending, _)| pending != &profile)
+        {
+            self.repo_scan_config_save_request = None;
+            self.repo_scan_config = None;
+            self.repo_scan_config_profile = None;
+            self.repo_scan_config_error = None;
+            self.status = "A workspace settings save may still be settling for the previous profile; reopening Settings there will confirm its stored value.".into();
+        }
+        if self.repo_scan_config_request.is_some()
+            || self.repo_scan_config_profile.as_deref() == Some(profile.as_str())
+            || (self.repo_scan_config_profile.is_none() && self.repo_scan_config_error.is_some())
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        let request_id = operation_id("repo-scan-config-load");
+        match gateway.load_repo_scan_config(request_id.clone(), Some(profile.clone())) {
+            Ok(()) => {
+                self.repo_scan_config_request = Some((request_id, profile));
+                self.repo_scan_config_error = None;
+            }
+            Err(error) => self.repo_scan_config_error = Some(error),
+        }
+    }
+
+    fn repo_scan_project_context_active(&self) -> bool {
+        matches!(self.route, AppRoute::NewChat | AppRoute::Session(_))
+            && self
+                .gateway_endpoint
+                .as_ref()
+                .is_some_and(|endpoint| !endpoint.profile_id.eq_ignore_ascii_case("all"))
+    }
+
+    fn start_repo_discovery_for_profile(
+        &mut self,
+        profile: String,
+        policy: RepoScanPolicy,
+        force: bool,
+    ) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref().cloned() else {
+            return;
+        };
+        if !self.gateway_connected
+            || endpoint.profile_id != profile
+            || profile.eq_ignore_ascii_case("all")
+        {
+            return;
+        }
+        if self.repo_scan_discovery_request.as_ref().is_some_and(
+            |(_, pending_profile, pending_policy)| {
+                pending_profile == &profile && pending_policy == &policy
+            },
+        ) {
+            return;
+        }
+        if !force
+            && self.repo_scan_completed_policy.as_ref() == Some(&(profile.clone(), policy.clone()))
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        let request_id = operation_id("repo-discovery");
+        let generation = self
+            .repo_scan_generation
+            .fetch_add(1, Ordering::AcqRel)
+            .wrapping_add(1);
+        let remote = endpoint.remote_auth.is_some();
+        let result = if remote {
+            gateway.discover_remote_repos(request_id.clone(), profile.clone())
+        } else {
+            let home_dir = std::env::var_os("USERPROFILE")
+                .or_else(|| std::env::var_os("HOME"))
+                .map(std::path::PathBuf::from)
+                .filter(|path| path.is_absolute());
+            match home_dir {
+                Some(home_dir) => gateway.scan_and_record_repos(
+                    request_id.clone(),
+                    profile.clone(),
+                    policy.clone(),
+                    home_dir,
+                    Arc::clone(&self.repo_scan_generation),
+                    generation,
+                ),
+                None => Err(
+                    "Could not resolve the system home path for configured repository paths".into(),
+                ),
+            }
+        };
+        match result {
+            Ok(()) => {
+                self.repo_scan_discovery_request = Some((request_id, profile, policy));
+                self.repo_scan_last_started_at = Some(std::time::Instant::now());
+                self.repo_scan_config_error = None;
+            }
+            Err(error) => self.repo_scan_config_error = Some(error),
+        }
+    }
+
+    fn settle_repo_discovery(
+        &mut self,
+        request_id: &str,
+        profile: &str,
+        result: Result<(), String>,
+    ) {
+        let Some((expected_id, expected_profile, expected_policy)) =
+            self.repo_scan_discovery_request.clone()
+        else {
+            return;
+        };
+        if expected_id != request_id {
+            return;
+        }
+        if profile != expected_profile
+            || self
+                .gateway_endpoint
+                .as_ref()
+                .is_none_or(|endpoint| endpoint.profile_id != expected_profile)
+            || self.repo_scan_config_profile.as_deref() != Some(expected_profile.as_str())
+            || self.repo_scan_config.as_ref() != Some(&expected_policy)
+        {
+            self.repo_scan_discovery_request = None;
+            return;
+        }
+        self.repo_scan_discovery_request = None;
+        match result {
+            Ok(()) => {
+                self.repo_scan_completed_policy = Some((expected_profile.clone(), expected_policy));
+                self.repo_scan_config_error = None;
+                if self.repo_scan_project_context_active() {
+                    // A successful scan changes the host's project tree. Invalidate the loaded
+                    // marker and any older in-flight read, while retaining the last good tree
+                    // until the replacement response settles.
+                    self.project_session_color_profiles_loaded
+                        .remove(&expected_profile);
+                    self.project_session_color_requests
+                        .remove(&expected_profile);
+                    self.project_tree_refreshes.remove(&expected_profile);
+                    self.load_project_session_colors();
+                }
+            }
+            Err(error) => {
+                self.status = format!("Repository discovery failed: {error}");
+                self.repo_scan_config_error = Some(error);
+            }
+        }
+    }
+
+    fn save_repo_scan_config(&mut self) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.repo_scan_config_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            self.repo_scan_config_error =
+                Some("Workspace discovery settings require a single Hermes profile".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.repo_scan_config_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let policy = RepoScanPolicy {
+            enabled: self.repo_scan_enabled_draft,
+            roots: parse_config_path_lines(&self.repo_scan_roots_draft),
+            exclude_paths: parse_config_path_lines(&self.repo_scan_excludes_draft),
+        };
+        let request_id = operation_id("repo-scan-config-save");
+        match gateway.save_repo_scan_config(
+            request_id.clone(),
+            Some(profile.clone()),
+            policy.clone(),
+        ) {
+            Ok(()) => {
+                self.repo_scan_config_save_request = Some((request_id, profile, policy));
+                self.repo_scan_config_error = None;
+            }
+            Err(error) => self.repo_scan_config_error = Some(error),
+        }
+    }
+
+    fn show_repo_scan_settings(&mut self, ui: &mut Ui) {
+        self.ensure_repo_scan_config_loaded();
+        if !self.gateway_connected {
+            ui.label(RichText::new("Connect to Hermes to load workspace settings.").color(MUTED));
+            return;
+        }
+        if self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.profile_id.eq_ignore_ascii_case("all"))
+        {
+            ui.label(
+                RichText::new("Choose a single Hermes profile to edit workspace settings.")
+                    .color(MUTED),
+            );
+            return;
+        }
+        if self.repo_scan_config_profile.is_none() {
+            if let Some(error) = self.repo_scan_config_error.as_deref() {
+                ui.colored_label(Color32::LIGHT_RED, error);
+                if ui.button("Retry").clicked() {
+                    self.repo_scan_config_request = None;
+                    self.repo_scan_config_profile = None;
+                    self.repo_scan_config_error = None;
+                    self.ensure_repo_scan_config_loaded();
+                }
+            } else {
+                ui.label(RichText::new("Loading workspace settings…").color(MUTED));
+            }
+            return;
+        }
+        let saving = self.repo_scan_config_save_request.is_some();
+        ui.heading("Workspace repository discovery");
+        ui.label(
+            RichText::new("Git repositories are discovered only under the roots listed below.")
+                .color(MUTED),
+        );
+        ui.add_enabled_ui(!saving, |ui| {
+            ui.checkbox(
+                &mut self.repo_scan_enabled_draft,
+                "Enable repository discovery",
+            )
+            .accessible_name("Enable repository discovery");
+            ui.label("Scan roots (one path per line)");
+            ui.add(
+                egui::TextEdit::multiline(&mut self.repo_scan_roots_draft)
+                    .desired_rows(4)
+                    .desired_width(f32::INFINITY),
+            )
+            .accessible_name("Repository scan roots");
+            ui.label("Excluded paths (one path per line)");
+            ui.add(
+                egui::TextEdit::multiline(&mut self.repo_scan_excludes_draft)
+                    .desired_rows(3)
+                    .desired_width(f32::INFINITY),
+            )
+            .accessible_name("Repository scan exclusions");
+            ui.label(
+                RichText::new(
+                    "An empty root list scans no directories; Hermes home is never inferred here.",
+                )
+                .size(11.0)
+                .color(MUTED),
+            );
+        });
+        let draft = RepoScanPolicy {
+            enabled: self.repo_scan_enabled_draft,
+            roots: parse_config_path_lines(&self.repo_scan_roots_draft),
+            exclude_paths: parse_config_path_lines(&self.repo_scan_excludes_draft),
+        };
+        let changed = self
+            .repo_scan_config
+            .as_ref()
+            .is_some_and(|saved| saved != &draft);
+        if ui
+            .add_enabled(
+                !saving && changed,
+                egui::Button::new(if saving {
+                    "Saving…"
+                } else {
+                    "Save workspace settings"
+                }),
+            )
+            .accessible_name("Save workspace repository discovery settings")
+            .clicked()
+        {
+            self.save_repo_scan_config();
+        }
+        if let Some(error) = self.repo_scan_config_error.as_deref() {
+            ui.colored_label(Color32::LIGHT_RED, error);
+        }
+    }
+
+    fn request_command_center_maintenance(&mut self, operation: CommandCenterMaintenanceOperation) {
+        if !self.gateway_connected {
+            self.command_center_maintenance_error = Some("Hermes gateway is unavailable".into());
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.command_center_maintenance_error =
+                Some("Hermes gateway profile is unavailable".into());
+            return;
+        };
+        if endpoint.profile_id.eq_ignore_ascii_case("all") {
+            self.command_center_maintenance_error =
+                Some("Maintenance controls require one Hermes profile".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.command_center_maintenance_error =
+                Some("Hermes gateway HTTP worker is unavailable".into());
+            return;
+        };
+        self.command_center_maintenance_generation =
+            self.command_center_maintenance_generation.saturating_add(1);
+        let request_id = operation_id("command-center-maintenance");
+        let profile = endpoint.profile_id.clone();
+        let endpoint_instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        match gateway.command_center_maintenance(
+            request_id.clone(),
+            profile.clone(),
+            operation.clone(),
+        ) {
+            Ok(()) => {
+                self.command_center_maintenance_pending = Some(PendingCommandCenterMaintenance {
+                    request_id,
+                    profile,
+                    endpoint_instance_id,
+                    authority_epoch,
+                    operation,
+                });
+                self.command_center_maintenance_error = None;
+            }
+            Err(error) => {
+                self.command_center_maintenance_pending = None;
+                self.command_center_maintenance_error = Some(error);
+            }
+        }
+    }
+
+    fn request_command_center_maintenance_snapshot(&mut self) {
+        self.request_command_center_maintenance(CommandCenterMaintenanceOperation::LoadSnapshot);
+    }
+
+    fn queue_command_center_maintenance_confirmation(
+        &mut self,
+        operation: CommandCenterMaintenanceOperation,
+    ) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.command_center_maintenance_error = Some("Hermes profile is unavailable".into());
+            return;
+        };
+        if endpoint.profile_id.eq_ignore_ascii_case("all") {
+            self.command_center_maintenance_error =
+                Some("This action requires one Hermes profile".into());
+            return;
+        }
+        if !matches!(
+            &operation,
+            CommandCenterMaintenanceOperation::ResetMemory { .. }
+                | CommandCenterMaintenanceOperation::DebugShare
+        ) {
+            self.command_center_maintenance_error =
+                Some("This Maintenance action does not use confirmation".into());
+            return;
+        }
+        self.command_center_maintenance_confirmation = Some(CommandCenterMaintenanceConfirmation {
+            profile: endpoint.profile_id.clone(),
+            endpoint_instance_id: endpoint.instance_id.clone(),
+            authority_epoch: endpoint.authority_epoch,
+            operation,
+        });
+    }
+
+    fn confirm_command_center_maintenance(&mut self) {
+        let Some(confirmation) = self.command_center_maintenance_confirmation.take() else {
+            return;
+        };
+        let current_owner = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            endpoint.profile_id == confirmation.profile
+                && endpoint.instance_id == confirmation.endpoint_instance_id
+                && endpoint.authority_epoch == confirmation.authority_epoch
+        });
+        if !current_owner || !self.gateway_connected {
+            self.command_center_maintenance_error = Some(
+                "Hermes profile changed while the confirmation was open. Review the action again."
+                    .into(),
+            );
+            return;
+        }
+        self.command_center_maintenance_share = None;
+        self.command_center_maintenance_notice = None;
+        self.request_command_center_maintenance(confirmation.operation);
+    }
+
+    fn poll_command_center_maintenance(&mut self, now: std::time::Instant) {
+        let Some(name) = self.command_center_maintenance_action_name.clone() else {
+            return;
+        };
+        let Some(next_poll) = self.command_center_maintenance_next_poll else {
+            return;
+        };
+        if now < next_poll || self.command_center_maintenance_pending.is_some() {
+            return;
+        }
+        let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            self.command_center_maintenance_action_owner
+                .as_ref()
+                .is_some_and(|(profile, instance, epoch)| {
+                    profile == &endpoint.profile_id
+                        && instance == &endpoint.instance_id
+                        && *epoch == endpoint.authority_epoch
+                })
+        });
+        if !owner_matches || !self.gateway_connected {
+            self.command_center_maintenance_next_poll = None;
+            return;
+        }
+        if self.command_center_maintenance_action_polls >= 240 {
+            self.command_center_maintenance_next_poll = None;
+            self.command_center_maintenance_error =
+                Some("Stopped polling after five minutes; the action may still be running.".into());
+            return;
+        }
+        self.command_center_maintenance_action_polls += 1;
+        self.request_command_center_maintenance_action_status(name);
+    }
+
+    fn show_command_center_maintenance_confirmation(&mut self, ctx: &egui::Context) {
+        let Some(confirmation) = self.command_center_maintenance_confirmation.clone() else {
+            return;
+        };
+        let mut cancel = false;
+        let mut confirm = false;
+        let (title, detail, button) = match confirmation.operation {
+            CommandCenterMaintenanceOperation::DebugShare => (
+                "Share diagnostic bundle?",
+                "Hermes will upload a redacted diagnostic summary for the profile shown here. Continue only if you consent to that upload.",
+                "Share diagnostics",
+            ),
+            CommandCenterMaintenanceOperation::ResetMemory { target } => {
+                let file = match target {
+                    CommandCenterMemoryResetTarget::Memory => "MEMORY.md",
+                    CommandCenterMemoryResetTarget::User => "USER.md",
+                };
+                (
+                    "Reset memory file?",
+                    if target == CommandCenterMemoryResetTarget::Memory {
+                        "This permanently deletes the selected profile's MEMORY.md file."
+                    } else {
+                        "This permanently deletes the selected profile's USER.md file."
+                    },
+                    file,
+                )
+            }
+            _ => return,
+        };
+        egui::Window::new(title)
+            .id(Id::NULL.with("command-center-maintenance-confirmation"))
+            .order(egui::Order::Foreground)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(detail);
+                ui.label(RichText::new(format!("Profile: {}", confirmation.profile)).strong());
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                    if ui.button(button).clicked() {
+                        confirm = true;
+                    }
+                });
+            });
+        if cancel {
+            self.command_center_maintenance_confirmation = None;
+        } else if confirm {
+            self.confirm_command_center_maintenance();
+        }
+    }
+
+    fn queue_command_center_session_delete_confirmation(&mut self, session: SessionSummary) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.status = "Hermes profile is unavailable".into();
+            return;
+        };
+        let profile = session
+            .profile
+            .clone()
+            .unwrap_or_else(|| endpoint.profile_id.clone());
+        if profile.eq_ignore_ascii_case("all") {
+            self.status = "Deleting a session requires a concrete Hermes profile".into();
+            return;
+        }
+        self.command_center_delete_confirmation = Some(CommandCenterSessionDeleteConfirmation {
+            session,
+            profile,
+            endpoint_instance_id: endpoint.instance_id.clone(),
+            authority_epoch: endpoint.authority_epoch,
+        });
+    }
+
+    fn confirm_command_center_session_delete(&mut self) {
+        let Some(confirmation) = self.command_center_delete_confirmation.take() else {
+            return;
+        };
+        let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            endpoint.instance_id == confirmation.endpoint_instance_id
+                && endpoint.authority_epoch == confirmation.authority_epoch
+                && (confirmation.session.profile.is_some()
+                    || endpoint.profile_id == confirmation.profile)
+        });
+        if !owner_matches || !self.gateway_connected {
+            self.status =
+                "Hermes profile changed while the delete confirmation was open. Review the session again."
+                    .into();
+            return;
+        }
+        self.start_session_delete(confirmation.session);
+    }
+
+    fn show_command_center_session_delete_confirmation(&mut self, ctx: &egui::Context) {
+        let Some(confirmation) = self.command_center_delete_confirmation.clone() else {
+            return;
+        };
+        let title = if confirmation.session.title.trim().is_empty() {
+            "Untitled session"
+        } else {
+            confirmation.session.title.trim()
+        };
+        let mut cancel = false;
+        let mut confirm = false;
+        egui::Window::new("Delete session?")
+            .id(Id::NULL.with("command-center-session-delete-confirmation"))
+            .order(egui::Order::Foreground)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!(
+                    "Permanently delete \"{title}\" ({})?",
+                    confirmation.session.id
+                ));
+                ui.label(RichText::new(format!("Profile: {}", confirmation.profile)).strong());
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Cancel")
+                        .accessible_name("Cancel Command Center session delete")
+                        .clicked()
+                    {
+                        cancel = true;
+                    }
+                    if ui
+                        .button("Delete")
+                        .accessible_name("Confirm Command Center session delete")
+                        .clicked()
+                    {
+                        confirm = true;
+                    }
+                });
+            });
+        if cancel {
+            self.command_center_delete_confirmation = None;
+        } else if confirm {
+            self.confirm_command_center_session_delete();
+        }
+    }
+
+    fn apply_session_deleted_receipt(
+        &mut self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        result: Result<(), String>,
+    ) {
+        let action_key = session_identity_key(&session_id, profile.as_deref());
+        if self.pending_session_deletes.get(&action_key) != Some(&request_id) {
+            return;
+        }
+        self.pending_session_deletes.remove(&action_key);
+        match result {
+            Ok(()) => {
+                let lifecycle_profile = profile
+                    .clone()
+                    .or_else(|| {
+                        self.gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                    })
+                    .unwrap_or_else(|| "default".into());
+                self.record_project_session_lifecycle(&lifecycle_profile, &session_id, true);
+                self.sessions
+                    .retain(|session| session.id != session_id || session.profile != profile);
+                self.archived_sessions
+                    .retain(|session| session.id != session_id || session.profile != profile);
+                self.command_palette_sessions
+                    .retain(|session| session.id != session_id || session.profile != profile);
+                self.session_search_results
+                    .retain(|result| result.session_id != session_id || result.profile != profile);
+                self.session_chat_views.remove(&action_key);
+                self.session_chat_view_order
+                    .retain(|candidate| candidate != &action_key);
+                let pin_order_result = self
+                    .gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| {
+                        self.workspace.set_pinned_session_state(
+                            &gateway_pin_order_scope(endpoint),
+                            &session_id,
+                            false,
+                        )
+                    })
+                    .unwrap_or(Ok(()));
+                self.broadcast_local_sessions_changed();
+                self.status = match pin_order_result {
+                    Ok(()) => "Session deleted".into(),
+                    Err(error) => {
+                        format!("Session deleted, but local pin order could not be saved: {error}")
+                    }
+                };
+            }
+            Err(error) => self.status = error,
+        }
+    }
+    fn apply_session_export_loaded(
+        &mut self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        result: Result<SessionExportTranscript, String>,
+    ) {
+        let action_key = session_identity_key(&session_id, profile.as_deref());
+        if self.pending_session_exports.get(&action_key) != Some(&request_id) {
+            return;
+        }
+        self.pending_session_exports.remove(&action_key);
+        match result {
+            Ok(transcript) => {
+                let session = self
+                    .sessions
+                    .iter()
+                    .chain(self.archived_sessions.iter())
+                    .find(|row| row.id == session_id && row.profile == profile)
+                    .cloned();
+                let title = session
+                    .as_ref()
+                    .map(|row| row.title.trim())
+                    .filter(|title| !title.is_empty());
+                let filename = session_export_filename(&session_id, title);
+                let export_dir = self.workspace.data_directory().join("exports");
+                if let Err(error) = std::fs::create_dir_all(&export_dir) {
+                    self.status = format!("Could not create session export directory: {error}");
+                    return;
+                }
+                let payload = serde_json::json!({
+                    "exported_at": "2026-11-18T00:00:00Z",
+                    "session_id": transcript.resolved_session_id,
+                    "title": title,
+                    "session": session.as_ref().map(|row| serde_json::json!({
+                        "id": row.id,
+                        "profile": row.profile,
+                        "title": row.title,
+                        "preview": row.preview,
+                        "message_count": row.message_count,
+                        "source": row.source,
+                        "started_at": row.started_at,
+                        "last_active": row.last_active,
+                        "pinned": row.pinned,
+                        "unread": row.unread,
+                        "archived": row.archived,
+                    })),
+                    "message_count": transcript.messages.len(),
+                    "messages": transcript.messages,
+                });
+                let serialized = match serde_json::to_string_pretty(&payload) {
+                    Ok(serialized) => serialized,
+                    Err(error) => {
+                        self.status = format!("Could not serialize session export: {error}");
+                        return;
+                    }
+                };
+                let target_path = export_dir.join(&filename);
+                let temp_path = export_dir.join(format!(".{filename}.tmp"));
+                if let Err(error) = std::fs::write(&temp_path, serialized)
+                    .and_then(|()| std::fs::rename(&temp_path, &target_path))
+                {
+                    let _ = std::fs::remove_file(&temp_path);
+                    self.status = format!("Could not write session export: {error}");
+                    return;
+                }
+                self.last_exported_session_path = Some(target_path);
+                self.status = format!("Session exported: {filename}");
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    fn request_command_center_system_action(&mut self, operation: CommandCenterSystemOperation) {
+        if !self.gateway_connected {
+            self.command_center_system_error = Some("Hermes gateway is unavailable".into());
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.command_center_system_error = Some("Hermes gateway profile is unavailable".into());
+            return;
+        };
+        if endpoint.profile_id.eq_ignore_ascii_case("all") {
+            self.command_center_system_error =
+                Some("System actions require a concrete Hermes profile".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.command_center_system_error =
+                Some("Hermes gateway HTTP worker is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("command-center-system-action");
+        let profile = endpoint.profile_id.clone();
+        let endpoint_instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        match gateway.command_center_system_action(
+            request_id.clone(),
+            profile.clone(),
+            operation.clone(),
+        ) {
+            Ok(()) => {
+                self.command_center_system_action_pending =
+                    Some(PendingCommandCenterSystemAction {
+                        request_id,
+                        profile,
+                        endpoint_instance_id,
+                        authority_epoch,
+                        operation,
+                    });
+                self.command_center_system_error = None;
+            }
+            Err(error) => {
+                self.command_center_system_action_pending = None;
+                self.command_center_system_error = Some(error);
+            }
+        }
+    }
+
+    fn poll_command_center_system_action(&mut self, now: std::time::Instant) {
+        let Some(name) = self.command_center_system_action_name.clone() else {
+            return;
+        };
+        let Some(next_poll) = self.command_center_system_next_poll else {
+            return;
+        };
+        if now < next_poll || self.command_center_system_action_pending.is_some() {
+            return;
+        }
+        let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            self.command_center_system_action_owner
+                .as_ref()
+                .is_some_and(|(profile, instance, epoch)| {
+                    profile == &endpoint.profile_id
+                        && instance == &endpoint.instance_id
+                        && *epoch == endpoint.authority_epoch
+                })
+        });
+        if !owner_matches || !self.gateway_connected {
+            self.command_center_system_next_poll = None;
+            return;
+        }
+        if self.command_center_system_action_polls >= 18 {
+            self.command_center_system_next_poll = None;
+            self.request_command_center_system();
+            return;
+        }
+        self.command_center_system_action_polls += 1;
+        self.request_command_center_system_action(CommandCenterSystemOperation::LoadActionStatus {
+            name,
+        });
+    }
+
+    fn request_command_center_maintenance_action_status(&mut self, name: String) {
+        if self.command_center_maintenance_pending.is_some() {
+            return;
+        }
+        self.request_command_center_maintenance(
+            CommandCenterMaintenanceOperation::LoadActionStatus { name },
+        );
+    }
+
+    fn request_command_center_system(&mut self) {
+        if !self.gateway_connected {
+            self.command_center_system_error = Some("Hermes gateway is unavailable".into());
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.command_center_system_error = Some("Hermes gateway profile is unavailable".into());
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.command_center_system_error =
+                Some("Hermes gateway HTTP worker is unavailable".into());
+            return;
+        };
+        self.command_center_system_generation =
+            self.command_center_system_generation.saturating_add(1);
+        let request_id = operation_id("command-center-system");
+        let profile = endpoint.profile_id.clone();
+        let endpoint_instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let generation = self.command_center_system_generation;
+        let log_file = self.command_center_system_log_file.clone();
+        let log_level = self.command_center_system_log_level.clone();
+        let result = gateway.load_command_center_system(
+            request_id.clone(),
+            Some(profile.clone()),
+            log_file.clone(),
+            log_level.clone(),
+        );
+        match result {
+            Ok(()) => {
+                self.command_center_system_pending = Some(PendingCommandCenterSystem {
+                    request_id,
+                    profile,
+                    endpoint_instance_id,
+                    authority_epoch,
+                    generation,
+                    log_file,
+                    log_level,
+                });
+                self.command_center_system_error = None;
+            }
+            Err(error) => {
+                self.command_center_system_pending = None;
+                self.command_center_system_error = Some(error);
+            }
+        }
+    }
+
+    fn request_command_center_usage(&mut self) {
+        if !self.gateway_connected {
+            self.command_center_usage_error = Some("Hermes gateway is unavailable".into());
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.command_center_usage_error = Some("Hermes gateway profile is unavailable".into());
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.command_center_usage_error =
+                Some("Hermes gateway HTTP worker is unavailable".into());
+            return;
+        };
+        self.command_center_usage_generation =
+            self.command_center_usage_generation.saturating_add(1);
+        let request_id = operation_id("command-center-usage");
+        let profile = endpoint.profile_id.clone();
+        let endpoint_instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let generation = self.command_center_usage_generation;
+        let period_days = self.command_center_usage_period_days;
+        match gateway.load_command_center_usage(
+            request_id.clone(),
+            Some(profile.clone()),
+            period_days,
+        ) {
+            Ok(()) => {
+                self.command_center_usage_pending = Some(PendingCommandCenterUsage {
+                    request_id,
+                    profile,
+                    endpoint_instance_id,
+                    authority_epoch,
+                    generation,
+                    period_days,
+                });
+                self.command_center_usage_error = None;
+            }
+            Err(error) => {
+                self.command_center_usage_pending = None;
+                self.command_center_usage_error = Some(error);
+            }
+        }
+    }
+
+    fn command_center_maintenance_content(&mut self, ui: &mut Ui) {
+        let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            self.command_center_maintenance
+                .as_ref()
+                .is_some_and(|cached| {
+                    cached.profile == endpoint.profile_id
+                        && cached.endpoint_instance_id == endpoint.instance_id
+                        && cached.authority_epoch == endpoint.authority_epoch
+                })
+        });
+        let cached = owner_matches
+            .then(|| self.command_center_maintenance.clone())
+            .flatten();
+        let connected = self.gateway_connected
+            && self
+                .gateway_endpoint
+                .as_ref()
+                .is_some_and(|endpoint| !endpoint.profile_id.eq_ignore_ascii_case("all"));
+        let busy = self.command_center_maintenance_pending.is_some();
+        let action_running = self
+            .command_center_maintenance_action_status
+            .as_ref()
+            .is_some_and(|status| status.running);
+        let mut requested_action = None;
+        let mut pause_curator = None;
+        let mut confirmation = None;
+        ui.horizontal(|ui| {
+            ui.heading("Maintenance");
+            if ui
+                .add_enabled(connected && !busy, egui::Button::new("Refresh"))
+                .clicked()
+            {
+                requested_action = Some(CommandCenterMaintenanceOperation::LoadSnapshot);
+            }
+            if busy {
+                ui.label(RichText::new("Working…").color(MUTED));
+            }
+        });
+        if !connected {
+            ui.label(
+                RichText::new("Connect to one Hermes profile to use Maintenance.").color(MUTED),
+            );
+        }
+        if let Some(notice) = self.command_center_maintenance_notice.as_deref() {
+            ui.label(RichText::new(notice).color(Color32::LIGHT_GREEN));
+        }
+        if let Some(error) = self.command_center_maintenance_error.as_deref() {
+            ui.colored_label(Color32::LIGHT_RED, error);
+        }
+        ui.separator();
+        ui.label(RichText::new("Operations").small().strong().color(MUTED));
+        ui.horizontal_wrapped(|ui| {
+            for (label, action) in [
+                ("Doctor", CommandCenterMaintenanceAction::Doctor),
+                (
+                    "Security audit",
+                    CommandCenterMaintenanceAction::SecurityAudit,
+                ),
+                ("Backup", CommandCenterMaintenanceAction::Backup),
+            ] {
+                if ui
+                    .add_enabled(
+                        connected && !busy && !action_running,
+                        egui::Button::new(format!("Run {label}")),
+                    )
+                    .clicked()
+                {
+                    requested_action =
+                        Some(CommandCenterMaintenanceOperation::StartAction { action });
+                }
+            }
+            if ui
+                .add_enabled(connected && !busy, egui::Button::new("Share debug bundle…"))
+                .clicked()
+            {
+                confirmation = Some(CommandCenterMaintenanceOperation::DebugShare);
+            }
+        });
+        if let Some(status) = self.command_center_maintenance_action_status.as_ref() {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{} log", status.name)).strong());
+                ui.label(if status.running {
+                    "Running"
+                } else {
+                    "Finished"
+                });
+                if let Some(code) = status.exit_code {
+                    ui.label(format!("Exit code {code}"));
+                }
+            });
+            egui::ScrollArea::vertical()
+                .id_salt("command-center-maintenance-action-log")
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    if status.lines.is_empty() {
+                        ui.label(RichText::new("No output yet.").color(MUTED));
+                    } else {
+                        for line in &status.lines {
+                            ui.add(
+                                egui::Label::new(RichText::new(line).monospace()).selectable(true),
+                            );
+                        }
+                    }
+                });
+        }
+        if let Some(share) = self.command_center_maintenance_share.as_ref() {
+            if !share.urls.is_empty() {
+                ui.label(
+                    RichText::new("Debug share links")
+                        .small()
+                        .strong()
+                        .color(MUTED),
+                );
+                for (name, url) in &share.urls {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Label::new(format!("{name}: {url}")).truncate());
+                        if ui.button("Copy").clicked() {
+                            ui.ctx().copy_text(url.clone());
+                            self.command_center_maintenance_notice = Some("Link copied".into());
+                        }
+                    });
+                }
+            }
+            for (name, error) in &share.failures {
+                ui.colored_label(Color32::LIGHT_RED, format!("{name}: {error}"));
+            }
+        }
+
+        ui.separator();
+        ui.label(RichText::new("Curator").small().strong().color(MUTED));
+        match cached
+            .as_ref()
+            .and_then(|snapshot| snapshot.snapshot.curator.as_ref().ok())
+        {
+            Some(curator) => {
+                ui.horizontal_wrapped(|ui| {
+                    let state = if !curator.enabled {
+                        "Disabled"
+                    } else if curator.paused {
+                        "Paused"
+                    } else {
+                        "Active"
+                    };
+                    ui.strong(state);
+                    ui.label(format!(
+                        "Last run: {}",
+                        curator.last_run_at.as_deref().unwrap_or("Never")
+                    ));
+                    if let Some(hours) = curator.interval_hours {
+                        ui.label(format!("Interval: {hours:.1} hours"));
+                    }
+                    if curator.enabled
+                        && ui
+                            .add_enabled(
+                                !busy,
+                                egui::Button::new(if curator.paused { "Resume" } else { "Pause" }),
+                            )
+                            .clicked()
+                    {
+                        pause_curator = Some(!curator.paused);
+                    }
+                    if ui
+                        .add_enabled(
+                            connected && !busy && !action_running,
+                            egui::Button::new("Run now"),
+                        )
+                        .clicked()
+                    {
+                        requested_action = Some(CommandCenterMaintenanceOperation::StartAction {
+                            action: CommandCenterMaintenanceAction::Curator,
+                        });
+                    }
+                });
+            }
+            None if busy => {
+                ui.label(RichText::new("Loading curator status…").color(MUTED));
+            }
+            None => {
+                let error = cached
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.snapshot.curator.as_ref().err())
+                    .map(String::as_str)
+                    .unwrap_or("Curator status has not been loaded.");
+                ui.colored_label(Color32::LIGHT_RED, error);
+                if ui
+                    .add_enabled(connected && !busy, egui::Button::new("Retry curator"))
+                    .clicked()
+                {
+                    requested_action = Some(CommandCenterMaintenanceOperation::LoadSnapshot);
+                }
+            }
+        }
+
+        ui.separator();
+        ui.label(
+            RichText::new("Memory providers and files")
+                .small()
+                .strong()
+                .color(MUTED),
+        );
+        match cached
+            .as_ref()
+            .and_then(|snapshot| snapshot.snapshot.memory.as_ref().ok())
+        {
+            Some(memory) => {
+                ui.label(format!("Active provider: {}", memory.active));
+                if memory.providers.is_empty() {
+                    ui.label(RichText::new("No providers reported.").color(MUTED));
+                }
+                for provider in &memory.providers {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong(&provider.name);
+                        ui.label(format!(
+                            "{} · {}",
+                            provider.status,
+                            if provider.available {
+                                "available"
+                            } else {
+                                "unavailable"
+                            }
+                        ));
+                        if !provider.description.is_empty() {
+                            ui.label(RichText::new(&provider.description).color(MUTED));
+                        }
+                    });
+                }
+                for (label, bytes, target) in [
+                    (
+                        "MEMORY.md",
+                        memory.builtin_files.memory,
+                        CommandCenterMemoryResetTarget::Memory,
+                    ),
+                    (
+                        "USER.md",
+                        memory.builtin_files.user,
+                        CommandCenterMemoryResetTarget::User,
+                    ),
+                ] {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{label} · {} bytes", bytes));
+                        if ui
+                            .add_enabled(
+                                connected && !busy && bytes > 0,
+                                egui::Button::new(format!("Reset {label}")),
+                            )
+                            .clicked()
+                        {
+                            confirmation =
+                                Some(CommandCenterMaintenanceOperation::ResetMemory { target });
+                        }
+                    });
+                }
+            }
+            None if busy => {
+                ui.label(RichText::new("Loading memory status…").color(MUTED));
+            }
+            None => {
+                let error = cached
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.snapshot.memory.as_ref().err())
+                    .map(String::as_str)
+                    .unwrap_or("Memory status has not been loaded.");
+                ui.colored_label(Color32::LIGHT_RED, error);
+                if ui
+                    .add_enabled(connected && !busy, egui::Button::new("Retry memory status"))
+                    .clicked()
+                {
+                    requested_action = Some(CommandCenterMaintenanceOperation::LoadSnapshot);
+                }
+            }
+        }
+        if let Some(operation) = requested_action {
+            if let CommandCenterMaintenanceOperation::StartAction { .. } = operation {
+                self.command_center_maintenance_action_status = None;
+                self.command_center_maintenance_action_name = None;
+                self.command_center_maintenance_next_poll = None;
+            }
+            self.request_command_center_maintenance(operation);
+        }
+        if let Some(paused) = pause_curator {
+            self.request_command_center_maintenance(
+                CommandCenterMaintenanceOperation::SetCuratorPaused { paused },
+            );
+        }
+        if let Some(operation) = confirmation {
+            self.queue_command_center_maintenance_confirmation(operation);
+        }
+    }
+
+    fn command_center_content(&mut self, ui: &mut Ui) {
+        let refresh_hotkey =
+            ui.input(|input| input.key_pressed(egui::Key::R) && !input.modifiers.any());
+        if refresh_hotkey && !ui.ctx().egui_wants_keyboard_input() {
+            match self.command_center_section {
+                CommandCenterSection::System => self.request_command_center_system(),
+                CommandCenterSection::Usage => self.request_command_center_usage(),
+                CommandCenterSection::Maintenance => {
+                    self.request_command_center_maintenance_snapshot()
+                }
+                _ => {}
+            }
+        }
+        let mut load_system = false;
+        let mut load_usage = false;
+        let mut load_maintenance = false;
+        ui.horizontal_wrapped(|ui| {
+            for (section, label) in CommandCenterSection::ALL {
+                let response = ui
+                    .selectable_value(&mut self.command_center_section, section, label)
+                    .accessible_name(format!("Command Center section: {label}"));
+                if response.clicked() && section == CommandCenterSection::System {
+                    load_system = true;
+                } else if response.clicked() && section == CommandCenterSection::Usage {
+                    load_usage = true;
+                } else if response.clicked() && section == CommandCenterSection::Maintenance {
+                    load_maintenance = true;
+                }
+            }
+        });
+        if load_system {
+            self.request_command_center_system();
+        }
+        if load_usage {
+            self.request_command_center_usage();
+        }
+        if load_maintenance {
+            self.request_command_center_maintenance_snapshot();
+        }
+        ui.separator();
+
+        match self.command_center_section {
+            CommandCenterSection::Sessions => {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.command_center_query)
+                        .hint_text("Search sessions")
+                        .desired_width(f32::INFINITY),
+                )
+                .accessible_name("Search Command Center sessions");
+
+                let query = self.command_center_query.trim().to_lowercase();
+                let mut sessions = self
+                    .sessions
+                    .iter()
+                    .filter(|session| !session.archived)
+                    .filter(|session| {
+                        query.is_empty()
+                            || session.title.to_lowercase().contains(&query)
+                            || session.id.to_lowercase().contains(&query)
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                sessions.sort_by(|left, right| {
+                    let left_time = left.last_active.unwrap_or(left.started_at);
+                    let right_time = right.last_active.unwrap_or(right.started_at);
+                    right_time.total_cmp(&left_time)
+                });
+
+                ui.label(format!("{} sessions", sessions.len()));
+                if sessions.is_empty() {
+                    let message = if !query.is_empty() {
+                        "No sessions match your search."
+                    } else if self.gateway_connected {
+                        "No sessions yet."
+                    } else {
+                        "Connect to Hermes to load sessions."
+                    };
+                    ui.label(RichText::new(message).color(MUTED));
+                    return;
+                }
+
+                let mut pin_update = None;
+                let mut export_request = None;
+                let mut delete_confirmation = None;
+                let has_more_sessions =
+                    query.is_empty() && sessions.len() >= self.session_list_limit;
+                egui::ScrollArea::vertical()
+                    .id_salt("command-center-sessions")
+                    .max_height(620.0)
+                    .show(ui, |ui| {
+                        for session in sessions {
+                            ui.group(|ui| {
+                                ui.horizontal(|ui| {
+                                    let title = if session.title.trim().is_empty() {
+                                        "Untitled session"
+                                    } else {
+                                        session.title.as_str()
+                                    };
+                                    let open = ui
+                                        .button(title)
+                                        .accessible_name(format!("Open session: {title}"))
+                                        .on_hover_text(format!("Open {}", session.id));
+                                    if open.clicked() {
+                                        self.execute_registered_action(
+                                            RegisteredUiAction::OpenSession {
+                                                session_id: session.id.clone(),
+                                                profile: session.profile.clone(),
+                                            },
+                                        )
+                                        .unwrap_or_else(|error| self.status = error);
+                                    }
+                                    let action_key = session_identity_key(
+                                        &session.id,
+                                        session.profile.as_deref(),
+                                    );
+                                    let pin_pending =
+                                        self.pending_session_pins.contains_key(&action_key);
+                                    let export_pending =
+                                        self.pending_session_exports.contains_key(&action_key);
+                                    let delete_pending =
+                                        self.pending_session_deletes.contains_key(&action_key);
+                                    let pinned = session.pinned;
+                                    let pin_label = if pinned {
+                                        format!("Unpin Command Center session {}", session.id)
+                                    } else {
+                                        format!("Pin Command Center session {}", session.id)
+                                    };
+                                    if ui
+                                        .add_enabled(
+                                            self.gateway_connected
+                                                && !pin_pending
+                                                && !delete_pending,
+                                            egui::Button::new(if pinned { "Unpin" } else { "Pin" }),
+                                        )
+                                        .accessible_name(pin_label)
+                                        .clicked()
+                                    {
+                                        pin_update = Some((session.clone(), !pinned));
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.gateway_connected
+                                                && !export_pending
+                                                && !delete_pending,
+                                            egui::Button::new("Export"),
+                                        )
+                                        .accessible_name(format!(
+                                            "Export Command Center session {}",
+                                            session.id
+                                        ))
+                                        .clicked()
+                                    {
+                                        export_request = Some(session.clone());
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.gateway_connected && !delete_pending,
+                                            egui::Button::new("Delete…"),
+                                        )
+                                        .accessible_name(format!(
+                                            "Delete Command Center session {}",
+                                            session.id
+                                        ))
+                                        .clicked()
+                                    {
+                                        delete_confirmation = Some(session.clone());
+                                    }
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{} messages{}",
+                                            session.message_count,
+                                            session
+                                                .profile
+                                                .as_deref()
+                                                .map(|profile| format!(" · {profile}"))
+                                                .unwrap_or_default()
+                                        ))
+                                        .small()
+                                        .color(MUTED),
+                                    );
+                                });
+                                if !session.preview.trim().is_empty() {
+                                    ui.label(session.preview.trim());
+                                }
+                                ui.label(RichText::new(&session.id).small().color(MUTED));
+                            });
+                        }
+                    });
+                if has_more_sessions
+                    && ui
+                        .add_enabled(
+                            self.gateway_connected && self.session_list_refresh_pending.is_none(),
+                            egui::Button::new("Load more (+200)"),
+                        )
+                        .accessible_name("Load more Command Center sessions")
+                        .clicked()
+                {
+                    self.session_list_limit = (self.session_list_limit + 200).min(2_000);
+                    self.request_session_list_refresh();
+                }
+                if let Some((session, pinned)) = pin_update {
+                    self.start_session_pin_update(session, pinned);
+                }
+                if let Some(session) = export_request {
+                    self.start_session_export(session);
+                }
+                if let Some(session) = delete_confirmation {
+                    self.queue_command_center_session_delete_confirmation(session);
+                }
+            }
+            CommandCenterSection::System => {
+                let mut refresh = false;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Recent logs");
+                    for file in ["agent", "errors", "gateway", "desktop"] {
+                        if ui
+                            .selectable_value(
+                                &mut self.command_center_system_log_file,
+                                file.to_owned(),
+                                file,
+                            )
+                            .accessible_name(format!("Command Center log file: {file}"))
+                            .clicked()
+                        {
+                            refresh = true;
+                        }
+                    }
+                    for level in ["ALL", "INFO", "WARNING", "ERROR"] {
+                        let label = if level == "ALL" {
+                            "all"
+                        } else {
+                            &level.to_lowercase()
+                        };
+                        if ui
+                            .selectable_value(
+                                &mut self.command_center_system_log_level,
+                                level.to_owned(),
+                                label,
+                            )
+                            .accessible_name(format!("Command Center log level: {level}"))
+                            .clicked()
+                        {
+                            refresh = true;
+                        }
+                    }
+                    if ui
+                        .button("Refresh")
+                        .accessible_name("Refresh Command Center system status and logs")
+                        .clicked()
+                    {
+                        refresh = true;
+                    }
+                });
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.command_center_system_log_query)
+                        .hint_text("Search recent logs")
+                        .desired_width(f32::INFINITY),
+                )
+                .accessible_name("Search Command Center logs");
+                if refresh {
+                    self.request_command_center_system();
+                }
+
+                let owner = self.gateway_endpoint.as_ref().map(|endpoint| {
+                    (
+                        endpoint.profile_id.as_str(),
+                        endpoint.instance_id.as_str(),
+                        endpoint.authority_epoch,
+                    )
+                });
+                let cached = self
+                    .command_center_system
+                    .as_ref()
+                    .filter(|cached| {
+                        owner.is_some_and(|(profile, instance_id, epoch)| {
+                            cached.profile == profile
+                                && cached.endpoint_instance_id == instance_id
+                                && cached.authority_epoch == epoch
+                        })
+                    })
+                    .cloned();
+                if let Some(cached) = cached.as_ref() {
+                    let mut requested_system_action = None;
+                    let system_action_busy = self.command_center_system_action_pending.is_some()
+                        || self
+                            .command_center_system_action_status
+                            .as_ref()
+                            .is_some_and(|status| status.running);
+                    let concrete_connected = self.gateway_connected
+                        && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                            !endpoint.profile_id.eq_ignore_ascii_case("all")
+                        });
+                    ui.group(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            let running = cached.snapshot.status.gateway_running;
+                            let color = if running {
+                                Color32::from_rgb(72, 188, 126)
+                            } else {
+                                Color32::from_rgb(227, 169, 79)
+                            };
+                            ui.colored_label(color, "●");
+                            ui.strong(if running {
+                                "Gateway running"
+                            } else {
+                                "Gateway stopped"
+                            });
+                            if ui
+                                .add_enabled(
+                                    concrete_connected && !system_action_busy,
+                                    egui::Button::new("Restart gateway"),
+                                )
+                                .accessible_name("Restart Command Center gateway")
+                                .clicked()
+                            {
+                                requested_system_action =
+                                    Some(CommandCenterSystemAction::RestartGateway);
+                            }
+                            if ui
+                                .add_enabled(
+                                    concrete_connected && !system_action_busy,
+                                    egui::Button::new("Update Hermes"),
+                                )
+                                .accessible_name("Update Command Center Hermes")
+                                .clicked()
+                            {
+                                requested_system_action =
+                                    Some(CommandCenterSystemAction::UpdateHermes);
+                            }
+                        });
+                        ui.label(format!(
+                            "Hermes {} · {} active sessions",
+                            cached.snapshot.status.version, cached.snapshot.status.active_sessions
+                        ));
+                        if let Some(action_status) =
+                            self.command_center_system_action_status.as_ref()
+                        {
+                            let state_label = if action_status.running {
+                                "Running"
+                            } else if action_status.exit_code == Some(0) {
+                                "Done"
+                            } else {
+                                "Failed"
+                            };
+                            ui.label(
+                                RichText::new(format!("{} · {state_label}", action_status.name))
+                                    .color(MUTED),
+                            );
+                        }
+                        if let Some(age) = cached.snapshot.status.gateway_heartbeat_stale_s {
+                            ui.colored_label(
+                                Color32::LIGHT_RED,
+                                format!("Gateway heartbeat is stale ({age:.0}s)"),
+                            );
+                        }
+                        if let Some(reason) = cached.snapshot.status.gateway_exit_reason.as_deref()
+                        {
+                            if !reason.trim().is_empty() {
+                                ui.label(format!("Gateway exit reason: {reason}"));
+                            }
+                        }
+                    });
+                    if let Some(action) = requested_system_action {
+                        self.command_center_system_action_status = None;
+                        self.command_center_system_action_name = None;
+                        self.command_center_system_next_poll = None;
+                        self.request_command_center_system_action(
+                            CommandCenterSystemOperation::StartAction { action },
+                        );
+                    }
+                    let logs_match = cached.log_file == self.command_center_system_log_file
+                        && cached.log_level == self.command_center_system_log_level;
+                    if logs_match {
+                        let query = self.command_center_system_log_query.trim().to_lowercase();
+                        let visible_lines = cached
+                            .snapshot
+                            .logs
+                            .lines
+                            .iter()
+                            .filter(|line| query.is_empty() || line.to_lowercase().contains(&query))
+                            .collect::<Vec<_>>();
+                        ui.label(format!(
+                            "{} log lines · {} matches",
+                            cached.snapshot.logs.lines.len(),
+                            visible_lines.len()
+                        ));
+                        egui::ScrollArea::vertical()
+                            .id_salt("command-center-system-logs")
+                            .max_height(420.0)
+                            .show(ui, |ui| {
+                                for line in visible_lines {
+                                    ui.monospace(line);
+                                }
+                            });
+                    } else if self.command_center_system_pending.is_some() {
+                        ui.label(RichText::new("Loading selected log filter…").color(MUTED));
+                    }
+                } else if self.command_center_system_pending.is_some() {
+                    ui.label(RichText::new("Loading Hermes system status…").color(MUTED));
+                } else if self.command_center_system_error.is_none() {
+                    ui.label(RichText::new("System status has not been loaded.").color(MUTED));
+                }
+                if let Some(error) = self.command_center_system_error.as_deref() {
+                    ui.colored_label(
+                        Color32::LIGHT_RED,
+                        format!("System data unavailable: {error}"),
+                    );
+                }
+            }
+            CommandCenterSection::Usage => {
+                let mut period_changed = false;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Usage period");
+                    for period in [7, 30, 90] {
+                        if ui
+                            .selectable_value(
+                                &mut self.command_center_usage_period_days,
+                                period,
+                                format!("{period} days"),
+                            )
+                            .accessible_name(format!("Command Center usage period: {period} days"))
+                            .clicked()
+                        {
+                            period_changed = true;
+                        }
+                    }
+                    if ui
+                        .button("Refresh")
+                        .accessible_name("Refresh Command Center usage analytics")
+                        .clicked()
+                    {
+                        period_changed = true;
+                    }
+                });
+                if period_changed {
+                    self.request_command_center_usage();
+                }
+
+                let owner = self.gateway_endpoint.as_ref().map(|endpoint| {
+                    (
+                        endpoint.profile_id.as_str(),
+                        endpoint.instance_id.as_str(),
+                        endpoint.authority_epoch,
+                    )
+                });
+                let cached = self
+                    .command_center_usage
+                    .as_ref()
+                    .filter(|cached| {
+                        owner.is_some_and(|(profile, instance_id, epoch)| {
+                            cached.profile == profile
+                                && cached.endpoint_instance_id == instance_id
+                                && cached.authority_epoch == epoch
+                        })
+                    })
+                    .cloned();
+                let has_cached_usage = cached.is_some();
+                if let Some(cached) = cached.as_ref() {
+                    let totals = &cached.snapshot.totals;
+                    ui.horizontal_wrapped(|ui| {
+                        usage_stat(ui, "Sessions", format_compact_count(totals.total_sessions));
+                        usage_stat(
+                            ui,
+                            "API calls",
+                            format_optional_compact_count(totals.total_api_calls),
+                        );
+                        let tokens = format!(
+                            "{} / {}",
+                            format_optional_compact_count(totals.total_input),
+                            format_optional_compact_count(totals.total_output)
+                        );
+                        usage_stat(ui, "Input / output tokens", tokens);
+                    });
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Daily tokens").strong());
+                        ui.add_space(12.0);
+                        ui.colored_label(Color32::from_rgb(98, 150, 235), "■ Input");
+                        ui.colored_label(Color32::from_rgb(92, 185, 132), "■ Output");
+                    });
+                    if cached.snapshot.daily.is_empty() {
+                        ui.label(RichText::new("No daily activity").color(MUTED));
+                    } else {
+                        let max_tokens = cached
+                            .snapshot
+                            .daily
+                            .iter()
+                            .map(|day| day.input_tokens.saturating_add(day.output_tokens))
+                            .max()
+                            .unwrap_or(1)
+                            .max(1) as f64;
+                        let chart_height = 96.0;
+                        let available = ui.available_width().max(80.0);
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(available, chart_height + 26.0),
+                            egui::Sense::hover(),
+                        );
+                        let painter = ui.painter_at(rect);
+                        let bar_width = rect.width() / cached.snapshot.daily.len() as f32;
+                        for (index, day) in cached.snapshot.daily.iter().enumerate() {
+                            let x0 = rect.left() + index as f32 * bar_width;
+                            let input_h = ((day.input_tokens as f64 / max_tokens)
+                                * chart_height as f64)
+                                as f32;
+                            let output_h = ((day.output_tokens as f64 / max_tokens)
+                                * chart_height as f64)
+                                as f32;
+                            let input_rect = egui::Rect::from_min_max(
+                                egui::pos2(x0, rect.bottom() - 26.0 - input_h),
+                                egui::pos2(x0 + bar_width.max(1.0), rect.bottom() - 26.0),
+                            );
+                            let output_rect = egui::Rect::from_min_max(
+                                egui::pos2(x0, rect.bottom() - 26.0 - input_h - output_h),
+                                egui::pos2(x0 + bar_width.max(1.0), rect.bottom() - 26.0 - input_h),
+                            );
+                            if day.input_tokens > 0 {
+                                painter.rect_filled(
+                                    input_rect,
+                                    1.0,
+                                    Color32::from_rgb(98, 150, 235),
+                                );
+                            }
+                            if day.output_tokens > 0 {
+                                painter.rect_filled(
+                                    output_rect,
+                                    1.0,
+                                    Color32::from_rgb(92, 185, 132),
+                                );
+                            }
+                            if day.input_tokens > 0 || day.output_tokens > 0 {
+                                ui.interact(
+                                    egui::Rect::from_min_max(
+                                        egui::pos2(x0, rect.top()),
+                                        egui::pos2(x0 + bar_width.max(1.0), rect.bottom() - 20.0),
+                                    ),
+                                    ui.scope_id().with(("command-center-usage-day", &day.day)),
+                                    egui::Sense::hover(),
+                                )
+                                .on_hover_text(format!(
+                                    "{} · in {} · out {}",
+                                    day.day,
+                                    format_compact_count(day.input_tokens),
+                                    format_compact_count(day.output_tokens)
+                                ));
+                            }
+                        }
+                        ui.horizontal(|ui| {
+                            if let Some(first) = cached.snapshot.daily.first() {
+                                ui.label(RichText::new(&first.day).small().color(MUTED));
+                            }
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if let Some(last) = cached.snapshot.daily.last() {
+                                    ui.label(RichText::new(&last.day).small().color(MUTED));
+                                }
+                            });
+                        });
+                    }
+                    ui.separator();
+                    ui.columns(2, |columns| {
+                        columns[0].strong("Top models");
+                        let models = cached.snapshot.by_model.iter().take(6).collect::<Vec<_>>();
+                        if models.is_empty() {
+                            columns[0].label(RichText::new("No model usage").color(MUTED));
+                        }
+                        for model in models {
+                            columns[0].horizontal(|ui| {
+                                ui.monospace(&model.model);
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    ui.label(format_compact_count(
+                                        model.input_tokens.saturating_add(model.output_tokens),
+                                    ));
+                                });
+                            });
+                        }
+                        columns[1].strong("Top skills");
+                        let skills = cached
+                            .snapshot
+                            .skills
+                            .top_skills
+                            .iter()
+                            .take(6)
+                            .collect::<Vec<_>>();
+                        if skills.is_empty() {
+                            columns[1].label(RichText::new("No skill activity").color(MUTED));
+                        }
+                        for skill in skills {
+                            columns[1].horizontal(|ui| {
+                                ui.monospace(&skill.skill);
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    ui.label(format!(
+                                        "{} actions",
+                                        format_compact_count(skill.total_count)
+                                    ));
+                                });
+                            });
+                        }
+                    });
+                } else if self.command_center_usage_pending.is_some() {
+                    ui.label(RichText::new("Loading usage analytics…").color(MUTED));
+                } else if let Some(error) = self.command_center_usage_error.as_deref() {
+                    ui.colored_label(
+                        Color32::LIGHT_RED,
+                        format!("Usage data unavailable: {error}"),
+                    );
+                    if ui.button("Retry").clicked() {
+                        self.request_command_center_usage();
+                    }
+                } else {
+                    ui.label(RichText::new("Usage data has not been loaded.").color(MUTED));
+                    if ui.button("Refresh").clicked() {
+                        self.request_command_center_usage();
+                    }
+                }
+                if has_cached_usage && let Some(error) = self.command_center_usage_error.as_deref()
+                {
+                    ui.colored_label(Color32::LIGHT_RED, format!("Usage refresh failed: {error}"));
+                }
+            }
+            CommandCenterSection::Maintenance => self.command_center_maintenance_content(ui),
         }
     }
 
@@ -7529,7 +18317,14 @@ fn render_message() -> &'static str {
                 });
             });
             ui.separator();
-            ui.label(RichText::new("Connect to Hermes to load this screen.").color(MUTED));
+            match self.route {
+                AppRoute::Settings => self.show_repo_scan_settings(ui),
+                AppRoute::Cron => self.cron_content(ui),
+                AppRoute::CommandCenter => self.command_center_content(ui),
+                _ => {
+                    ui.label(RichText::new("Connect to Hermes to load this screen.").color(MUTED));
+                }
+            }
         });
         if close {
             self.execute_registered_action(RegisteredUiAction::Navigate {
@@ -8014,6 +18809,399 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn command_palette_entries(&self) -> Vec<CommandPaletteEntry> {
+        let mut entries = vec![
+            CommandPaletteEntry {
+                group: "Commands",
+                label: "Open new window".into(),
+                keywords: "window separate desktop new window".into(),
+                action: RegisteredUiAction::OpenNewWindow,
+            },
+            CommandPaletteEntry {
+                group: "Navigation",
+                label: "Move current session to new window".into(),
+                keywords: "move session separate window desktop".into(),
+                action: RegisteredUiAction::MoveCurrentSessionToNewWindow,
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "New session".into(),
+                keywords: "chat create start fresh".into(),
+                action: RegisteredUiAction::Navigate { path: "/".into() },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Settings".into(),
+                keywords: "preferences configuration".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/settings".into(),
+                },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Capabilities".into(),
+                keywords: "skills tools toolsets mcp capabilities".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/capabilities".into(),
+                },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Messaging".into(),
+                keywords: "connections channels".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/messaging".into(),
+                },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Artifacts".into(),
+                keywords: "files images outputs".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/artifacts".into(),
+                },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Scheduled jobs".into(),
+                keywords: "cron schedule jobs".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/cron".into(),
+                },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Profiles".into(),
+                keywords: "profile profiles".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/profiles".into(),
+                },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Agents".into(),
+                keywords: "agent agents".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/agents".into(),
+                },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Star map".into(),
+                keywords: "star map memory memories skills graph learning constellation".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/starmap".into(),
+                },
+            },
+        ];
+        for (panel, label, keywords) in [
+            (SESSIONS, "Sessions", "sessions sidebar conversations chats"),
+            (REVIEW, "Review", "review changes"),
+            (
+                FILES,
+                "File browser",
+                "files explorer project right inspector",
+            ),
+            (TERMINAL, "Terminal", "shell command line"),
+        ] {
+            entries.push(CommandPaletteEntry {
+                group: "Commands",
+                label: format!(
+                    "{} {label} panel",
+                    if self.workspace.pane_is_open(panel) {
+                        "Hide"
+                    } else {
+                        "Show"
+                    }
+                ),
+                keywords: keywords.into(),
+                action: RegisteredUiAction::TogglePane {
+                    panel: panel.into(),
+                },
+            });
+        }
+        entries.push(CommandPaletteEntry {
+            group: "Commands",
+            label: format!(
+                "Use {} interface",
+                if self.workspace.preferences.mode == InterfaceMode::Simple {
+                    "Advanced"
+                } else {
+                    "Simple"
+                }
+            ),
+            keywords: "interface mode simple advanced".into(),
+            action: RegisteredUiAction::SetInterfaceMode {
+                mode: if self.workspace.preferences.mode == InterfaceMode::Simple {
+                    InterfaceMode::Advanced
+                } else {
+                    InterfaceMode::Simple
+                },
+            },
+        });
+        for profile_id in self.workspace.profile_ids() {
+            entries.push(CommandPaletteEntry {
+                group: "Layouts",
+                label: format!("Use {} layout", profile_title(profile_id)),
+                keywords: format!("layout profile {}", profile_id.replace('-', " ")),
+                action: RegisteredUiAction::SelectLayoutProfile {
+                    profile_id: profile_id.to_owned(),
+                },
+            });
+        }
+        if !self.command_palette_query.trim().is_empty() {
+            let query = self.command_palette_query.trim();
+            if is_hermes_session_id(query) {
+                entries.push(CommandPaletteEntry {
+                    group: "Go to",
+                    label: format!("Go to session {query}"),
+                    keywords: format!("session id go to {query}"),
+                    action: RegisteredUiAction::OpenSession {
+                        session_id: query.to_owned(),
+                        profile: None,
+                    },
+                });
+            }
+            let session_entry =
+                |session: &SessionSummary, group: &'static str, tag: &str| CommandPaletteEntry {
+                    group,
+                    label: if session.title.trim().is_empty() {
+                        session.id.clone()
+                    } else {
+                        session.title.clone()
+                    },
+                    keywords: format!(
+                        "{tag} chat session {} {} {}",
+                        session.preview,
+                        session.id,
+                        session.profile.as_deref().unwrap_or_default()
+                    ),
+                    action: RegisteredUiAction::OpenSession {
+                        session_id: session.id.clone(),
+                        profile: session.profile.clone(),
+                    },
+                };
+            let pin_order = self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| {
+                    self.workspace
+                        .pinned_session_order(&gateway_pin_order_scope(endpoint))
+                })
+                .unwrap_or_default();
+            let mut pinned_ids = BTreeSet::new();
+            for session_id in pin_order {
+                if let Some(session) = self
+                    .command_palette_sessions
+                    .iter()
+                    .find(|session| session.id == session_id && !session.archived)
+                    && pinned_ids.insert(session.id.clone())
+                {
+                    entries.push(session_entry(session, "Pinned", "pinned"));
+                }
+            }
+            for session in self
+                .command_palette_sessions
+                .iter()
+                .filter(|session| session.pinned && !session.archived)
+            {
+                if pinned_ids.insert(session.id.clone()) {
+                    entries.push(session_entry(session, "Pinned", "pinned"));
+                }
+            }
+            for session in self
+                .command_palette_sessions
+                .iter()
+                .filter(|session| !session.archived && !pinned_ids.contains(&session.id))
+            {
+                entries.push(session_entry(session, "Sessions", ""));
+            }
+            for session in self.archived_sessions.iter().take(200) {
+                entries.push(session_entry(session, "Archived chats", "archived"));
+            }
+        }
+        entries
+    }
+
+    fn command_palette_matches(&self) -> Vec<CommandPaletteEntry> {
+        let mut matches = self
+            .command_palette_entries()
+            .into_iter()
+            .filter_map(|entry| {
+                command_palette_score(&entry.label, &entry.keywords, &self.command_palette_query)
+                    .map(|score| (score, entry))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|(left, _), (right, _)| right.cmp(left));
+        matches.into_iter().map(|(_, entry)| entry).collect()
+    }
+
+    fn close_command_palette(&mut self) {
+        self.command_palette_open = false;
+        self.command_palette_query.clear();
+        self.command_palette_selected_index = 0;
+        self.command_palette_focus_pending = false;
+    }
+
+    fn handle_command_palette_shortcuts(&mut self, ctx: &egui::Context) {
+        let (toggle, escape, up, down, enter) = ctx.input_mut(|input| {
+            #[cfg(target_os = "macos")]
+            let modifier = egui::Modifiers::COMMAND;
+            #[cfg(not(target_os = "macos"))]
+            let modifier = egui::Modifiers::CTRL;
+            let toggle = input
+                .consume_shortcut(&egui::KeyboardShortcut::new(modifier, egui::Key::K))
+                || input.consume_shortcut(&egui::KeyboardShortcut::new(modifier, egui::Key::P));
+            let escape = self.command_palette_open
+                && input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
+            let up = self.command_palette_open
+                && input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp);
+            let down = self.command_palette_open
+                && input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown);
+            let enter = self.command_palette_open
+                && input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+            (toggle, escape, up, down, enter)
+        });
+        if toggle {
+            if self.command_palette_open {
+                self.close_command_palette();
+            } else {
+                self.command_palette_open = true;
+                self.command_palette_query.clear();
+                self.command_palette_selected_index = 0;
+                self.command_palette_focus_pending = true;
+                if self.gateway_connected {
+                    self.load_command_palette_sessions();
+                    self.load_archived_sessions();
+                }
+            }
+            return;
+        }
+        if !self.command_palette_open {
+            return;
+        }
+        if escape {
+            self.close_command_palette();
+            return;
+        }
+        let count = self.command_palette_matches().len();
+        if count > 0 {
+            if up {
+                self.command_palette_selected_index = self
+                    .command_palette_selected_index
+                    .checked_sub(1)
+                    .unwrap_or(count - 1);
+            } else if down {
+                self.command_palette_selected_index =
+                    (self.command_palette_selected_index + 1) % count;
+            }
+            self.command_palette_selected_index =
+                self.command_palette_selected_index.min(count - 1);
+            if enter
+                && let Some(entry) = self
+                    .command_palette_matches()
+                    .get(self.command_palette_selected_index)
+            {
+                let action = entry.action.clone();
+                self.close_command_palette();
+                if let Err(error) = self.execute_registered_action(action) {
+                    self.status = error;
+                }
+            }
+        }
+    }
+
+    fn show_command_palette(&mut self, ctx: &egui::Context) {
+        if !self.command_palette_open {
+            return;
+        }
+        let screen_rect = ctx.content_rect();
+        let clicked_away = egui::Area::new(Id::NULL.with("command-palette-backdrop"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(screen_rect.min)
+            .show(ctx, |ui| {
+                ui.allocate_rect(
+                    Rect::from_min_size(ui.min_rect().min, screen_rect.size()),
+                    egui::Sense::click(),
+                )
+                .clicked()
+            })
+            .inner;
+        if clicked_away {
+            self.close_command_palette();
+            return;
+        }
+        let entries = self.command_palette_matches();
+        self.command_palette_selected_index = if entries.is_empty() {
+            0
+        } else {
+            self.command_palette_selected_index.min(entries.len() - 1)
+        };
+        let mut selected_action = None;
+        egui::Area::new(Id::NULL.with("command-palette"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 12.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(544.0);
+                    let search = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.command_palette_query)
+                                .id_salt("command-palette.search")
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Search sessions, views, and actions"),
+                        )
+                        .accessible_name("Search sessions, views, and actions");
+                    if self.command_palette_focus_pending {
+                        search.request_focus();
+                        self.command_palette_focus_pending = false;
+                    }
+                    if search.changed() {
+                        self.command_palette_selected_index = 0;
+                    }
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .max_height(ctx.content_rect().height().mul_add(0.56, 0.0).min(320.0))
+                        .show(ui, |ui| {
+                            let mut last_group = None;
+                            for (index, entry) in entries.iter().enumerate() {
+                                if last_group != Some(entry.group) {
+                                    ui.add_space(5.0);
+                                    ui.label(
+                                        RichText::new(entry.group.to_uppercase())
+                                            .size(10.0)
+                                            .strong()
+                                            .color(ACCENT),
+                                    );
+                                    last_group = Some(entry.group);
+                                }
+                                let response = ui
+                                    .selectable_label(
+                                        index == self.command_palette_selected_index,
+                                        RichText::new(&entry.label).size(12.0).color(TEXT),
+                                    )
+                                    .accessible_name(entry.label.clone());
+                                if response.hovered() {
+                                    self.command_palette_selected_index = index;
+                                }
+                                if response.clicked() {
+                                    selected_action = Some(entry.action.clone());
+                                }
+                            }
+                            if entries.is_empty() {
+                                ui.label(RichText::new("No results found").color(MUTED));
+                            }
+                        });
+                });
+            });
+        if let Some(action) = selected_action {
+            self.close_command_palette();
+            if let Err(error) = self.execute_registered_action(action) {
+                self.status = error;
+            }
+        }
+    }
+
     fn show_recent_session_switcher(&mut self, ctx: &egui::Context) {
         let Some(switcher) = self
             .recent_session_switcher
@@ -8166,14 +19354,50 @@ fn render_message() -> &'static str {
         let mut load_connectors_after_connect = false;
         let mut load_agent_plugins_after_connect = false;
         let mut load_archived_after_connect = false;
+        let mut load_project_colors_after_connect = false;
+        let mut recover_transcripts_after_connect = false;
+        let mut recover_active_statuses_after_connect = false;
         if !self.gateway_connected {
             if let Some(result) = discovery.poll() {
                 match result {
                     Ok(connection) => {
+                        self.messaging_request_id = None;
+                        self.messaging_pending = false;
+                        self.messaging_platforms = None;
+                        self.messaging_error = None;
+                        self.messaging_action_error = None;
+                        self.messaging_toggle_request = None;
+                        self.messaging_restart_needed = false;
+                        self.messaging_config_edits.clear();
+                        self.messaging_config_save_request = None;
+                        self.messaging_config_saving = false;
+                        self.messaging_config_error = None;
+                        self.messaging_advanced_open = false;
+                        self.messaging_pairing = None;
+                        self.messaging_pairing_request = None;
+                        self.messaging_pairing_error = None;
+                        self.messaging_pairing_mutation = None;
+                        self.messaging_pairing_action_error = None;
+                        self.messaging_pairing_revoke_confirm = None;
+                        self.messaging_selected_platform = None;
+                        self.telegram_setup = None;
+                        self.telegram_setup_status = None;
+                        self.telegram_setup_profile = None;
+                        self.telegram_setup_request = None;
+                        self.telegram_setup_allowlist.clear();
+                        self.telegram_setup_new_user_id.clear();
+                        self.telegram_setup_allowlist_error = None;
+                        self.telegram_setup_error = None;
+                        self.telegram_setup_next_poll = None;
+                        self.telegram_setup_success = None;
+                        self.messaging_gateway_restart = None;
                         self.first_run_setup_visible = false;
                         self.gateway_connected = true;
+                        self.repo_scan_config_error = None;
                         self.status =
                             format!("Gateway connected · {} sessions", connection.sessions.len());
+                        self.session_list_refresh_pending = None;
+                        self.session_list_refresh_again = false;
                         self.gateway_endpoint = Some(connection.endpoint);
                         for view in self.session_chat_views.values_mut() {
                             if view.resume_error.is_some() {
@@ -8188,6 +19412,9 @@ fn render_message() -> &'static str {
                                 .map(|endpoint| endpoint.profile_id.clone());
                         }
                         self.sessions = connection.sessions;
+                        load_project_colors_after_connect = true;
+                        recover_transcripts_after_connect = true;
+                        recover_active_statuses_after_connect = true;
                         if self.show_archived_sessions {
                             load_archived_after_connect = true;
                         }
@@ -8203,6 +19430,36 @@ fn render_message() -> &'static str {
                         }
                     }
                     Err(reason) => {
+                        self.messaging_request_id = None;
+                        self.messaging_pending = false;
+                        self.messaging_platforms = None;
+                        self.messaging_error = None;
+                        self.messaging_action_error = None;
+                        self.messaging_toggle_request = None;
+                        self.messaging_restart_needed = false;
+                        self.messaging_config_edits.clear();
+                        self.messaging_config_save_request = None;
+                        self.messaging_config_saving = false;
+                        self.messaging_config_error = None;
+                        self.messaging_advanced_open = false;
+                        self.messaging_pairing = None;
+                        self.messaging_pairing_request = None;
+                        self.messaging_pairing_error = None;
+                        self.messaging_pairing_mutation = None;
+                        self.messaging_pairing_action_error = None;
+                        self.messaging_pairing_revoke_confirm = None;
+                        self.messaging_selected_platform = None;
+                        self.telegram_setup = None;
+                        self.telegram_setup_status = None;
+                        self.telegram_setup_profile = None;
+                        self.telegram_setup_request = None;
+                        self.telegram_setup_allowlist.clear();
+                        self.telegram_setup_new_user_id.clear();
+                        self.telegram_setup_allowlist_error = None;
+                        self.telegram_setup_error = None;
+                        self.telegram_setup_next_poll = None;
+                        self.telegram_setup_success = None;
+                        self.messaging_gateway_restart = None;
                         self.first_run_setup_visible = true;
                         self.gateway_connected = false;
                         self.status = format!("Backend unavailable: {reason}");
@@ -8249,6 +19506,7 @@ fn render_message() -> &'static str {
                                 SessionSummary {
                                     cwd: None,
                                     id: created.stored_session_id.clone(),
+                                    lineage_root_id: None,
                                     profile: profile.clone(),
                                     title: text.chars().take(72).collect(),
                                     preview: text.chars().take(120).collect(),
@@ -8284,6 +19542,7 @@ fn render_message() -> &'static str {
                                 self.active_session_profile.clone(),
                             ));
                         }
+                        self.broadcast_local_sessions_changed();
                         self.draft = text;
                         if blank_session {
                             self.status = "New Hermes session tab created".into();
@@ -8363,6 +19622,38 @@ fn render_message() -> &'static str {
                             self.older_transcript_request = None;
                             self.older_transcript_error = view.older_transcript_error.clone();
                         }
+                    }
+                }
+                GatewayEvent::ActiveTranscriptRefreshed {
+                    request_id,
+                    session_id,
+                    profile,
+                    endpoint_profile_id,
+                    runtime_session_id,
+                    result,
+                } => {
+                    if self
+                        .active_transcript_refresh
+                        .as_ref()
+                        .is_some_and(|pending| pending.request_id == request_id)
+                    {
+                        self.settle_active_transcript_refresh(
+                            &request_id,
+                            &session_id,
+                            profile,
+                            &endpoint_profile_id,
+                            &runtime_session_id,
+                            result,
+                        );
+                    } else {
+                        self.settle_peer_transcript_refresh(
+                            &request_id,
+                            &session_id,
+                            profile,
+                            &endpoint_profile_id,
+                            &runtime_session_id,
+                            result,
+                        );
                     }
                 }
                 GatewayEvent::PromptSubmitted {
@@ -8467,9 +19758,106 @@ fn render_message() -> &'static str {
                     self.sessions =
                         merge_sessions_by_profile(loaded, std::mem::take(&mut self.sessions));
                     self.session_list_error = None;
+                    self.project_session_color_requests.clear();
+                    self.project_session_color_profiles_loaded.clear();
+                    self.project_list_refreshes.clear();
+                    self.load_project_session_colors();
+                    if self.command_palette_open {
+                        self.load_command_palette_sessions();
+                        self.load_archived_sessions();
+                    }
                 }
                 GatewayEvent::SessionsLoaded(Err(error)) => {
                     self.session_list_error = Some(error);
+                }
+                GatewayEvent::SessionsRefreshed {
+                    request_id,
+                    profile_id,
+                    result,
+                } => self.handle_sessions_refreshed(request_id, profile_id, result),
+                GatewayEvent::CommandPaletteSessionsLoaded { request_id, result } => {
+                    if self.command_palette_sessions_request_id.as_deref() != Some(&request_id) {
+                        continue;
+                    }
+                    self.command_palette_sessions_request_id = None;
+                    match result {
+                        Ok(mut sessions) => {
+                            for session in &mut sessions {
+                                if let Some(live) = self
+                                    .sessions
+                                    .iter()
+                                    .chain(self.archived_sessions.iter())
+                                    .find(|live| {
+                                        live.id == session.id && live.profile == session.profile
+                                    })
+                                {
+                                    session.title.clone_from(&live.title);
+                                    session.pinned = live.pinned;
+                                    session.unread = live.unread;
+                                    session.archived = live.archived;
+                                }
+                            }
+                            self.command_palette_sessions = sessions;
+                            self.command_palette_sessions_error = None;
+                        }
+                        Err(error) => self.command_palette_sessions_error = Some(error),
+                    }
+                }
+                GatewayEvent::ArtifactsLoaded { request_id, result } => {
+                    if self.artifacts_request_id.as_deref() != Some(&request_id) {
+                        continue;
+                    }
+                    self.artifacts_request_id = None;
+                    match result {
+                        Ok(snapshot) => {
+                            self.status = format!(
+                                "Indexed {} artifacts from {} recent sessions",
+                                snapshot.artifacts.len(),
+                                snapshot.session_count
+                            );
+                            self.artifacts = Some(snapshot);
+                            self.artifacts_error = None;
+                        }
+                        Err(error) => {
+                            self.artifacts_error = Some(error.clone());
+                            self.status = format!("Could not index Hermes artifacts: {error}");
+                        }
+                    }
+                }
+                GatewayEvent::ArtifactFileDownloaded { request_id, result } => {
+                    let Some(label) = self.pending_artifact_downloads.remove(&request_id) else {
+                        continue;
+                    };
+                    match result {
+                        Ok(Some(path)) => self.status = format!("Saved {label} to {path}"),
+                        Ok(None) => self.status = format!("Download canceled for {label}"),
+                        Err(error) => self.status = format!("Could not download {label}: {error}"),
+                    }
+                }
+                GatewayEvent::ArtifactImagePreviewLoaded {
+                    request_id,
+                    artifact_id,
+                    result,
+                } => {
+                    if self
+                        .pending_artifact_image_previews
+                        .remove(&request_id)
+                        .as_deref()
+                        != Some(artifact_id.as_str())
+                    {
+                        continue;
+                    }
+                    if !self.artifact_image_previews.contains_key(&artifact_id) {
+                        self.artifact_image_preview_order
+                            .push_back(artifact_id.clone());
+                    }
+                    self.artifact_image_previews.insert(artifact_id, result);
+                    while self.artifact_image_preview_order.len() > 32 {
+                        if let Some(expired) = self.artifact_image_preview_order.pop_front() {
+                            self.artifact_image_previews.remove(&expired);
+                            self.file_previews.forget_remote_image_thumbnail(&expired);
+                        }
+                    }
                 }
                 GatewayEvent::ArchivedSessionsLoaded { request_id, result } => {
                     if self.archived_sessions_request_id.as_deref() != Some(&request_id) {
@@ -8481,6 +19869,7 @@ fn render_message() -> &'static str {
                         Ok(sessions) => {
                             self.archived_sessions = sessions;
                             self.archived_sessions_error = None;
+                            self.load_project_session_colors();
                         }
                         Err(error) => self.archived_sessions_error = Some(error),
                     }
@@ -8499,20 +19888,34 @@ fn render_message() -> &'static str {
                     self.pending_session_pins.remove(&action_key);
                     match result {
                         Ok(()) => {
+                            let order_result = self
+                                .gateway_endpoint
+                                .as_ref()
+                                .map(|endpoint| {
+                                    self.workspace.set_pinned_session_state(
+                                        &gateway_pin_order_scope(endpoint),
+                                        &session_id,
+                                        pinned,
+                                    )
+                                })
+                                .unwrap_or(Ok(()));
                             if let Some(session) = self
                                 .sessions
                                 .iter_mut()
                                 .chain(self.archived_sessions.iter_mut())
+                                .chain(self.command_palette_sessions.iter_mut())
                                 .find(|session| {
                                     session.id == session_id && session.profile == profile
                                 })
                             {
                                 session.pinned = pinned;
                             }
-                            self.status = if pinned {
-                                "Session pinned".into()
-                            } else {
-                                "Session unpinned".into()
+                            self.status = match order_result {
+                                Ok(()) if pinned => "Session pinned".into(),
+                                Ok(()) => "Session unpinned".into(),
+                                Err(error) => format!(
+                                    "Session pin changed, but its local order could not be saved: {error}"
+                                ),
                             };
                         }
                         Err(error) => self.status = error,
@@ -8565,6 +19968,19 @@ fn render_message() -> &'static str {
                     self.pending_session_archives.remove(&action_key);
                     match result {
                         Ok(()) => {
+                            let lifecycle_profile = profile
+                                .clone()
+                                .or_else(|| {
+                                    self.gateway_endpoint
+                                        .as_ref()
+                                        .map(|endpoint| endpoint.profile_id.clone())
+                                })
+                                .unwrap_or_else(|| "default".into());
+                            self.record_project_session_lifecycle(
+                                &lifecycle_profile,
+                                &session_id,
+                                archived,
+                            );
                             if archived {
                                 if let Some(mut session) = self
                                     .sessions
@@ -8575,6 +19991,7 @@ fn render_message() -> &'static str {
                                     .cloned()
                                 {
                                     session.archived = true;
+                                    session.pinned = false;
                                     self.archived_sessions.retain(|row| {
                                         row.id != session_id || row.profile != profile
                                     });
@@ -8603,14 +20020,56 @@ fn render_message() -> &'static str {
                                     self.sessions.insert(0, session);
                                 }
                             }
-                            self.status = if archived {
-                                "Session archived".into()
+                            let pin_order_result = if archived {
+                                self.gateway_endpoint
+                                    .as_ref()
+                                    .map(|endpoint| {
+                                        self.workspace.set_pinned_session_state(
+                                            &gateway_pin_order_scope(endpoint),
+                                            &session_id,
+                                            false,
+                                        )
+                                    })
+                                    .unwrap_or(Ok(()))
                             } else {
-                                "Session restored".into()
+                                Ok(())
+                            };
+                            if let Some(session) =
+                                self.command_palette_sessions.iter_mut().find(|session| {
+                                    session.id == session_id && session.profile == profile
+                                })
+                            {
+                                session.archived = archived;
+                                if archived {
+                                    session.pinned = false;
+                                }
+                            }
+                            self.status = match pin_order_result {
+                                Ok(()) if archived => "Session archived".into(),
+                                Ok(()) => "Session restored".into(),
+                                Err(error) => format!(
+                                    "Session archive state changed, but local pin order could not be saved: {error}"
+                                ),
                             };
                         }
                         Err(error) => self.status = error,
                     }
+                }
+                GatewayEvent::SessionDeleted {
+                    request_id,
+                    session_id,
+                    profile,
+                    result,
+                } => {
+                    self.apply_session_deleted_receipt(request_id, session_id, profile, result);
+                }
+                GatewayEvent::SessionExportLoaded {
+                    request_id,
+                    session_id,
+                    profile,
+                    result,
+                } => {
+                    self.apply_session_export_loaded(request_id, session_id, profile, result);
                 }
                 GatewayEvent::SessionRenamed {
                     request_id,
@@ -8643,6 +20102,7 @@ fn render_message() -> &'static str {
                             }
                             self.rename_session = None;
                             self.status = "Session renamed".into();
+                            self.broadcast_local_sessions_changed();
                         }
                         Err(error) => {
                             if self.runtime_session_renames.contains_key(&action_key)
@@ -8702,6 +20162,1438 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::MessagingPlatformUpdated {
+                    request_id,
+                    profile,
+                    platform_id,
+                    enabled,
+                    result,
+                } => {
+                    let Some((expected_request, expected_id, expected_profile, expected_enabled)) =
+                        self.messaging_toggle_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_request != request_id || expected_id != platform_id {
+                        continue;
+                    }
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    self.messaging_toggle_request = None;
+                    if expected_profile != profile || expected_profile != active_profile {
+                        self.messaging_action_error = Some(
+                            "Channel update belonged to a different Hermes profile; refresh before retrying".into(),
+                        );
+                        continue;
+                    }
+                    if expected_enabled != enabled {
+                        self.messaging_action_error =
+                            Some("Hermes returned a mismatched channel update".into());
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.ok && receipt.platform == platform_id => {
+                            self.messaging_restart_needed = receipt.hot_served != Some(true);
+                            if let Some(platform) =
+                                self.messaging_platforms.as_mut().and_then(|snapshot| {
+                                    snapshot
+                                        .platforms
+                                        .iter_mut()
+                                        .find(|platform| platform.id == platform_id)
+                                })
+                            {
+                                platform.enabled = enabled;
+                                platform.state = Some(if !enabled {
+                                    "disabled".into()
+                                } else if !platform.configured {
+                                    "not_configured".into()
+                                } else if receipt.hot_served == Some(true) {
+                                    "connecting".into()
+                                } else {
+                                    "pending_restart".into()
+                                });
+                            }
+                            self.messaging_action_error = None;
+                            self.status = if receipt.hot_served == Some(true) {
+                                format!("Messaging channel {platform_id} updated live")
+                            } else {
+                                format!(
+                                    "Messaging channel {platform_id} updated; restart Hermes to apply it"
+                                )
+                            };
+                        }
+                        Ok(_) => {
+                            self.messaging_action_error =
+                                Some("Hermes did not confirm the requested channel state".into());
+                        }
+                        Err(error) => self.messaging_action_error = Some(error),
+                    }
+                }
+                GatewayEvent::MessagingPlatformConfigUpdated {
+                    request_id,
+                    profile,
+                    platform_id,
+                    result,
+                } => {
+                    let Some((expected_request, expected_id, expected_profile)) =
+                        self.messaging_config_save_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_request != request_id || expected_id != platform_id {
+                        continue;
+                    }
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    self.messaging_config_save_request = None;
+                    self.messaging_config_saving = false;
+                    if expected_profile != profile || expected_profile != active_profile {
+                        self.messaging_config_error = Some(
+                            "Configuration update belonged to a different Hermes profile; refresh before retrying".into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.ok && receipt.platform == platform_id => {
+                            self.messaging_config_edits.remove(&platform_id);
+                            self.messaging_config_error = None;
+                            self.messaging_restart_needed = receipt.hot_served != Some(true);
+                            self.status = if receipt.hot_served == Some(true) {
+                                format!("Messaging configuration for {platform_id} updated live")
+                            } else {
+                                format!(
+                                    "Messaging configuration for {platform_id} updated; restart Hermes to apply it"
+                                )
+                            };
+                            self.request_messaging_platforms();
+                        }
+                        Ok(_) => {
+                            self.messaging_config_error = Some(
+                                "Hermes did not confirm the channel configuration update".into(),
+                            );
+                        }
+                        Err(error) => self.messaging_config_error = Some(error),
+                    }
+                }
+                GatewayEvent::PairingLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile)) =
+                        self.messaging_pairing_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_request != request_id {
+                        continue;
+                    }
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    self.messaging_pairing_request = None;
+                    if expected_profile != profile || expected_profile != active_profile {
+                        self.messaging_pairing_error = Some(
+                            "Pairing data belonged to a different Hermes profile; refresh before retrying".into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(pairing) => {
+                            self.messaging_pairing = Some(pairing);
+                            self.messaging_pairing_error = None;
+                        }
+                        Err(error) => self.messaging_pairing_error = Some(error),
+                    }
+                }
+                GatewayEvent::PairingMutated {
+                    request_id,
+                    profile,
+                    platform,
+                    user_id,
+                    kind,
+                    result,
+                } => {
+                    let Some((
+                        expected_request,
+                        expected_platform,
+                        expected_user_id,
+                        expected_kind,
+                        expected_profile,
+                    )) = self.messaging_pairing_mutation.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_request != request_id
+                        || expected_platform != platform
+                        || expected_user_id != user_id
+                        || expected_kind != kind
+                    {
+                        continue;
+                    }
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    self.messaging_pairing_mutation = None;
+                    if expected_profile != profile || expected_profile != active_profile {
+                        self.messaging_pairing_action_error = Some(
+                            "Pairing update belonged to a different Hermes profile; refresh before retrying".into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.ok => {
+                            self.messaging_pairing = None;
+                            self.messaging_pairing_action_error = None;
+                            self.status = match kind {
+                                PairingMutationKind::Approve => {
+                                    format!("Approved pairing request for {platform}")
+                                }
+                                PairingMutationKind::Revoke => {
+                                    format!("Revoked paired user from {platform}")
+                                }
+                            };
+                            self.request_messaging_pairing();
+                        }
+                        Ok(_) => {
+                            self.messaging_pairing_action_error =
+                                Some("Hermes did not confirm the pairing update".into());
+                        }
+                        Err(error) => self.messaging_pairing_action_error = Some(error),
+                    }
+                }
+                GatewayEvent::TelegramOnboardingStarted {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.telegram_setup_request.as_ref() else {
+                        continue;
+                    };
+                    if pending.kind != TelegramSetupRequestKind::Start
+                        || pending.request_id != request_id
+                    {
+                        continue;
+                    }
+                    let pending = self.telegram_setup_request.take().expect("pending checked");
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    if pending.profile != profile || pending.profile != active_profile {
+                        self.telegram_setup = None;
+                        self.telegram_setup_status = None;
+                        self.telegram_setup_profile = None;
+                        self.telegram_setup_error = Some(
+                            "Telegram setup belonged to a different Hermes profile; start again"
+                                .into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(setup) => {
+                            self.telegram_setup = Some(setup);
+                            self.telegram_setup_status = None;
+                            self.telegram_setup_next_poll = Some(
+                                std::time::Instant::now() + std::time::Duration::from_millis(1200),
+                            );
+                            self.telegram_setup_error = None;
+                        }
+                        Err(error) => self.telegram_setup_error = Some(error),
+                    }
+                }
+                GatewayEvent::TelegramOnboardingStatusLoaded {
+                    request_id,
+                    pairing_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.telegram_setup_request.as_ref() else {
+                        continue;
+                    };
+                    if pending.kind != TelegramSetupRequestKind::Status
+                        || pending.request_id != request_id
+                        || pending.pairing_id.as_deref() != Some(pairing_id.as_str())
+                    {
+                        continue;
+                    }
+                    let pending = self.telegram_setup_request.take().expect("pending checked");
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    if pending.profile != profile
+                        || pending.profile != active_profile
+                        || self
+                            .telegram_setup
+                            .as_ref()
+                            .map(|setup| setup.pairing_id.as_str())
+                            != Some(pairing_id.as_str())
+                    {
+                        self.cancel_telegram_setup();
+                        self.telegram_setup_error = Some(
+                            "Telegram setup status belonged to a stale profile or session".into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(status) => {
+                            if let TelegramOnboardingStatus::Ready {
+                                owner_user_id: Some(owner),
+                                ..
+                            } = &status
+                                && self.telegram_setup_allowlist.trim().is_empty()
+                            {
+                                self.telegram_setup_allowlist = owner.clone();
+                            }
+                            let is_waiting =
+                                matches!(&status, TelegramOnboardingStatus::Waiting { .. });
+                            self.telegram_setup_status = Some(status);
+                            self.telegram_setup_error = None;
+                            self.telegram_setup_next_poll = is_waiting.then(|| {
+                                std::time::Instant::now() + std::time::Duration::from_secs(2)
+                            });
+                        }
+                        Err(error) if error.contains("expired") => {
+                            self.telegram_setup = None;
+                            self.telegram_setup_status = None;
+                            self.telegram_setup_next_poll = None;
+                            self.telegram_setup_error = Some(error);
+                        }
+                        Err(error) => {
+                            self.telegram_setup_error = Some(error);
+                            self.telegram_setup_next_poll =
+                                Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+                        }
+                    }
+                }
+                GatewayEvent::TelegramOnboardingApplied {
+                    request_id,
+                    pairing_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.telegram_setup_request.as_ref() else {
+                        continue;
+                    };
+                    if pending.kind != TelegramSetupRequestKind::Apply
+                        || pending.request_id != request_id
+                        || pending.pairing_id.as_deref() != Some(pairing_id.as_str())
+                    {
+                        continue;
+                    }
+                    let pending = self.telegram_setup_request.take().expect("pending checked");
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    if pending.profile != profile
+                        || pending.profile != active_profile
+                        || self
+                            .telegram_setup
+                            .as_ref()
+                            .map(|setup| setup.pairing_id.as_str())
+                            != Some(pairing_id.as_str())
+                    {
+                        self.telegram_setup_error = Some(
+                            "Telegram setup result belonged to a stale profile or session".into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.ok && receipt.platform == "telegram" => {
+                            self.complete_telegram_setup(receipt);
+                        }
+                        Ok(_) => {
+                            self.telegram_setup_error =
+                                Some("Hermes did not confirm Telegram bot configuration".into());
+                        }
+                        Err(error) => self.telegram_setup_error = Some(error),
+                    }
+                }
+                GatewayEvent::TelegramOnboardingCanceled {
+                    request_id,
+                    pairing_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.telegram_setup_request.as_ref() else {
+                        continue;
+                    };
+                    if pending.kind != TelegramSetupRequestKind::Cancel
+                        || pending.request_id != request_id
+                        || pending.pairing_id.as_deref() != Some(pairing_id.as_str())
+                    {
+                        continue;
+                    }
+                    let pending = self.telegram_setup_request.take().expect("pending checked");
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    if pending.profile != profile || pending.profile != active_profile {
+                        self.telegram_setup_error =
+                            Some("Telegram setup cancellation belonged to a stale profile".into());
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.ok => {
+                            let expiry_message = self
+                                .telegram_setup_error
+                                .clone()
+                                .filter(|error| error.contains("expired"));
+                            self.clear_telegram_setup();
+                            self.telegram_setup_error = expiry_message;
+                        }
+                        Ok(_) => {
+                            self.telegram_setup_error =
+                                Some("Hermes did not confirm Telegram setup cancellation".into());
+                        }
+                        Err(error) => self.telegram_setup_error = Some(error),
+                    }
+                }
+                GatewayEvent::GatewayRestartStarted {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(state) = self.messaging_gateway_restart.as_ref() else {
+                        continue;
+                    };
+                    if state.start_request_id.as_deref() != Some(request_id.as_str()) {
+                        continue;
+                    }
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    if state.profile != profile || state.profile != active_profile {
+                        if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                            state.start_request_id = None;
+                            state.error =
+                                Some("Gateway restart receipt belonged to a stale profile".into());
+                        }
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.ok => {
+                            if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                                state.start_request_id = None;
+                                state.action_name = Some(receipt.name);
+                                state.next_poll = Some(std::time::Instant::now());
+                                state.error = None;
+                            }
+                        }
+                        Ok(_) => {
+                            if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                                state.start_request_id = None;
+                                state.error =
+                                    Some("Hermes did not accept the gateway restart".into());
+                            }
+                        }
+                        Err(error) => {
+                            if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                                state.start_request_id = None;
+                                state.error = Some(error.clone());
+                            }
+                            self.telegram_setup_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::GatewayActionStatusLoaded {
+                    request_id,
+                    profile,
+                    action_name,
+                    result,
+                } => {
+                    let Some(state) = self.messaging_gateway_restart.as_ref() else {
+                        continue;
+                    };
+                    if state.status_request_id.as_deref() != Some(request_id.as_str())
+                        || state.action_name.as_deref() != Some(action_name.as_str())
+                    {
+                        continue;
+                    }
+                    let expected_profile = state.profile.clone();
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
+                    if expected_profile != profile || expected_profile != active_profile {
+                        if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                            state.status_request_id = None;
+                            state.error =
+                                Some("Gateway action status belonged to a stale profile".into());
+                        }
+                        continue;
+                    }
+                    match result {
+                        Ok(status) if status.name == action_name => {
+                            let attempts = {
+                                let state = self
+                                    .messaging_gateway_restart
+                                    .as_mut()
+                                    .expect("restart state checked");
+                                state.status_request_id = None;
+                                state.attempts = state.attempts.saturating_add(1);
+                                state.attempts
+                            };
+                            if status.running || status.exit_code.is_none() {
+                                if attempts >= 18 {
+                                    if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                                        state.error = Some(
+                                            "Timed out waiting for Hermes gateway restart status"
+                                                .into(),
+                                        );
+                                    }
+                                } else if let Some(state) = self.messaging_gateway_restart.as_mut()
+                                {
+                                    state.next_poll = Some(
+                                        std::time::Instant::now()
+                                            + std::time::Duration::from_millis(1200),
+                                    );
+                                }
+                            } else if status.exit_code == Some(0) {
+                                if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                                    state.completed = Some(true);
+                                    state.error = None;
+                                }
+                                self.messaging_restart_needed = false;
+                                self.telegram_setup_success =
+                                    Some("Telegram bot saved and Hermes gateway restarted.".into());
+                                self.request_messaging_platforms();
+                                self.request_messaging_pairing();
+                            } else {
+                                if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                                    state.completed = Some(false);
+                                    state.error = Some(format!(
+                                        "Gateway restart exited with code {}",
+                                        status.exit_code.unwrap_or_default()
+                                    ));
+                                }
+                                self.messaging_restart_needed = true;
+                            }
+                        }
+                        Ok(_) => {
+                            if let Some(state) = self.messaging_gateway_restart.as_mut() {
+                                state.status_request_id = None;
+                                state.error =
+                                    Some("Hermes returned mismatched gateway action status".into());
+                            }
+                        }
+                        Err(error) => {
+                            let state = self
+                                .messaging_gateway_restart
+                                .as_mut()
+                                .expect("restart state checked");
+                            state.status_request_id = None;
+                            state.attempts = state.attempts.saturating_add(1);
+                            if state.attempts >= 18 {
+                                state.error =
+                                    Some(format!("Could not confirm Hermes restart: {error}"));
+                            } else {
+                                state.next_poll = Some(
+                                    std::time::Instant::now()
+                                        + std::time::Duration::from_millis(1200),
+                                );
+                                state.error = None;
+                            }
+                        }
+                    }
+                }
+                GatewayEvent::CommandCenterSystemLoaded {
+                    request_id,
+                    profile,
+                    log_file,
+                    log_level,
+                    result,
+                } => {
+                    let Some(pending) = self.command_center_system_pending.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile != profile.as_deref().unwrap_or_default()
+                        || pending.log_file != log_file
+                        || pending.log_level != log_level
+                        || pending.generation != self.command_center_system_generation
+                    {
+                        continue;
+                    }
+                    let pending = self
+                        .command_center_system_pending
+                        .take()
+                        .expect("Command Center request was checked");
+                    let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                        endpoint.profile_id == pending.profile
+                            && endpoint.instance_id == pending.endpoint_instance_id
+                            && endpoint.authority_epoch == pending.authority_epoch
+                    });
+                    if !owner_matches {
+                        continue;
+                    }
+                    match result {
+                        Ok(snapshot)
+                            if snapshot.logs.file == pending.log_file
+                                && snapshot.logs.lines.len() <= 200 =>
+                        {
+                            self.command_center_system = Some(CachedCommandCenterSystem {
+                                profile: pending.profile,
+                                endpoint_instance_id: pending.endpoint_instance_id,
+                                authority_epoch: pending.authority_epoch,
+                                log_file: pending.log_file,
+                                log_level: pending.log_level,
+                                snapshot,
+                            });
+                            self.command_center_system_error = None;
+                        }
+                        Ok(_) => {
+                            self.command_center_system_error =
+                                Some("Hermes returned a mismatched system snapshot".into());
+                        }
+                        Err(error) => {
+                            self.command_center_system_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::CommandCenterSystemAction {
+                    request_id,
+                    profile,
+                    operation,
+                    result,
+                } => {
+                    let Some(pending) = self.command_center_system_action_pending.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile != profile.as_deref().unwrap_or_default()
+                        || pending.operation != operation
+                    {
+                        continue;
+                    }
+                    let pending = self
+                        .command_center_system_action_pending
+                        .take()
+                        .expect("Command Center System action request was checked");
+                    let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                        endpoint.profile_id == pending.profile
+                            && endpoint.instance_id == pending.endpoint_instance_id
+                            && endpoint.authority_epoch == pending.authority_epoch
+                    });
+                    if !owner_matches {
+                        continue;
+                    }
+                    match result {
+                        Ok(CommandCenterSystemActionResult::ActionStarted(receipt))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterSystemOperation::StartAction { .. }
+                            ) =>
+                        {
+                            self.command_center_system_action_name = Some(receipt.name.clone());
+                            self.command_center_system_action_owner = Some((
+                                pending.profile,
+                                pending.endpoint_instance_id,
+                                pending.authority_epoch,
+                            ));
+                            self.command_center_system_action_polls = 1;
+                            self.command_center_system_action_status = Some(GatewayActionStatus {
+                                name: receipt.name.clone(),
+                                running: true,
+                                pid: receipt.pid,
+                                exit_code: None,
+                                lines: Vec::new(),
+                            });
+                            self.command_center_system_error = None;
+                            self.request_command_center_system_action(
+                                CommandCenterSystemOperation::LoadActionStatus {
+                                    name: receipt.name,
+                                },
+                            );
+                        }
+                        Ok(CommandCenterSystemActionResult::ActionStatus(status))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterSystemOperation::LoadActionStatus { .. }
+                            ) =>
+                        {
+                            let running = status.running;
+                            self.command_center_system_action_status = Some(status);
+                            self.command_center_system_error = None;
+                            if running && self.command_center_system_action_polls < 18 {
+                                self.command_center_system_next_poll = Some(
+                                    std::time::Instant::now()
+                                        + std::time::Duration::from_millis(1200),
+                                );
+                            } else {
+                                self.command_center_system_next_poll = None;
+                                self.request_command_center_system();
+                            }
+                        }
+                        Ok(_) => {
+                            self.command_center_system_error =
+                                Some("Hermes returned a mismatched System action response".into());
+                            self.command_center_system_next_poll = None;
+                        }
+                        Err(error) => {
+                            self.command_center_system_error = Some(error);
+                            self.command_center_system_next_poll = None;
+                            self.request_command_center_system();
+                        }
+                    }
+                }
+                GatewayEvent::CommandCenterUsageLoaded {
+                    request_id,
+                    profile,
+                    period_days,
+                    result,
+                } => {
+                    let Some(pending) = self.command_center_usage_pending.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile != profile.as_deref().unwrap_or_default()
+                        || pending.period_days != period_days
+                        || pending.generation != self.command_center_usage_generation
+                    {
+                        continue;
+                    }
+                    let pending = self
+                        .command_center_usage_pending
+                        .take()
+                        .expect("Command Center usage request was checked");
+                    let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                        endpoint.profile_id == pending.profile
+                            && endpoint.instance_id == pending.endpoint_instance_id
+                            && endpoint.authority_epoch == pending.authority_epoch
+                    });
+                    if !owner_matches {
+                        continue;
+                    }
+                    match result {
+                        Ok(snapshot)
+                            if snapshot.period_days == pending.period_days
+                                && snapshot.daily.len() <= pending.period_days =>
+                        {
+                            self.command_center_usage = Some(CachedCommandCenterUsage {
+                                profile: pending.profile,
+                                endpoint_instance_id: pending.endpoint_instance_id,
+                                authority_epoch: pending.authority_epoch,
+                                snapshot,
+                            });
+                            self.command_center_usage_error = None;
+                        }
+                        Ok(_) => {
+                            self.command_center_usage_error =
+                                Some("Hermes returned a mismatched usage snapshot".into());
+                        }
+                        Err(error) => {
+                            self.command_center_usage_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::CommandCenterMaintenance {
+                    request_id,
+                    profile,
+                    operation,
+                    result,
+                } => {
+                    let Some(pending) = self.command_center_maintenance_pending.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile != profile.as_deref().unwrap_or_default()
+                        || pending.operation != operation
+                    {
+                        continue;
+                    }
+                    let pending = self
+                        .command_center_maintenance_pending
+                        .take()
+                        .expect("Command Center Maintenance request was checked");
+                    let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                        endpoint.profile_id == pending.profile
+                            && endpoint.instance_id == pending.endpoint_instance_id
+                            && endpoint.authority_epoch == pending.authority_epoch
+                    });
+                    if !owner_matches {
+                        self.command_center_maintenance_error = Some(
+                            "Ignored Maintenance response from a changed Hermes profile.".into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(CommandCenterMaintenanceResult::Snapshot(snapshot))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterMaintenanceOperation::LoadSnapshot
+                            ) =>
+                        {
+                            self.command_center_maintenance =
+                                Some(CachedCommandCenterMaintenance {
+                                    profile: pending.profile,
+                                    endpoint_instance_id: pending.endpoint_instance_id,
+                                    authority_epoch: pending.authority_epoch,
+                                    snapshot,
+                                });
+                            self.command_center_maintenance_error = None;
+                        }
+                        Ok(CommandCenterMaintenanceResult::ActionStarted(receipt))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterMaintenanceOperation::StartAction { .. }
+                            ) =>
+                        {
+                            self.command_center_maintenance_action_name =
+                                Some(receipt.name.clone());
+                            self.command_center_maintenance_action_owner = Some((
+                                pending.profile,
+                                pending.endpoint_instance_id,
+                                pending.authority_epoch,
+                            ));
+                            self.command_center_maintenance_action_polls = 1;
+                            self.command_center_maintenance_action_status = None;
+                            self.command_center_maintenance_error = None;
+                            self.command_center_maintenance_notice =
+                                Some(format!("{} started", receipt.name));
+                            self.request_command_center_maintenance_action_status(receipt.name);
+                        }
+                        Ok(CommandCenterMaintenanceResult::ActionStatus(status))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterMaintenanceOperation::LoadActionStatus { .. }
+                            ) =>
+                        {
+                            let expected_name = match &pending.operation {
+                                CommandCenterMaintenanceOperation::LoadActionStatus { name } => {
+                                    name
+                                }
+                                _ => unreachable!(),
+                            };
+                            if status.name != *expected_name || status.lines.len() > 200 {
+                                self.command_center_maintenance_next_poll = None;
+                                self.command_center_maintenance_error = Some(
+                                    "Hermes returned a mismatched maintenance action status."
+                                        .into(),
+                                );
+                                continue;
+                            }
+                            let running = status.running;
+                            self.command_center_maintenance_action_status = Some(status);
+                            self.command_center_maintenance_error = None;
+                            self.command_center_maintenance_next_poll = if running
+                                && self.command_center_maintenance_action_polls < 240
+                            {
+                                Some(
+                                    std::time::Instant::now()
+                                        + std::time::Duration::from_millis(1200),
+                                )
+                            } else {
+                                if running {
+                                    self.command_center_maintenance_error = Some(
+                                        "Stopped polling after five minutes; the action may still be running.".into(),
+                                    );
+                                }
+                                None
+                            };
+                        }
+                        Ok(CommandCenterMaintenanceResult::CuratorPaused(receipt))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterMaintenanceOperation::SetCuratorPaused { .. }
+                            ) =>
+                        {
+                            if let Some(cached) = self.command_center_maintenance.as_mut() {
+                                if let Ok(curator) = &mut cached.snapshot.curator {
+                                    curator.paused = receipt.paused;
+                                }
+                            }
+                            self.command_center_maintenance_notice = Some(if receipt.paused {
+                                "Curator paused".into()
+                            } else {
+                                "Curator resumed".into()
+                            });
+                            self.command_center_maintenance_error = None;
+                        }
+                        Ok(CommandCenterMaintenanceResult::MemoryReset(receipt))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterMaintenanceOperation::ResetMemory { .. }
+                            ) =>
+                        {
+                            self.command_center_maintenance_notice =
+                                Some(if receipt.deleted.is_empty() {
+                                    "No memory files were present to reset.".into()
+                                } else {
+                                    format!("Reset {}", receipt.deleted.join(", "))
+                                });
+                            self.command_center_maintenance_error = None;
+                            self.request_command_center_maintenance_snapshot();
+                        }
+                        Ok(CommandCenterMaintenanceResult::DebugShare(receipt))
+                            if matches!(
+                                pending.operation,
+                                CommandCenterMaintenanceOperation::DebugShare
+                            ) =>
+                        {
+                            self.command_center_maintenance_share = Some(receipt);
+                            self.command_center_maintenance_notice =
+                                Some("Debug share completed".into());
+                            self.command_center_maintenance_error = None;
+                        }
+                        Ok(_) => {
+                            self.command_center_maintenance_error =
+                                Some("Hermes returned a mismatched Maintenance response.".into());
+                            self.command_center_maintenance_next_poll = None;
+                        }
+                        Err(error) => {
+                            self.command_center_maintenance_error = Some(error);
+                            self.command_center_maintenance_next_poll = None;
+                        }
+                    }
+                }
+                GatewayEvent::MessagingPlatformsLoaded {
+                    request_id,
+                    profile: _,
+                    result,
+                } => {
+                    if self.messaging_request_id.as_deref() != Some(&request_id) {
+                        continue;
+                    }
+                    self.messaging_request_id = None;
+                    self.messaging_pending = false;
+                    match result {
+                        Ok(snapshot) => {
+                            if self
+                                .messaging_selected_platform
+                                .as_ref()
+                                .is_some_and(|id| !snapshot.platforms.iter().any(|p| &p.id == id))
+                            {
+                                self.messaging_selected_platform = None;
+                            }
+                            self.messaging_platforms = Some(snapshot);
+                            self.messaging_error = None;
+                        }
+                        Err(error) => self.messaging_error = Some(error),
+                    }
+                }
+                GatewayEvent::CronJobsLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile)) =
+                        self.cron_jobs_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_jobs_request = None;
+                    match result {
+                        Ok(jobs) => {
+                            if self
+                                .cron_selected_job_id
+                                .as_ref()
+                                .is_some_and(|selected| !jobs.iter().any(|job| &job.id == selected))
+                            {
+                                self.cron_selected_job_id = None;
+                            }
+                            let settled = self
+                                .cron_stop_waiting
+                                .iter()
+                                .filter_map(|(job_id, (_, execution_id))| {
+                                    let job = jobs.iter().find(|job| &job.id == job_id);
+                                    cron_stop_outcome(job, execution_id.as_deref())
+                                        .map(|outcome| (job_id.clone(), outcome))
+                                })
+                                .collect::<Vec<_>>();
+                            for (job_id, outcome) in settled {
+                                self.cron_stop_waiting.remove(&job_id);
+                                let message = if outcome == "cancelled" {
+                                    "Run stopped."
+                                } else {
+                                    "Run finished before Stop completed."
+                                };
+                                self.cron_notice = Some((job_id, message.into()));
+                            }
+                            self.cron_jobs = Some(jobs);
+                            self.cron_jobs_error = None;
+                        }
+                        Err(error) => self.cron_jobs_error = Some(error),
+                    }
+                }
+                GatewayEvent::CronDeliveryTargetsLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile)) =
+                        self.cron_delivery_targets_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_delivery_targets_request = None;
+                    match result {
+                        Ok(targets) => {
+                            self.cron_delivery_targets = Some(targets);
+                            self.cron_delivery_targets_error = None;
+                        }
+                        Err(error) => self.cron_delivery_targets_error = Some(error),
+                    }
+                }
+                GatewayEvent::ModelOptionsLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile)) =
+                        self.cron_model_options_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_model_options_request = None;
+                    match result {
+                        Ok(snapshot) => {
+                            self.cron_model_options = Some(snapshot);
+                            self.cron_model_options_error = None;
+                        }
+                        Err(error) => self.cron_model_options_error = Some(error),
+                    }
+                }
+                GatewayEvent::CronBlueprintsLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile)) =
+                        self.cron_blueprints_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_blueprints_request = None;
+                    match result {
+                        Ok(blueprints) => {
+                            self.cron_blueprints = Some(blueprints);
+                            self.cron_blueprints_error = None;
+                        }
+                        Err(error) => self.cron_blueprints_error = Some(error),
+                    }
+                }
+                GatewayEvent::CronBlueprintInstantiated {
+                    request_id,
+                    profile,
+                    blueprint,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile, expected_blueprint)) =
+                        self.cron_blueprint_instantiate_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || expected_blueprint != &blueprint
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_blueprint_instantiate_request = None;
+                    match result {
+                        Ok(job) if !job.id.trim().is_empty() => {
+                            let jobs = self.cron_jobs.get_or_insert_with(Vec::new);
+                            if let Some(existing) = jobs.iter_mut().find(|row| row.id == job.id) {
+                                *existing = job.clone();
+                            } else {
+                                jobs.push(job.clone());
+                            }
+                            self.cron_selected_job_id = Some(job.id.clone());
+                            self.cron_editor = None;
+                            self.cron_notice = Some((job.id, "Scheduled job created.".into()));
+                        }
+                        Ok(_) => {
+                            if let Some(editor) = self.cron_editor.as_mut() {
+                                editor.error =
+                                    Some("Hermes returned an invalid scheduled job.".into());
+                            }
+                        }
+                        Err(error) => {
+                            if let Some(editor) = self.cron_editor.as_mut() {
+                                editor.error = Some(error);
+                            }
+                        }
+                    }
+                }
+                GatewayEvent::CronJobCreated {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile, expected_job)) =
+                        self.cron_editor_save_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || expected_job.is_some()
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_editor_save_request = None;
+                    match result {
+                        Ok(job) if !job.id.trim().is_empty() => {
+                            let jobs = self.cron_jobs.get_or_insert_with(Vec::new);
+                            if let Some(existing) = jobs.iter_mut().find(|row| row.id == job.id) {
+                                *existing = job.clone();
+                            } else {
+                                jobs.push(job.clone());
+                            }
+                            self.cron_selected_job_id = Some(job.id);
+                            self.cron_editor = None;
+                            self.cron_notice = Some((
+                                self.cron_selected_job_id.clone().unwrap_or_default(),
+                                "Scheduled job created.".into(),
+                            ));
+                        }
+                        Ok(_) => {
+                            if let Some(editor) = self.cron_editor.as_mut() {
+                                editor.error =
+                                    Some("Hermes returned an invalid scheduled job.".into());
+                            }
+                        }
+                        Err(error) => {
+                            if let Some(editor) = self.cron_editor.as_mut() {
+                                editor.error = Some(error);
+                            }
+                        }
+                    }
+                }
+                GatewayEvent::CronJobUpdated {
+                    request_id,
+                    profile,
+                    job_id,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile, expected_job)) =
+                        self.cron_editor_save_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || expected_job.as_deref() != Some(job_id.as_str())
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_editor_save_request = None;
+                    match result {
+                        Ok(job) if job.id == job_id => {
+                            if let Some(jobs) = self.cron_jobs.as_mut()
+                                && let Some(existing) = jobs.iter_mut().find(|row| row.id == job_id)
+                            {
+                                *existing = job;
+                            }
+                            self.cron_editor = None;
+                            self.cron_job_runs_owner = None;
+                            self.cron_job_runs = None;
+                            self.cron_job_runs_error = None;
+                            self.cron_notice = Some((job_id, "Scheduled job updated.".into()));
+                        }
+                        Ok(_) => {
+                            if let Some(editor) = self.cron_editor.as_mut() {
+                                editor.error =
+                                    Some("Hermes returned a different scheduled job.".into());
+                            }
+                        }
+                        Err(error) => {
+                            if let Some(editor) = self.cron_editor.as_mut() {
+                                editor.error = Some(error);
+                            }
+                        }
+                    }
+                }
+                GatewayEvent::CronJobDeleted {
+                    request_id,
+                    profile,
+                    job_id,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile, expected_job)) =
+                        self.cron_delete_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || expected_job != &job_id
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_delete_request = None;
+                    match result {
+                        Ok(receipt) if receipt.ok => {
+                            if let Some(jobs) = self.cron_jobs.as_mut() {
+                                jobs.retain(|job| job.id != job_id);
+                            }
+                            if self.cron_selected_job_id.as_deref() == Some(job_id.as_str()) {
+                                self.cron_selected_job_id = None;
+                            }
+                            self.cron_delete_confirmation = None;
+                            self.cron_delete_error = None;
+                            self.cron_job_runs_owner = None;
+                            self.cron_job_runs = None;
+                            self.cron_job_runs_error = None;
+                            self.cron_notice = Some((job_id, "Scheduled job deleted.".into()));
+                        }
+                        Ok(_) => {
+                            self.cron_delete_error =
+                                Some("Hermes did not confirm Scheduled Job deletion".into())
+                        }
+                        Err(error) => self.cron_delete_error = Some(error),
+                    }
+                }
+                GatewayEvent::CronJobRunsLoaded {
+                    request_id,
+                    profile,
+                    job_id,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile, expected_job)) =
+                        self.cron_job_runs_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || expected_job != &job_id
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_job_runs_request = None;
+                    match result {
+                        Ok(runs) => {
+                            self.observe_queued_cron_run(&job_id, &runs);
+                            self.cron_job_runs = Some(runs);
+                            self.cron_job_runs_owner = Some((profile, job_id));
+                            self.cron_job_runs_error = None;
+                        }
+                        Err(error) => {
+                            self.observe_queued_cron_run(&job_id, &[]);
+                            self.cron_job_runs_owner = Some((profile, job_id));
+                            self.cron_job_runs_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::CronJobTriggered {
+                    request_id,
+                    profile,
+                    job_id,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile, _)) =
+                        self.cron_trigger_requests.get(&job_id)
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_trigger_requests.remove(&job_id);
+                    match result {
+                        Ok(job) if job.id == job_id => {
+                            let run_was_cancelled = job
+                                .latest_execution
+                                .as_ref()
+                                .is_some_and(|execution| execution.status == "cancelled");
+                            if let Some(jobs) = self.cron_jobs.as_mut()
+                                && let Some(current) = jobs.iter_mut().find(|row| row.id == job_id)
+                            {
+                                *current = job;
+                            }
+                            self.cron_trigger_errors.remove(&job_id);
+                            if !run_was_cancelled {
+                                self.cron_notice = Some((job_id.clone(), "Run finished.".into()));
+                            }
+                            self.cron_job_runs_owner = None;
+                            self.cron_job_runs = None;
+                            self.cron_job_runs_error = None;
+                            self.request_cron_jobs();
+                        }
+                        Ok(_) => {
+                            self.cron_trigger_errors.insert(
+                                job_id,
+                                "Hermes returned a different scheduled job.".into(),
+                            );
+                        }
+                        Err(error) => {
+                            self.cron_trigger_errors.insert(job_id, error);
+                        }
+                    }
+                }
+                GatewayEvent::CronJobRunCancelled {
+                    request_id,
+                    profile,
+                    job_id,
+                    result,
+                } => {
+                    let Some((expected_request, expected_profile)) =
+                        self.cron_cancel_requests.get(&job_id)
+                    else {
+                        continue;
+                    };
+                    if expected_request != &request_id
+                        || expected_profile != &profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_cancel_requests.remove(&job_id);
+                    match result {
+                        Ok(receipt) if receipt.job_id == job_id && receipt.cancelled => {
+                            self.cron_stop_waiting
+                                .insert(job_id.clone(), (profile, receipt.execution_id));
+                            self.cron_notice = Some((job_id, "Stopping…".into()));
+                            self.cron_next_live_poll = Some(std::time::Instant::now());
+                            self.request_cron_jobs();
+                        }
+                        Ok(receipt) if receipt.job_id == job_id => {
+                            self.cron_notice = Some((
+                                job_id,
+                                receipt.detail.unwrap_or_else(|| "Nothing to stop.".into()),
+                            ));
+                        }
+                        Ok(_) => {
+                            self.cron_notice =
+                                Some((job_id, "Hermes returned a different scheduled job.".into()));
+                        }
+                        Err(error) => self.cron_notice = Some((job_id, error)),
+                    }
+                }
+                GatewayEvent::CronJobPauseChanged {
+                    request_id,
+                    profile,
+                    job_id,
+                    paused,
+                    result,
+                } => {
+                    let Some((
+                        expected_request,
+                        expected_profile,
+                        expected_job_id,
+                        expected_paused,
+                    )) = self.cron_job_mutation.clone()
+                    else {
+                        continue;
+                    };
+                    if request_id != expected_request
+                        || profile != expected_profile
+                        || job_id != expected_job_id
+                        || paused != expected_paused
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        continue;
+                    }
+                    self.cron_job_mutation = None;
+                    match result {
+                        Ok(job) if job.id == job_id => {
+                            if let Some(jobs) = self.cron_jobs.as_mut()
+                                && let Some(current) = jobs.iter_mut().find(|row| row.id == job_id)
+                            {
+                                *current = job;
+                            }
+                            self.cron_job_mutation_error = None;
+                            self.request_cron_jobs();
+                        }
+                        Ok(_) => {
+                            self.cron_job_mutation_error =
+                                Some("Hermes returned a different scheduled job.".into());
+                        }
+                        Err(error) => self.cron_job_mutation_error = Some(error),
+                    }
+                }
                 GatewayEvent::CapabilitiesLoaded { request_id, result } => {
                     if self.route != AppRoute::Capabilities
                         || self.capabilities_request_id.as_deref() != Some(&request_id)
@@ -8742,6 +21634,112 @@ fn render_message() -> &'static str {
                             self.timestamps_enabled = enabled;
                         }
                     }
+                }
+                GatewayEvent::RepoScanConfigLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile)) =
+                        self.repo_scan_config_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_id != request_id {
+                        continue;
+                    }
+                    let current_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.as_str());
+                    if profile.as_deref() != Some(expected_profile.as_str())
+                        || current_profile != Some(expected_profile.as_str())
+                    {
+                        self.repo_scan_config_request = None;
+                        self.repo_scan_config = None;
+                        self.repo_scan_config_profile = None;
+                        continue;
+                    }
+                    self.repo_scan_config_request = None;
+                    match result {
+                        Ok(policy) => {
+                            let should_start = self.repo_scan_project_context_active();
+                            self.repo_scan_enabled_draft = policy.enabled;
+                            self.repo_scan_roots_draft = policy.roots.join("\n");
+                            self.repo_scan_excludes_draft = policy.exclude_paths.join("\n");
+                            self.repo_scan_config = Some(policy.clone());
+                            self.repo_scan_config_profile = Some(expected_profile.clone());
+                            self.repo_scan_config_error = None;
+                            if should_start {
+                                self.start_repo_discovery_for_profile(
+                                    expected_profile,
+                                    policy,
+                                    false,
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            self.status =
+                                format!("Could not load repository discovery settings: {error}");
+                            self.repo_scan_config_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::RepoScanConfigSaved {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile, requested_policy)) =
+                        self.repo_scan_config_save_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_id != request_id {
+                        continue;
+                    }
+                    let current_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.as_str());
+                    if profile.as_deref() != Some(expected_profile.as_str())
+                        || current_profile != Some(expected_profile.as_str())
+                    {
+                        self.repo_scan_config_save_request = None;
+                        self.repo_scan_config = None;
+                        self.repo_scan_config_profile = None;
+                        self.repo_scan_config_error = None;
+                        self.status = "A workspace settings save settled for the previous profile; reload that profile to confirm the stored value.".into();
+                        continue;
+                    }
+                    self.repo_scan_config_save_request = None;
+                    match result {
+                        Ok(policy) => {
+                            let changed = self.repo_scan_config.as_ref() != Some(&policy);
+                            self.repo_scan_enabled_draft = policy.enabled;
+                            self.repo_scan_roots_draft = policy.roots.join("\n");
+                            self.repo_scan_excludes_draft = policy.exclude_paths.join("\n");
+                            self.repo_scan_config = Some(policy.clone());
+                            self.repo_scan_config_profile = Some(expected_profile.clone());
+                            self.repo_scan_config_error = None;
+                            self.status = "Workspace repository discovery settings saved".into();
+                            if changed || requested_policy != policy {
+                                self.start_repo_discovery_for_profile(
+                                    expected_profile,
+                                    policy,
+                                    true,
+                                );
+                            }
+                        }
+                        Err(error) => self.repo_scan_config_error = Some(error),
+                    }
+                }
+                GatewayEvent::RepoDiscoveryCompleted {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    self.settle_repo_discovery(&request_id, &profile, result);
                 }
                 GatewayEvent::AgentPluginsLoaded {
                     request_id,
@@ -8796,6 +21794,61 @@ fn render_message() -> &'static str {
                         }
                         Err(error) => self.agent_plugins_error = Some(error),
                     }
+                }
+                GatewayEvent::ProjectSessionColorsLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    self.settle_project_session_colors(&request_id, profile, result);
+                }
+                GatewayEvent::ProjectTreeLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    self.settle_project_tree(&request_id, &profile, result);
+                }
+                GatewayEvent::ProjectListLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    self.settle_project_list(&request_id, &profile, result);
+                }
+                GatewayEvent::BotRosterLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    self.settle_bot_roster(&request_id, &profile, result);
+                }
+                GatewayEvent::ProjectDeleted {
+                    request_id,
+                    project_id,
+                    profile,
+                    result,
+                } => {
+                    self.settle_project_delete(&request_id, &project_id, &profile, result);
+                }
+                GatewayEvent::ProjectSessionsLoaded {
+                    request_id,
+                    project_id,
+                    profile,
+                    result,
+                } => {
+                    if self.project_preview_refreshes.contains_key(&request_id) {
+                        self.settle_project_preview(&request_id, &project_id, &profile, result);
+                    } else {
+                        self.settle_project_sessions(&request_id, &project_id, &profile, result);
+                    }
+                }
+                GatewayEvent::ActiveSessionStatusesLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    self.settle_active_session_statuses(&request_id, &profile, result);
                 }
                 GatewayEvent::AgentPluginAutoUpdateLoaded {
                     request_id,
@@ -9262,9 +22315,38 @@ fn render_message() -> &'static str {
                     }
                 }
                 GatewayEvent::Disconnected(error) => {
+                    self.reset_messaging_state();
+                    let mut repo_scan_uncertainty = Vec::new();
+                    let disconnected_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.clone());
                     self.gateway_connected = false;
+                    self.bot_roster_refresh = None;
+                    self.active_status_refresh = None;
+                    self.active_status_refresh_again = false;
+                    if let Some(profile) = disconnected_profile {
+                        self.active_session_statuses
+                            .retain(|(owner, _), _| owner != &profile);
+                    }
+                    self.project_session_color_requests.clear();
+                    self.project_session_color_profiles_loaded.clear();
                     self.timestamps_config_request = None;
                     self.timestamps_config_profile = None;
+                    self.repo_scan_config_request = None;
+                    if self.repo_scan_config_save_request.take().is_some() {
+                        let note = "workspace settings save outcome is unknown; reload the profile before retrying";
+                        self.repo_scan_config_error = Some(note.into());
+                        repo_scan_uncertainty.push(note);
+                    }
+                    if self.repo_scan_discovery_request.take().is_some() {
+                        repo_scan_uncertainty.push("repository discovery outcome is unknown; refresh the project view to reconcile");
+                    }
+                    self.repo_scan_config = None;
+                    self.repo_scan_config_profile = None;
+                    self.repo_scan_completed_policy = None;
+                    self.repo_scan_last_started_at = None;
+                    self.repo_scan_generation.fetch_add(1, Ordering::AcqRel);
                     if let Some(pending) = self.pending_catalog_plugin_install.take() {
                         self.uncertain_catalog_plugin_installs
                             .insert(pending.catalog_name.clone());
@@ -9287,6 +22369,11 @@ fn render_message() -> &'static str {
                     }
                     self.archived_sessions_request_id = None;
                     self.archived_sessions_loading = false;
+                    self.pending_session_deletes.clear();
+                    self.pending_session_exports.clear();
+                    self.command_center_delete_confirmation = None;
+                    self.command_center_system_action_pending = None;
+                    self.command_center_system_next_poll = None;
                     self.pending_interrupt = None;
                     for prompt in self.approval_prompts.values_mut() {
                         prompt.response_pending = None;
@@ -9301,6 +22388,7 @@ fn render_message() -> &'static str {
                     }
                     self.session_search_pending = false;
                     self.session_search_request_id = None;
+                    self.command_palette_sessions_request_id = None;
                     self.capabilities_pending = false;
                     self.capabilities_request_id = None;
                     self.agent_plugins_pending = false;
@@ -9336,7 +22424,11 @@ fn render_message() -> &'static str {
                             "Plugin uninstall outcome unknown after gateway disconnect; refresh the inventory".into(),
                         );
                     }
-                    self.status = error;
+                    self.status = if repo_scan_uncertainty.is_empty() {
+                        error
+                    } else {
+                        format!("{error} · {}", repo_scan_uncertainty.join("; "))
+                    };
                 }
             }
         }
@@ -9351,6 +22443,16 @@ fn render_message() -> &'static str {
         if load_agent_plugins_after_connect {
             self.load_agent_plugins()
                 .unwrap_or_else(|error| self.agent_plugins_error = Some(error));
+        }
+        if load_project_colors_after_connect {
+            self.load_project_session_colors();
+            self.load_project_list(true);
+        }
+        if recover_transcripts_after_connect {
+            self.refresh_open_session_transcripts();
+        }
+        if recover_active_statuses_after_connect {
+            self.request_active_session_statuses();
         }
         self.sync_display_timestamps_config();
         if load_archived_after_connect {
@@ -9430,6 +22532,65 @@ fn merge_older_transcript_page(
     merged.extend(older.into_iter().take(older_prefix_len));
     merged.extend(current);
     merged
+}
+
+fn merge_refreshed_transcript_tail(
+    refreshed: Vec<serde_json::Value>,
+    current: Vec<serde_json::Value>,
+    complete_snapshot: bool,
+) -> Result<Vec<serde_json::Value>, String> {
+    if refreshed.is_empty() && !current.is_empty() {
+        return Err("Hermes returned an empty transcript over loaded messages".into());
+    }
+    if current.is_empty() {
+        return Ok(refreshed);
+    }
+    if refreshed.is_empty() {
+        return Ok(current);
+    }
+    if let Some(start) = current
+        .windows(refreshed.len())
+        .position(|window| window == refreshed.as_slice())
+        && start + refreshed.len() == current.len()
+    {
+        return Ok(current);
+    }
+    if complete_snapshot
+        && refreshed
+            .windows(current.len())
+            .any(|window| window == current.as_slice())
+    {
+        return Ok(refreshed);
+    }
+    let overlap = (1..=refreshed.len().min(current.len()))
+        .rev()
+        .find(|length| current[current.len() - length..] == refreshed[..*length])
+        .unwrap_or(0);
+    if overlap == 0 {
+        return Err("Hermes transcript refresh has no safe overlap with the loaded history".into());
+    }
+    let mut merged = Vec::with_capacity(current.len() + refreshed.len() - overlap);
+    let historical_prefix_len = current.len() - overlap;
+    merged.extend(current.into_iter().take(historical_prefix_len));
+    merged.extend(refreshed);
+    Ok(merged)
+}
+
+fn transcript_contains_local_pending_or_error(transcript: &[serde_json::Value]) -> bool {
+    transcript.iter().any(|message| {
+        message.get("pending").and_then(|value| value.as_bool()) == Some(true)
+            || message.get("local").and_then(|value| value.as_bool()) == Some(true)
+            || message.get("error").is_some_and(|value| !value.is_null())
+    })
+}
+
+fn transcript_fingerprint(transcript: &[serde_json::Value]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for message in transcript {
+        hasher.update(message.to_string().as_bytes());
+        hasher.update([0]);
+    }
+    hasher.finalize().into()
 }
 
 fn apply_stream_event_to_transcript(
@@ -9537,6 +22698,25 @@ fn transcript_timestamp(message: &serde_json::Value) -> Option<(f64, Option<f64>
         .and_then(json_epoch_seconds)
         .filter(|completed| *completed > started);
     Some((started, completed))
+}
+
+fn format_artifact_timestamp(timestamp_ms: i64) -> String {
+    use time::{OffsetDateTime, UtcOffset};
+    if timestamp_ms <= 0 {
+        return "Unknown date".into();
+    }
+    let Ok(instant) =
+        OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_ms) * 1_000_000)
+    else {
+        return "Unknown date".into();
+    };
+    let local_offset = UtcOffset::local_offset_at(instant).unwrap_or(UtcOffset::UTC);
+    let format =
+        time::format_description::parse_borrowed::<2>("[month repr:short] [day] [hour]:[minute]")
+            .ok();
+    format
+        .and_then(|format| instant.to_offset(local_offset).format(&format).ok())
+        .unwrap_or_else(|| "Unknown date".into())
 }
 
 fn format_timeline_range(start: f64, end: Option<f64>) -> String {
@@ -9819,8 +22999,482 @@ fn stage_clarify_answer(prompt: &mut ClarifyPrompt, answer: &str) {
     }
 }
 
+fn gateway_pin_order_scope(endpoint: &GatewayEndpoint) -> String {
+    format!(
+        "{}|{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        endpoint.instance_id
+    )
+}
+
+fn sidebar_recent_order_scope(endpoint: &GatewayEndpoint) -> String {
+    format!(
+        "{}|profile:{}",
+        gateway_pin_order_scope(endpoint),
+        endpoint.profile_id
+    )
+}
+
+#[derive(Clone, Debug)]
+struct RecentSessionDateGroup {
+    key: String,
+    label: Option<String>,
+    sessions: Vec<SessionSummary>,
+}
+
+fn local_date_for_session_timestamp(
+    timestamp: f64,
+    fallback_offset: time::UtcOffset,
+) -> Option<time::Date> {
+    let nanos = (timestamp * 1_000_000_000.0) as i128;
+    let utc = time::OffsetDateTime::from_unix_timestamp_nanos(nanos).ok()?;
+    let offset = time::UtcOffset::local_offset_at(utc).unwrap_or(fallback_offset);
+    Some((utc.to_offset(offset) - time::Duration::hours(4)).date())
+}
+
+fn sidebar_date_bucket(
+    timestamp: f64,
+    now_seconds: f64,
+    fallback_offset: time::UtcOffset,
+    week_starts_on: u8,
+) -> (String, String) {
+    let Some(nominal) = local_date_for_session_timestamp(timestamp, fallback_offset) else {
+        return ("today".into(), "Earlier today".into());
+    };
+    let Some(today) = local_date_for_session_timestamp(now_seconds, fallback_offset) else {
+        return ("today".into(), "Earlier today".into());
+    };
+    let day_diff = (today - nominal).whole_days();
+    if day_diff <= 0 {
+        return ("today".into(), "Earlier today".into());
+    }
+    if day_diff == 1 {
+        return ("yesterday".into(), "Yesterday".into());
+    }
+
+    let today_weekday = i64::from(today.weekday().number_days_from_sunday());
+    let start_back = (today_weekday - i64::from(week_starts_on) + 7) % 7;
+    let week_start = today - time::Duration::days(start_back);
+    if nominal >= week_start {
+        return ("this-week".into(), "Earlier this week".into());
+    }
+    if nominal >= week_start - time::Duration::days(7) {
+        return ("last-week".into(), "Last week".into());
+    }
+
+    let month_name = format!("{:?}", nominal.month());
+    if nominal.year() == today.year() && nominal.month() == today.month() {
+        return ("this-month".into(), "Earlier this month".into());
+    }
+    if nominal.year() == today.year() {
+        (
+            format!("month-{}-{}", nominal.year(), u8::from(nominal.month())),
+            month_name,
+        )
+    } else {
+        (
+            format!(
+                "month-year-{}-{}",
+                nominal.year(),
+                u8::from(nominal.month())
+            ),
+            format!("{month_name} {}", nominal.year()),
+        )
+    }
+}
+
+fn recent_session_head_cutoff(
+    sessions: &[SessionSummary],
+    now_seconds: f64,
+    fallback_offset: time::UtcOffset,
+    week_starts_on: u8,
+) -> f64 {
+    const TARGET_HEAD: f64 = 5.0;
+    const MIN_RUN_BREAK: f64 = 30.0 * 60.0;
+    const MAX_RUN_GAP: f64 = 8.0 * 60.0 * 60.0;
+    let mut times = sessions
+        .iter()
+        .map(session_recency_timestamp)
+        .collect::<Vec<_>>();
+    times.sort_by(|left, right| right.total_cmp(left));
+    let mut best_index = None;
+    let mut best_score = f64::INFINITY;
+    let mut run_ended = false;
+    for index in 1..times.len() {
+        let gap = times[index - 1] - times[index];
+        let ends_run = gap > MAX_RUN_GAP;
+        if gap >= MIN_RUN_BREAK || ends_run {
+            let score = ((index as f64) / TARGET_HEAD).ln().abs();
+            if score < best_score {
+                best_score = score;
+                best_index = Some(index);
+                run_ended = ends_run;
+            }
+        }
+        if ends_run {
+            break;
+        }
+    }
+    let Some(index) = best_index else {
+        return f64::NEG_INFINITY;
+    };
+    if run_ended
+        && sidebar_date_bucket(times[0], now_seconds, fallback_offset, week_starts_on).0
+            == sidebar_date_bucket(times[index], now_seconds, fallback_offset, week_starts_on).0
+    {
+        return f64::INFINITY;
+    }
+    times[index - 1]
+}
+
+fn recent_session_date_groups(
+    mut sessions: Vec<SessionSummary>,
+    now_seconds: f64,
+    fallback_offset: time::UtcOffset,
+    week_starts_on: u8,
+) -> Vec<RecentSessionDateGroup> {
+    sessions.sort_by(|left, right| {
+        session_recency_timestamp(right).total_cmp(&session_recency_timestamp(left))
+    });
+    let cutoff =
+        recent_session_head_cutoff(&sessions, now_seconds, fallback_offset, week_starts_on);
+    let mut groups = Vec::<RecentSessionDateGroup>::new();
+    let mut emitted = BTreeSet::new();
+    for session in sessions {
+        let timestamp = session_recency_timestamp(&session);
+        let (key, label) = if timestamp >= cutoff {
+            ("__recent__".to_owned(), None)
+        } else {
+            let (key, label) =
+                sidebar_date_bucket(timestamp, now_seconds, fallback_offset, week_starts_on);
+            (key, Some(label))
+        };
+        if groups.last().is_none_or(|group| group.key != key) {
+            let show_label = !groups.is_empty() && emitted.insert(key.clone());
+            groups.push(RecentSessionDateGroup {
+                key,
+                label: show_label.then_some(label).flatten(),
+                sessions: Vec::new(),
+            });
+        }
+        if let Some(group) = groups.last_mut() {
+            group.sessions.push(session);
+        }
+    }
+    groups
+}
+
+fn reconcile_recent_session_order(current_ids: &[String], order_ids: &[String]) -> Vec<String> {
+    if current_ids.is_empty() || order_ids.is_empty() {
+        return Vec::new();
+    }
+    let mut seen_current = BTreeSet::new();
+    let current_ids = current_ids
+        .iter()
+        .filter(|id| seen_current.insert((*id).clone()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let current = current_ids.iter().cloned().collect::<BTreeSet<_>>();
+    let mut seen_order = BTreeSet::new();
+    let retained = order_ids
+        .iter()
+        .filter(|id| current.contains(*id) && seen_order.insert((*id).clone()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if retained.is_empty() {
+        return Vec::new();
+    }
+    let retained_set = retained.iter().cloned().collect::<BTreeSet<_>>();
+    let first_known = current_ids
+        .iter()
+        .position(|id| retained_set.contains(id))
+        .unwrap_or(0);
+    let newer = current_ids[..first_known]
+        .iter()
+        .filter(|id| !retained_set.contains(*id))
+        .cloned();
+    let older = current_ids[first_known..]
+        .iter()
+        .filter(|id| !retained_set.contains(*id))
+        .cloned();
+    newer.chain(retained).chain(older).collect()
+}
+
+fn order_recent_session_groups(groups: &mut [RecentSessionDateGroup], order_ids: &[String]) {
+    if order_ids.is_empty() {
+        return;
+    }
+    let ranks = order_ids
+        .iter()
+        .enumerate()
+        .map(|(index, id)| (id.as_str(), index))
+        .collect::<BTreeMap<_, _>>();
+    for group in groups {
+        let slots = group
+            .sessions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, session)| {
+                ranks.get(session.id.as_str()).map(|rank| (index, *rank))
+            })
+            .collect::<Vec<_>>();
+        if slots.len() < 2 {
+            continue;
+        }
+        let mut ranked = slots.clone();
+        ranked.sort_by_key(|(_, rank)| *rank);
+        let sources = ranked
+            .iter()
+            .map(|(index, _)| group.sessions[*index].clone())
+            .collect::<Vec<_>>();
+        for ((slot, _), session) in slots.into_iter().zip(sources) {
+            group.sessions[slot] = session;
+        }
+    }
+}
+
+fn session_date_groups_now(sessions: Vec<SessionSummary>) -> Vec<RecentSessionDateGroup> {
+    let now = time::OffsetDateTime::now_utc();
+    let now_seconds = now.unix_timestamp_nanos() as f64 / 1_000_000_000.0;
+    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    recent_session_date_groups(sessions, now_seconds, offset, locale_week_start_day())
+}
+
+#[cfg(windows)]
+fn locale_week_start_day() -> u8 {
+    const LOCALE_IFIRSTDAYOFWEEK: u32 = 0x0000_100c;
+    const LOCALE_RETURN_NUMBER: u32 = 0x2000_0000;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLocaleInfoEx(
+            locale_name: *const u16,
+            lc_type: u32,
+            lc_data: *mut u16,
+            cch_data: i32,
+        ) -> i32;
+    }
+
+    let mut monday_zero_index = 0_u32;
+    // Windows returns Monday=0 through Sunday=6. The sidebar grouping API uses
+    // Sunday=0 through Saturday=6, so rotate the value by one day.
+    let chars = unsafe {
+        GetLocaleInfoEx(
+            std::ptr::null(),
+            LOCALE_IFIRSTDAYOFWEEK | LOCALE_RETURN_NUMBER,
+            (&mut monday_zero_index as *mut u32).cast(),
+            2,
+        )
+    };
+    if chars == 0 || monday_zero_index > 6 {
+        1
+    } else {
+        ((monday_zero_index + 1) % 7) as u8
+    }
+}
+
+#[cfg(not(windows))]
+fn locale_week_start_day() -> u8 {
+    let locale = std::env::var("LC_TIME")
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let region = locale
+        .split(['_', '-'])
+        .nth(1)
+        .unwrap_or_default()
+        .split('.')
+        .next()
+        .unwrap_or_default();
+    if ["us", "ca", "mx", "jp", "kr", "tw", "ph", "il", "sa", "eg"].contains(&region) {
+        0
+    } else {
+        1
+    }
+}
+
+fn partition_sidebar_sessions(
+    sessions: Vec<SessionSummary>,
+    pin_order: &[String],
+    show_pins: bool,
+) -> (Vec<SessionSummary>, Vec<SessionSummary>) {
+    if !show_pins {
+        return (Vec::new(), sessions);
+    }
+
+    let mut pinned = Vec::new();
+    let mut pinned_identities = BTreeSet::new();
+    for session_id in pin_order {
+        for session in &sessions {
+            if session.id == *session_id
+                && !session.archived
+                && pinned_identities.insert(session_identity_key(
+                    &session.id,
+                    session.profile.as_deref(),
+                ))
+            {
+                pinned.push(session.clone());
+            }
+        }
+    }
+    for session in &sessions {
+        if session.pinned
+            && !session.archived
+            && pinned_identities.insert(session_identity_key(
+                &session.id,
+                session.profile.as_deref(),
+            ))
+        {
+            pinned.push(session.clone());
+        }
+    }
+
+    let recent = sessions
+        .into_iter()
+        .filter(|session| {
+            !pinned_identities.contains(&session_identity_key(
+                &session.id,
+                session.profile.as_deref(),
+            ))
+        })
+        .collect();
+    (pinned, recent)
+}
+
+fn move_session_id(order: &mut Vec<String>, source: &str, target: &str) -> bool {
+    let Some(source_index) = order.iter().position(|id| id == source) else {
+        return false;
+    };
+    let Some(target_index) = order.iter().position(|id| id == target) else {
+        return false;
+    };
+    if source_index == target_index {
+        return false;
+    }
+    let session_id = order.remove(source_index);
+    order.insert(target_index, session_id);
+    true
+}
+
 fn session_identity_key(session_id: &str, profile: Option<&str>) -> String {
     format!("{}\0{session_id}", profile.unwrap_or("default"))
+}
+
+fn filter_removed_project_sessions(
+    project: &mut ProjectTreeProject,
+    profile_id: &str,
+    lifecycle_generations_at_request: &BTreeMap<String, u64>,
+    lifecycle: &BTreeMap<(String, String), ProjectSessionLifecycle>,
+) {
+    let is_removed = |session: &SessionSummary| {
+        let profile = session.profile.as_deref().unwrap_or(profile_id);
+        [
+            Some(session.id.as_str()),
+            session.lineage_root_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|session_id| {
+            let Some(state) = lifecycle.get(&(profile.to_owned(), session_id.to_owned())) else {
+                return false;
+            };
+            let generation_at_request = lifecycle_generations_at_request
+                .get(session_id)
+                .copied()
+                .unwrap_or_default();
+            let removed_before_request = state.removed && state.generation == generation_at_request;
+            let removed_while_request_was_in_flight =
+                state.removed && state.generation > generation_at_request;
+            removed_before_request || removed_while_request_was_in_flight
+        })
+    };
+
+    project
+        .preview_sessions
+        .retain(|session| !is_removed(session));
+    for repo in &mut project.repos {
+        for group in &mut repo.groups {
+            group.sessions.retain(|session| !is_removed(session));
+        }
+    }
+}
+
+fn project_session_removed(
+    session: &SessionSummary,
+    fallback_profile: &str,
+    lifecycle_generations_at_request: &BTreeMap<String, u64>,
+    lifecycle: &BTreeMap<(String, String), ProjectSessionLifecycle>,
+) -> bool {
+    let profile = session.profile.as_deref().unwrap_or(fallback_profile);
+    [
+        Some(session.id.as_str()),
+        session.lineage_root_id.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|session_id| {
+        let Some(state) = lifecycle.get(&(profile.to_owned(), session_id.to_owned())) else {
+            return false;
+        };
+        let generation_at_request = lifecycle_generations_at_request
+            .get(session_id)
+            .copied()
+            .unwrap_or_default();
+        state.removed
+            && (state.generation == generation_at_request
+                || state.generation > generation_at_request)
+    })
+}
+
+fn project_preview_sessions(project: &ProjectTreeProject) -> Vec<SessionSummary> {
+    let mut sessions = project
+        .repos
+        .iter()
+        .flat_map(|repo| repo.groups.iter())
+        .flat_map(|group| group.sessions.iter().cloned())
+        .filter(|session| !session.archived && !session.pinned)
+        .collect::<Vec<_>>();
+    sessions.sort_by(|left, right| {
+        let left_recency = left.last_active.unwrap_or(left.started_at);
+        let right_recency = right.last_active.unwrap_or(right.started_at);
+        right_recency.total_cmp(&left_recency)
+    });
+    sessions
+}
+
+fn project_tree_entry_is_visible(
+    project: &ProjectTreeProject,
+    dismissed_auto_project_ids: &[String],
+) -> bool {
+    !project.is_auto
+        || !dismissed_auto_project_ids
+            .iter()
+            .any(|dismissed_id| dismissed_id == &project.id)
+}
+
+fn auto_project_undo_active(pending: &PendingAutoProjectUndo, now: std::time::Instant) -> bool {
+    now < pending.expires_at
+}
+
+fn merge_project_preview_sessions(
+    preview: &[SessionSummary],
+    hydrated: &[SessionSummary],
+    fallback_profile: &str,
+    lifecycle: &BTreeMap<(String, String), ProjectSessionLifecycle>,
+) -> Vec<SessionSummary> {
+    let mut seen = BTreeSet::new();
+    let mut rows = Vec::with_capacity(preview.len().saturating_add(hydrated.len()));
+    for session in preview.iter().chain(hydrated) {
+        if session.archived
+            || session.pinned
+            || project_session_removed(session, fallback_profile, &BTreeMap::new(), lifecycle)
+            || !seen.insert(session.id.clone())
+        {
+            continue;
+        }
+        rows.push(session.clone());
+    }
+    rows
 }
 
 fn merge_sessions_by_profile(
@@ -9831,6 +23485,28 @@ fn merge_sessions_by_profile(
     loaded
         .into_iter()
         .chain(existing)
+        .filter(|session| {
+            seen.insert(session_identity_key(
+                &session.id,
+                session.profile.as_deref(),
+            ))
+        })
+        .collect()
+}
+
+fn replace_profile_sessions(
+    loaded: Vec<SessionSummary>,
+    existing: Vec<SessionSummary>,
+    refreshed_profile: &str,
+) -> Vec<SessionSummary> {
+    let mut seen = BTreeSet::new();
+    loaded
+        .into_iter()
+        .chain(
+            existing
+                .into_iter()
+                .filter(|session| session.profile.as_deref() != Some(refreshed_profile)),
+        )
         .filter(|session| {
             seen.insert(session_identity_key(
                 &session.id,
@@ -9898,6 +23574,7 @@ fn session_summary_from_search(result: &SessionSearchResult) -> SessionSummary {
     SessionSummary {
         cwd: None,
         id: result.session_id.clone(),
+        lineage_root_id: result.lineage_root.clone(),
         profile: result.profile.clone(),
         title: result
             .title
@@ -10021,6 +23698,7 @@ fn collect_dock_tab_groups(root: Option<&Node>) -> Vec<DockTabGroup> {
             NodeKind::Tabs {
                 items,
                 active_index,
+                minimized,
             } => {
                 let panels = items
                     .iter()
@@ -10031,6 +23709,7 @@ fn collect_dock_tab_groups(root: Option<&Node>) -> Vec<DockTabGroup> {
                         node: node.id.clone(),
                         panels,
                         active_index: (*active_index).min(items.len().saturating_sub(1)),
+                        minimized: *minimized,
                     });
                 }
                 for child in items {
@@ -10277,18 +23956,20 @@ fn resized_split_weights(initial: &[f64], divider: usize, delta: f32, extent: f3
 }
 
 fn compute_drop_edge(rect: Rect, pointer: egui::Pos2) -> DropEdge {
-    let x = (pointer.x - rect.left()) / rect.width().max(1.0);
-    let y = (pointer.y - rect.top()) / rect.height().max(1.0);
-    if x < 0.22 {
-        DropEdge::Left
-    } else if x > 0.78 {
-        DropEdge::Right
-    } else if y < 0.22 {
-        DropEdge::Top
-    } else if y > 0.78 {
-        DropEdge::Bottom
-    } else {
+    let dx = ((pointer.x - rect.left()) / rect.width().max(1.0)) * 2.0 - 1.0;
+    let dy = ((pointer.y - rect.top()) / rect.height().max(1.0)) * 2.0 - 1.0;
+    if dx.hypot(dy) < 0.62 {
         DropEdge::Center
+    } else if dx.abs() >= dy.abs() {
+        if dx < 0.0 {
+            DropEdge::Left
+        } else {
+            DropEdge::Right
+        }
+    } else if dy < 0.0 {
+        DropEdge::Top
+    } else {
+        DropEdge::Bottom
     }
 }
 
@@ -10341,6 +24022,403 @@ fn panel_drop_operation(source: PanelId, target: PanelDropTarget) -> Operation {
 mod tests {
     use super::*;
     use egui_kittest::kittest::{NodeT, Queryable};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn minimized_dock_tab_group_is_preserved_for_the_restore_rail() {
+        let root = Node::tabs_with_minimized(
+            "rail-test",
+            vec![
+                Node::panel("one-node", "one"),
+                Node::panel("two-node", "two"),
+            ],
+            1,
+            true,
+        );
+        let groups = collect_dock_tab_groups(Some(root.as_ref()));
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].node, NodeId::from("rail-test"));
+        assert_eq!(
+            groups[0].panels,
+            [PanelId::from("one"), PanelId::from("two")]
+        );
+        assert_eq!(groups[0].active_index, 1);
+        assert!(groups[0].minimized);
+    }
+
+    #[test]
+    fn repo_discovery_settings_parse_paths_without_empty_entries() {
+        assert_eq!(
+            parse_config_path_lines("  C:/work\r\n\n  ~/src  \n"),
+            ["C:/work", "~/src"]
+        );
+    }
+
+    #[test]
+    fn narrow_pane_overlay_is_transient_below_dock_breakpoint() {
+        let (app, profile_dir) = isolated_app();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(639.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut state = app.borrow_mut();
+        assert!(state.narrow_viewport);
+        let revision = state.workspace.dock.snapshot().revision;
+        assert_eq!(panel_title(SESSIONS), "Sessions");
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: "chat-sidebar".into(),
+            })
+            .expect("source chat-sidebar alias opens transient Sessions pane");
+        assert_eq!(state.workspace.dock.snapshot().revision, revision);
+        assert_eq!(
+            state
+                .narrow_pane_overlay
+                .as_ref()
+                .map(|overlay| overlay.panel.as_str()),
+            Some(SESSIONS)
+        );
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: "file-browser".into(),
+            })
+            .expect("source file-browser alias opens transient Files pane");
+        assert_eq!(state.workspace.dock.snapshot().revision, revision);
+        assert_eq!(
+            state
+                .narrow_pane_overlay
+                .as_ref()
+                .map(|overlay| overlay.panel.as_str()),
+            Some(FILES)
+        );
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: REVIEW.into(),
+            })
+            .expect("narrow toggle reveals the source-collapsible Review pane");
+        assert_eq!(state.workspace.dock.snapshot().revision, revision);
+        assert_eq!(
+            state
+                .narrow_pane_overlay
+                .as_ref()
+                .map(|overlay| overlay.panel.as_str()),
+            Some(REVIEW)
+        );
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: "hermes-bots:pane".into(),
+            })
+            .expect("source Bots pane alias reveals transient Bots pane");
+        assert_eq!(state.workspace.dock.snapshot().revision, revision);
+        assert_eq!(
+            state
+                .narrow_pane_overlay
+                .as_ref()
+                .map(|overlay| overlay.panel.as_str()),
+            Some(BOTS)
+        );
+        drop(state);
+        harness.run();
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref() == Some("Close"))
+                .next()
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref() == Some("Bots"))
+                .next()
+                .is_some()
+        );
+        harness.get_by_label("Close").click();
+        harness.run();
+        app.borrow_mut()
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: REVIEW.into(),
+            })
+            .expect("Review can be revealed after Bots is closed");
+        harness.run();
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref() == Some("Review"))
+                .next()
+                .is_some()
+        );
+        harness.get_by_label("Close").click();
+        harness.run();
+        assert!(app.borrow().narrow_pane_overlay.is_none());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn dock_breakpoint_uses_available_content_width() {
+        let (app, profile_dir) = isolated_app();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(640.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut state = app.borrow_mut();
+        assert!(state.narrow_viewport);
+        let revision = state.workspace.dock.snapshot().revision;
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: SESSIONS.into(),
+            })
+            .expect("at the 640px host boundary the usable content is narrow");
+        assert_eq!(state.workspace.dock.snapshot().revision, revision);
+        drop(state);
+        harness.run();
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn wide_pane_toggle_mutates_canonical_dock_layout() {
+        let (app, profile_dir) = isolated_app();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let mut state = app.borrow_mut();
+        assert!(!state.narrow_viewport);
+        let revision = state.workspace.dock.snapshot().revision;
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: REVIEW.into(),
+            })
+            .expect("wide toggle mutates canonical dock layout");
+        assert!(state.workspace.dock.snapshot().revision > revision);
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: "bots".into(),
+            })
+            .expect("agent alias opens the source Hermes Bots pane");
+        assert!(state.workspace.pane_is_open(BOTS));
+        assert!(state.workspace.dock.snapshot().revision > revision);
+        state
+            .execute_registered_action(RegisteredUiAction::TogglePane { panel: BOTS.into() })
+            .expect("source panel ID hides the Hermes Bots pane");
+        assert!(!state.workspace.pane_is_open(BOTS));
+        drop(state);
+        harness.run();
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn settings_overlay_exposes_scoped_repository_discovery_controls() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Settings;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.repo_scan_config = Some(RepoScanPolicy::default());
+        app.repo_scan_config_profile = Some("work".into());
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().show_repo_scan_settings(ui));
+        for label in [
+            "Enable repository discovery",
+            "Repository scan roots",
+            "Repository scan exclusions",
+            "Save workspace repository discovery settings",
+        ] {
+            assert!(
+                harness
+                    .query_all_by(|node| node.label().as_deref() == Some(label))
+                    .next()
+                    .is_some(),
+                "settings overlay exposes {label}"
+            );
+        }
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn settings_overlay_keeps_repo_discovery_read_only_in_all_profile_scope() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Settings;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().show_repo_scan_settings(ui));
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref() == Some("Repository scan roots"))
+                .next()
+                .is_none()
+        );
+        drop(harness);
+        assert!(app.borrow().repo_scan_config_request.is_none());
+        assert!(app.borrow().repo_scan_config.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn repo_discovery_success_forces_project_tree_refresh_after_cached_load() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_tree_gateway(&mut app);
+        app.route = AppRoute::NewChat;
+        app.project_session_color_profiles_loaded
+            .insert("profile-a".into());
+        app.project_trees.insert(
+            "profile-a".into(),
+            serde_json::from_value(json!({
+                "projects":[{"id":"cached","label":"Cached"}]
+            }))
+            .expect("valid cached project tree"),
+        );
+        let policy = RepoScanPolicy::default();
+        app.repo_scan_config = Some(policy.clone());
+        app.repo_scan_config_profile = Some("profile-a".into());
+        app.repo_scan_discovery_request =
+            Some(("repo-discovery-success".into(), "profile-a".into(), policy));
+
+        app.settle_repo_discovery("repo-discovery-success", "profile-a", Ok(()));
+
+        let (request_id, profile, preview_limit) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("discovery success forces a new project tree request");
+        assert_eq!(profile, "profile-a");
+        assert_eq!(preview_limit, 3);
+        assert_eq!(
+            app.project_session_color_requests
+                .get("profile-a")
+                .map(String::as_str),
+            Some(request_id.as_str())
+        );
+        assert!(
+            !app.project_session_color_profiles_loaded
+                .contains("profile-a")
+        );
+        assert_eq!(app.project_trees["profile-a"].projects[0].id, "cached");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn repo_discovery_failure_preserves_cached_project_tree_and_surfaces_error() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_tree_gateway(&mut app);
+        app.route = AppRoute::NewChat;
+        app.project_session_color_profiles_loaded
+            .insert("profile-a".into());
+        app.project_trees.insert(
+            "profile-a".into(),
+            serde_json::from_value(json!({
+                "projects":[{"id":"cached","label":"Cached"}]
+            }))
+            .expect("valid cached project tree"),
+        );
+        let policy = RepoScanPolicy::default();
+        app.repo_scan_config = Some(policy.clone());
+        app.repo_scan_config_profile = Some("profile-a".into());
+        app.repo_scan_discovery_request =
+            Some(("repo-discovery-failure".into(), "profile-a".into(), policy));
+
+        app.settle_repo_discovery(
+            "repo-discovery-failure",
+            "profile-a",
+            Err("host scan unavailable".into()),
+        );
+
+        assert_eq!(app.project_trees["profile-a"].projects[0].id, "cached");
+        assert!(
+            app.project_session_color_profiles_loaded
+                .contains("profile-a")
+        );
+        assert_eq!(
+            app.repo_scan_config_error.as_deref(),
+            Some("host scan unavailable")
+        );
+        assert_eq!(
+            app.status,
+            "Repository discovery failed: host scan unavailable"
+        );
+        assert!(
+            requests
+                .recv_timeout(std::time::Duration::from_millis(30))
+                .is_err()
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn repo_discovery_result_for_previous_profile_does_not_refresh_current_tree() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_tree_gateway(&mut app);
+        app.route = AppRoute::NewChat;
+        app.gateway_endpoint.as_mut().unwrap().profile_id = "profile-b".into();
+        app.project_session_color_profiles_loaded
+            .insert("profile-a".into());
+        let policy = RepoScanPolicy::default();
+        app.repo_scan_config = Some(policy.clone());
+        app.repo_scan_config_profile = Some("profile-a".into());
+        app.repo_scan_discovery_request = Some((
+            "repo-discovery-old-profile".into(),
+            "profile-a".into(),
+            policy,
+        ));
+
+        app.settle_repo_discovery("repo-discovery-old-profile", "profile-a", Ok(()));
+
+        assert!(app.repo_scan_discovery_request.is_none());
+        assert!(app.repo_scan_completed_policy.is_none());
+        assert!(
+            app.project_session_color_profiles_loaded
+                .contains("profile-a")
+        );
+        assert!(
+            requests
+                .recv_timeout(std::time::Duration::from_millis(30))
+                .is_err()
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn capability_catalog_master_detail_width_matches_pinned_constraints() {
+        assert_eq!(default_master_detail_left_width(1400.0), 600.0);
+        assert_eq!(clamp_master_detail_left_width(100.0, 1400.0), 180.0);
+        assert_eq!(clamp_master_detail_left_width(1300.0, 1400.0), 1080.0);
+        assert_eq!(clamp_master_detail_left_width(900.0, 1000.0), 680.0);
+    }
 
     #[test]
     fn session_tab_context_targets_close_only_sessions_and_preserve_workspace_order() {
@@ -10366,6 +24444,7 @@ mod tests {
                 third.clone(),
             ],
             active_index: 0,
+            minimized: false,
         };
 
         let workspace_targets = dock_tab_close_targets(&document, &group, 0);
@@ -10478,6 +24557,7 @@ mod tests {
             node: NodeId::from("tabs-workspace"),
             panels: vec![workspace.clone(), workspace_session],
             active_index: 0,
+            minimized: false,
         };
         let tool_document = Workspace::load_fallback().dock.snapshot().document;
         let mut tool_document = tool_document;
@@ -10489,11 +24569,13 @@ mod tests {
             node: NodeId::from("tabs-tools"),
             panels: vec![PanelId::from(FILES), tool_session.clone()],
             active_index: 1,
+            minimized: false,
         };
         let plain_tool_group = DockTabGroup {
             node: NodeId::from("tabs-plain-tools"),
             panels: vec![PanelId::from(FILES), PanelId::from(TERMINAL)],
             active_index: 0,
+            minimized: false,
         };
         let groups = vec![
             workspace_group,
@@ -10561,6 +24643,7 @@ mod tests {
             node: NodeId::from("cycle-tabs-workspace"),
             panels: vec![workspace.clone(), first_session],
             active_index: 0,
+            minimized: false,
         };
         let mut document = Workspace::load_fallback().dock.snapshot().document;
         let mut descriptor =
@@ -10571,11 +24654,13 @@ mod tests {
             node: NodeId::from("cycle-tabs-tool-zone"),
             panels: vec![PanelId::from(FILES), tool_session.clone()],
             active_index: 1,
+            minimized: false,
         };
         let ineligible_group = DockTabGroup {
             node: NodeId::from("cycle-tabs-plain-tools"),
             panels: vec![PanelId::from(FILES), PanelId::from(TERMINAL)],
             active_index: 1,
+            minimized: false,
         };
         let groups = vec![
             workspace_group,
@@ -10621,6 +24706,7 @@ mod tests {
             .map(|id| SessionSummary {
                 cwd: None,
                 id: id.into(),
+                lineage_root_id: None,
                 profile: Some("work".into()),
                 title: format!("Session {id}"),
                 preview: String::new(),
@@ -10641,7 +24727,7 @@ mod tests {
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
         harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::Tab);
         harness.run();
@@ -10669,6 +24755,7 @@ mod tests {
             .map(|id| SessionSummary {
                 cwd: None,
                 id: id.into(),
+                lineage_root_id: None,
                 profile: Some("work".into()),
                 title: format!("Session {id}"),
                 preview: String::new(),
@@ -10707,6 +24794,7 @@ mod tests {
             .map(|id| SessionSummary {
                 cwd: None,
                 id: id.into(),
+                lineage_root_id: None,
                 profile: Some("work".into()),
                 title: format!("Session {id}"),
                 preview: String::new(),
@@ -10735,7 +24823,7 @@ mod tests {
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .with_context_setup(|ctx| {
                 ctx.input_mut(|input| input.modifiers = egui::Modifiers::CTRL);
             })
@@ -10767,7 +24855,7 @@ mod tests {
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .with_context_setup(|ctx| {
                 ctx.input_mut(|input| input.modifiers = egui::Modifiers::CTRL);
             })
@@ -10803,7 +24891,7 @@ mod tests {
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .with_context_setup(|ctx| {
                 ctx.input_mut(|input| input.modifiers = egui::Modifiers::CTRL);
             })
@@ -10903,6 +24991,1530 @@ mod tests {
             harness.query_by_label("Show earlier messages").is_some(),
             "history remains reachable when resume supplied no tail rows"
         );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn command_palette_scores_search_results_like_pinned_desktop() {
+        assert_eq!(
+            command_palette_score("Capabilities", "skills tools", "capabilities"),
+            Some(100)
+        );
+        assert_eq!(
+            command_palette_score("Capabilities settings", "", "cap"),
+            Some(90)
+        );
+        assert_eq!(
+            command_palette_score("Open Capabilities", "", "capabilities"),
+            Some(85)
+        );
+        assert_eq!(
+            command_palette_score("Open Capable settings", "", "cap"),
+            Some(80)
+        );
+        assert_eq!(
+            command_palette_score("OpenCapabilities", "", "capabilities"),
+            Some(70)
+        );
+        assert_eq!(
+            command_palette_score("Capabilities for open session", "", "open cap"),
+            Some(60)
+        );
+        assert_eq!(
+            command_palette_score("Settings", "capabilities tools", "capabilities"),
+            Some(40)
+        );
+        assert_eq!(
+            command_palette_score("Settings", "capabilities tools", "cap missing"),
+            None
+        );
+        assert_eq!(command_palette_score("Settings", "", "  "), Some(0));
+    }
+
+    #[test]
+    fn sidebar_pins_follow_saved_order_and_keep_server_pins_after_local_pins() {
+        let session = |id: &str, pinned: bool| SessionSummary {
+            id: id.into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: None,
+            title: id.into(),
+            preview: String::new(),
+            message_count: 0,
+            source: String::new(),
+            started_at: 0.0,
+            last_active: None,
+            pinned,
+            unread: false,
+            archived: false,
+        };
+        let (pinned, recent) = partition_sidebar_sessions(
+            vec![session("b", true), session("a", false), session("c", false)],
+            &["a".into(), "missing".into()],
+            true,
+        );
+        assert_eq!(
+            pinned
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(
+            recent
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["c"]
+        );
+
+        let mut ids = vec!["a".into(), "b".into(), "c".into()];
+        assert!(move_session_id(&mut ids, "a", "c"));
+        assert_eq!(ids, ["b", "c", "a"]);
+    }
+
+    #[test]
+    fn session_color_swatch_conversion_uses_source_hsl_values() {
+        assert_eq!(session_swatch_color(0), Color32::from_rgb(221, 75, 75));
+        assert_eq!(session_swatch_color(120), Color32::from_rgb(75, 221, 75));
+        assert_eq!(session_swatch_color(240), Color32::from_rgb(75, 75, 221));
+        assert_eq!(
+            resolve_session_dot_color(None, Some("hsl(120 68% 58%)")),
+            Color32::from_rgb(75, 221, 75)
+        );
+        assert_eq!(
+            resolve_session_dot_color(Some("hsl(0 68% 58%)"), Some("#4a9eff")),
+            Color32::from_rgb(221, 75, 75)
+        );
+        assert_eq!(
+            resolve_session_dot_color(None, Some("#4a9eff")),
+            Color32::from_rgb(74, 158, 255)
+        );
+        assert_eq!(
+            resolve_session_dot_color(None, None),
+            Color32::from_rgb(93, 98, 108)
+        );
+        let mut project_colors = BTreeMap::new();
+        project_colors.insert(
+            ("work".to_owned(), "session-tip".to_owned()),
+            Some("hsl(180 68% 58%)".to_owned()),
+        );
+        assert_eq!(
+            session_dot_color(
+                None,
+                Some("work"),
+                "session-tip",
+                "lineage-root",
+                &project_colors
+            ),
+            Color32::from_rgb(75, 221, 221)
+        );
+        assert_eq!(
+            session_dot_color(
+                None,
+                Some("personal"),
+                "session-tip",
+                "lineage-root",
+                &project_colors
+            ),
+            Color32::from_rgb(93, 98, 108),
+            "colors from another profile must not bleed onto a session"
+        );
+        assert_eq!(
+            session_dot_color(
+                Some("hsl(0 68% 58%)"),
+                Some("work"),
+                "session-tip",
+                "lineage-root",
+                &project_colors
+            ),
+            Color32::from_rgb(221, 75, 75),
+            "explicit session colors override the inherited project color"
+        );
+    }
+
+    #[test]
+    fn project_color_receipts_ignore_stale_results_and_preserve_cache_on_failure() {
+        let (mut app, profile_dir) = isolated_app();
+        app.project_session_colors
+            .insert(("work".into(), "session-a".into()), Some("#4a9eff".into()));
+        app.project_session_colors.insert(
+            ("personal".into(), "session-a".into()),
+            Some("#ff4a9e".into()),
+        );
+        app.project_session_color_requests
+            .insert("work".into(), "request-current".into());
+
+        app.settle_project_session_colors(
+            "request-stale",
+            Some("work".into()),
+            Ok(vec![ProjectSessionColor {
+                session_id: "session-a".into(),
+                color: Some("hsl(120 68% 58%)".into()),
+            }]),
+        );
+        assert_eq!(
+            app.project_session_colors
+                .get(&("work".into(), "session-a".into()))
+                .and_then(Option::as_deref),
+            Some("#4a9eff")
+        );
+        assert_eq!(
+            app.project_session_color_requests
+                .get("work")
+                .map(String::as_str),
+            Some("request-current")
+        );
+
+        app.settle_project_session_colors(
+            "request-current",
+            Some("work".into()),
+            Err("permission denied".into()),
+        );
+        assert!(!app.project_session_color_requests.contains_key("work"));
+        assert!(!app.project_session_color_profiles_loaded.contains("work"));
+        assert_eq!(
+            app.project_session_colors
+                .get(&("work".into(), "session-a".into()))
+                .and_then(Option::as_deref),
+            Some("#4a9eff"),
+            "a failed refresh must retain the last known good color"
+        );
+        assert_eq!(
+            app.project_session_colors
+                .get(&("personal".into(), "session-a".into()))
+                .and_then(Option::as_deref),
+            Some("#ff4a9e"),
+            "a profile refresh must not remove another profile's cache"
+        );
+
+        app.project_session_color_requests
+            .insert("work".into(), "request-refresh".into());
+        app.settle_project_session_colors(
+            "request-refresh",
+            Some("work".into()),
+            Ok(vec![ProjectSessionColor {
+                session_id: "session-b".into(),
+                color: None,
+            }]),
+        );
+        assert!(app.project_session_color_profiles_loaded.contains("work"));
+        assert!(
+            !app.project_session_colors
+                .contains_key(&("work".into(), "session-a".into()))
+        );
+        assert!(
+            app.project_session_colors
+                .contains_key(&("work".into(), "session-b".into()))
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn projects_changed_invalidates_only_its_profile_and_keeps_cached_colors() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.project_session_colors.insert(
+            ("profile-a".into(), "session-a".into()),
+            Some("hsl(120 68% 58%)".into()),
+        );
+        app.project_session_colors.insert(
+            ("profile-b".into(), "session-b".into()),
+            Some("hsl(240 68% 58%)".into()),
+        );
+        app.project_session_color_profiles_loaded
+            .extend(["profile-a".into(), "profile-b".into()]);
+        app.project_session_color_requests
+            .insert("profile-a".into(), "old-request".into());
+
+        app.handle_server_event(json!({"type":"projects.changed","profile":"profile-a"}));
+
+        assert!(
+            !app.project_session_color_profiles_loaded
+                .contains("profile-a"),
+            "matching project changes invalidate the cached tree receipt"
+        );
+        assert!(
+            app.project_session_color_profiles_loaded
+                .contains("profile-b"),
+            "a profile-scoped event must not invalidate another profile"
+        );
+        assert!(!app.project_session_color_requests.contains_key("profile-a"));
+        assert_eq!(
+            app.project_session_colors
+                .get(&("profile-a".into(), "session-a".into())),
+            Some(&Some("hsl(120 68% 58%)".into())),
+            "cached presentation remains available until a successful replacement arrives"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn project_list_is_profile_scoped_and_keeps_its_active_pointer_separate_from_tree() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_list_gateway(&mut app);
+        app.project_trees.insert(
+            "profile-a".into(),
+            serde_json::from_value(json!({
+                "active_id":"tree-active",
+                "projects":[{"id":"tree-active","label":"Tree project"}]
+            }))
+            .expect("valid project tree fixture"),
+        );
+
+        app.load_project_list(true);
+        let (request_id, profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("projects.list read requested");
+        assert_eq!(profile, "profile-a");
+        let snapshot = serde_json::from_value(json!({
+            "active_id":"list-active",
+            "projects":[{"id":"list-active","name":"List active"}]
+        }))
+        .expect("valid projects.list fixture");
+        app.settle_project_list(&request_id, &profile, Ok(snapshot));
+
+        assert_eq!(app.project_list_active_id("profile-a"), Some("list-active"));
+        assert_eq!(
+            app.project_trees["profile-a"].active_id.as_deref(),
+            Some("tree-active"),
+            "the list active_id must never overwrite the independent tree snapshot"
+        );
+        app.gateway_endpoint.as_mut().unwrap().profile_id = "all".into();
+        app.load_project_list(true);
+        assert!(
+            requests.try_recv().is_err(),
+            "all-profile mode must not send a synthetic profile=all projects.list request"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn explicit_project_delete_is_profile_scoped_optimistic_and_rolls_back() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests) = GatewayDiscovery::for_test_project_delete();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.project_trees.insert(
+            "profile-a".into(),
+            serde_json::from_value(json!({"active_id":"project-a","projects":[
+                {"id":"project-a","label":"Project A"},
+                {"id":"auto-a","label":"Discovered","isAuto":true}
+            ]}))
+            .expect("valid project tree"),
+        );
+        app.project_lists.insert(
+            "profile-a".into(),
+            CachedProjectList {
+                endpoint_instance_id: "gateway-a".into(),
+                authority_epoch: 1,
+                snapshot: serde_json::from_value(json!({"active_id":"project-a","projects":[
+                    {"id":"project-a","name":"Project A"}
+                ]}))
+                .expect("valid project list"),
+            },
+        );
+        app.selected_project_id = Some("project-a".into());
+        app.selected_project_profile = Some("profile-a".into());
+        app.entered_project_tree = Some(app.project_trees["profile-a"].projects[0].clone());
+
+        app.request_project_delete("profile-a".into(), "auto-a".into());
+        assert!(
+            requests.try_recv().is_err(),
+            "auto-discovered projects use their separate local dismiss/Undo flow"
+        );
+        app.request_project_delete("profile-a".into(), "project-a".into());
+        let (request_id, profile, project_id) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("explicit project delete queued");
+        assert_eq!(profile, "profile-a");
+        assert_eq!(project_id, "project-a");
+        assert!(
+            app.project_trees["profile-a"]
+                .projects
+                .iter()
+                .all(|project| project.id != "project-a")
+        );
+        assert_eq!(app.project_lists["profile-a"].snapshot.active_id, None);
+        assert!(
+            app.selected_project_id.is_none(),
+            "deleting the open project exits drill-in"
+        );
+        assert!(
+            app.project_deletion_tombstones
+                .contains(&("profile-a".into(), "project-a".into()))
+        );
+
+        app.settle_project_delete(
+            &request_id,
+            "project-a",
+            "profile-a",
+            Err("gateway refused deletion".into()),
+        );
+        assert!(
+            app.project_trees["profile-a"]
+                .projects
+                .iter()
+                .any(|project| project.id == "project-a")
+        );
+        assert_eq!(
+            app.project_lists["profile-a"].snapshot.active_id.as_deref(),
+            Some("project-a")
+        );
+        assert_eq!(app.selected_project_id.as_deref(), Some("project-a"));
+        assert!(
+            app.entered_project_tree.is_some(),
+            "a failed delete restores the drill-in"
+        );
+        assert!(
+            !app.project_deletion_tombstones
+                .contains(&("profile-a".into(), "project-a".into()))
+        );
+
+        app.request_project_delete("profile-a".into(), "project-a".into());
+        let (success_request, _, _) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("retry project deletion");
+        app.settle_project_delete(
+            &success_request,
+            "project-a",
+            "profile-a",
+            Ok(serde_json::from_value(json!({
+                "active_id":null,
+                "projects":[{"id":"project-b","name":"Other"}]
+            }))
+            .expect("valid delete receipt")),
+        );
+        assert!(
+            app.project_deletion_tombstones
+                .contains(&("profile-a".into(), "project-a".into()))
+        );
+        assert!(
+            app.project_lists["profile-a"]
+                .snapshot
+                .projects
+                .iter()
+                .all(|project| project.id != "project-a")
+        );
+        for (request, projects, remains_tombstoned) in [
+            (
+                "tree-still-has-project",
+                json!([{"id":"project-a","label":"Project A"}]),
+                true,
+            ),
+            ("tree-confirms-removal", json!([]), false),
+        ] {
+            app.project_tree_generations.insert("profile-a".into(), 8);
+            app.project_tree_refreshes.insert(
+                "profile-a".into(),
+                PendingProjectTreeRefresh {
+                    request_id: request.into(),
+                    profile_id: "profile-a".into(),
+                    endpoint_instance_id: "gateway-a".into(),
+                    authority_epoch: 1,
+                    generation: 8,
+                },
+            );
+            app.project_session_color_requests
+                .insert("profile-a".into(), request.into());
+            app.settle_project_tree(
+                request,
+                "profile-a",
+                Ok(serde_json::from_value(json!({"projects":projects}))
+                    .expect("valid tree receipt")),
+            );
+            assert_eq!(
+                app.project_deletion_tombstones
+                    .contains(&("profile-a".into(), "project-a".into())),
+                remains_tombstoned,
+                "a present tree row remains suppressed until a later tree confirms absence"
+            );
+            assert!(
+                app.project_trees["profile-a"]
+                    .projects
+                    .iter()
+                    .all(|project| project.id != "project-a")
+            );
+        }
+
+        app.gateway_endpoint.as_mut().unwrap().profile_id = "all".into();
+        app.project_trees.insert(
+            "all".into(),
+            serde_json::from_value(json!({"projects":[{"id":"project-a","label":"Project A"}]}))
+                .expect("valid aggregate tree"),
+        );
+        app.request_project_delete("all".into(), "project-a".into());
+        assert!(
+            requests.try_recv().is_err(),
+            "synthetic all profile must never receive a mutation"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn auto_project_hide_is_local_persistent_and_exits_scoped_detail() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests) = GatewayDiscovery::for_test_project_delete();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        let auto_project = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"C:/work/repo",
+            "label":"repo",
+            "isAuto":true
+        }))
+        .expect("auto project fixture");
+        app.project_trees.insert(
+            "profile-a".into(),
+            ProjectTreeSnapshot {
+                projects: vec![auto_project.clone()],
+                active_id: None,
+                scoped_session_ids: Vec::new(),
+                errors: Vec::new(),
+            },
+        );
+        app.selected_project_id = Some(auto_project.id.clone());
+        app.selected_project_profile = Some("profile-a".into());
+        app.entered_project_tree = Some(auto_project.clone());
+
+        app.dismiss_auto_project("profile-a", &auto_project.id);
+
+        assert_eq!(
+            app.workspace.preferences.dismissed_auto_project_ids,
+            ["C:/work/repo"]
+        );
+        assert!(
+            app.project_trees["profile-a"]
+                .projects
+                .iter()
+                .any(|project| project.id == auto_project.id),
+            "dismissal filters presentation without mutating the canonical backend cache"
+        );
+        assert!(app.selected_project_id.is_none());
+        assert!(app.entered_project_tree.is_none());
+        assert!(app.auto_project_undo.as_ref().is_some_and(|pending| {
+            pending.project_id == auto_project.id && pending.expires_at > std::time::Instant::now()
+        }));
+        let expired_undo = PendingAutoProjectUndo {
+            project_id: auto_project.id.clone(),
+            expires_at: std::time::Instant::now() - std::time::Duration::from_millis(1),
+        };
+        assert!(!auto_project_undo_active(
+            &expired_undo,
+            std::time::Instant::now()
+        ));
+        assert_eq!(
+            app.workspace.preferences.dismissed_auto_project_ids,
+            ["C:/work/repo"],
+            "Undo expiry removes the affordance but leaves the persisted hide intact"
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "auto-project dismissal must not issue projects.delete"
+        );
+
+        app.restore_auto_project(&auto_project.id);
+        assert!(
+            app.workspace
+                .preferences
+                .dismissed_auto_project_ids
+                .is_empty()
+        );
+        assert!(app.auto_project_undo.is_none());
+        assert!(
+            requests.try_recv().is_err(),
+            "Undo is local and must not issue a gateway command"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn dismissed_auto_project_filter_never_hides_explicit_id_collisions() {
+        let auto = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"C:/repo/collision",
+            "label":"auto",
+            "isAuto":true
+        }))
+        .expect("auto project fixture");
+        let explicit = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"C:/repo/collision",
+            "label":"explicit",
+            "isAuto":false
+        }))
+        .expect("explicit project fixture");
+        let dismissed = vec!["C:/repo/collision".to_owned()];
+        assert!(!project_tree_entry_is_visible(&auto, &dismissed));
+        assert!(project_tree_entry_is_visible(&explicit, &dismissed));
+    }
+
+    #[test]
+    fn auto_project_hide_and_undo_controls_are_accessible() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests) = GatewayDiscovery::for_test_project_delete();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.project_trees.insert(
+            "profile-a".into(),
+            serde_json::from_value(json!({"projects":[{
+                "id":"C:/work/repo","label":"repo","isAuto":true
+            }]}))
+            .expect("valid auto-project tree"),
+        );
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1200.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        harness
+            .query_by_label("Projects")
+            .expect("Projects section")
+            .click();
+        harness.run();
+        harness
+            .query_by_label("repo · 0")
+            .expect("auto-project row")
+            .click();
+        harness.run();
+        harness
+            .query_by_label("Hide auto project C:/work/repo from sidebar")
+            .expect("accessible auto-project hide action")
+            .click();
+        harness.run();
+        assert_eq!(
+            app.borrow()
+                .workspace
+                .preferences
+                .dismissed_auto_project_ids,
+            ["C:/work/repo"]
+        );
+        harness
+            .query_by_label("Undo hiding project C:/work/repo")
+            .expect("accessible eight-second Undo control")
+            .click();
+        harness.run();
+        assert!(
+            app.borrow()
+                .workspace
+                .preferences
+                .dismissed_auto_project_ids
+                .is_empty()
+        );
+        harness
+            .query_by_label("Hide auto project C:/work/repo from sidebar")
+            .expect("restored project row is available again")
+            .click();
+        harness.run();
+        app.borrow_mut()
+            .auto_project_undo
+            .as_mut()
+            .expect("second hide creates an Undo toast")
+            .expires_at = std::time::Instant::now() - std::time::Duration::from_millis(1);
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Undo hiding project C:/work/repo")
+                .is_none(),
+            "expired toast removes its Undo affordance"
+        );
+        assert_eq!(
+            app.borrow()
+                .workspace
+                .preferences
+                .dismissed_auto_project_ids,
+            ["C:/work/repo"],
+            "expiry leaves the persistent dismissal in place"
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "hide and Undo must issue no gateway commands"
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn project_list_rejects_stale_generation_and_preserves_cache_on_failure() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_list_gateway(&mut app);
+        app.project_lists.insert(
+            "profile-a".into(),
+            CachedProjectList {
+                endpoint_instance_id: "gateway-a".into(),
+                authority_epoch: 1,
+                snapshot: serde_json::from_value(json!({
+                    "active_id":"previous-active",
+                    "projects":[{"id":"previous-active"}]
+                }))
+                .expect("valid previous project list"),
+            },
+        );
+
+        app.load_project_list(true);
+        let (stale_request, _) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first project list request");
+        app.load_project_list(true);
+        let (current_request, _) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("replacement project list request");
+        let stale_snapshot = serde_json::from_value(json!({
+            "active_id":"stale-active",
+            "projects":[{"id":"stale-active"}]
+        }))
+        .expect("valid stale response fixture");
+        app.settle_project_list(&stale_request, "profile-a", Ok(stale_snapshot));
+        assert_eq!(
+            app.project_list_active_id("profile-a"),
+            Some("previous-active"),
+            "a response superseded by a newer generation must not replace the cache"
+        );
+
+        app.settle_project_list(
+            &current_request,
+            "profile-a",
+            Err("temporary gateway failure".into()),
+        );
+        assert_eq!(
+            app.project_list_active_id("profile-a"),
+            Some("previous-active"),
+            "a failed refresh must retain the last successful list"
+        );
+        assert_eq!(
+            app.project_list_errors.get("profile-a").map(String::as_str),
+            Some("temporary gateway failure")
+        );
+
+        app.load_project_list(true);
+        let (wrong_owner_request, _) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("owner refresh request");
+        app.gateway_endpoint.as_mut().unwrap().instance_id = "gateway-b".into();
+        let wrong_owner_snapshot = serde_json::from_value(json!({
+            "active_id":"other-active",
+            "projects":[{"id":"other-active"}]
+        }))
+        .expect("valid wrong-owner response fixture");
+        app.settle_project_list(&wrong_owner_request, "profile-a", Ok(wrong_owner_snapshot));
+        assert_eq!(
+            app.project_list_active_id("profile-a"),
+            None,
+            "a cached list from another endpoint instance must not be shown"
+        );
+        assert_eq!(
+            app.project_lists["profile-a"].snapshot.active_id.as_deref(),
+            Some("previous-active"),
+            "a response from a stale endpoint must not replace the prior cache"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn projects_changed_refreshes_only_the_matching_profile_list() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_list_gateway(&mut app);
+
+        app.handle_server_event(json!({"type":"projects.changed","profile":"profile-b"}));
+        assert!(
+            requests.try_recv().is_err(),
+            "a different profile's project change must not refresh this list"
+        );
+        app.handle_server_event(json!({"type":"projects.changed","profile":"profile-a"}));
+        let (_, profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("matching project change refreshes the explicit list");
+        assert_eq!(profile, "profile-a");
+        assert!(requests.try_recv().is_err());
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn project_change_from_any_profile_invalidates_the_all_profile_tree() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "gateway-all".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.project_trees.insert(
+            "all".into(),
+            serde_json::from_value(json!({
+                "projects":[{"id":"cached","label":"Cached"}]
+            }))
+            .expect("valid cached aggregate tree"),
+        );
+        app.project_session_color_profiles_loaded
+            .extend(["all".into(), "profile-a".into()]);
+        app.project_session_color_requests
+            .insert("all".into(), "old-aggregate-request".into());
+        app.project_tree_refreshes.insert(
+            "all".into(),
+            PendingProjectTreeRefresh {
+                request_id: "old-aggregate-request".into(),
+                profile_id: "all".into(),
+                endpoint_instance_id: "gateway-all".into(),
+                authority_epoch: 1,
+                generation: 1,
+            },
+        );
+
+        app.handle_server_event(json!({"type":"projects.changed","profile":"profile-a"}));
+
+        assert!(!app.project_session_color_profiles_loaded.contains("all"));
+        assert!(
+            app.project_session_color_profiles_loaded
+                .contains("profile-a")
+        );
+        assert!(!app.project_session_color_requests.contains_key("all"));
+        assert!(!app.project_tree_refreshes.contains_key("all"));
+        assert_eq!(app.project_trees["all"].projects[0].id, "cached");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn recent_session_order_reconciles_fresh_rows_and_reorders_only_inside_groups() {
+        let reconciled = reconcile_recent_session_order(
+            &["newer".into(), "a".into(), "b".into(), "older".into()],
+            &["b".into(), "a".into()],
+        );
+        assert_eq!(reconciled, ["newer", "b", "a", "older"]);
+
+        let summary = |id: &str| SessionSummary {
+            id: id.into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: None,
+            title: id.into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        let mut groups = vec![
+            RecentSessionDateGroup {
+                key: "today".into(),
+                label: None,
+                sessions: ["a", "b", "c"].into_iter().map(summary).collect(),
+            },
+            RecentSessionDateGroup {
+                key: "yesterday".into(),
+                label: Some("Yesterday".into()),
+                sessions: ["d", "e"].into_iter().map(summary).collect(),
+            },
+        ];
+        order_recent_session_groups(&mut groups, &["b".into(), "a".into(), "e".into()]);
+        assert_eq!(
+            groups[0]
+                .sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "a", "c"]
+        );
+        assert_eq!(
+            groups[1]
+                .sessions
+                .iter()
+                .map(|session| session.id.as_str())
+                .collect::<Vec<_>>(),
+            ["d", "e"]
+        );
+        assert_eq!(groups[1].label.as_deref(), Some("Yesterday"));
+    }
+
+    #[test]
+    fn recent_session_calendar_buckets_follow_four_am_rollover_and_week_start() {
+        let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+        let at = |year, month, day, hour, minute| {
+            time::Date::from_calendar_date(year, month, day)
+                .unwrap()
+                .with_time(time::Time::from_hms(hour, minute, 0).unwrap())
+                .assume_offset(offset)
+                .unix_timestamp() as f64
+        };
+        let now = at(2026, time::Month::January, 11, 12, 0);
+        assert_eq!(
+            local_date_for_session_timestamp(at(2026, time::Month::January, 11, 3, 59), offset),
+            Some(time::Date::from_calendar_date(2026, time::Month::January, 10).unwrap())
+        );
+        assert_eq!(
+            local_date_for_session_timestamp(at(2026, time::Month::January, 11, 4, 0), offset),
+            Some(time::Date::from_calendar_date(2026, time::Month::January, 11).unwrap())
+        );
+        assert_eq!(
+            sidebar_date_bucket(at(2026, time::Month::January, 5, 12, 0), now, offset, 1).0,
+            "this-week"
+        );
+        assert_eq!(
+            sidebar_date_bucket(at(2026, time::Month::January, 5, 12, 0), now, offset, 0).0,
+            "last-week"
+        );
+    }
+
+    #[test]
+    fn recent_session_head_run_distinguishes_no_cut_from_a_same_bucket_long_gap() {
+        let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+        let at = |day, hour, minute| {
+            time::Date::from_calendar_date(2026, time::Month::January, day)
+                .unwrap()
+                .with_time(time::Time::from_hms(hour, minute, 0).unwrap())
+                .assume_offset(offset)
+                .unix_timestamp() as f64
+        };
+        let now = at(20, 16, 0);
+        let make = |id: &str, timestamp| SessionSummary {
+            id: id.into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: None,
+            title: id.into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "desktop".into(),
+            started_at: timestamp,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        let tight = vec![make("a", at(20, 10, 0)), make("b", at(20, 9, 50))];
+        assert_eq!(
+            recent_session_head_cutoff(&tight, now, offset, 1),
+            f64::NEG_INFINITY
+        );
+        let separated = vec![make("a", at(20, 15, 0)), make("b", at(20, 5, 0))];
+        assert_eq!(
+            recent_session_head_cutoff(&separated, now, offset, 1),
+            f64::INFINITY
+        );
+        let groups = recent_session_date_groups(separated, now, offset, 1);
+        assert_eq!(
+            groups.len(),
+            1,
+            "same-date fuzzy head dissolves into calendar group"
+        );
+        assert_eq!(groups[0].key, "today");
+    }
+
+    #[test]
+    fn recent_session_date_groups_keep_an_unlabelled_head_and_label_older_bucket() {
+        let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+        let at = |day_delta: i64, hour, minute| {
+            (time::OffsetDateTime::now_utc().to_offset(offset)
+                - time::Duration::days(day_delta)
+                - time::Duration::hours(i64::from(12 - hour))
+                - time::Duration::minutes(i64::from(minute)))
+            .unix_timestamp() as f64
+        };
+        let now = time::OffsetDateTime::now_utc().unix_timestamp() as f64;
+        let make = |id: &str, timestamp| SessionSummary {
+            id: id.into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: None,
+            title: id.into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "desktop".into(),
+            started_at: timestamp,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        let recent = vec![
+            make("recent-a", now),
+            make("recent-b", now - 600.0),
+            make("recent-c", now - 1200.0),
+        ];
+        let mut sessions = recent;
+        sessions.push(make("older", at(3, 12, 0)));
+        let groups = recent_session_date_groups(sessions, now, offset, 1);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].key, "__recent__");
+        assert_eq!(groups[0].label, None);
+        assert_eq!(groups[0].sessions.len(), 3);
+        assert_eq!(groups[1].sessions[0].id, "older");
+        assert!(groups[1].label.is_some());
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn recent_session_reorder_persists_and_stale_saved_order_cancels() {
+        let (mut app, profile_dir) = isolated_app();
+        let endpoint = GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8787".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        };
+        let scope_key = sidebar_recent_order_scope(&endpoint);
+        let now = time::OffsetDateTime::now_utc().unix_timestamp() as f64;
+        app.gateway_endpoint = Some(endpoint);
+        app.sessions = ["recent-a", "recent-b", "recent-c"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, id)| SessionSummary {
+                id: id.into(),
+                lineage_root_id: None,
+                cwd: None,
+                profile: Some("research".into()),
+                title: id.into(),
+                preview: String::new(),
+                message_count: 1,
+                source: "desktop".into(),
+                started_at: now - (index as f64 * 60.0),
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            })
+            .collect();
+        let date_group_ids = vec!["recent-a".into(), "recent-b".into(), "recent-c".into()];
+        app.recent_session_reorder = Some(RecentSessionReorder {
+            scope_key: scope_key.clone(),
+            source_session_id: "recent-a".into(),
+            target_session_id: "recent-c".into(),
+            date_group_key: "__recent__".into(),
+            date_group_ids: date_group_ids.clone(),
+            visible_order: date_group_ids.clone(),
+            initial_persisted_order: Vec::new(),
+        });
+        app.finish_recent_session_reorder();
+        assert_eq!(
+            app.workspace.sidebar_session_order(&scope_key),
+            ["recent-b", "recent-c", "recent-a"]
+        );
+
+        let previously_saved = app.workspace.sidebar_session_order(&scope_key);
+        app.recent_session_reorder = Some(RecentSessionReorder {
+            scope_key: scope_key.clone(),
+            source_session_id: "recent-b".into(),
+            target_session_id: "recent-a".into(),
+            date_group_key: "__recent__".into(),
+            date_group_ids,
+            visible_order: previously_saved.clone(),
+            initial_persisted_order: previously_saved.clone(),
+        });
+        app.workspace
+            .set_sidebar_session_order(&scope_key, vec!["recent-c".into(), "recent-b".into()])
+            .expect("concurrent order update persists");
+        app.finish_recent_session_reorder();
+        assert_eq!(
+            app.workspace.sidebar_session_order(&scope_key),
+            ["recent-c", "recent-b"]
+        );
+        assert_eq!(
+            app.status,
+            "Recent-session reorder cancelled because the saved order changed"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated recent-reorder profile");
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn stale_pinned_drag_cancels_after_a_concurrent_pin_order_change() {
+        let (mut app, profile) = isolated_app();
+        app.load_pinned_session_reorder_fixture_for_automation();
+        let connection_key = gateway_pin_order_scope(
+            app.gateway_endpoint
+                .as_ref()
+                .expect("fixture gateway endpoint"),
+        );
+        let initial_persisted_order = app.workspace.pinned_session_order(&connection_key);
+        app.pinned_session_reorder = Some(PinnedSessionReorder {
+            connection_key: connection_key.clone(),
+            source_session_id: "pin-a".into(),
+            target_session_id: "pin-b".into(),
+            visible_order: vec!["pin-a".into(), "pin-b".into()],
+            initial_persisted_order,
+        });
+        app.workspace
+            .set_pinned_session_state(&connection_key, "pin-c", true)
+            .expect("concurrent pin update persists");
+
+        app.finish_pinned_session_reorder();
+
+        assert_eq!(
+            app.workspace.pinned_session_order(&connection_key),
+            ["pin-a", "unresolved-pin", "pin-b", "pin-c"],
+            "a stale drag must not overwrite a newer pin update"
+        );
+        assert_eq!(
+            app.status,
+            "Pinned-session reorder cancelled because the saved order changed"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn command_palette_go_to_entries_follow_pinned_source_order() {
+        let (mut app, profile) = isolated_app();
+        let entries = app
+            .command_palette_entries()
+            .into_iter()
+            .filter(|entry| entry.group == "Go to")
+            .collect::<Vec<_>>();
+        let labels = entries
+            .iter()
+            .map(|entry| entry.label.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            labels,
+            [
+                "New session",
+                "Settings",
+                "Capabilities",
+                "Messaging",
+                "Artifacts",
+                "Scheduled jobs",
+                "Profiles",
+                "Agents",
+                "Star map"
+            ]
+        );
+        for entry in entries {
+            let RegisteredUiAction::Navigate { path } = entry.action else {
+                panic!("Go to entry must carry a route action: {}", entry.label);
+            };
+            app.execute_registered_action(RegisteredUiAction::Navigate { path: path.clone() })
+                .expect("Go to route action executes");
+            assert_eq!(
+                app.route.path(),
+                path,
+                "{} navigates to its route",
+                entry.label
+            );
+        }
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+    #[test]
+    fn open_new_window_action_queues_bounded_profile_and_route_request_without_headless_spawn() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Capabilities;
+        app.active_session_profile = Some("work".into());
+
+        app.execute_registered_action(RegisteredUiAction::OpenNewWindow)
+            .expect("queue native window launch");
+        let request = app
+            .pending_native_window_launches
+            .front()
+            .expect("window request is available for the native host");
+        assert_eq!(request.route, "/capabilities");
+        assert_eq!(request.profile.as_deref(), Some("work"));
+        assert!(request.id > 0);
+        assert!(!app.allow_native_window_launch);
+
+        for _ in 1..16 {
+            app.execute_registered_action(RegisteredUiAction::OpenNewWindow)
+                .expect("bounded request remains available");
+        }
+        assert_eq!(app.pending_native_window_launches.len(), 16);
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::OpenNewWindow)
+                .is_err()
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    fn movable_session_launch_fixture() -> (
+        HermesNativeApp,
+        std::path::PathBuf,
+        PanelId,
+        NativeWindowLaunchRequest,
+    ) {
+        let (mut app, profile_dir) = isolated_app();
+        let session_id = "movable-session";
+        app.route = AppRoute::Session(session_id.into());
+        app.active_session_profile = Some("work".into());
+        let panel = app
+            .workspace
+            .open_session_pane(Some("work"), session_id, "Movable session")
+            .expect("session pane opens");
+        app.sessions.push(SessionSummary {
+            cwd: None,
+            id: session_id.into(),
+            lineage_root_id: None,
+            profile: Some("work".into()),
+            title: "Movable session".into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        });
+
+        app.draft = "unsent text".into();
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::MoveCurrentSessionToNewWindow)
+                .is_err()
+        );
+        assert!(app.pending_native_window_launches.is_empty());
+        app.draft.clear();
+        app.execute_registered_action(RegisteredUiAction::MoveCurrentSessionToNewWindow)
+            .expect("queue session move");
+        let request = app
+            .pending_native_window_launches
+            .pop_front()
+            .expect("session move is queued for the interactive host");
+        assert_eq!(request.route, "/movable-session");
+        assert_eq!(request.profile.as_deref(), Some("work"));
+        assert_eq!(request.move_session_panel.as_ref(), Some(&panel));
+        assert!(!app.allow_native_window_launch);
+        assert!(
+            app.workspace
+                .dock
+                .snapshot()
+                .document
+                .descriptor(&panel)
+                .is_some()
+        );
+        (app, profile_dir, panel, request)
+    }
+
+    #[test]
+    fn move_current_session_closes_source_only_after_readiness_receipt() {
+        let (mut app, profile_dir, panel, request) = movable_session_launch_fixture();
+        assert!(
+            !app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+
+        app.finish_native_window_launch(&request, NativeWindowLaunchOutcome::Ready);
+        assert!(
+            app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+        assert!(app.status.contains("session moved"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn failed_native_window_startup_preserves_the_source_session() {
+        let (mut app, profile_dir, panel, request) = movable_session_launch_fixture();
+        app.finish_native_window_launch(
+            &request,
+            NativeWindowLaunchOutcome::Failed("child exited before first frame".into()),
+        );
+        assert!(
+            !app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+        assert!(app.status.contains("child exited before first frame"));
+        assert!(app.status.contains("session remains open"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn native_window_readiness_timeout_preserves_the_source_session() {
+        let (mut app, profile_dir, panel, request) = movable_session_launch_fixture();
+        app.finish_native_window_launch(&request, NativeWindowLaunchOutcome::TimedOut);
+        assert!(
+            !app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+        assert!(app.status.contains("did not become ready"));
+        assert!(app.status.contains("session remains open"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn source_session_becoming_active_during_launch_prevents_move_after_ready_receipt() {
+        let (mut app, profile_dir, panel, request) = movable_session_launch_fixture();
+        app.draft = "new text after launch began".into();
+
+        app.finish_native_window_launch(&request, NativeWindowLaunchOutcome::Ready);
+
+        assert!(
+            !app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+        assert!(app.status.contains("source session kept open"));
+        assert!(app.status.contains("unsent draft"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn inactive_source_session_cached_draft_prevents_move_after_ready_receipt() {
+        let (mut app, profile_dir, panel, request) = movable_session_launch_fixture();
+        app.route = AppRoute::NewChat;
+        app.session_chat_views.insert(
+            session_identity_key("movable-session", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                draft: "new hidden draft after launch began".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.finish_native_window_launch(&request, NativeWindowLaunchOutcome::Ready);
+
+        assert!(
+            !app.workspace
+                .dock
+                .snapshot()
+                .document
+                .closed_panels
+                .contains(&panel)
+        );
+        assert!(app.status.contains("source session kept open"));
+        assert!(app.status.contains("unsent draft"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn command_palette_search_includes_live_pinned_and_archived_sessions() {
+        let (mut app, profile) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.sessions = vec![
+            SessionSummary {
+                id: "20261115_120000_abcdef".into(),
+                lineage_root_id: None,
+                cwd: None,
+                profile: Some("work".into()),
+                title: "Live report".into(),
+                preview: "needle in active work".into(),
+                message_count: 4,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            },
+            SessionSummary {
+                id: "20261115_120001_abcdef".into(),
+                lineage_root_id: None,
+                cwd: None,
+                profile: Some("work".into()),
+                title: "Pinned report".into(),
+                preview: "needle in saved work".into(),
+                message_count: 4,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: true,
+                unread: false,
+                archived: false,
+            },
+        ];
+        app.archived_sessions = vec![SessionSummary {
+            id: "20261115_120002_abcdef".into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: Some("work".into()),
+            title: "Archived report".into(),
+            preview: "needle in old work".into(),
+            message_count: 4,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: true,
+        }];
+        app.command_palette_sessions = app.sessions.clone();
+        app.command_palette_sessions.push(SessionSummary {
+            id: "20261115_120003_abcdef".into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: Some("work".into()),
+            title: "Older pinned report".into(),
+            preview: "needle in another saved item".into(),
+            message_count: 3,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: true,
+            unread: false,
+            archived: false,
+        });
+        let pin_scope = gateway_pin_order_scope(app.gateway_endpoint.as_ref().unwrap());
+        app.workspace
+            .set_pinned_session_order(
+                &pin_scope,
+                vec![
+                    "20261115_120003_abcdef".into(),
+                    "20261115_120001_abcdef".into(),
+                ],
+            )
+            .unwrap();
+        app.command_palette_query = "needle".into();
+        let entries = app.command_palette_matches();
+        let pinned_labels = entries
+            .iter()
+            .filter(|entry| entry.group == "Pinned")
+            .map(|entry| entry.label.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(pinned_labels, ["Older pinned report", "Pinned report"]);
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.group == "Sessions" && entry.label == "Live report")
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.group == "Pinned" && entry.label == "Pinned report")
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.group == "Archived chats" && entry.label == "Archived report")
+        );
+        app.command_palette_query = "20261115_120000_abcdef".into();
+        assert!(
+            app.command_palette_matches()
+                .iter()
+                .any(|entry| entry.label == "Go to session 20261115_120000_abcdef")
+        );
+        app.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: "20261115_120000_abcdef".into(),
+            profile: Some("work".into()),
+        })
+        .expect("session action dispatches");
+        assert_eq!(
+            app.route,
+            AppRoute::Session("20261115_120000_abcdef".into())
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+    #[test]
+    fn command_palette_opens_searches_and_navigates_with_source_shortcuts() {
+        let (app, profile) = isolated_app();
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::K);
+        harness.run();
+        assert!(app.borrow().command_palette_open);
+        harness
+            .get_by_label("Search sessions, views, and actions")
+            .type_text("capab");
+        harness.run();
+        assert_eq!(app.borrow().command_palette_query, "capab");
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+        assert_eq!(app.borrow().route, AppRoute::Capabilities);
+        assert!(!app.borrow().command_palette_open);
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::P);
+        harness.run();
+        assert!(app.borrow().command_palette_open);
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+        assert!(!app.borrow().command_palette_open);
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
@@ -11053,7 +26665,7 @@ mod tests {
         let (mut app, profile) = isolated_app();
         app.load_markdown_fixture_for_automation();
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
 
         let copy = harness
@@ -11078,7 +26690,7 @@ mod tests {
         let (mut app, profile) = isolated_app();
         app.load_connectors_fixture_for_automation();
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness.query_by_label("Linear · Connected").is_some(),
@@ -11129,7 +26741,7 @@ mod tests {
         app.load_connectors_fixture_for_automation();
         app.capabilities_query = "Track issues".into();
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness
@@ -11154,7 +26766,7 @@ mod tests {
             .expect("review fixture dialog")
             .uncertain = true;
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness
@@ -11208,7 +26820,7 @@ mod tests {
             },
         ));
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let toggle = harness
             .query_by_label("Agent plugin: Legacy Helper")
@@ -11260,7 +26872,7 @@ mod tests {
         );
         app.agent_plugin_auto_update = None;
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness
@@ -11304,7 +26916,7 @@ mod tests {
         let (mut app, profile) = isolated_app();
         app.load_plugin_update_scan_review_fixture_for_automation();
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness
@@ -11330,7 +26942,7 @@ mod tests {
             *verdict = "dangerous".into();
         }
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness
@@ -11350,7 +26962,7 @@ mod tests {
         let (mut app, profile) = isolated_app();
         app.load_plugin_catalog_fixture_for_automation();
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness
@@ -11397,6 +27009,60 @@ mod tests {
     }
 
     #[test]
+    fn plugin_catalog_exposes_distinct_accessible_master_detail_panes() {
+        let (mut app, profile) = isolated_app();
+        app.load_plugin_catalog_fixture_for_automation();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        assert!(
+            harness
+                .query_by_label("Plugin catalog result: Research Companion")
+                .is_some(),
+            "the master column exposes selectable plugin results"
+        );
+        assert!(
+            harness
+                .query_by_label("Resize plugin catalog list and details")
+                .is_some(),
+            "the pane boundary is exposed as an accessible resize control"
+        );
+        assert!(
+            harness
+                .query_by_label("Install catalog plugin: Research Companion")
+                .is_some(),
+            "the selected plugin's detail actions are rendered in the detail column"
+        );
+
+        let handle = harness.get_by_label("Resize plugin catalog list and details");
+        let start = handle.rect().center();
+        let threshold = start + egui::vec2(40.0, 0.0);
+        let end = start + egui::vec2(120.0, 0.0);
+        harness.drag_at(start);
+        harness.run();
+        harness.hover_at(threshold);
+        harness.run();
+        harness.hover_at(end);
+        harness.run();
+        harness.drop_at(end);
+        harness.run();
+        assert!(
+            app.borrow()
+                .workspace
+                .master_detail_width_override(MASTER_DETAIL_RESIZE_ID)
+                .is_some_and(|width| width > default_master_detail_left_width(1100.0)),
+            "dragging the pane sash persists its new pixel width"
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn user_plugin_uninstall_requires_profile_bound_confirmation() {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Capabilities;
@@ -11410,6 +27076,7 @@ mod tests {
             api_origin: "http://127.0.0.1:8765".into(),
             capabilities: vec![],
             control_home: None,
+            remote_auth: None,
         });
         app.agent_plugins_profile = Some("work".into());
         app.agent_plugins = Some(AgentPluginsSnapshot {
@@ -11426,7 +27093,7 @@ mod tests {
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
         harness
             .get_by_label("Uninstall agent plugin: Legacy Helper")
@@ -11616,6 +27283,71 @@ mod tests {
                 .iter()
                 .any(|action| action["type"] == "restore_closed_session_tab")
         );
+        let catalog = registered_ui_action_catalog();
+        let toggle_pane = catalog["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|action| action["type"] == "toggle_pane")
+            .expect("toggle pane action is registered");
+        assert_eq!(
+            toggle_pane["schema"]["panel"],
+            json!([
+                SESSIONS,
+                BOTS,
+                REVIEW,
+                FILES,
+                TERMINAL,
+                "chat-sidebar",
+                "file-browser",
+                "bots"
+            ])
+        );
+    }
+
+    #[test]
+    fn titlebar_side_controls_expose_edge_state_and_use_semantic_fallback() {
+        let (mut app, profile_dir) = isolated_app();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(harness.query_by_label("Hide left side").is_some());
+        assert!(harness.query_by_label("Show right side").is_some());
+
+        harness.get_by_label("Show right side").click();
+        harness.run();
+        let right_hide_label_is_visible = harness.query_by_label("Hide right side").is_some();
+        drop(harness);
+        assert!(right_hide_label_is_visible);
+        assert!(app.workspace.pane_is_open(FILES));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn semantic_sidebar_and_file_browser_actions_share_the_persisted_workspace_handler() {
+        let (mut app, profile_dir) = isolated_app();
+        assert!(app.workspace.pane_is_open(SESSIONS));
+        assert!(!app.workspace.pane_is_open(FILES));
+
+        app.execute_registered_action(RegisteredUiAction::TogglePane {
+            panel: SESSIONS.into(),
+        })
+        .unwrap();
+        app.execute_registered_action(RegisteredUiAction::TogglePane {
+            panel: FILES.into(),
+        })
+        .unwrap();
+        assert!(!app.workspace.pane_is_open(SESSIONS));
+        assert!(app.workspace.pane_is_open(FILES));
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::TogglePane {
+                panel: WORKSPACE.into(),
+            })
+            .is_err()
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
     }
 
     #[test]
@@ -11664,10 +27396,2091 @@ mod tests {
     }
 
     #[test]
+    fn refreshed_transcript_tail_keeps_history_and_rejects_unprovable_or_empty_pages() {
+        let current = vec![json!({"id":1}), json!({"id":2}), json!({"id":3})];
+        assert_eq!(
+            merge_refreshed_transcript_tail(
+                vec![json!({"id":2}), json!({"id":3}), json!({"id":4})],
+                current.clone(),
+                false,
+            )
+            .expect("overlap-safe latest tail"),
+            vec![
+                json!({"id":1}),
+                json!({"id":2}),
+                json!({"id":3}),
+                json!({"id":4})
+            ]
+        );
+        assert_eq!(
+            merge_refreshed_transcript_tail(
+                vec![json!({"id":1}), json!({"id":2}), json!({"id":3})],
+                current.clone(),
+                false,
+            )
+            .expect("unchanged latest page"),
+            current
+        );
+        assert!(
+            merge_refreshed_transcript_tail(Vec::new(), vec![json!({"id":1})], false)
+                .unwrap_err()
+                .contains("empty transcript")
+        );
+        assert!(
+            merge_refreshed_transcript_tail(
+                vec![json!({"id":90})],
+                vec![json!({"id":1}), json!({"id":2})],
+                false,
+            )
+            .unwrap_err()
+            .contains("no safe overlap")
+        );
+        assert!(transcript_contains_local_pending_or_error(&[json!({
+            "role":"assistant",
+            "content":"keep local error",
+            "local":true,
+            "error":"persisted failure"
+        })]));
+    }
+
+    #[test]
+    fn active_transcript_refresh_is_request_fenced_and_preserves_draft_and_newer_events() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let initial = vec![json!({"id":1}), json!({"id":2}), json!({"id":3})];
+        app.transcript = initial.clone();
+        app.transcript_message_count = initial.len();
+        app.transcript_has_more = true;
+        app.draft = "unsent draft".into();
+        app.active_transcript_refresh = Some(PendingActiveTranscriptRefresh {
+            request_id: "refresh-1".into(),
+            stored_session_id: "stored-session".into(),
+            profile: Some("work".into()),
+            endpoint_profile_id: "work".into(),
+            runtime_session_id: "runtime-session".into(),
+            transcript_snapshot_hash: transcript_fingerprint(&initial),
+            transcript_snapshot_len: initial.len(),
+        });
+        app.settle_active_transcript_refresh(
+            "refresh-1",
+            "different-session",
+            Some("work".into()),
+            "work",
+            "runtime-session",
+            Ok(crate::gateway::OlderTranscriptPage {
+                messages: vec![json!({"id":3}), json!({"id":4})],
+                has_more: false,
+                replace_all: false,
+            }),
+        );
+        assert_eq!(app.transcript, initial);
+        assert!(app.active_transcript_refresh.is_some());
+        app.settle_active_transcript_refresh(
+            "refresh-1",
+            "stored-session",
+            Some("work".into()),
+            "work",
+            "runtime-session",
+            Ok(crate::gateway::OlderTranscriptPage {
+                messages: vec![json!({"id":2}), json!({"id":3}), json!({"id":4})],
+                has_more: true,
+                replace_all: false,
+            }),
+        );
+        assert_eq!(
+            app.transcript,
+            vec![
+                json!({"id":1}),
+                json!({"id":2}),
+                json!({"id":3}),
+                json!({"id":4})
+            ]
+        );
+        assert_eq!(app.draft, "unsent draft");
+        assert!(app.transcript_has_more);
+        assert!(app.active_transcript_refresh.is_none());
+
+        let before_new_event = app.transcript.clone();
+        app.active_transcript_refresh = Some(PendingActiveTranscriptRefresh {
+            request_id: "refresh-2".into(),
+            stored_session_id: "stored-session".into(),
+            profile: Some("work".into()),
+            endpoint_profile_id: "work".into(),
+            runtime_session_id: "runtime-session".into(),
+            transcript_snapshot_hash: transcript_fingerprint(&before_new_event),
+            transcript_snapshot_len: before_new_event.len(),
+        });
+        app.transcript
+            .push(json!({"id":5,"role":"assistant","streaming":false}));
+        let newer = app.transcript.clone();
+        app.settle_active_transcript_refresh(
+            "refresh-2",
+            "stored-session",
+            Some("work".into()),
+            "work",
+            "runtime-session",
+            Ok(crate::gateway::OlderTranscriptPage {
+                messages: vec![json!({"id":3}), json!({"id":4}), json!({"id":6})],
+                has_more: false,
+                replace_all: false,
+            }),
+        );
+        assert_eq!(
+            app.transcript, newer,
+            "a read started before a transcript change is stale"
+        );
+        assert_eq!(app.draft, "unsent draft");
+
+        app.transcript = vec![json!({"id":8,"role":"assistant","streaming":true})];
+        let busy = app.transcript.clone();
+        app.active_transcript_refresh = Some(PendingActiveTranscriptRefresh {
+            request_id: "refresh-3".into(),
+            stored_session_id: "stored-session".into(),
+            profile: Some("work".into()),
+            endpoint_profile_id: "work".into(),
+            runtime_session_id: "runtime-session".into(),
+            transcript_snapshot_hash: transcript_fingerprint(&busy),
+            transcript_snapshot_len: busy.len(),
+        });
+        app.settle_active_transcript_refresh(
+            "refresh-3",
+            "stored-session",
+            Some("work".into()),
+            "work",
+            "runtime-session",
+            Ok(crate::gateway::OlderTranscriptPage {
+                messages: vec![json!({"id":7}), json!({"id":8})],
+                has_more: false,
+                replace_all: false,
+            }),
+        );
+        assert_eq!(
+            app.transcript, busy,
+            "a busy streamed turn is never replaced"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn peer_transcript_refresh_targets_open_profile_scoped_tiles_and_fences_stale_receipts() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests) = GatewayDiscovery::for_test_transcript_refresh();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let matching_pane = app
+            .workspace
+            .open_session_pane(Some("profile-a"), "stored-shared", "Work")
+            .expect("open matching profile tile");
+        app.workspace
+            .open_session_pane(Some("profile-b"), "stored-shared", "Personal")
+            .expect("open colliding ID in another profile");
+        let key = session_identity_key("stored-shared", Some("profile-a"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("profile-a".into()),
+                runtime_session_id: Some("runtime-a".into()),
+                transcript: vec![json!({"id":1})],
+                transcript_message_count: 1,
+                draft: "unsent tile draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.session_chat_views.insert(
+            session_identity_key("stored-shared", Some("profile-b")),
+            SessionChatViewState {
+                profile: Some("profile-b".into()),
+                runtime_session_id: Some("runtime-b".into()),
+                transcript: vec![json!({"id":9})],
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.refresh_peer_transcript_targets("stored-shared");
+        let (request_id, stored_id, profile, runtime) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("read scheduled for matching open tile");
+        assert_eq!(stored_id, "stored-shared");
+        assert_eq!(profile.as_deref(), Some("profile-a"));
+        assert_eq!(runtime, "runtime-a");
+        assert!(
+            requests.try_recv().is_err(),
+            "other profile must not be read"
+        );
+        let snapshot_len = app
+            .peer_transcript_refreshes
+            .get(&request_id)
+            .expect("fenced request retained")
+            .transcript_snapshot_len;
+        app.settle_peer_transcript_refresh(
+            &request_id,
+            &stored_id,
+            profile,
+            "profile-a",
+            &runtime,
+            Ok(crate::gateway::OlderTranscriptPage {
+                messages: vec![json!({"id":1}), json!({"id":2})],
+                has_more: true,
+                replace_all: false,
+            }),
+        );
+        let view = &app.session_chat_views[&key];
+        assert_eq!(view.transcript, vec![json!({"id":1}), json!({"id":2})]);
+        assert_eq!(view.draft, "unsent tile draft");
+        assert!(view.transcript_has_more);
+        assert_eq!(snapshot_len, 1);
+
+        app.refresh_peer_transcript_targets("stored-shared");
+        let (request_id, stored_id, profile, runtime) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("second read scheduled");
+        app.session_chat_views
+            .get_mut(&key)
+            .unwrap()
+            .transcript
+            .push(json!({"id":3}));
+        let before_stale_receipt = app.session_chat_views[&key].transcript.clone();
+        app.settle_peer_transcript_refresh(
+            &request_id,
+            &stored_id,
+            profile,
+            "profile-a",
+            &runtime,
+            Ok(crate::gateway::OlderTranscriptPage {
+                messages: vec![json!({"id":2}), json!({"id":4})],
+                has_more: false,
+                replace_all: false,
+            }),
+        );
+        assert_eq!(
+            app.session_chat_views[&key].transcript,
+            before_stale_receipt
+        );
+
+        app.refresh_peer_transcript_targets("stored-shared");
+        let (request_id, stored_id, profile, runtime) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("third read scheduled before pane close");
+        app.workspace
+            .close_session_pane(&matching_pane)
+            .expect("close matching pane");
+        let before_closed_receipt = app.session_chat_views[&key].transcript.clone();
+        app.settle_peer_transcript_refresh(
+            &request_id,
+            &stored_id,
+            profile,
+            "profile-a",
+            &runtime,
+            Ok(crate::gateway::OlderTranscriptPage {
+                messages: vec![json!({"id":3}), json!({"id":4})],
+                has_more: false,
+                replace_all: false,
+            }),
+        );
+        assert_eq!(
+            app.session_chat_views[&key].transcript,
+            before_closed_receipt
+        );
+
+        app.session_chat_views
+            .get_mut(&key)
+            .unwrap()
+            .transcript
+            .push(json!({"id":5,"streaming":true}));
+        app.refresh_peer_transcript_targets("stored-shared");
+        assert!(
+            requests.try_recv().is_err(),
+            "busy transcript suppresses reads"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn messaging_status_mapping_matches_pinned_platform_status_logic() {
+        let platform = |enabled, state: Option<&str>| MessagingPlatformInfo {
+            id: "telegram".into(),
+            name: "Telegram".into(),
+            description: String::new(),
+            configured: true,
+            enabled,
+            gateway_running: true,
+            state: state.map(str::to_owned),
+            error_code: None,
+            error_message: None,
+            docs_url: String::new(),
+            relay_fronted: false,
+            relay_exclusive: false,
+            disabled_by_relay: false,
+            env_vars: Vec::new(),
+        };
+        assert_eq!(
+            messaging_status(&platform(true, Some("connected"))),
+            MessagingStatus::Connected
+        );
+        assert_eq!(
+            messaging_status(&platform(true, Some("fatal"))),
+            MessagingStatus::Error
+        );
+        assert_eq!(
+            messaging_status(&platform(true, Some("startup_failed"))),
+            MessagingStatus::Error
+        );
+        assert_eq!(
+            messaging_status(&platform(true, Some("connecting"))),
+            MessagingStatus::Attention
+        );
+        assert_eq!(
+            messaging_status(&platform(false, Some("connected"))),
+            MessagingStatus::Off
+        );
+    }
+
+    #[test]
+    fn telegram_qr_allowlist_add_remove_and_validation_match_source_controls() {
+        let (mut app, profile) = isolated_app();
+        app.telegram_setup_new_user_id = "8792111505".into();
+        app.add_telegram_setup_user();
+        assert_eq!(app.telegram_setup_allowlist, "8792111505");
+        assert!(app.telegram_setup_new_user_id.is_empty());
+        assert!(app.telegram_setup_allowlist_error.is_none());
+
+        app.telegram_setup_new_user_id = "8792111505".into();
+        app.add_telegram_setup_user();
+        assert!(
+            app.telegram_setup_allowlist_error
+                .as_deref()
+                .unwrap()
+                .contains("already allowed")
+        );
+        assert_eq!(app.telegram_setup_allowlist, "8792111505");
+
+        app.telegram_setup_new_user_id = "not-an-id".into();
+        app.add_telegram_setup_user();
+        assert!(
+            app.telegram_setup_allowlist_error
+                .as_deref()
+                .unwrap()
+                .contains("3–20 digits")
+        );
+
+        app.remove_telegram_setup_user("8792111505");
+        assert!(app.telegram_setup_allowlist.is_empty());
+        assert!(app.telegram_setup_allowlist_error.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile).unwrap();
+    }
+
+    #[test]
+    fn messaging_configuration_drafts_normalize_lists_and_clear_saved_values() {
+        let platform = MessagingPlatformInfo {
+            id: "telegram".into(),
+            name: "Telegram".into(),
+            description: String::new(),
+            configured: true,
+            enabled: true,
+            gateway_running: true,
+            state: Some("connected".into()),
+            error_code: None,
+            error_message: None,
+            docs_url: String::new(),
+            relay_fronted: false,
+            relay_exclusive: false,
+            disabled_by_relay: false,
+            env_vars: vec![
+                MessagingEnvVarInfo {
+                    advanced: false,
+                    description: String::new(),
+                    is_list: false,
+                    is_password: true,
+                    is_set: true,
+                    key: "TELEGRAM_TOKEN".into(),
+                    prompt: String::new(),
+                    redacted_value: Some("••••".into()),
+                    required: true,
+                    url: None,
+                    value: None,
+                },
+                MessagingEnvVarInfo {
+                    advanced: false,
+                    description: String::new(),
+                    is_list: true,
+                    is_password: false,
+                    is_set: true,
+                    key: "TELEGRAM_ALLOW_FROM".into(),
+                    prompt: String::new(),
+                    redacted_value: None,
+                    required: false,
+                    url: None,
+                    value: Some("111, 222".into()),
+                },
+            ],
+        };
+        let edits = BTreeMap::from([
+            ("TELEGRAM_TOKEN".into(), " replacement-token ".into()),
+            ("TELEGRAM_ALLOW_FROM".into(), "111\n222, 333\n111".into()),
+        ]);
+
+        let update = messaging_config_update(&platform, &edits);
+
+        assert_eq!(
+            update.env.get("TELEGRAM_TOKEN").unwrap(),
+            "replacement-token"
+        );
+        assert_eq!(
+            update.env.get("TELEGRAM_ALLOW_FROM").unwrap(),
+            "111,222,333"
+        );
+        assert!(update.clear_env.is_empty());
+
+        let clear = messaging_config_update(
+            &platform,
+            &BTreeMap::from([("TELEGRAM_TOKEN".into(), String::new())]),
+        );
+        assert!(clear.env.is_empty());
+        assert_eq!(clear.clear_env, vec!["TELEGRAM_TOKEN"]);
+        assert!(!messaging_config_has_changes(
+            &MessagingPlatformUpdate::default()
+        ));
+    }
+
+    #[test]
+    fn messaging_owner_reset_discards_pending_and_cached_profile_data() {
+        let (mut app, profile) = isolated_app();
+        app.messaging_request_id = Some("old-profile-request".into());
+        app.messaging_pending = true;
+        app.messaging_error = Some("old profile error".into());
+        app.messaging_action_error = Some("old update error".into());
+        app.messaging_toggle_request = Some((
+            "old-toggle-request".into(),
+            "telegram".into(),
+            Some("old-profile".into()),
+            false,
+        ));
+        app.messaging_restart_needed = true;
+        app.messaging_pairing = Some(PairingSnapshot {
+            pending: vec![PairingUser {
+                age_minutes: Some(3.0),
+                platform: "telegram".into(),
+                request_id: Some("old-request".into()),
+                user_id: "old-user".into(),
+                user_name: None,
+            }],
+            approved: Vec::new(),
+        });
+        app.messaging_pairing_request =
+            Some(("old-pairing-read".into(), Some("old-profile".into())));
+        app.messaging_pairing_error = Some("old pairing error".into());
+        app.messaging_pairing_mutation = Some((
+            "old-pairing-write".into(),
+            "telegram".into(),
+            "old-request".into(),
+            PairingMutationKind::Approve,
+            Some("old-profile".into()),
+        ));
+        app.messaging_pairing_action_error = Some("old pairing action error".into());
+        app.messaging_selected_platform = Some("telegram".into());
+        app.telegram_setup = Some(TelegramOnboardingStart {
+            deep_link: "https://t.me/BotFather".into(),
+            expires_at: "2099-01-01T00:00:00Z".into(),
+            pairing_id: "old-pairing".into(),
+            qr_payload: "old-secret-payload".into(),
+            suggested_username: "oldbot".into(),
+        });
+        app.telegram_setup_profile = Some("old-profile".into());
+        app.telegram_setup_request = Some(PendingTelegramSetupRequest {
+            request_id: "old-telegram-request".into(),
+            kind: TelegramSetupRequestKind::Status,
+            profile: Some("old-profile".into()),
+            pairing_id: Some("old-pairing".into()),
+        });
+        app.messaging_platforms = Some(MessagingPlatformsSnapshot {
+            platforms: vec![MessagingPlatformInfo {
+                id: "telegram".into(),
+                name: "Telegram".into(),
+                description: String::new(),
+                configured: true,
+                enabled: true,
+                gateway_running: true,
+                state: Some("connected".into()),
+                error_code: None,
+                error_message: None,
+                docs_url: String::new(),
+                relay_fronted: false,
+                relay_exclusive: false,
+                disabled_by_relay: false,
+                env_vars: Vec::new(),
+            }],
+        });
+
+        app.reset_messaging_state();
+
+        assert!(app.messaging_request_id.is_none());
+        assert!(!app.messaging_pending);
+        assert!(app.messaging_platforms.is_none());
+        assert!(app.messaging_error.is_none());
+        assert!(app.messaging_action_error.is_none());
+        assert!(app.messaging_toggle_request.is_none());
+        assert!(!app.messaging_restart_needed);
+        assert!(app.messaging_pairing.is_none());
+        assert!(app.messaging_pairing_request.is_none());
+        assert!(app.messaging_pairing_error.is_none());
+        assert!(app.messaging_pairing_mutation.is_none());
+        assert!(app.messaging_pairing_action_error.is_none());
+        assert!(app.telegram_setup.is_none());
+        assert!(app.telegram_setup_profile.is_none());
+        assert!(app.telegram_setup_request.is_none());
+        app.messaging_config_edits.insert(
+            "telegram".into(),
+            BTreeMap::from([("TOKEN".into(), "secret".into())]),
+        );
+        app.messaging_config_save_request = Some((
+            "old-config-request".into(),
+            "telegram".into(),
+            Some("old-profile".into()),
+        ));
+        app.messaging_config_saving = true;
+        app.messaging_config_error = Some("old config error".into());
+        app.reset_messaging_state();
+        assert!(app.messaging_config_edits.is_empty());
+        assert!(app.messaging_config_save_request.is_none());
+        assert!(!app.messaging_config_saving);
+        assert!(app.messaging_config_error.is_none());
+        assert!(app.messaging_selected_platform.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile).unwrap();
+    }
+
+    #[test]
+    fn messaging_inventory_renders_each_status_group_and_filters_the_channel_list() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Messaging;
+        let platform = |id: &str, name: &str, enabled: bool, state: &str| MessagingPlatformInfo {
+            id: id.into(),
+            name: name.into(),
+            description: format!("{name} channel fixture"),
+            configured: true,
+            enabled,
+            gateway_running: true,
+            state: Some(state.into()),
+            error_code: None,
+            error_message: None,
+            docs_url: String::new(),
+            relay_fronted: false,
+            relay_exclusive: false,
+            disabled_by_relay: false,
+            env_vars: if id == "telegram" {
+                vec![MessagingEnvVarInfo {
+                    advanced: false,
+                    description: "Token used to connect the bot".into(),
+                    is_list: false,
+                    is_password: true,
+                    is_set: true,
+                    key: "TELEGRAM_TOKEN".into(),
+                    prompt: "Bot token".into(),
+                    redacted_value: Some("Saved value; enter a replacement".into()),
+                    required: true,
+                    url: Some("https://docs.example/telegram".into()),
+                    value: None,
+                }]
+            } else {
+                Vec::new()
+            },
+        };
+        app.messaging_platforms = Some(MessagingPlatformsSnapshot {
+            platforms: vec![
+                platform("telegram", "Telegram", true, "connected"),
+                platform("slack", "Slack", true, "fatal"),
+                platform("discord", "Discord", true, "connecting"),
+                platform("signal", "Signal", false, "connected"),
+            ],
+        });
+        app.messaging_restart_needed = true;
+        app.messaging_pairing = Some(PairingSnapshot {
+            pending: vec![PairingUser {
+                age_minutes: Some(6.0),
+                platform: "telegram".into(),
+                request_id: Some("pending-request-1".into()),
+                user_id: "1001".into(),
+                user_name: Some("Bee".into()),
+            }],
+            approved: vec![PairingUser {
+                age_minutes: None,
+                platform: "telegram".into(),
+                request_id: None,
+                user_id: "2002".into(),
+                user_name: Some("Kay".into()),
+            }],
+        });
+        app.telegram_setup = Some(TelegramOnboardingStart {
+            deep_link: "https://t.me/BotFather?start=fixture".into(),
+            expires_at: "2099-01-01T00:00:00Z".into(),
+            pairing_id: "fixture-pairing".into(),
+            qr_payload: "https://t.me/login?token=fixture-opaque".into(),
+            suggested_username: "HermesBot".into(),
+        });
+        app.telegram_setup_profile = Some("fixture-profile".into());
+        app.telegram_setup_status = Some(TelegramOnboardingStatus::Ready {
+            bot_username: Some("HermesBot".into()),
+            expires_at: "2099-01-01T00:00:00Z".into(),
+            owner_user_id: Some("8792111505".into()),
+        });
+        app.telegram_setup_allowlist = "8792111505".into();
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        for label in [
+            "4 channels",
+            "1 connected",
+            "1 need attention",
+            "1 errors",
+            "1 off",
+        ] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "missing status summary: {label}"
+            );
+        }
+        assert!(
+            harness
+                .query_by_label("Search messaging channels")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Channel enabled")
+                .expect("channel enable checkbox")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(harness.query_by_label("Bot token").is_some());
+        assert!(harness.query_by_label("Telegram bot setup").is_some());
+        assert!(
+            harness
+                .query_by_label("Restart Hermes")
+                .unwrap()
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(harness.query_by_label("Telegram setup QR code").is_some());
+        assert!(harness.query_by_label("Scan with Telegram").is_some());
+        assert!(harness.query_by_label("Owner detected").is_some());
+        assert!(harness.query_by_label("Remove 8792111505").is_some());
+        assert!(harness.query_by_label("Telegram user ID").is_some());
+        assert!(harness.query_by_label("Save and restart").is_some());
+        app.borrow_mut().telegram_setup_allowlist.clear();
+        harness.run();
+        let save_empty = harness
+            .query_by_label("Save and restart")
+            .expect("empty allowlist keeps the source-visible save action");
+        assert!(!save_empty.accesskit_node().is_disabled());
+        save_empty.click();
+        harness.run();
+        assert!(harness
+            .query_by_label("Enter 1–256 unique Telegram user IDs, each 3–20 digits, separated by commas or spaces.")
+            .is_some());
+        assert!(harness.query_by_label("Open Telegram").is_some());
+        assert!(harness.query_by_label("Cancel").is_some());
+        assert!(harness.query_by_label("Pairing access").is_some());
+        assert!(harness.query_by_label("Pending requests (1)").is_some());
+        assert!(harness.query_by_label("Approved users (1)").is_some());
+        assert!(harness.query_by_label("1 pending").is_some());
+        assert!(
+            harness
+                .query_by_label("Approve")
+                .expect("pairing approval action")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(
+            harness
+                .query_by_label("Revoke")
+                .expect("pairing revoke action")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(
+            harness
+                .query_by_label("Save changes")
+                .expect("save button without edits")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(harness.query_by_label("Telegram").is_some());
+        harness
+            .query_all_by(|node| node.label().as_deref() == Some("Error"))
+            .next()
+            .expect("Error filter button")
+            .click();
+        harness.run();
+        assert!(harness.query_by_label("Slack").is_some());
+        assert!(harness.query_by_label("Telegram").is_none());
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_sessions_search_and_open_through_the_real_overlay() {
+        let (mut app, profile_dir) = isolated_app();
+        app.navigate_path("/command-center?section=sessions")
+            .expect("Command Center route should be recognized");
+        let alpha = SessionSummary {
+            id: "recent-alpha".into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: Some("worker".into()),
+            title: "Recent alpha session".into(),
+            preview: "A source-backed session row.".into(),
+            message_count: 4,
+            source: "ui".into(),
+            started_at: 1_700_000_000.0,
+            last_active: Some(1_700_000_100.0),
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        app.sessions = vec![
+            alpha.clone(),
+            SessionSummary {
+                id: "other-beta".into(),
+                title: "Other beta session".into(),
+                last_active: Some(1_700_000_200.0),
+                ..alpha
+            },
+        ];
+        app.command_center_query = "alpha".into();
+        assert_eq!(
+            CommandCenterSection::from_route("/command-center?section=usage"),
+            CommandCenterSection::Usage
+        );
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        assert!(
+            harness
+                .query_by_label("Search Command Center sessions")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Open session: Recent alpha session")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Pin Command Center session recent-alpha")
+                .expect("Command Center exposes the shared pin action")
+                .accesskit_node()
+                .is_disabled()
+        );
+        assert!(
+            harness
+                .query_by_label("Open session: Other beta session")
+                .is_none()
+        );
+        assert!(
+            harness
+                .query_by_label("Connect to Hermes to load this screen.")
+                .is_none()
+        );
+        for label in ["Sessions", "System", "Usage", "Maintenance"] {
+            assert!(
+                harness
+                    .query_by_label(&format!("Command Center section: {label}"))
+                    .is_some(),
+                "missing section {label}"
+            );
+        }
+
+        harness
+            .query_by_label("Open session: Recent alpha session")
+            .expect("session opens through its actionable title")
+            .click();
+        harness.run();
+        assert_eq!(app.borrow().route, AppRoute::Session("recent-alpha".into()));
+        assert_eq!(
+            app.borrow().active_session_profile.as_deref(),
+            Some("worker")
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_system_renders_cached_gateway_status_and_recent_logs() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "system-fixture-instance".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32145".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.command_center_system_log_file = "agent".into();
+        app.command_center_system_log_level = "ERROR".into();
+        app.command_center_system = Some(CachedCommandCenterSystem {
+            profile: "worker".into(),
+            endpoint_instance_id: "system-fixture-instance".into(),
+            authority_epoch: 7,
+            log_file: "agent".into(),
+            log_level: "ERROR".into(),
+            snapshot: CommandCenterSystemSnapshot {
+                status: crate::gateway::CommandCenterStatus {
+                    active_sessions: 3,
+                    gateway_running: true,
+                    version: "2026.11.18-fixture".into(),
+                    gateway_heartbeat_stale_s: None,
+                    gateway_exit_reason: None,
+                },
+                logs: crate::gateway::CommandCenterLogs {
+                    file: "agent".into(),
+                    lines: vec!["ERROR fixture worker failed safely".into()],
+                },
+            },
+        });
+        app.navigate_path("/command-center?section=system")
+            .expect("Command Center System route should be recognized");
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(|ui| app.draw(ui));
+
+        assert!(harness.query_by_label("Gateway running").is_some());
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("Hermes 2026.11.18-fixture · 3 active sessions"))
+                .next()
+                .is_some(),
+            "the profile-owned system status is visible in the route overlay"
+        );
+        assert!(
+            harness
+                .query_all_by(
+                    |node| node.value().as_deref() == Some("ERROR fixture worker failed safely")
+                )
+                .next()
+                .is_some(),
+            "recent log rows render from the matching owner/filter cache"
+        );
+        assert!(
+            harness
+                .query_by_label("System status has not been loaded.")
+                .is_none()
+        );
+        assert!(
+            harness
+                .query_by_label("Search Command Center logs")
+                .is_some()
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_usage_renders_summary_chart_models_and_skills() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::CommandCenter;
+        app.command_center_section = CommandCenterSection::Usage;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "usage-fixture-instance".into(),
+            authority_epoch: 5,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32145".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.command_center_usage = Some(CachedCommandCenterUsage {
+            profile: "worker".into(),
+            endpoint_instance_id: "usage-fixture-instance".into(),
+            authority_epoch: 5,
+            snapshot: CommandCenterUsageSnapshot {
+                by_model: vec![crate::gateway::CommandCenterUsageModel {
+                    api_calls: 3,
+                    estimated_cost: 0.04,
+                    input_tokens: 120,
+                    model: "model-fixture".into(),
+                    output_tokens: 80,
+                    sessions: 2,
+                }],
+                daily: vec![
+                    crate::gateway::CommandCenterUsageDay {
+                        actual_cost: 0.02,
+                        api_calls: 2,
+                        cache_read_tokens: 0,
+                        day: "2026-11-17".into(),
+                        estimated_cost: 0.03,
+                        input_tokens: 100,
+                        output_tokens: 60,
+                        reasoning_tokens: 0,
+                        sessions: 1,
+                    },
+                    crate::gateway::CommandCenterUsageDay {
+                        actual_cost: 0.01,
+                        api_calls: 1,
+                        cache_read_tokens: 10,
+                        day: "2026-11-18".into(),
+                        estimated_cost: 0.01,
+                        input_tokens: 20,
+                        output_tokens: 20,
+                        reasoning_tokens: 5,
+                        sessions: 1,
+                    },
+                ],
+                period_days: 30,
+                skills: crate::gateway::CommandCenterUsageSkills {
+                    summary: crate::gateway::CommandCenterUsageSkillsSummary {
+                        distinct_skills_used: 1,
+                        total_skill_actions: 2,
+                        total_skill_edits: 0,
+                        total_skill_loads: 2,
+                    },
+                    top_skills: vec![crate::gateway::CommandCenterUsageSkill {
+                        last_used_at: Some(1_795_000_000.0),
+                        manage_count: 0,
+                        percentage: 100.0,
+                        skill: "review".into(),
+                        total_count: 2,
+                        view_count: 2,
+                    }],
+                },
+                tools: Some(vec![crate::gateway::CommandCenterUsageTool {
+                    count: 1,
+                    percentage: 100.0,
+                    tool: "read_file".into(),
+                }]),
+                totals: crate::gateway::CommandCenterUsageTotals {
+                    total_actual_cost: 0.03,
+                    total_api_calls: Some(3),
+                    total_cache_read: Some(10),
+                    total_estimated_cost: 0.04,
+                    total_input: Some(120),
+                    total_output: Some(80),
+                    total_reasoning: Some(5),
+                    total_sessions: 2,
+                },
+            },
+        });
+        app.command_center_usage_period_days = 7;
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        for label in [
+            "Command Center usage period: 7 days",
+            "Command Center usage period: 30 days",
+            "Command Center usage period: 90 days",
+            "Refresh Command Center usage analytics",
+            "Daily tokens",
+            "Top models",
+            "Top skills",
+            "model-fixture",
+            "review",
+        ] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "missing Command Center Usage control/content: {label}"
+            );
+        }
+        assert!(
+            harness
+                .query_by_label("Usage data has not been loaded.")
+                .is_none()
+        );
+        assert!(
+            harness.query_by_label("model-fixture").is_some(),
+            "the source keeps the last successful same-profile period visible during a range refresh"
+        );
+        assert_eq!(format_compact_count(1_234), "1.2K");
+        harness.key_press(egui::Key::R);
+        harness.run();
+        assert_eq!(
+            app.borrow().command_center_usage_error.as_deref(),
+            Some("Hermes gateway HTTP worker is unavailable")
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_maintenance_renders_snapshot_and_fences_confirmations_by_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::CommandCenter;
+        app.command_center_section = CommandCenterSection::Maintenance;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "maintenance-fixture-instance".into(),
+            authority_epoch: 6,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32146".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.command_center_maintenance = Some(CachedCommandCenterMaintenance {
+            profile: "worker".into(),
+            endpoint_instance_id: "maintenance-fixture-instance".into(),
+            authority_epoch: 6,
+            snapshot: CommandCenterMaintenanceSnapshot {
+                curator: Ok(crate::gateway::CommandCenterMaintenanceCuratorStatus {
+                    enabled: true,
+                    paused: false,
+                    interval_hours: Some(6.0),
+                    last_run_at: Some("2026-11-18T12:00:00Z".into()),
+                    min_idle_hours: Some(1.0),
+                    stale_after_days: Some(7.0),
+                    archive_after_days: Some(30.0),
+                }),
+                memory: Ok(crate::gateway::CommandCenterMaintenanceMemoryStatus {
+                    active: "builtin".into(),
+                    providers: vec![crate::gateway::CommandCenterMemoryProvider {
+                        name: "builtin".into(),
+                        description: "Local markdown memory".into(),
+                        available: true,
+                        configured: true,
+                        status: "ready".into(),
+                    }],
+                    builtin_files: crate::gateway::CommandCenterMemoryFiles {
+                        memory: 512,
+                        user: 0,
+                    },
+                }),
+            },
+        });
+        app.command_center_maintenance_action_status = Some(crate::gateway::GatewayActionStatus {
+            name: "doctor".into(),
+            running: false,
+            pid: Some(4242),
+            exit_code: Some(0),
+            lines: vec!["Doctor check passed".into()],
+        });
+        let mut share_urls = std::collections::BTreeMap::new();
+        share_urls.insert("bundle".into(), "https://share.hermes.test/bundle-1".into());
+        app.command_center_maintenance_share = Some(CommandCenterDebugShareResponse {
+            ok: true,
+            urls: share_urls,
+            failures: std::collections::BTreeMap::new(),
+            redacted: true,
+            auto_delete_seconds: Some(3600),
+        });
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        for label in [
+            "Maintenance",
+            "Run Doctor",
+            "Run Security audit",
+            "Run Backup",
+            "Share debug bundle…",
+            "doctor log",
+            "Doctor check passed",
+            "bundle: https://share.hermes.test/bundle-1",
+            "Active",
+            "Pause",
+            "Run now",
+            "Active provider: builtin",
+            "MEMORY.md · 512 bytes",
+            "Reset MEMORY.md",
+            "USER.md · 0 bytes",
+            "Reset USER.md",
+        ] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "missing Command Center Maintenance control/content: {label}"
+            );
+        }
+
+        app.borrow_mut()
+            .queue_command_center_maintenance_confirmation(
+                CommandCenterMaintenanceOperation::DebugShare,
+            );
+        assert_eq!(
+            app.borrow()
+                .command_center_maintenance_confirmation
+                .as_ref()
+                .map(|confirmation| confirmation.profile.as_str()),
+            Some("worker")
+        );
+        app.borrow_mut()
+            .gateway_endpoint
+            .as_mut()
+            .expect("endpoint")
+            .profile_id = "other-profile".into();
+        app.borrow_mut().confirm_command_center_maintenance();
+        assert_eq!(
+            app.borrow().command_center_maintenance_error.as_deref(),
+            Some(
+                "Hermes profile changed while the confirmation was open. Review the action again."
+            )
+        );
+
+        app.borrow_mut()
+            .gateway_endpoint
+            .as_mut()
+            .expect("endpoint")
+            .profile_id = "worker".into();
+        app.borrow_mut()
+            .queue_command_center_maintenance_confirmation(
+                CommandCenterMaintenanceOperation::ResetMemory {
+                    target: CommandCenterMemoryResetTarget::Memory,
+                },
+            );
+        harness.run();
+        assert!(harness.query_by_label("Reset memory file?").is_some());
+        app.borrow_mut().confirm_command_center_maintenance();
+        assert_eq!(
+            app.borrow().command_center_maintenance_error.as_deref(),
+            Some("Hermes gateway HTTP worker is unavailable")
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_sessions_delete_requires_confirmation_and_applies_receipt() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::CommandCenter;
+        app.command_center_section = CommandCenterSection::Sessions;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "session-delete-instance".into(),
+            authority_epoch: 8,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32147".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let session = SessionSummary {
+            id: "sess-1".into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: Some("worker".into()),
+            title: "Precious conversation".into(),
+            preview: "Important context".into(),
+            message_count: 3,
+            source: "desktop".into(),
+            started_at: 1_756_500_000.0,
+            last_active: Some(1_756_600_000.0),
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        app.sessions = vec![session.clone()];
+        app.command_palette_sessions = vec![session.clone()];
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        harness
+            .query_by_label("Delete Command Center session sess-1")
+            .expect("delete action is rendered")
+            .click();
+        harness.run();
+        assert_eq!(app.borrow().sessions.len(), 1);
+        assert!(harness.query_by_label("Delete session?").is_some());
+
+        harness
+            .query_by_label("Cancel Command Center session delete")
+            .expect("cancel button is rendered")
+            .click();
+        harness.run();
+        assert!(app.borrow().command_center_delete_confirmation.is_none());
+        assert_eq!(app.borrow().sessions.len(), 1);
+
+        harness
+            .query_by_label("Delete Command Center session sess-1")
+            .expect("delete action remains available")
+            .click();
+        harness.run();
+        let action_key = session_identity_key("sess-1", Some("worker"));
+        app.borrow_mut()
+            .pending_session_deletes
+            .insert(action_key, "delete-req-1".into());
+        app.borrow_mut().command_center_delete_confirmation = None;
+        app.borrow_mut().apply_session_deleted_receipt(
+            "delete-req-1".into(),
+            "sess-1".into(),
+            Some("worker".into()),
+            Ok(()),
+        );
+        harness.run();
+        assert!(app.borrow().sessions.is_empty());
+        assert!(app.borrow().command_palette_sessions.is_empty());
+        assert_eq!(app.borrow().status, "Session deleted");
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_sessions_export_and_load_more_follow_pinned_contract() {
+        assert_eq!(
+            session_export_filename("20261118_abcdef1234", Some("Precious Conversation!")),
+            "precious-conversation-20261118.json"
+        );
+        assert_eq!(
+            session_export_filename("!!!", Some("   ")),
+            "session-session.json"
+        );
+
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::CommandCenter;
+        app.command_center_section = CommandCenterSection::Sessions;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "session-export-instance".into(),
+            authority_epoch: 8,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32147".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.session_list_limit = 1;
+        app.sessions = vec![SessionSummary {
+            id: "sess-1".into(),
+            lineage_root_id: None,
+            cwd: None,
+            profile: Some("worker".into()),
+            title: "Precious conversation".into(),
+            preview: "Important context".into(),
+            message_count: 3,
+            source: "desktop".into(),
+            started_at: 1_756_500_000.0,
+            last_active: Some(1_756_600_000.0),
+            pinned: false,
+            unread: false,
+            archived: false,
+        }];
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        assert!(
+            harness
+                .query_by_label("Export Command Center session sess-1")
+                .is_some()
+        );
+        harness
+            .query_by_label("Load more Command Center sessions")
+            .expect("Load more (+200) is visible when loaded count reaches limit")
+            .click();
+        harness.run();
+        assert_eq!(app.borrow().session_list_limit, 201);
+
+        let action_key = session_identity_key("sess-1", Some("worker"));
+        app.borrow_mut()
+            .pending_session_exports
+            .insert(action_key, "export-req-1".into());
+        app.borrow_mut().apply_session_export_loaded(
+            "export-req-1".into(),
+            "sess-1".into(),
+            Some("worker".into()),
+            Ok(crate::gateway::SessionExportTranscript {
+                resolved_session_id: "sess-1".into(),
+                messages: vec![serde_json::json!({"role":"user","content":"Hello"})],
+            }),
+        );
+        let export_path = app
+            .borrow()
+            .last_exported_session_path
+            .clone()
+            .expect("export writes JSON file");
+        assert!(export_path.ends_with("precious-conversation-sess-1.json"));
+        let exported: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&export_path).unwrap()).unwrap();
+        assert_eq!(exported["session_id"], "sess-1");
+        assert_eq!(exported["title"], "Precious conversation");
+        assert_eq!(exported["message_count"], 1);
+        assert_eq!(exported["messages"][0]["content"], "Hello");
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_system_runs_restart_and_update_actions_and_polls_status() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::CommandCenter;
+        app.command_center_section = CommandCenterSection::System;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "system-actions-instance".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32148".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.command_center_system_log_file = "gateway".into();
+        app.command_center_system_log_level = "ALL".into();
+        app.command_center_system = Some(CachedCommandCenterSystem {
+            profile: "worker".into(),
+            endpoint_instance_id: "system-actions-instance".into(),
+            authority_epoch: 9,
+            log_file: "gateway".into(),
+            log_level: "ALL".into(),
+            snapshot: CommandCenterSystemSnapshot {
+                status: crate::gateway::CommandCenterStatus {
+                    active_sessions: 1,
+                    gateway_running: true,
+                    version: "2026.11.18".into(),
+                    gateway_heartbeat_stale_s: None,
+                    gateway_exit_reason: None,
+                },
+                logs: crate::gateway::CommandCenterLogs {
+                    file: "gateway".into(),
+                    lines: vec!["INFO ready".into()],
+                },
+            },
+        });
+        app.command_center_system_action_status = Some(crate::gateway::GatewayActionStatus {
+            name: "hermes-update".into(),
+            running: false,
+            pid: Some(9001),
+            exit_code: Some(0),
+            lines: vec!["Updated cleanly".into()],
+        });
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(|ui| app.draw(ui));
+
+        assert!(
+            harness
+                .query_by_label("Restart Command Center gateway")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Update Command Center Hermes")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref() == Some("hermes-update · Done"))
+                .next()
+                .is_some()
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn scheduled_jobs_route_renders_profile_owned_list_and_selected_details() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Cron;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32145".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.cron_jobs_profile = Some("worker".into());
+        app.cron_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "openai".into(),
+                name: "OpenAI".into(),
+                authenticated: Some(true),
+                models: vec!["openai/gpt-fixture".into(), "openai/gpt-next".into()],
+            }],
+            model: None,
+            provider: None,
+        });
+        app.cron_jobs = Some(vec![
+            CronJobInfo {
+                id: "daily-summary".into(),
+                name: Some("Daily summary".into()),
+                prompt: Some("Summarize project activity".into()),
+                no_agent: false,
+                script: None,
+                enabled: true,
+                state: Some("scheduled".into()),
+                schedule_display: Some("Daily at 9:00 AM".into()),
+                schedule: Some(crate::gateway::CronJobSchedule {
+                    display: None,
+                    expr: Some("0 9 * * *".into()),
+                    kind: Some("cron".into()),
+                }),
+                deliver: Some("local".into()),
+                catch_up: Some(false),
+                model: Some("openai/gpt-fixture".into()),
+                provider: Some("openai".into()),
+                next_run_at: Some("2026-11-17T09:00:00Z".into()),
+                last_run_at: None,
+                last_error: None,
+                latest_execution: Some(crate::gateway::CronJobExecutionInfo {
+                    id: "execution-daily".into(),
+                    status: "running".into(),
+                    claimed_at: Some("2026-11-16T22:00:00Z".into()),
+                    error: None,
+                }),
+                live_execution: None,
+            },
+            CronJobInfo {
+                id: "weekly-review".into(),
+                name: Some("Weekly review".into()),
+                prompt: Some("Review this week's work".into()),
+                no_agent: false,
+                script: None,
+                enabled: false,
+                state: Some("paused".into()),
+                schedule_display: Some("Mondays at 10:00 AM".into()),
+                schedule: None,
+                deliver: Some("local".into()),
+                catch_up: None,
+                model: None,
+                provider: None,
+                next_run_at: None,
+                last_run_at: None,
+                last_error: None,
+                latest_execution: None,
+                live_execution: None,
+            },
+        ]);
+        app.cron_job_runs = Some(vec![CronJobRunInfo {
+            id: "run-fixture".into(),
+            title: Some("Quarterly run".into()),
+            preview: Some("Completed report".into()),
+            source: Some("cron".into()),
+            started_at: Some(1_794_614_400.0),
+            last_active: Some(1_794_614_460.0),
+        }]);
+        app.cron_job_runs_owner = Some((Some("worker".into()), "daily-summary".into()));
+        app.cron_next_runs_poll =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
+        app.cron_queued_runs.insert(
+            "daily-summary".into(),
+            (
+                1_794_614_400_000,
+                std::time::Instant::now() + std::time::Duration::from_secs(30),
+            ),
+        );
+        app.cron_trigger_requests.insert(
+            "daily-summary".into(),
+            (
+                "trigger-request".into(),
+                Some("worker".into()),
+                1_794_614_400_000,
+            ),
+        );
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1400.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref() == Some("Scheduled jobs"))
+                .count()
+                >= 2
+        );
+        assert!(harness.query_by_label("2 jobs").is_some());
+        assert!(
+            harness
+                .query_by_label("Connect to Hermes to load this screen.")
+                .is_none()
+        );
+        assert!(harness.query_by_label("Search scheduled jobs").is_some());
+        assert!(harness.query_by_label("Pause").is_some());
+        assert!(
+            harness
+                .query_by_label("Scheduled job Daily summary, scheduled")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Scheduled job Weekly review, paused")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Summarize project activity")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Next run: 2026-11-17T09:00:00Z")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Delivery: This desktop").is_some());
+        assert!(harness.query_by_label("Last result: running").is_some());
+        assert!(harness.query_by_label("Run history").is_some());
+        assert!(harness.query_by_label("Quarterly run").is_some());
+        assert!(harness.query_by_label("Stop").is_some());
+        assert!(harness.query_by_label("Running…").is_some());
+        assert!(harness.query_by_label("Queued").is_some());
+        assert!(harness.query_by_label("Edit").is_some());
+        assert!(harness.query_by_label("Delete").is_some());
+        let selected_job = app
+            .borrow()
+            .cron_jobs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|job| job.id == "daily-summary")
+            .unwrap()
+            .clone();
+        app.borrow_mut().open_cron_editor(Some(&selected_job));
+        harness.run_steps(2);
+        assert!(app.borrow().cron_editor.is_some());
+        assert!(harness.query_by_label("Scheduled job name").is_some());
+        assert!(
+            harness
+                .query_by_label("Scheduled job cron expression")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Missed-run behavior").is_some());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).unwrap();
+    }
+
+    #[test]
+    fn scheduled_job_delivery_controls_preserve_other_targets_and_unknown_routes() {
+        assert_eq!(
+            cron_delivery_ids("local,telegram,custom-target"),
+            ["local", "telegram", "custom-target"]
+        );
+        assert_eq!(
+            cron_toggle_delivery_target("local,telegram", "telegram", false),
+            "local"
+        );
+        assert_eq!(
+            cron_toggle_delivery_target("local", "discord", true),
+            "local,discord"
+        );
+        assert_eq!(cron_toggle_delivery_target("", "local", false), "local");
+        assert_eq!(
+            cron_schedule_preset_label("0 9 * * 1-5"),
+            "Weekdays at 9:00 AM"
+        );
+        assert_eq!(cron_schedule_preset_label("17 4 * * *"), "Custom");
+    }
+
+    #[test]
+    fn scheduled_job_blueprint_defaults_and_validation_match_source_contract() {
+        let blueprint = CronBlueprint {
+            key: "fixture".into(),
+            title: "Fixture".into(),
+            description: String::new(),
+            category: "test".into(),
+            tags: Vec::new(),
+            fields: vec![
+                crate::gateway::CronBlueprintField {
+                    name: "choice".into(),
+                    field_type: "enum".into(),
+                    label: "Choice".into(),
+                    default: None,
+                    options: vec!["first".into(), "second".into()],
+                    optional: false,
+                    strict: None,
+                    help: String::new(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "day".into(),
+                    field_type: "weekdays".into(),
+                    label: "Day".into(),
+                    default: Some("mon".into()),
+                    options: vec!["mon".into(), "fri".into()],
+                    optional: false,
+                    strict: None,
+                    help: String::new(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "time".into(),
+                    field_type: "time".into(),
+                    label: "Time".into(),
+                    default: Some("09:05".into()),
+                    options: Vec::new(),
+                    optional: false,
+                    strict: None,
+                    help: String::new(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "optional_time".into(),
+                    field_type: "time".into(),
+                    label: "Optional time".into(),
+                    default: None,
+                    options: Vec::new(),
+                    optional: true,
+                    strict: None,
+                    help: String::new(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "deliver".into(),
+                    field_type: "enum".into(),
+                    label: "Delivery".into(),
+                    default: None,
+                    options: vec!["local".into(), "origin".into()],
+                    optional: false,
+                    strict: None,
+                    help: String::new(),
+                },
+            ],
+            command: "fixture".into(),
+            app_url: String::new(),
+            source: Some("builtin".into()),
+            plugin: None,
+        };
+        let values = cron_blueprint_initial_values(&blueprint);
+        assert_eq!(values.get("choice").map(String::as_str), Some(""));
+        assert_eq!(values.get("day").map(String::as_str), Some("mon"));
+        assert_eq!(values.get("time").map(String::as_str), Some("09:05"));
+        assert_eq!(values.get("optional_time").map(String::as_str), Some(""));
+        assert_eq!(values.get("deliver").map(String::as_str), Some("local"));
+
+        let time_parts = cron_blueprint_initial_time_parts(&blueprint, &values);
+        assert_eq!(time_parts.get("time"), Some(&(Some(9), Some(5))));
+        assert_eq!(time_parts.get("optional_time"), Some(&(None, None)));
+        assert!(
+            cron_blueprint_validation_error(&blueprint, &values, &time_parts)
+                .as_deref()
+                .is_some_and(|error| error.contains("Choice is required"))
+        );
+
+        let mut valid_values = values.clone();
+        valid_values.insert("choice".into(), "second".into());
+        assert_eq!(
+            cron_blueprint_validation_error(&blueprint, &valid_values, &time_parts),
+            None
+        );
+
+        let mut invalid_time = valid_values.clone();
+        invalid_time.insert("time".into(), "24:00".into());
+        assert!(
+            cron_blueprint_validation_error(&blueprint, &invalid_time, &time_parts)
+                .as_deref()
+                .is_some_and(|error| error.contains("valid 24-hour time"))
+        );
+        let mut missing_time = valid_values.clone();
+        missing_time.insert("time".into(), String::new());
+        assert!(
+            cron_blueprint_validation_error(&blueprint, &missing_time, &time_parts)
+                .as_deref()
+                .is_some_and(|error| error.contains("Time is required"))
+        );
+
+        let mut invalid_choice = valid_values;
+        invalid_choice.insert("choice".into(), "unlisted".into());
+        assert!(
+            cron_blueprint_validation_error(&blueprint, &invalid_choice, &time_parts)
+                .as_deref()
+                .is_some_and(|error| error.contains("listed option"))
+        );
+
+        let mut partial_time = values.clone();
+        partial_time.insert("choice".into(), "second".into());
+        partial_time.insert("optional_time".into(), String::new());
+        let partial_parts = BTreeMap::from([
+            ("time".into(), (Some(9), Some(5))),
+            ("optional_time".into(), (Some(8), None)),
+        ]);
+        assert!(
+            cron_blueprint_validation_error(&blueprint, &partial_time, &partial_parts)
+                .as_deref()
+                .is_some_and(|error| error.contains("both hour and minute"))
+        );
+
+        let delivery_for_default = |default: Option<&str>| CronBlueprint {
+            fields: vec![crate::gateway::CronBlueprintField {
+                name: "deliver".into(),
+                field_type: "enum".into(),
+                label: "Delivery".into(),
+                default: default.map(str::to_owned),
+                options: vec!["local".into()],
+                optional: false,
+                strict: None,
+                help: String::new(),
+            }],
+            ..blueprint.clone()
+        };
+        for default in [None, Some(""), Some("origin")] {
+            assert_eq!(
+                cron_blueprint_initial_values(&delivery_for_default(default))
+                    .get("deliver")
+                    .map(String::as_str),
+                Some("local")
+            );
+        }
+        assert_eq!(
+            cron_blueprint_initial_values(&delivery_for_default(Some("telegram")))
+                .get("deliver")
+                .map(String::as_str),
+            Some("telegram")
+        );
+
+        assert_eq!(cron_time_parts("00:00"), Some((0, 0)));
+        assert_eq!(cron_time_parts("23:59"), Some((23, 59)));
+        for invalid in ["", "9:05", "24:00", "09:60", "09:05:00", "09:5a"] {
+            assert_eq!(
+                cron_time_parts(invalid),
+                None,
+                "accepted invalid time {invalid:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn scheduled_job_editor_keeps_saved_model_selectable_when_catalog_omits_it() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Cron;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32145".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.cron_jobs_profile = Some("worker".into());
+        app.cron_jobs = Some(Vec::new());
+        app.cron_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "current-provider".into(),
+                name: "Current provider".into(),
+                authenticated: Some(true),
+                models: vec!["current-model".into()],
+            }],
+            model: None,
+            provider: None,
+        });
+        app.cron_editor = Some(CronJobEditor {
+            job_id: Some("legacy-job".into()),
+            blueprint_key: None,
+            blueprint_values: BTreeMap::new(),
+            blueprint_time_parts: BTreeMap::new(),
+            script_only: false,
+            name: "Legacy job".into(),
+            prompt: "Keep its retired model".into(),
+            schedule: "0 9 * * *".into(),
+            delivery: "local".into(),
+            model: "retired-model".into(),
+            provider: "retired-provider".into(),
+            catch_up: None,
+            original_catch_up: None,
+            error: None,
+        });
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.run_steps(2);
+        let saved_model_choice = harness
+            .query_all_by(|node| {
+                node.role() == Role::ComboBox
+                    && node.label().as_deref() == Some("Model override (optional)")
+                    && node.value().as_deref() == Some("retired-model · retired-provider")
+            })
+            .next()
+            .expect("saved unavailable model remains visible in the selector");
+        saved_model_choice.click();
+        harness.run();
+        let app_ref = app.borrow();
+        let editor = app_ref.cron_editor.as_ref().expect("editor remains open");
+        assert_eq!(editor.model, "retired-model");
+        assert_eq!(editor.provider, "retired-provider");
+        drop(app_ref);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn scheduled_job_blueprint_form_renders_profile_owned_typed_slots() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Cron;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32145".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.cron_jobs_profile = Some("worker".into());
+        app.cron_jobs = Some(Vec::new());
+        app.cron_delivery_targets = Some(vec![
+            CronDeliveryTarget {
+                id: "local".into(),
+                name: "This desktop".into(),
+                home_target_set: true,
+                home_env_var: None,
+            },
+            CronDeliveryTarget {
+                id: "telegram".into(),
+                name: "Telegram".into(),
+                home_target_set: true,
+                home_env_var: Some("TELEGRAM_CHAT_ID".into()),
+            },
+        ]);
+        app.cron_blueprints = Some(vec![CronBlueprint {
+            key: "morning-report".into(),
+            title: "Morning report".into(),
+            description: "Summarize selected projects.".into(),
+            category: "reports".into(),
+            tags: vec!["daily".into()],
+            fields: vec![
+                crate::gateway::CronBlueprintField {
+                    name: "time".into(),
+                    field_type: "time".into(),
+                    label: "Run time".into(),
+                    default: Some("09:00".into()),
+                    options: Vec::new(),
+                    optional: false,
+                    strict: None,
+                    help: "Local time".into(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "weekday".into(),
+                    field_type: "enum".into(),
+                    label: "Frequency".into(),
+                    default: Some("daily".into()),
+                    options: vec!["daily".into(), "weekly".into()],
+                    optional: false,
+                    strict: None,
+                    help: String::new(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "required_choice".into(),
+                    field_type: "enum".into(),
+                    label: "Required choice".into(),
+                    default: None,
+                    options: vec!["first".into(), "second".into()],
+                    optional: false,
+                    strict: None,
+                    help: String::new(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "days".into(),
+                    field_type: "weekdays".into(),
+                    label: "Days".into(),
+                    default: Some("mon".into()),
+                    options: vec![
+                        "mon".into(),
+                        "tue".into(),
+                        "wed".into(),
+                        "thu".into(),
+                        "fri".into(),
+                    ],
+                    optional: true,
+                    strict: None,
+                    help: String::new(),
+                },
+                crate::gateway::CronBlueprintField {
+                    name: "deliver".into(),
+                    field_type: "enum".into(),
+                    label: "Delivery".into(),
+                    default: Some("origin".into()),
+                    options: vec!["local".into()],
+                    optional: false,
+                    strict: None,
+                    help: String::new(),
+                },
+            ],
+            command: "report".into(),
+            app_url: String::new(),
+            source: Some("builtin".into()),
+            plugin: None,
+        }]);
+        app.open_cron_editor(None);
+        let blueprint = app.cron_blueprints.as_ref().unwrap().first().unwrap();
+        let editor = app.cron_editor.as_mut().unwrap();
+        editor.blueprint_key = Some(blueprint.key.clone());
+        editor.blueprint_values = cron_blueprint_initial_values(blueprint);
+        assert_eq!(editor.blueprint_values.get("deliver").unwrap(), "local");
+        assert_eq!(editor.blueprint_values.get("required_choice").unwrap(), "");
+        assert_eq!(editor.blueprint_values.get("days").unwrap(), "mon");
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.run_steps(2);
+        assert!(
+            harness
+                .query_by_label("Summarize selected projects.")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Run time").is_some());
+        assert!(harness.query_by_label("Run time hour").is_some());
+        assert!(harness.query_by_label("Run time minute").is_some());
+        assert!(harness.query_by_label("Frequency").is_some());
+        assert!(harness.query_by_label("Required choice").is_some());
+        assert!(harness.query_by_label("Days").is_some());
+        assert_eq!(
+            harness
+                .query_all_by(|node| {
+                    node.role() == Role::ComboBox && node.label().as_deref() == Some("Days")
+                })
+                .count(),
+            1
+        );
+        assert!(harness.query_by_label("Delivery").is_some());
+        assert!(harness.query_by_label("Schedule it").is_some());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn scheduled_job_delete_requires_confirmation_before_transport() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Cron;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32145".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.cron_jobs_profile = Some("worker".into());
+        app.cron_jobs = Some(vec![CronJobInfo {
+            id: "daily-summary".into(),
+            name: Some("Daily summary".into()),
+            prompt: Some("Summarize project activity".into()),
+            no_agent: false,
+            script: None,
+            enabled: true,
+            state: Some("scheduled".into()),
+            schedule_display: Some("Daily at 9:00 AM".into()),
+            schedule: None,
+            deliver: Some("local".into()),
+            catch_up: None,
+            model: None,
+            provider: None,
+            next_run_at: None,
+            last_run_at: None,
+            last_error: None,
+            latest_execution: None,
+            live_execution: None,
+        }]);
+        app.cron_delete_confirmation = Some("daily-summary".into());
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1200.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.run_steps(2);
+        assert!(
+            harness
+                .query_by_label("Permanently delete Daily summary?")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Delete job").is_some());
+        assert!(app.borrow().cron_delete_request.is_none());
+        harness
+            .query_by_label("Delete job")
+            .unwrap()
+            .click_accesskit();
+        harness.step();
+        assert!(app.borrow().cron_delete_confirmation.is_some());
+        assert!(app.borrow().cron_delete_request.is_none());
+        assert!(app.borrow().cron_delete_error.is_some());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).unwrap();
+    }
+
+    #[test]
     fn session_filter_matches_title_preview_and_id_without_case_sensitivity() {
         let session = SessionSummary {
             cwd: None,
             id: "session-42".into(),
+            lineage_root_id: None,
             profile: None,
             title: "Repair Gateway".into(),
             preview: "Fix the reconnect handler".into(),
@@ -11700,6 +29513,7 @@ mod tests {
         let make_session = |profile: Option<&str>, title: &str| SessionSummary {
             cwd: None,
             id: "shared-session-id".into(),
+            lineage_root_id: None,
             profile: profile.map(str::to_owned),
             title: title.into(),
             preview: String::new(),
@@ -11729,6 +29543,7 @@ mod tests {
         let default_session = SessionSummary {
             cwd: None,
             id: "shared-id".into(),
+            lineage_root_id: None,
             profile: None,
             title: "Default".into(),
             preview: String::new(),
@@ -11827,7 +29642,7 @@ mod tests {
         assert!(app.session_chat_views[&key].resume_request_id.is_none());
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         assert!(
             harness
@@ -11925,7 +29740,7 @@ mod tests {
         );
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let work_transcript_is_visible = harness
             .query_all_by(|node| node.value().as_deref() == Some("Work pane transcript"))
@@ -12303,6 +30118,7 @@ mod tests {
         app.sessions.push(SessionSummary {
             cwd: None,
             id: "sess-42".into(),
+            lineage_root_id: None,
             profile: None,
             title: "Pinned parity review".into(),
             preview: "Inspect session routes".into(),
@@ -12315,7 +30131,7 @@ mod tests {
             archived: false,
         });
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let row = harness
             .query_all_by(|node| {
@@ -12355,6 +30171,58 @@ mod tests {
     }
 
     #[test]
+    fn active_session_waiting_state_is_exposed_to_session_row_locators() {
+        let (mut app, profile) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.sessions.push(SessionSummary {
+            cwd: None,
+            id: "sess-waiting".into(),
+            lineage_root_id: None,
+            profile: Some("profile-a".into()),
+            title: "Waiting session".into(),
+            preview: "Needs an answer".into(),
+            message_count: 3,
+            source: "desktop".into(),
+            started_at: 100.0,
+            last_active: Some(200.0),
+            pinned: false,
+            unread: false,
+            archived: false,
+        });
+        app.active_session_statuses.insert(
+            ("profile-a".into(), "sess-waiting".into()),
+            ActiveSessionStatus {
+                runtime_session_id: "runtime-waiting".into(),
+                stored_session_id: "sess-waiting".into(),
+                status: ActiveSessionStatusKind::Waiting,
+                last_active: Some(200.0),
+            },
+        );
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref()
+                    == Some("Waiting session, session sess-waiting, waiting for input"))
+                .next()
+                .is_some()
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn archived_view_shows_archived_rows_and_a_reachable_unarchive_action() {
         let (mut app, profile) = isolated_app();
         app.show_archived_sessions = true;
@@ -12366,10 +30234,12 @@ mod tests {
             api_origin: "http://127.0.0.1:1".into(),
             capabilities: Vec::new(),
             control_home: None,
+            remote_auth: None,
         });
         app.archived_sessions.push(SessionSummary {
             cwd: None,
             id: "old-session-9".into(),
+            lineage_root_id: None,
             profile: Some("work".into()),
             title: "Archived planning".into(),
             preview: "Review previous notes".into(),
@@ -12385,7 +30255,7 @@ mod tests {
             .expect("unique archived session path resolves its profile");
         assert_eq!(app.active_session_profile.as_deref(), Some("work"));
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let row = harness
             .query_all_by(|node| {
@@ -12429,10 +30299,12 @@ mod tests {
             api_origin: "http://127.0.0.1:1".into(),
             capabilities: Vec::new(),
             control_home: None,
+            remote_auth: None,
         });
         app.sessions.push(SessionSummary {
             cwd: None,
             id: "session-42".into(),
+            lineage_root_id: None,
             profile: Some("work".into()),
             title: "Old title".into(),
             preview: String::new(),
@@ -12445,7 +30317,7 @@ mod tests {
             archived: false,
         });
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         harness
             .query_by_label("Session actions profile work session session-42")
@@ -12477,6 +30349,7 @@ mod tests {
         app.archived_sessions.push(SessionSummary {
             cwd: None,
             id: "saved-session-3".into(),
+            lineage_root_id: None,
             profile: None,
             title: "Saved draft".into(),
             preview: "An archived preview".into(),
@@ -12489,7 +30362,7 @@ mod tests {
             archived: true,
         });
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         harness.get_by_label("Show archived sessions").click();
         harness.run();
@@ -12510,6 +30383,7 @@ mod tests {
             SessionSummary {
                 cwd: None,
                 id: "loaded-hit".into(),
+                lineage_root_id: None,
                 profile: None,
                 title: "Matched loaded session".into(),
                 preview: "current result".into(),
@@ -12524,6 +30398,7 @@ mod tests {
             SessionSummary {
                 cwd: None,
                 id: "branch-hit".into(),
+                lineage_root_id: None,
                 profile: None,
                 title: "Local cwd match".into(),
                 preview: "needle from local preview".into(),
@@ -12692,6 +30567,50 @@ mod tests {
     }
 
     #[test]
+    fn panel_drop_regions_match_pinned_radial_geometry() {
+        let square = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(100.0, 100.0));
+        assert_eq!(
+            compute_drop_edge(square, egui::pos2(50.0, 50.0)),
+            DropEdge::Center
+        );
+        assert_eq!(
+            compute_drop_edge(square, egui::pos2(80.5, 50.0)),
+            DropEdge::Center,
+            "inside the 0.62 center radius remains a tab-stack target"
+        );
+        assert_eq!(
+            compute_drop_edge(square, egui::pos2(81.5, 50.0)),
+            DropEdge::Right,
+            "outside the center radius targets the dominant axis"
+        );
+        assert_eq!(
+            compute_drop_edge(square, egui::pos2(0.0, 0.0)),
+            DropEdge::Left,
+            "equal corner axes resolve horizontally like the pinned source"
+        );
+
+        let wide = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(240.0, 100.0));
+        assert_eq!(
+            compute_drop_edge(wide, egui::pos2(120.0, 5.0)),
+            DropEdge::Top
+        );
+        assert_eq!(
+            compute_drop_edge(wide, egui::pos2(5.0, 50.0)),
+            DropEdge::Left
+        );
+
+        let tall = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(100.0, 240.0));
+        assert_eq!(
+            compute_drop_edge(tall, egui::pos2(50.0, 5.0)),
+            DropEdge::Top
+        );
+        assert_eq!(
+            compute_drop_edge(tall, egui::pos2(50.0, 235.0)),
+            DropEdge::Bottom
+        );
+    }
+
+    #[test]
     fn split_resize_preserves_weight_pair_and_clamps_each_side() {
         let centered = resized_split_weights(&[0.25, 0.75, 0.4], 0, 25.0, 100.0);
         assert!((centered[0] - 0.5).abs() < 1e-9);
@@ -12729,9 +30648,1235 @@ mod tests {
         )
     }
 
+    #[test]
+    fn bot_roster_rejects_stale_connection_results_and_keeps_last_good_rows() {
+        let (mut app, directory) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-b".into(),
+            authority_epoch: 2,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.bot_roster_generation = 1;
+        app.bot_roster_refresh = Some(PendingBotRosterRefresh {
+            request_id: "stale-request".into(),
+            profile_id: "profile-a".into(),
+            endpoint_instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            generation: 1,
+        });
+        let roster = BotRosterSnapshot {
+            bot_mode_protocol: Some(true),
+            profiles: vec![crate::gateway::BotProfile {
+                name: "researcher".into(),
+                description: Some("Research assistant".into()),
+                display_name: Some("Researcher".into()),
+                handle: Some("@researcher".into()),
+                title: Some("Analyst".into()),
+            }],
+        };
+        app.settle_bot_roster("stale-request", "profile-a", Ok(roster.clone()));
+        assert!(app.bot_roster.is_none(), "stale gateway data is rejected");
+
+        app.bot_roster_generation = 2;
+        app.bot_roster_refresh = Some(PendingBotRosterRefresh {
+            request_id: "current-request".into(),
+            profile_id: "profile-a".into(),
+            endpoint_instance_id: "gateway-b".into(),
+            authority_epoch: 2,
+            generation: 2,
+        });
+        app.settle_bot_roster("current-request", "profile-a", Ok(roster));
+        assert_eq!(
+            app.bot_roster_for_current_endpoint().unwrap().profiles[0].name,
+            "researcher"
+        );
+        assert_eq!(
+            app.automation_state()["bot_roster"]["profiles"][0]["name"],
+            "researcher",
+            "agents can inspect the same roster rows shown in the pane"
+        );
+
+        app.bot_roster_generation = 3;
+        app.bot_roster_refresh = Some(PendingBotRosterRefresh {
+            request_id: "refresh-request".into(),
+            profile_id: "profile-a".into(),
+            endpoint_instance_id: "gateway-b".into(),
+            authority_epoch: 2,
+            generation: 3,
+        });
+        app.settle_bot_roster(
+            "refresh-request",
+            "profile-a",
+            Err("temporary gateway error".into()),
+        );
+        assert_eq!(
+            app.bot_roster_for_current_endpoint().unwrap().profiles[0].name,
+            "researcher",
+            "refresh failures retain the last good roster"
+        );
+        assert_eq!(
+            app.bot_roster_error.as_deref(),
+            Some("temporary gateway error")
+        );
+        app.gateway_endpoint.as_mut().unwrap().profile_id = "profile-b".into();
+        assert!(
+            app.bot_roster_for_current_endpoint().is_none(),
+            "profile-scoped roster rows never bleed into another profile"
+        );
+        drop(app);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn bots_panel_renders_the_profile_scoped_roster_headlessly() {
+        let (mut app, directory) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 4,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.bot_roster = Some(CachedBotRoster {
+            profile_id: "profile-a".into(),
+            endpoint_instance_id: "gateway-a".into(),
+            authority_epoch: 4,
+            snapshot: BotRosterSnapshot {
+                bot_mode_protocol: Some(true),
+                profiles: vec![crate::gateway::BotProfile {
+                    name: "researcher".into(),
+                    description: Some("Research assistant".into()),
+                    display_name: Some("Researcher".into()),
+                    handle: Some("@researcher".into()),
+                    title: Some("Analyst".into()),
+                }],
+            },
+            fetched_at: std::time::Instant::now(),
+        });
+        app.workspace.toggle_pane(BOTS).unwrap();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        harness.run();
+        assert!(harness.query_by_label("Researcher").is_some());
+        assert!(harness.query_by_label("researcher · @researcher").is_some());
+        assert!(harness.query_by_label("Research assistant").is_some());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn bots_panel_explains_aggregate_profile_scope() {
+        let (mut app, directory) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "gateway-all".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.workspace.toggle_pane(BOTS).unwrap();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_by_label("Select a specific Hermes profile to view its bots.")
+                .is_some()
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    fn install_session_refresh_gateway(
+        app: &mut HermesNativeApp,
+    ) -> std::sync::mpsc::Receiver<String> {
+        let (gateway, requests) = GatewayDiscovery::for_test_session_refresh();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        requests
+    }
+
+    fn install_active_status_gateway(
+        app: &mut HermesNativeApp,
+    ) -> std::sync::mpsc::Receiver<(String, String)> {
+        let (gateway, requests) = GatewayDiscovery::for_test_active_status_refresh();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        requests
+    }
+
+    fn install_project_sessions_gateway(
+        app: &mut HermesNativeApp,
+    ) -> std::sync::mpsc::Receiver<(String, String, String)> {
+        let (gateway, requests) = GatewayDiscovery::for_test_project_sessions();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        requests
+    }
+
+    fn install_project_tree_gateway(
+        app: &mut HermesNativeApp,
+    ) -> std::sync::mpsc::Receiver<(String, String, usize)> {
+        let (gateway, requests) = GatewayDiscovery::for_test_project_tree();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        requests
+    }
+
+    fn install_project_list_gateway(
+        app: &mut HermesNativeApp,
+    ) -> std::sync::mpsc::Receiver<(String, String)> {
+        let (gateway, requests) = GatewayDiscovery::for_test_project_list();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        requests
+    }
+
+    fn session_summary(id: &str, profile: &str, title: &str) -> SessionSummary {
+        serde_json::from_value(json!({
+            "id": id,
+            "profile": profile,
+            "title": title,
+            "message_count": 2
+        }))
+        .expect("decode refresh fixture session")
+    }
+
+    #[test]
+    fn sessions_changed_refreshes_without_an_active_session_and_coalesces_bursts() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_session_refresh_gateway(&mut app);
+        app.sessions = vec![
+            session_summary("old", "profile-a", "Before"),
+            session_summary("other", "profile-b", "Other profile"),
+        ];
+
+        app.handle_server_event(json!({"type":"sessions.changed"}));
+        let first_request = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first refresh requested");
+        assert_eq!(
+            app.session_list_refresh_pending
+                .as_ref()
+                .map(|value| value.0.as_str()),
+            Some(first_request.as_str())
+        );
+        assert!(
+            app.route == AppRoute::NewChat && app.active_session_profile.is_none(),
+            "the event must refresh before the no-active-session return"
+        );
+
+        app.handle_server_event(json!({"type":"sessions.changed","profile":"profile-b"}));
+        assert!(
+            !app.session_list_refresh_again,
+            "a different profile must not schedule a refresh"
+        );
+        app.handle_server_event(json!({"type":"sessions.changed","profile":"profile-a"}));
+        app.handle_server_event(
+            json!({"type":"sessions.changed","payload":{"profile":"profile-a"}}),
+        );
+        assert!(
+            app.session_list_refresh_again,
+            "a burst during a refresh must retain one trailing refresh"
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "bursts are coalesced while one refresh is in flight"
+        );
+
+        app.handle_sessions_refreshed(
+            format!("{first_request}-stale"),
+            "profile-a".into(),
+            Ok(vec![session_summary("new", "profile-a", "After")]),
+        );
+        assert_eq!(
+            app.sessions[0].id, "old",
+            "a mismatched receipt must not mutate the session list"
+        );
+        assert_eq!(
+            app.session_list_refresh_pending
+                .as_ref()
+                .map(|value| value.0.as_str()),
+            Some(first_request.as_str())
+        );
+
+        app.handle_sessions_refreshed(
+            first_request,
+            "profile-a".into(),
+            Ok(vec![session_summary("new", "profile-a", "After")]),
+        );
+        let trailing_request = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("one trailing refresh requested");
+        assert_ne!(trailing_request, "");
+        assert_eq!(
+            app.session_list_refresh_pending
+                .as_ref()
+                .map(|value| value.0.as_str()),
+            Some(trailing_request.as_str())
+        );
+        assert_eq!(app.sessions[0].id, "new");
+        assert!(
+            !app.sessions.iter().any(|session| session.id == "old"),
+            "removed rows from the refreshed profile must not survive the snapshot"
+        );
+        assert!(
+            app.sessions
+                .iter()
+                .any(|session| session.id == "other"
+                    && session.profile.as_deref() == Some("profile-b")),
+            "other profile rows must be preserved"
+        );
+        assert!(!app.session_list_refresh_again);
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn peer_session_ping_coalesces_into_the_existing_profile_scoped_refresh() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_session_refresh_gateway(&mut app);
+        let mut sender = SessionPeerSync::open(&profile_dir).expect("open peer sender");
+        app.session_peer_sync =
+            Some(SessionPeerSync::open(&profile_dir).expect("open app peer receiver"));
+        app.session_peer_sync_next_poll = Some(std::time::Instant::now());
+        let pending_request = "already-refreshing".to_owned();
+        app.session_list_refresh_pending = Some((pending_request.clone(), "profile-a".into()));
+        sender.broadcast().expect("publish peer session ping");
+
+        app.poll_session_peer_sync(&egui::Context::default());
+
+        assert!(app.session_list_refresh_again);
+        assert_eq!(
+            app.session_list_refresh_pending
+                .as_ref()
+                .map(|(request, profile)| (request.as_str(), profile.as_str())),
+            Some((pending_request.as_str(), "profile-a"))
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "a duplicate read is not started"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn focus_recovery_is_edge_triggered_throttled_and_gateway_scoped() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_session_refresh_gateway(&mut app);
+        let now = std::time::Instant::now();
+
+        app.recover_after_focus(false, now);
+        app.gateway_connected = true;
+        app.recover_after_focus(false, now);
+        assert!(requests.try_recv().is_err(), "unfocused state does no work");
+
+        app.recover_after_focus(true, now);
+        let first = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("focus regain refreshes canonical session list");
+        assert_eq!(
+            app.session_list_refresh_pending
+                .as_ref()
+                .map(|pending| pending.0.as_str()),
+            Some(first.as_str())
+        );
+        app.recover_after_focus(true, now + std::time::Duration::from_secs(1));
+        assert!(requests.try_recv().is_err(), "steady focus does not poll");
+
+        app.recover_after_focus(false, now + std::time::Duration::from_secs(2));
+        app.recover_after_focus(true, now + std::time::Duration::from_secs(3));
+        assert!(
+            requests.try_recv().is_err(),
+            "rapid focus changes are throttled"
+        );
+
+        app.recover_after_focus(false, now + std::time::Duration::from_secs(6));
+        app.recover_after_focus(true, now + std::time::Duration::from_secs(6));
+        assert!(
+            app.session_list_refresh_again,
+            "a focus recovery during a read queues one trailing canonical refresh"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn project_tree_results_are_profile_connection_and_generation_fenced() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let cached = serde_json::from_value::<ProjectTreeSnapshot>(json!({
+            "projects": [{"id":"cached","label":"Cached","sessionIds":["session-a"]}]
+        }))
+        .expect("valid cached project tree");
+        app.project_trees.insert("profile-a".into(), cached);
+        app.project_session_colors.insert(
+            ("profile-b".into(), "session-b".into()),
+            Some("#ff4a9e".into()),
+        );
+        app.project_session_color_requests
+            .insert("profile-a".into(), "tree-request".into());
+        app.project_tree_generations.insert("profile-a".into(), 4);
+        app.project_tree_refreshes.insert(
+            "profile-a".into(),
+            PendingProjectTreeRefresh {
+                request_id: "tree-request".into(),
+                profile_id: "profile-a".into(),
+                endpoint_instance_id: "gateway-a".into(),
+                authority_epoch: 7,
+                generation: 3,
+            },
+        );
+
+        let stale = serde_json::from_value::<ProjectTreeSnapshot>(json!({
+            "projects": [{"id":"stale","label":"Stale"}]
+        }))
+        .expect("valid stale project tree");
+        app.settle_project_tree("tree-request", "profile-a", Ok(stale));
+        assert_eq!(app.project_trees["profile-a"].projects[0].id, "cached");
+        assert_eq!(
+            app.project_session_colors
+                .get(&("profile-b".into(), "session-b".into()))
+                .and_then(Option::as_deref),
+            Some("#ff4a9e"),
+            "refreshing one profile must not mutate another profile's colors"
+        );
+
+        app.project_tree_generations.insert("profile-a".into(), 5);
+        app.project_session_color_requests
+            .insert("profile-a".into(), "tree-request-2".into());
+        app.project_tree_refreshes.insert(
+            "profile-a".into(),
+            PendingProjectTreeRefresh {
+                request_id: "tree-request-2".into(),
+                profile_id: "profile-a".into(),
+                endpoint_instance_id: "gateway-a".into(),
+                authority_epoch: 7,
+                generation: 5,
+            },
+        );
+        app.settle_project_tree(
+            "tree-request-2",
+            "profile-a",
+            Err("temporary gateway error".into()),
+        );
+        assert_eq!(
+            app.project_trees["profile-a"].projects[0].id, "cached",
+            "a failed refresh must retain the last good structural tree"
+        );
+        assert!(!app.project_tree_refreshes.contains_key("profile-a"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn changed_project_overview_refetches_only_the_entered_project() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_sessions_gateway(&mut app);
+        app.selected_project_id = Some("project-a".into());
+        app.selected_project_profile = Some("profile-a".into());
+        app.entered_project_tree = Some(
+            serde_json::from_value(json!({"id":"project-a","label":"Before"}))
+                .expect("valid prior project node"),
+        );
+        app.project_session_color_requests
+            .insert("profile-a".into(), "tree-refresh".into());
+        app.project_tree_generations.insert("profile-a".into(), 2);
+        app.project_tree_refreshes.insert(
+            "profile-a".into(),
+            PendingProjectTreeRefresh {
+                request_id: "tree-refresh".into(),
+                profile_id: "profile-a".into(),
+                endpoint_instance_id: "gateway-a".into(),
+                authority_epoch: 1,
+                generation: 2,
+            },
+        );
+
+        app.settle_project_tree(
+            "tree-refresh",
+            "profile-a",
+            Ok(serde_json::from_value(json!({
+                "projects":[
+                    {"id":"project-a","label":"After"},
+                    {"id":"project-b","label":"Unrelated"}
+                ]
+            }))
+            .expect("valid refreshed tree")),
+        );
+
+        assert_eq!(app.entered_project_tree.as_ref().unwrap().label, "After");
+        let (request_id, project_id, profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("changed entered project triggers hydration refresh");
+        assert_eq!(
+            (project_id.as_str(), profile.as_str()),
+            ("project-a", "profile-a")
+        );
+        assert_eq!(
+            app.project_sessions_refresh
+                .as_ref()
+                .map(|pending| pending.request_id.as_str()),
+            Some(request_id.as_str())
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn all_profile_project_entry_uses_aggregate_rows_without_synthetic_rpc() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let tree = serde_json::from_value::<ProjectTreeSnapshot>(json!({
+            "projects":[{
+                "id":"[\"gateway-project\",\"remote-a\",\"C:/work\"]",
+                "mergeKey":"C:/work",
+                "label":"work",
+                "previewSessions":[{"id":"session-a","profile":"profile-a","title":"Owned row"}],
+                "sessionCount":1
+            }]
+        }))
+        .expect("valid all-profile aggregate tree");
+        let project_id = tree.projects[0].id.clone();
+        app.project_trees.insert("all".into(), tree);
+
+        app.enter_project_sessions(&project_id);
+
+        assert_eq!(
+            app.selected_project_id.as_deref(),
+            Some(project_id.as_str())
+        );
+        assert_eq!(app.selected_project_profile.as_deref(), Some("all"));
+        assert_eq!(
+            app.entered_project_tree.as_ref().unwrap().preview_sessions[0]
+                .profile
+                .as_deref(),
+            Some("profile-a")
+        );
+        assert!(app.project_sessions_refresh.is_none());
+        assert!(app.project_sessions_error.is_none());
+        assert!(app.project_preview_refreshes.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn show_all_project_sessions_control_refreshes_tree_with_source_preview_limits() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_tree_gateway(&mut app);
+        app.project_trees.insert(
+            "profile-a".into(),
+            serde_json::from_value(json!({
+                "projects":[{"id":"project-a","label":"Project A","sessionCount":4,
+                    "previewSessions":[
+                        {"id":"session-0","profile":"profile-a","title":"Session 0"},
+                        {"id":"session-1","profile":"profile-a","title":"Session 1"},
+                        {"id":"session-2","profile":"profile-a","title":"Session 2"}
+                    ]}]
+            }))
+            .expect("valid project overview"),
+        );
+        app.project_lists.insert(
+            "profile-a".into(),
+            CachedProjectList {
+                endpoint_instance_id: "gateway-a".into(),
+                authority_epoch: 1,
+                snapshot: serde_json::from_value(json!({
+                    "active_id":"project-a",
+                    "projects":[{"id":"project-a","name":"Project A"}]
+                }))
+                .expect("valid project list"),
+            },
+        );
+        app.load_project_session_colors();
+        let (initial_request, profile, preview_limit) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("default project-tree load is queued");
+        assert_eq!(profile, "profile-a");
+        assert_eq!(preview_limit, 3);
+        let initial_tree = app.project_trees.get("profile-a").cloned().unwrap();
+        app.settle_project_tree(&initial_request, "profile-a", Ok(initial_tree));
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1200.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness
+            .query_by_label("Projects")
+            .expect("project section is accessible")
+            .click();
+        harness.run();
+        harness
+            .query_by_label("Show all project sessions")
+            .expect("global project preview preference is accessible")
+            .click();
+        harness.run();
+        assert!(app.borrow().workspace.preferences.show_all_project_sessions);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut observed_limits = Vec::new();
+        let mut show_all_request = None;
+        while !observed_limits.contains(&2000) && std::time::Instant::now() < deadline {
+            let (request_id, profile, preview_limit) = requests
+                .recv_timeout(std::time::Duration::from_millis(250))
+                .expect("enabling all sessions refreshes the active profile tree");
+            assert_eq!(profile, "profile-a");
+            observed_limits.push(preview_limit);
+            if preview_limit == 2000 {
+                show_all_request = Some(request_id);
+            }
+        }
+        assert!(
+            observed_limits.contains(&2000),
+            "observed request limits: {observed_limits:?}"
+        );
+        let expanded_tree = serde_json::from_value::<ProjectTreeSnapshot>(json!({
+            "projects":[{"id":"project-a","label":"Project A","sessionCount":4,
+                "previewSessions":[
+                    {"id":"session-0","profile":"profile-a","title":"Session 0"},
+                    {"id":"session-1","profile":"profile-a","title":"Session 1"},
+                    {"id":"session-2","profile":"profile-a","title":"Session 2"},
+                    {"id":"session-3","profile":"profile-a","title":"Session 3"}
+                ]}]
+        }))
+        .expect("valid expanded project tree");
+        app.borrow_mut().settle_project_tree(
+            show_all_request
+                .as_deref()
+                .expect("captured 2000-row request"),
+            "profile-a",
+            Ok(expanded_tree),
+        );
+        harness.run();
+        harness
+            .query_by_label("Project A · 4 · Active")
+            .expect("active project uses the separate projects.list pointer")
+            .click();
+        harness.run();
+        let visible_sessions = harness
+            .query_all_by(|node| {
+                node.label()
+                    .is_some_and(|label| label.starts_with("Open project session "))
+            })
+            .count();
+        assert_eq!(visible_sessions, 4);
+        assert!(harness.query_by_label("Show all 4 sessions").is_none());
+        harness
+            .query_by_label("Show all project sessions")
+            .expect("global project preview preference remains accessible")
+            .click();
+        harness.run();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut observed_limits = Vec::new();
+        while !observed_limits.contains(&3) && std::time::Instant::now() < deadline {
+            let (_, profile, preview_limit) = requests
+                .recv_timeout(std::time::Duration::from_millis(250))
+                .expect("disabling all sessions refreshes the active profile tree");
+            assert_eq!(profile, "profile-a");
+            observed_limits.push(preview_limit);
+        }
+        assert!(
+            observed_limits.contains(&3),
+            "observed request limits: {observed_limits:?}"
+        );
+        assert!(!app.borrow().workspace.preferences.show_all_project_sessions);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn show_all_project_sessions_uses_two_thousand_preview_for_all_profiles() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests) = GatewayDiscovery::for_test_all_profile_project_tree();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.workspace.set_show_all_project_sessions(true).unwrap();
+        app.load_project_session_colors();
+        let (_, preview_limit) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("all-profile preference queues aggregate project tree read");
+        assert_eq!(preview_limit, 2000);
+        assert!(app.project_tree_refreshes.contains_key("all"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn project_show_all_hydrates_profile_scope_and_reveals_fifty_rows_at_a_time() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_sessions_gateway(&mut app);
+        app.request_project_preview("project-a");
+        let (request_id, project_id, profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("show all requests full project lanes");
+        assert_eq!(project_id, "project-a");
+        assert_eq!(profile, "profile-a");
+
+        let sessions = (0..120)
+            .map(|index| {
+                json!({
+                    "id":format!("session-{index}"),
+                    "profile":"profile-a",
+                    "title":format!("Session {index}"),
+                    "last_active":(120-index) as f64
+                })
+            })
+            .collect::<Vec<_>>();
+        let hydrated = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"project-a","label":"Project A","sessionCount":120,
+            "repos":[{"id":"repo","groups":[{"id":"main","sessions":sessions}]}]
+        }))
+        .expect("valid hydrated project rows");
+        app.project_session_lifecycle.insert(
+            ("profile-a".into(), "session-70".into()),
+            ProjectSessionLifecycle {
+                generation: 1,
+                removed: true,
+            },
+        );
+        app.settle_project_preview(&request_id, &project_id, &profile, Ok(Some(hydrated)));
+
+        let key = ("profile-a".into(), "gateway-a".into(), "project-a".into());
+        let expansion = app
+            .project_preview_expansions
+            .get(&key)
+            .expect("expanded result cached");
+        assert_eq!(
+            expansion.sessions.len(),
+            119,
+            "late archived row is filtered"
+        );
+        assert_eq!(expansion.visible_count, 50);
+        app.reveal_more_project_preview(&key);
+        assert_eq!(app.project_preview_expansions[&key].visible_count, 100);
+        app.reveal_more_project_preview(&key);
+        assert_eq!(app.project_preview_expansions[&key].visible_count, 150);
+        let rows = merge_project_preview_sessions(
+            &[],
+            &app.project_preview_expansions[&key].sessions,
+            "profile-a",
+            &app.project_session_lifecycle,
+        );
+        assert_eq!(
+            rows.len()
+                .min(app.project_preview_expansions[&key].visible_count),
+            119
+        );
+        assert!(!rows.iter().any(|session| session.id == "session-70"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn project_show_all_controls_and_fifty_row_paging_render_accessibly() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_project_sessions_gateway(&mut app);
+        app.project_trees.insert(
+            "profile-a".into(),
+            serde_json::from_value(json!({
+                "projects":[{
+                    "id":"project-a","label":"Project A","sessionCount":120,
+                    "previewSessions":[
+                        {"id":"session-0","profile":"profile-a","title":"Session 0"},
+                        {"id":"session-1","profile":"profile-a","title":"Session 1"},
+                        {"id":"session-2","profile":"profile-a","title":"Session 2"}
+                    ]
+                }]
+            }))
+            .expect("valid project overview"),
+        );
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness
+            .query_by_label("Projects")
+            .expect("project section is accessible")
+            .click();
+        harness.run();
+        harness
+            .query_by_label("Project A · 120")
+            .expect("project overview row is accessible")
+            .click();
+        harness.run();
+        harness
+            .query_by_label("Show all 120 sessions")
+            .expect("large project exposes its hydrate action")
+            .click();
+        harness.run();
+
+        let (request_id, project_id, profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("accessible Show all action requests project hydration");
+        assert_eq!(
+            (project_id.as_str(), profile.as_str()),
+            ("project-a", "profile-a")
+        );
+        let sessions = (0..120)
+            .map(|index| {
+                json!({
+                    "id":format!("session-{index}"),
+                    "profile":"profile-a",
+                    "title":format!("Session {index}"),
+                    "last_active":(120-index) as f64
+                })
+            })
+            .collect::<Vec<_>>();
+        let hydrated = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"project-a","label":"Project A","sessionCount":120,
+            "repos":[{"id":"repo","groups":[{"id":"main","sessions":sessions}]}]
+        }))
+        .expect("valid hydrated rows");
+        app.borrow_mut().settle_project_preview(
+            &request_id,
+            &project_id,
+            &profile,
+            Ok(Some(hydrated)),
+        );
+        harness.run();
+        assert!(harness.query_by_label("Show more 50 sessions").is_some());
+        let first_page = harness
+            .query_all_by(|node| {
+                node.label()
+                    .is_some_and(|label| label.starts_with("Open project session "))
+            })
+            .count();
+        assert_eq!(first_page, 50);
+
+        harness
+            .query_by_label("Show more 50 sessions")
+            .expect("first page offers another fifty rows")
+            .click();
+        harness.run();
+        let second_page = harness
+            .query_all_by(|node| {
+                node.label()
+                    .is_some_and(|label| label.starts_with("Open project session "))
+            })
+            .count();
+        let visible_count = app.borrow().project_preview_expansions
+            [&("profile-a".into(), "gateway-a".into(), "project-a".into())]
+            .visible_count;
+        assert_eq!(
+            second_page, 100,
+            "UI rows={second_page}, model visible_count={visible_count}"
+        );
+        assert!(harness.query_by_label("Show more 20 sessions").is_some());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn project_sessions_reject_stale_navigation_and_keep_cached_project_on_error() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "profile-a".into(),
+            instance_id: "gateway-a".into(),
+            authority_epoch: 3,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.selected_project_id = Some("project-a".into());
+        app.selected_project_profile = Some("profile-a".into());
+        app.project_sessions_generation = 4;
+        app.entered_project_tree = Some(
+            serde_json::from_value(json!({"id":"project-a","label":"Cached project"}))
+                .expect("valid project cache"),
+        );
+        app.project_sessions_refresh = Some(PendingProjectSessionsRefresh {
+            request_id: "project-load-4".into(),
+            project_id: "project-a".into(),
+            profile_id: "profile-a".into(),
+            endpoint_instance_id: "gateway-a".into(),
+            authority_epoch: 3,
+            generation: 4,
+            lifecycle_generations_at_request: BTreeMap::new(),
+        });
+        let wrong_project = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"project-b","label":"Wrong project"
+        }))
+        .expect("valid project response for wrong request");
+        app.settle_project_sessions(
+            "project-load-4",
+            "project-b",
+            "profile-a",
+            Ok(Some(wrong_project)),
+        );
+        assert_eq!(
+            app.entered_project_tree.as_ref().unwrap().label,
+            "Cached project"
+        );
+        assert!(app.project_sessions_refresh.is_some());
+
+        app.settle_project_sessions(
+            "project-load-4",
+            "project-a",
+            "profile-a",
+            Err("temporary read failure".into()),
+        );
+        assert_eq!(
+            app.entered_project_tree.as_ref().unwrap().label,
+            "Cached project"
+        );
+        assert_eq!(
+            app.project_sessions_error.as_deref(),
+            Some("temporary read failure")
+        );
+        assert!(app.project_sessions_refresh.is_none());
+
+        app.project_sessions_generation = 5;
+        app.project_sessions_refresh = Some(PendingProjectSessionsRefresh {
+            request_id: "project-load-5".into(),
+            project_id: "project-a".into(),
+            profile_id: "profile-a".into(),
+            endpoint_instance_id: "gateway-a".into(),
+            authority_epoch: 3,
+            generation: 5,
+            lifecycle_generations_at_request: BTreeMap::new(),
+        });
+        let hydrated = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"project-a","label":"Hydrated",
+            "repos":[{"id":"repo","groups":[{"id":"main","sessions":[{"id":"session-a","title":"Session A"}]}]}]
+        }))
+        .expect("valid hydrated project");
+        app.settle_project_sessions(
+            "project-load-5",
+            "project-a",
+            "profile-a",
+            Ok(Some(hydrated)),
+        );
+        assert_eq!(
+            app.entered_project_tree.as_ref().unwrap().repos[0].groups[0].sessions[0]
+                .profile
+                .as_deref(),
+            Some("profile-a")
+        );
+        assert!(app.project_sessions_error.is_none());
+
+        app.project_sessions_generation = 6;
+        app.project_sessions_refresh = Some(PendingProjectSessionsRefresh {
+            request_id: "project-load-after-archive".into(),
+            project_id: "project-a".into(),
+            profile_id: "profile-a".into(),
+            endpoint_instance_id: "gateway-a".into(),
+            authority_epoch: 3,
+            generation: 6,
+            lifecycle_generations_at_request: BTreeMap::from([("session-a".into(), 0)]),
+        });
+        app.project_session_lifecycle.insert(
+            ("profile-a".into(), "session-a".into()),
+            ProjectSessionLifecycle {
+                generation: 1,
+                removed: true,
+            },
+        );
+        let late_archive_response = serde_json::from_value::<ProjectTreeProject>(json!({
+            "id":"project-a","label":"Hydrated",
+            "previewSessions":[
+                {"id":"session-a","profile":"profile-a","title":"Archived late"},
+                {"id":"session-b","profile":"profile-a","title":"Still present"}
+            ],
+            "repos":[{"id":"repo","groups":[{"id":"main","sessions":[
+                {"id":"session-a","profile":"profile-a","title":"Archived late"},
+                {"id":"session-b","profile":"profile-a","title":"Still present"}
+            ]}]}]
+        }))
+        .expect("valid late project response");
+        app.settle_project_sessions(
+            "project-load-after-archive",
+            "project-a",
+            "profile-a",
+            Ok(Some(late_archive_response)),
+        );
+        let project = app.entered_project_tree.as_ref().unwrap();
+        assert_eq!(project.preview_sessions.len(), 1);
+        assert_eq!(project.preview_sessions[0].id, "session-b");
+        assert_eq!(project.repos[0].groups[0].sessions.len(), 1);
+        assert_eq!(project.repos[0].groups[0].sessions[0].id, "session-b");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn active_status_snapshot_is_profile_scoped_and_cannot_overwrite_newer_events() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_active_status_gateway(&mut app);
+        app.active_session_statuses.insert(
+            ("profile-a".into(), "stored-a".into()),
+            ActiveSessionStatus {
+                runtime_session_id: "runtime-a".into(),
+                stored_session_id: "stored-a".into(),
+                status: ActiveSessionStatusKind::Working,
+                last_active: Some(1.0),
+            },
+        );
+        app.active_session_statuses.insert(
+            ("profile-b".into(), "stored-b".into()),
+            ActiveSessionStatus {
+                runtime_session_id: "runtime-b".into(),
+                stored_session_id: "stored-b".into(),
+                status: ActiveSessionStatusKind::Waiting,
+                last_active: Some(2.0),
+            },
+        );
+
+        app.handle_server_event(json!({"type":"sessions.changed","profile":"profile-b"}));
+        assert!(
+            requests.try_recv().is_err(),
+            "another profile's change event must not query this connection"
+        );
+        app.handle_server_event(json!({"type":"sessions.changed","profile":"profile-a"}));
+        let (first_request, first_profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("matching sessions.changed event requests active status");
+        assert_eq!(first_profile, "profile-a");
+        app.note_active_status_event("runtime-a", Some("profile-a"));
+        app.settle_active_session_statuses(
+            &first_request,
+            &first_profile,
+            Ok(vec![ActiveSessionStatus {
+                runtime_session_id: "runtime-a".into(),
+                stored_session_id: "stored-a".into(),
+                status: ActiveSessionStatusKind::Idle,
+                last_active: Some(3.0),
+            }]),
+        );
+        assert_eq!(
+            app.active_session_statuses
+                .get(&("profile-a".into(), "stored-a".into()))
+                .map(|status| status.status),
+            Some(ActiveSessionStatusKind::Working),
+            "a stream event newer than the active-list request must win"
+        );
+
+        let (trailing_request, trailing_profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("one coalesced follow-up request");
+        assert_eq!(trailing_profile, "profile-a");
+        app.settle_active_session_statuses(&trailing_request, &trailing_profile, Ok(Vec::new()));
+        assert!(
+            !app.active_session_statuses
+                .contains_key(&("profile-a".into(), "stored-a".into())),
+            "a later authoritative absence reaps the previous profile row"
+        );
+        assert!(
+            app.active_session_statuses
+                .contains_key(&("profile-b".into(), "stored-b".into())),
+            "a profile snapshot cannot reap another profile's session"
+        );
+
+        app.request_active_session_statuses();
+        let (stale_request, stale_profile) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("another active status request");
+        app.gateway_endpoint.as_mut().unwrap().instance_id = "gateway-b".into();
+        app.settle_active_session_statuses(
+            &stale_request,
+            &stale_profile,
+            Ok(vec![ActiveSessionStatus {
+                runtime_session_id: "runtime-new".into(),
+                stored_session_id: "stored-new".into(),
+                status: ActiveSessionStatusKind::Working,
+                last_active: None,
+            }]),
+        );
+        assert!(
+            !app.active_session_statuses
+                .contains_key(&("profile-a".into(), "stored-new".into())),
+            "a snapshot from an old connection must be ignored"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn sessions_refreshed_requires_matching_request_profile_and_current_gateway() {
+        let (mut app, profile_dir) = isolated_app();
+        let requests = install_session_refresh_gateway(&mut app);
+        app.sessions = vec![session_summary("old", "profile-a", "Before")];
+        app.handle_server_event(json!({"type":"sessions.changed"}));
+        let request_id = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("refresh request");
+
+        app.handle_sessions_refreshed(request_id.clone(), "profile-b".into(), Ok(Vec::new()));
+        assert_eq!(app.sessions[0].id, "old");
+        assert!(app.session_list_refresh_pending.is_some());
+
+        app.gateway_endpoint.as_mut().unwrap().profile_id = "profile-b".into();
+        app.handle_sessions_refreshed(request_id, "profile-a".into(), Ok(Vec::new()));
+        assert_eq!(
+            app.sessions[0].id, "old",
+            "a result from the previous gateway profile must be ignored"
+        );
+        assert!(
+            app.session_list_refresh_pending.is_none(),
+            "the stale completion must release the old in-flight slot"
+        );
+
+        app.handle_server_event(json!({"type":"sessions.changed","profile":"profile-b"}));
+        let replacement_request = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("a current-profile event must start a fresh request");
+        app.handle_sessions_refreshed(
+            replacement_request,
+            "profile-b".into(),
+            Ok(vec![session_summary("replacement", "profile-b", "Current")]),
+        );
+        assert_eq!(app.sessions[0].id, "replacement");
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
     #[cfg(feature = "agent-automation")]
     #[test]
-    fn first_run_setup_matches_pinned_copy_and_exposes_unimplemented_actions() {
+    fn first_run_remote_setup_renders_discovered_auth_mode_and_provider() {
+        let (mut app, profile_dir) = isolated_app();
+        app.first_run_setup_visible = true;
+        app.first_run_remote_setup_open = true;
+        app.first_run_remote_probe_report = Some(RemoteProbeReport {
+            base_url: "https://gateway.example.com/hermes".into(),
+            auth_mode: RemoteAuthMode::OAuth,
+            supports_native_pkce: true,
+            version: Some("2026.11".into()),
+            providers: vec![crate::remote_probe::RemoteAuthProvider {
+                name: "nous".into(),
+                display_name: "Nous Research".into(),
+                supports_password: false,
+            }],
+        });
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1220.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        assert!(app.borrow().first_run_remote_probe_report.is_some());
+        let labels = harness
+            .query_all_by(|_| true)
+            .filter_map(|node| node.accesskit_node().label())
+            .collect::<Vec<_>>();
+        assert!(
+            labels.iter().any(|label| label
+                == "Gateway reachable · browser sign-in (Nous Research) · Hermes 2026.11"),
+            "discovered gateway state is missing from UI labels: {labels:?}"
+        );
+        assert!(
+            !harness
+                .get_by_label("Sign in with Nous Research")
+                .accesskit_node()
+                .is_disabled()
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn first_run_setup_matches_pinned_copy_and_gates_remote_actions_by_credentials() {
         let (mut app, profile_dir) = isolated_app();
         app.first_run_setup_visible = true;
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
@@ -12767,6 +31912,21 @@ mod tests {
                 .is_disabled()
         );
         app.borrow_mut().first_run_gateway_url = "https://gateway.example.com/hermes".into();
+        app.borrow_mut().first_run_remote_probe_report = Some(RemoteProbeReport {
+            base_url: "https://gateway.example.com/hermes".into(),
+            auth_mode: RemoteAuthMode::Token,
+            supports_native_pkce: false,
+            version: Some("2026.11".into()),
+            providers: Vec::new(),
+        });
+        harness.run();
+        assert!(
+            harness
+                .get_by_label("Test connection")
+                .accesskit_node()
+                .is_disabled()
+        );
+        app.borrow_mut().first_run_remote_token = Zeroizing::new("fixture-token".into());
         harness.run();
         assert!(
             !harness
@@ -12774,11 +31934,14 @@ mod tests {
                 .accesskit_node()
                 .is_disabled()
         );
-        harness.get_by_label("Test connection").click();
-        harness.run();
-        assert_eq!(
-            app.borrow().first_run_setup_error.as_deref(),
-            Some("Remote gateway setup is not implemented in this Rust client yet.")
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref() == Some("Hermes session token")
+                        && format!("{:?}", node.role()) == "PasswordInput"
+                })
+                .next()
+                .is_some()
         );
         assert!(
             harness
@@ -12786,6 +31949,76 @@ mod tests {
                 .accesskit_node()
                 .is_disabled()
         );
+        {
+            let mut app = app.borrow_mut();
+            app.first_run_remote_test_report = Some(RemoteConnectionTestReport {
+                base_url: "https://gateway.example.com/hermes".into(),
+                version: Some("2026.11".into()),
+            });
+            app.first_run_remote_tested_payload_key = app.first_run_remote_payload_key();
+        }
+        harness.run();
+        assert!(
+            !harness
+                .get_by_label("Apply remote")
+                .accesskit_node()
+                .is_disabled()
+        );
+        app.borrow_mut().first_run_remote_token = Zeroizing::new("changed-token".into());
+        harness.run();
+        assert!(
+            harness
+                .get_by_label("Apply remote")
+                .accesskit_node()
+                .is_disabled()
+        );
+
+        app.borrow_mut().first_run_remote_token = Zeroizing::new("fixture-token".into());
+        harness.run();
+        harness.get_by_label("Apply remote").click();
+        harness.run();
+        assert_eq!(
+            app.borrow().workspace.last_remote_gateway_url(),
+            Some("https://gateway.example.com/hermes")
+        );
+        assert_eq!(
+            crate::native_token_store::load_session_token(
+                &profile_dir,
+                "https://gateway.example.com/hermes"
+            )
+            .unwrap()
+            .as_deref()
+            .map(String::as_str),
+            Some("fixture-token")
+        );
+        assert!(app.borrow().gateway_discovery.is_some());
+        assert!(app.borrow().gateway_endpoint.is_none());
+        harness
+            .get_by_label("Connect to existing Hermes. Use a remote backend with a session token or browser sign-in. No local install will start.")
+            .click();
+        harness.run();
+        assert_eq!(
+            app.borrow().first_run_gateway_url,
+            "https://gateway.example.com/hermes"
+        );
+        let token_report = RemoteProbeReport {
+            base_url: "https://gateway.example.com/hermes".into(),
+            auth_mode: RemoteAuthMode::Token,
+            supports_native_pkce: false,
+            version: Some("2026.11".into()),
+            providers: Vec::new(),
+        };
+        app.borrow_mut()
+            .restore_saved_remote_credential(&token_report);
+        assert_eq!(&*app.borrow().first_run_remote_token, "fixture-token");
+        let oauth_report = RemoteProbeReport {
+            auth_mode: RemoteAuthMode::OAuth,
+            ..token_report
+        };
+        app.borrow_mut()
+            .restore_saved_remote_credential(&oauth_report);
+        assert!(app.borrow().first_run_remote_token.is_empty());
+        assert!(app.borrow().first_run_oauth_session.is_none());
 
         drop(harness);
         drop(app);
@@ -12798,12 +32031,12 @@ mod tests {
             "https://gateway.example.com/hermes",
             "HTTP://localhost:9119",
             "https://[::1]:9119/api",
+            "gateway.example.com/hermes",
         ] {
             assert!(is_valid_http_gateway_url(accepted), "{accepted}");
         }
         for rejected in [
             "",
-            "gateway.example.com",
             "ftp://gateway.example.com",
             "https://",
             "https://.invalid/path",
@@ -12815,6 +32048,34 @@ mod tests {
         ] {
             assert!(!is_valid_http_gateway_url(rejected), "{rejected}");
         }
+    }
+
+    #[test]
+    fn native_oauth_support_matches_pinned_provider_decision() {
+        let mut report = RemoteProbeReport {
+            base_url: "https://gateway.example.com".into(),
+            auth_mode: RemoteAuthMode::OAuth,
+            supports_native_pkce: true,
+            version: None,
+            providers: vec![crate::remote_probe::RemoteAuthProvider {
+                name: "basic".into(),
+                display_name: "Password".into(),
+                supports_password: true,
+            }],
+        };
+        assert!(!native_oauth_login_supported(&report));
+        report
+            .providers
+            .push(crate::remote_probe::RemoteAuthProvider {
+                name: "nous".into(),
+                display_name: "Nous Research".into(),
+                supports_password: false,
+            });
+        assert!(native_oauth_login_supported(&report));
+        report.providers.clear();
+        assert!(native_oauth_login_supported(&report));
+        report.supports_native_pkce = false;
+        assert!(!native_oauth_login_supported(&report));
     }
 
     fn seed_pending_submission(
@@ -12897,7 +32158,7 @@ mod tests {
         app.gateway_connected = true;
         {
             let harness = egui_kittest::Harness::builder()
-                .with_size(egui::vec2(1440.0, 900.0))
+                .with_size(egui::vec2(1440.0, 4000.0))
                 .build_ui(|ui| app.draw(ui));
             let retry = harness
                 .query_by_label("Retry message with original submission ID")
@@ -13013,7 +32274,7 @@ mod tests {
         assert_eq!(state["chat"]["submission_pending"], true);
         assert_eq!(state["chat"]["can_stop"], true);
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let stop_controls = harness
             .query_all_by(|node| node.label().as_deref() == Some("Stop response"))
@@ -13057,7 +32318,7 @@ mod tests {
         assert_eq!(prompt.command, "git push origin main");
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let allow = harness
             .query_all_by(|node| node.label().as_deref() == Some("Allow once approval approval-1"))
@@ -13107,7 +32368,7 @@ mod tests {
         assert_eq!(app.automation_state()["chat"]["clarify_pending_count"], 1);
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         for label in [
             "Clarify question q1: Which package should be updated?",
@@ -13205,7 +32466,7 @@ mod tests {
         assert_eq!(clarify_error, "Hermes gateway writer is unavailable");
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         for label in [
             "Allow once approval approval-hidden-prompt",
@@ -13338,7 +32599,7 @@ mod tests {
         );
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let once = harness
             .query_all_by(|node| node.label().as_deref() == Some("Allow once approval prompt-1"))
@@ -13403,7 +32664,7 @@ mod tests {
         );
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let red = harness
             .query_all_by(|node| {
@@ -13473,7 +32734,7 @@ mod tests {
         );
 
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 900.0))
+            .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
         let labels = harness
             .query_all_by(|_| true)
@@ -13640,8 +32901,223 @@ mod tests {
 }
 
 impl HermesNativeApp {
+    fn enable_session_peer_sync(&mut self) {
+        match SessionPeerSync::open(self.workspace.data_directory()) {
+            Ok(sync) => {
+                self.session_peer_sync = Some(sync);
+                self.session_peer_sync_next_poll = Some(std::time::Instant::now());
+                self.session_peer_sync_error = None;
+            }
+            Err(error) => {
+                self.session_peer_sync_error = Some(error);
+                self.session_peer_sync = None;
+                self.session_peer_sync_next_poll = None;
+            }
+        }
+    }
+
+    fn broadcast_local_sessions_changed(&mut self) {
+        if let Some(sync) = self.session_peer_sync.as_mut() {
+            match sync.broadcast() {
+                Ok(()) => self.session_peer_sync_error = None,
+                Err(error) => self.session_peer_sync_error = Some(error),
+            }
+        }
+    }
+
+    fn broadcast_local_transcript_changed(
+        &mut self,
+        runtime_session_id: &str,
+        event_profile: Option<&str>,
+    ) {
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && event_profile
+                .is_none_or(|profile| self.active_session_profile.as_deref() == Some(profile))
+            && let AppRoute::Session(stored_session_id) = &self.route
+        {
+            let stored_session_id = stored_session_id.clone();
+            let message_count = self.transcript.len();
+            if let Some(sync) = self.session_peer_sync.as_mut() {
+                match sync.broadcast_transcript_changed(stored_session_id, message_count) {
+                    Ok(()) => self.session_peer_sync_error = None,
+                    Err(error) => self.session_peer_sync_error = Some(error),
+                }
+            }
+            return;
+        }
+        let matches = self
+            .session_chat_views
+            .iter()
+            .filter(|(_, view)| {
+                view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                    && event_profile.is_none_or(|profile| view.profile.as_deref() == Some(profile))
+            })
+            .map(|(key, view)| (key.clone(), view.transcript.len()))
+            .collect::<Vec<_>>();
+        let [(key, message_count)] = matches.as_slice() else {
+            return;
+        };
+        let Some((_, stored_session_id)) = key.split_once('\0') else {
+            return;
+        };
+        if let Some(sync) = self.session_peer_sync.as_mut() {
+            match sync.broadcast_transcript_changed(stored_session_id.to_owned(), *message_count) {
+                Ok(()) => self.session_peer_sync_error = None,
+                Err(error) => self.session_peer_sync_error = Some(error),
+            }
+        }
+    }
+
+    fn recover_after_focus(&mut self, focused: bool, now: std::time::Instant) {
+        let regained_focus = focused && !self.window_was_focused;
+        self.window_was_focused = focused;
+        if !regained_focus || !self.gateway_connected {
+            return;
+        }
+        if self.focus_recovery_last_at.is_some_and(|last| {
+            now.saturating_duration_since(last) < std::time::Duration::from_secs(5)
+        }) {
+            return;
+        }
+        self.focus_recovery_last_at = Some(now);
+        self.request_session_list_refresh();
+        self.request_active_session_statuses();
+        self.refresh_project_tree_colors(None);
+        self.load_project_list(true);
+        self.refresh_open_session_transcripts();
+        if self.repo_scan_project_context_active()
+            && self.repo_scan_last_started_at.is_none_or(|last| {
+                now.saturating_duration_since(last) >= std::time::Duration::from_secs(30)
+            })
+            && let (Some(profile), Some(policy)) = (
+                self.repo_scan_config_profile.clone(),
+                self.repo_scan_config.clone(),
+            )
+        {
+            self.start_repo_discovery_for_profile(profile, policy, true);
+        }
+    }
+
+    fn refresh_open_session_transcripts(&mut self) {
+        self.refresh_active_transcript_after_change();
+        let open_session_ids = self
+            .workspace
+            .open_session_pane_identities()
+            .into_iter()
+            .map(|(stored_id, _)| stored_id)
+            .collect::<BTreeSet<_>>();
+        for stored_id in open_session_ids {
+            self.refresh_peer_transcript_targets(&stored_id);
+        }
+    }
+
+    fn poll_active_status_backstop(&mut self, focused: bool, now: std::time::Instant) {
+        if !focused || !self.gateway_connected {
+            return;
+        }
+        let due = self.active_status_last_refresh_at.is_none_or(|last| {
+            now.saturating_duration_since(last) >= std::time::Duration::from_secs(30)
+        });
+        if due {
+            self.request_active_session_statuses();
+        }
+    }
+
+    fn poll_session_peer_sync(&mut self, ctx: &egui::Context) {
+        let Some(next_poll) = self.session_peer_sync_next_poll else {
+            return;
+        };
+        if std::time::Instant::now() < next_poll {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            return;
+        }
+        self.session_peer_sync_next_poll =
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(250));
+        if let Some(sync) = self.session_peer_sync.as_mut() {
+            match sync.poll() {
+                Ok(events) => {
+                    self.session_peer_sync_error = None;
+                    for event in events {
+                        match event {
+                            PeerEvent::SessionsChanged => self.request_session_list_refresh(),
+                            PeerEvent::TranscriptChanged {
+                                stored_session_id, ..
+                            } => {
+                                self.refresh_peer_transcript_targets(&stored_session_id);
+                            }
+                        }
+                    }
+                }
+                Err(error) => self.session_peer_sync_error = Some(error),
+            }
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+    }
+
+    fn poll_shared_auto_project_dismissals(
+        &mut self,
+        ctx: &egui::Context,
+        now: std::time::Instant,
+    ) {
+        if self
+            .auto_project_dismissal_next_poll
+            .is_some_and(|next_poll| now < next_poll)
+        {
+            return;
+        }
+        self.auto_project_dismissal_next_poll = Some(now + std::time::Duration::from_millis(500));
+        match self.workspace.refresh_auto_project_dismissals() {
+            Ok(changed) => {
+                self.auto_project_dismissal_sync_error = None;
+                if changed {
+                    let selected_auto_project_is_hidden =
+                        self.entered_project_tree.as_ref().is_some_and(|project| {
+                            project.is_auto
+                                && self
+                                    .workspace
+                                    .preferences
+                                    .dismissed_auto_project_ids
+                                    .iter()
+                                    .any(|id| id == &project.id)
+                        });
+                    if selected_auto_project_is_hidden {
+                        self.leave_project_sessions();
+                        self.entered_project_tree = None;
+                    }
+                    ctx.request_repaint();
+                }
+            }
+            Err(error) => self.auto_project_dismissal_sync_error = Some(error),
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(500));
+    }
+
     pub fn draw(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        // Match the source's 639.98px media query against the usable app
+        // content area (the host frame and root padding are not page width).
+        let narrow_viewport = ui.max_rect().width() < 640.0;
+        if self.narrow_viewport && !narrow_viewport {
+            self.narrow_pane_overlay = None;
+        }
+        self.narrow_viewport = narrow_viewport;
+        let focused = ctx.input(|input| input.focused);
+        let now = std::time::Instant::now();
+        self.recover_after_focus(focused, now);
+        self.poll_active_status_backstop(focused, now);
+        self.poll_command_center_maintenance(now);
+        if let Some(next_poll) = self.command_center_maintenance_next_poll {
+            ctx.request_repaint_after(next_poll.saturating_duration_since(now));
+        }
+        self.poll_command_center_system_action(now);
+        if let Some(next_poll) = self.command_center_system_next_poll {
+            ctx.request_repaint_after(next_poll.saturating_duration_since(now));
+        }
+        self.poll_session_peer_sync(&ctx);
+        self.poll_shared_auto_project_dismissals(&ctx, now);
+        self.auto_project_undo_toast(&ctx);
+        self.handle_command_palette_shortcuts(&ctx);
+        self.handle_layout_shortcuts(&ctx);
         self.file_previews.begin_frame();
         if self.file_previews.poll() {
             ctx.request_repaint();
@@ -13825,6 +33301,11 @@ impl HermesNativeApp {
                     projected_layout = layout.clone();
                 }
             }
+            projected_layout = if self.narrow_viewport {
+                self.workspace.narrow_presentation_layout(projected_layout)
+            } else {
+                self.workspace.presentation_layout(projected_layout)
+            };
             let closed_panels = layout.closed_panels.clone();
             let snapshot = match project(&projected_layout, projection_bounds) {
                 Ok(snapshot) => snapshot,
@@ -13903,6 +33384,66 @@ impl HermesNativeApp {
                     .is_some_and(|position| group_rect.contains(position));
                 if pointer_hovers_group {
                     hovered_dock_group = Some(group.node.clone());
+                }
+                if group.minimized {
+                    let mut rail = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(group_rect)
+                            .layout(Layout::top_down(Align::Min)),
+                    );
+                    rail.set_clip_rect(group_rect);
+                    rail.painter().rect_filled(group_rect, 0.0, PANEL_ALT);
+                    rail.painter().rect_stroke(
+                        group_rect,
+                        0.0,
+                        Stroke::new(1.0, BORDER),
+                        egui::StrokeKind::Inside,
+                    );
+                    for (index, panel) in group.panels.iter().enumerate() {
+                        let title = layout.descriptor(panel).map_or_else(
+                            || panel.0.clone(),
+                            |descriptor| {
+                                if panel.0 == WORKSPACE {
+                                    self.route.title().to_owned()
+                                } else {
+                                    descriptor.title_key.clone()
+                                }
+                            },
+                        );
+                        if rail
+                            .add_sized(
+                                [group_rect.width(), 28.0],
+                                egui::Button::new(title).selected(index == group.active_index),
+                            )
+                            .clicked()
+                        {
+                            match self.workspace.dock.transact(
+                                layout.revision,
+                                CommandId::from(format!(
+                                    "restore-dock-group-{}-{index}",
+                                    group.node.0
+                                )),
+                                [
+                                    Operation::SelectTab {
+                                        tabs: group.node.clone(),
+                                        index,
+                                    },
+                                    Operation::SetGroupMinimized {
+                                        group: group.node.clone(),
+                                        minimized: false,
+                                    },
+                                ],
+                            ) {
+                                Ok(_) => {
+                                    self.workspace.save_layout();
+                                    self.status = "Dock group restored".into();
+                                }
+                                Err(error) => self.status = error.to_string(),
+                            }
+                            break;
+                        }
+                    }
+                    continue;
                 }
                 let tab_rect =
                     Rect::from_min_size(group_rect.min, Vec2::new(group_rect.width(), 32.0));
@@ -14002,6 +33543,11 @@ impl HermesNativeApp {
                                 context_command = Some(DockTabContextCommand::Close(panel.clone()));
                                 menu_ui.close();
                             }
+                            if menu_ui.button("Minimize tab group").clicked() {
+                                context_command =
+                                    Some(DockTabContextCommand::Minimize(group.node.clone()));
+                                menu_ui.close();
+                            }
                             if let Some(targets) = close_targets.get(index) {
                                 if menu_ui
                                     .add_enabled(
@@ -14055,6 +33601,22 @@ impl HermesNativeApp {
                         }
                         DockTabContextCommand::CloseMany(panels) => {
                             self.request_close_session_panes(panels);
+                        }
+                        DockTabContextCommand::Minimize(group) => {
+                            match self.workspace.dock.transact(
+                                layout.revision,
+                                CommandId::from(format!("minimize-dock-group-{}", group.0)),
+                                [Operation::SetGroupMinimized {
+                                    group,
+                                    minimized: true,
+                                }],
+                            ) {
+                                Ok(_) => {
+                                    self.workspace.save_layout();
+                                    self.status = "Dock group minimized".into();
+                                }
+                                Err(error) => self.status = error.to_string(),
+                            }
                         }
                     }
                     break;
@@ -14134,7 +33696,10 @@ impl HermesNativeApp {
                 );
             }
         }
+        self.show_narrow_pane_overlay(&ctx);
         self.show_route_overlay(&ctx);
+        self.show_command_center_maintenance_confirmation(&ctx);
+        self.show_command_center_session_delete_confirmation(&ctx);
         self.show_first_run_setup(&ctx);
         self.show_catalog_plugin_install_dialog(&ctx);
         self.show_agent_plugin_update_dialog(&ctx);
@@ -14142,6 +33707,30 @@ impl HermesNativeApp {
         self.show_rename_dialog(&ctx);
         self.show_session_close_dialog(&ctx);
         self.show_recent_session_switcher(&ctx);
+        self.show_command_palette(&ctx);
+    }
+
+    fn handle_layout_shortcuts(&mut self, ctx: &egui::Context) {
+        let toggle_sessions = ctx.input_mut(|input| {
+            #[cfg(target_os = "macos")]
+            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::B);
+            #[cfg(not(target_os = "macos"))]
+            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::B);
+            input.consume_shortcut(&shortcut)
+        });
+        let toggle_files = ctx.input_mut(|input| {
+            #[cfg(target_os = "macos")]
+            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::J);
+            #[cfg(not(target_os = "macos"))]
+            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::J);
+            input.consume_shortcut(&shortcut)
+        });
+        if toggle_sessions {
+            self.toggle_positional_side(true);
+        }
+        if toggle_files {
+            self.toggle_positional_side(false);
+        }
     }
 
     #[cfg(feature = "agent-automation")]
@@ -14154,6 +33743,16 @@ impl HermesNativeApp {
         serde_json::json!({
             "route": self.current_route_path(),
             "route_title": self.route.title(),
+            "native_window": {
+                "id": self.native_window_id,
+                "pending_open_requests": self.native_window_launch_count(),
+                "child_readiness_pending": self.child_window_readiness.as_ref().is_some_and(|state| !state.sent),
+                "native_launch_enabled": self.allow_native_window_launch,
+            },
+            "peer_session_sync": {
+                "enabled": self.session_peer_sync.is_some(),
+                "error": self.session_peer_sync_error,
+            },
             "capabilities": {
                 "tab": self.capabilities_tab.as_str(),
                 "query": self.capabilities_query,
@@ -14232,19 +33831,55 @@ impl HermesNativeApp {
                     "session_ids": switcher.sessions.iter().map(|session| session.id.as_str()).collect::<Vec<_>>(),
                 })
             }),
+            "command_palette": {
+                "open": self.command_palette_open,
+                "selected_index": self.command_palette_selected_index,
+                "session_results": self.command_palette_sessions.len(),
+                "session_refresh_pending": self.command_palette_sessions_request_id.is_some(),
+                "session_refresh_error": self.command_palette_sessions_error.is_some(),
+            },
             "available_profiles": self.workspace.profile_ids(),
             "panels": {
                 "sessions": self.workspace.pane_is_open(SESSIONS),
+                "bots": self.workspace.pane_is_open(BOTS),
                 "workspace": self.workspace.pane_is_open(WORKSPACE),
                 "review": self.workspace.pane_is_open(REVIEW),
                 "files": self.workspace.pane_is_open(FILES),
                 "terminal": self.workspace.pane_is_open(TERMINAL),
+            },
+            "bot_roster": {
+                "profile": self.gateway_endpoint.as_ref().map(|endpoint| endpoint.profile_id.as_str()),
+                "pending": self.bot_roster_refresh.is_some(),
+                "error": self.bot_roster_error.as_deref(),
+                "profiles": self.bot_roster_for_current_endpoint().map(|snapshot| snapshot.profiles.iter().map(|profile| serde_json::json!({
+                    "name": profile.name.as_str(),
+                    "display_name": profile.display_name.as_deref(),
+                    "handle": profile.handle.as_deref(),
+                    "title": profile.title.as_deref(),
+                    "description": profile.description.as_deref(),
+                })).collect::<Vec<_>>()),
             },
             "gateway": {
                 "state": if self.gateway_connected { "connected" } else { "isolated" },
                 "first_run_setup_visible": self.first_run_setup_visible,
                 "first_run_remote_setup_open": self.first_run_remote_setup_open,
                 "first_run_setup_has_error": self.first_run_setup_error.is_some(),
+                "first_run_remote_probe_pending": self.first_run_remote_probe_pending,
+                "first_run_remote_probe_reachable": self.first_run_remote_probe_report.is_some(),
+                "first_run_remote_probe_auth_mode": self.first_run_remote_probe_report.as_ref().map(|report| match report.auth_mode {
+                    RemoteAuthMode::OAuth => "oauth",
+                    RemoteAuthMode::Token => "token",
+                }),
+                "first_run_remote_probe_error": self.first_run_remote_probe_error.as_deref(),
+                "first_run_remote_probe_supports_native_pkce": self.first_run_remote_probe_report.as_ref().is_some_and(|report| report.supports_native_pkce),
+                "first_run_remote_test_pending": self.first_run_remote_test_pending,
+                "first_run_remote_test_passed": self.first_run_remote_tested_payload_key.is_some()
+                    && self.first_run_remote_tested_payload_key == self.first_run_remote_payload_key()
+                    && self.first_run_remote_test_report.is_some(),
+                "first_run_remote_test_error": self.first_run_remote_test_error.as_deref(),
+                "first_run_oauth_pending": self.first_run_oauth_pending,
+                "first_run_oauth_signed_in": self.first_run_oauth_session.is_some(),
+                "first_run_oauth_error": self.first_run_oauth_error.as_deref(),
                 "session_count": self.sessions.len(),
                 "show_archived_sessions": self.show_archived_sessions,
                 "archived_session_count": self.archived_sessions.len(),
@@ -14293,6 +33928,169 @@ impl HermesNativeApp {
 impl eframe::App for HermesNativeApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.draw(ui);
+        self.report_child_window_readiness();
+        if self.allow_native_window_launch {
+            self.start_native_window_launches();
+            self.poll_native_window_launches(ui.ctx());
+        }
+    }
+}
+
+impl HermesNativeApp {
+    fn native_window_launch_count(&self) -> usize {
+        self.pending_native_window_launches.len() + self.pending_native_window_attempts.len()
+    }
+
+    fn start_native_window_launches(&mut self) {
+        while let Some(request) = self.pending_native_window_launches.pop_front() {
+            match spawn_native_window(&request) {
+                Ok(attempt) => {
+                    self.status =
+                        format!("Waiting for Hermes window {} to become ready", request.id);
+                    self.pending_native_window_attempts.push(attempt);
+                }
+                Err(error) => self.finish_native_window_launch(
+                    &request,
+                    NativeWindowLaunchOutcome::Failed(error),
+                ),
+            }
+        }
+    }
+
+    fn poll_native_window_launches(&mut self, ctx: &egui::Context) {
+        let now = std::time::Instant::now();
+        let attempts = std::mem::take(&mut self.pending_native_window_attempts);
+        let mut remaining = Vec::with_capacity(attempts.len());
+        for mut attempt in attempts {
+            let outcome = match attempt.receiver.poll() {
+                Ok(Some(receipt)) if receipt.window_id == attempt.request.id => {
+                    Some(NativeWindowLaunchOutcome::Ready)
+                }
+                Ok(Some(_)) => Some(NativeWindowLaunchOutcome::Failed(
+                    "the child returned a mismatched readiness receipt".into(),
+                )),
+                Err(error) => Some(NativeWindowLaunchOutcome::Failed(format!(
+                    "the readiness receipt was rejected: {error}"
+                ))),
+                Ok(None) => match attempt.child.try_wait() {
+                    Ok(Some(status)) => Some(NativeWindowLaunchOutcome::Failed(format!(
+                        "the child exited before its first UI frame (status {status})"
+                    ))),
+                    Err(error) => Some(NativeWindowLaunchOutcome::Failed(format!(
+                        "could not monitor child startup: {error}"
+                    ))),
+                    Ok(None) if now >= attempt.deadline => {
+                        Some(NativeWindowLaunchOutcome::TimedOut)
+                    }
+                    Ok(None) => None,
+                },
+            };
+            if let Some(outcome) = outcome {
+                self.finish_native_window_launch(&attempt.request, outcome);
+            } else {
+                remaining.push(attempt);
+            }
+        }
+        self.pending_native_window_attempts = remaining;
+        if !self.pending_native_window_attempts.is_empty()
+            || !self.pending_native_window_launches.is_empty()
+        {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+    }
+
+    fn report_child_window_readiness(&mut self) {
+        let Some(reporter) = self.child_window_readiness.as_mut() else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        if reporter.sent || now < reporter.next_attempt || now >= reporter.deadline {
+            return;
+        }
+        match native_window::send_readiness(&reporter.target, reporter.window_id) {
+            Ok(()) => reporter.sent = true,
+            Err(_) => reporter.next_attempt = now + std::time::Duration::from_millis(200),
+        }
+    }
+
+    fn finish_native_window_launch(
+        &mut self,
+        request: &NativeWindowLaunchRequest,
+        outcome: NativeWindowLaunchOutcome,
+    ) {
+        match outcome {
+            NativeWindowLaunchOutcome::Ready => {
+                if let Some(panel) = &request.move_session_panel {
+                    let detail = match self.moved_session_panel_still_idle(request, panel) {
+                        Ok(()) => {
+                            self.close_session_pane(panel);
+                            "session moved".to_owned()
+                        }
+                        Err(reason) => format!("source session kept open: {reason}"),
+                    };
+                    self.status = format!("Hermes window {} is ready · {detail}", request.id);
+                } else {
+                    self.status = format!("Hermes window {} is ready", request.id);
+                }
+            }
+            NativeWindowLaunchOutcome::Failed(error) => {
+                self.status = format!(
+                    "Could not open Hermes window {}: {error}. The session remains open; retry when ready.",
+                    request.id
+                );
+            }
+            NativeWindowLaunchOutcome::TimedOut => {
+                self.status = format!(
+                    "Hermes window {} did not become ready within {} seconds. The session remains open; retry when ready.",
+                    request.id,
+                    READINESS_TIMEOUT.as_secs()
+                );
+            }
+        }
+    }
+
+    fn moved_session_panel_still_idle(
+        &self,
+        request: &NativeWindowLaunchRequest,
+        panel: &PanelId,
+    ) -> Result<(), String> {
+        let layout = self.workspace.dock.snapshot().document;
+        let descriptor = layout
+            .descriptor(panel)
+            .filter(|descriptor| {
+                descriptor.role == "hermes_session_tile" && !layout.closed_panels.contains(panel)
+            })
+            .ok_or_else(|| "the source session tab is no longer open".to_owned())?;
+        let session_id = descriptor
+            .metadata
+            .get("hermes.session.id")
+            .ok_or_else(|| "the source session tab has no session identity".to_owned())?;
+        let profile = descriptor
+            .metadata
+            .get("hermes.session.profile")
+            .filter(|value| !value.is_empty())
+            .map(String::as_str);
+        if request.route != format!("/{session_id}") || profile != request.profile.as_deref() {
+            return Err("the source tab identity changed while the new window started".into());
+        }
+        if self.session_pane_is_busy(panel) {
+            return Err("the source session became active while the new window started".into());
+        }
+        let key = session_identity_key(session_id, profile);
+        let saved_draft = if self.route == AppRoute::Session(session_id.clone())
+            && self.active_session_profile.as_deref() == profile
+        {
+            self.draft.as_str()
+        } else {
+            self.session_chat_views
+                .get(&key)
+                .map(|view| view.draft.as_str())
+                .unwrap_or_default()
+        };
+        if !saved_draft.trim().is_empty() {
+            return Err("a new unsent draft appeared in the source session".into());
+        }
+        Ok(())
     }
 }
 
@@ -14301,6 +34099,55 @@ fn operation_id(kind: &str) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos());
     format!("hermes-native-{kind}-{}-{nanos}", std::process::id())
+}
+
+fn parse_config_path_lines(value: &str) -> Vec<String> {
+    value
+        .lines()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn spawn_native_window(
+    request: &NativeWindowLaunchRequest,
+) -> Result<NativeWindowLaunchAttempt, String> {
+    let (receiver, readiness_target) = ReadinessReceiver::bind(request.id).map_err(|error| {
+        format!(
+            "Cannot create readiness channel for Hermes window {}: {error}",
+            request.id
+        )
+    })?;
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Cannot locate Hermes executable for a new window: {error}"))?;
+    let mut command = Command::new(executable);
+    command
+        .arg("--hermes-native-window")
+        .arg(request.id.to_string())
+        .arg("--route")
+        .arg(&request.route)
+        .arg("--ready-address")
+        .arg(readiness_target.address.to_string())
+        .arg("--ready-nonce")
+        .arg(&readiness_target.nonce);
+    if let Some(profile) = &request.profile {
+        command.arg("--profile").arg(profile);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW; the eframe window remains visible.
+    }
+    let child = command
+        .spawn()
+        .map_err(|error| format!("Cannot start Hermes window {}: {error}", request.id))?;
+    Ok(NativeWindowLaunchAttempt {
+        request: request.clone(),
+        child,
+        receiver,
+        deadline: std::time::Instant::now() + READINESS_TIMEOUT,
+    })
 }
 
 fn connector_segment_label(segment: ConnectorsSegment) -> &'static str {
@@ -14540,11 +34387,61 @@ fn profile_title(id: &str) -> &'static str {
     }
 }
 
+fn canonical_pane_action_id(id: &str) -> &str {
+    match id {
+        "chat-sidebar" => SESSIONS,
+        "file-browser" => FILES,
+        "hermes-bots:pane" => BOTS,
+        "bots" => BOTS,
+        _ => id,
+    }
+}
+
 fn panel_title(id: &str) -> &'static str {
     match id {
+        SESSIONS => "Sessions",
+        BOTS => "Bots",
         REVIEW => "Review",
         FILES => "Files",
         TERMINAL => "Terminal",
         _ => "Panel",
     }
+}
+
+fn sanitize_session_export_part(value: &str) -> String {
+    let mut normalized = String::new();
+    let mut previous_dash = false;
+    for ch in value.trim().to_ascii_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+            normalized.push(ch);
+            previous_dash = false;
+        } else if !previous_dash {
+            normalized.push('-');
+            previous_dash = true;
+        }
+    }
+    normalized
+        .trim_matches('-')
+        .chars()
+        .take(48)
+        .collect::<String>()
+}
+
+fn session_export_filename(session_id: &str, title: Option<&str>) -> String {
+    let title_part = title.map(sanitize_session_export_part).unwrap_or_default();
+    let id_part = sanitize_session_export_part(session_id)
+        .chars()
+        .take(8)
+        .collect::<String>();
+    let title_prefix = if title_part.is_empty() {
+        "session"
+    } else {
+        title_part.as_str()
+    };
+    let id_suffix = if id_part.is_empty() {
+        "session"
+    } else {
+        id_part.as_str()
+    };
+    format!("{title_prefix}-{id_suffix}.json")
 }

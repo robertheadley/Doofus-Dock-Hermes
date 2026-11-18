@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-11-15T23:07:30Z",
+  "request_id": "hermes-native-recent-session-order-20261115",
+  "hermes_snapshot_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "repository_head": "b8db79bbd16b6258473638ab8130a77da2cb4d28",
+  "source_diff_sha256": "91c3075d11625629299268abf8748ee52fe1dbaba76bc09106d32c620d8d2e7e",
+  "untracked_source_files_not_in_diff": [
+    "apps/hermes-native/src/bin/hermes_automation/native_uia_tree.ps1"
+  ],
+  "executable_sha256": "c3fabe678775e749db9957fa6a9ed63222b7160982c08966c9300bcb7fd410e8",
+  "viewport": {
+    "width": 1440,
+    "scale": 1.0,
+    "height": 900,
+    "dpi": "headless logical viewport; physical Windows DPI not measured"
+  },
+  "screenshot_sha256": "a00d7de0703fbf61d39ed0167a75d33ccc7238ef705fef2c27ab69017f17d746",
+  "route": "/",
+  "fixture": "recent-session-reorder-fixture",
+  "fixture_data": "Six synthetic recent sessions across a current head run and an older date group, plus a synthetic session transcript pane; Hermes gateway remains isolated.",
+  "visual_review": "Captured by the one-shot headless AccessKit egui runner. The screenshot shows distinct recent-session rows and a date divider in the sidebar beside a populated session transcript pane.",
+  "limitations": [
+    "Synthetic offline content; no authenticated Hermes gateway.",
+    "Target-only screenshot; no matched fixed-source screenshot.",
+    "Headless logical scale only; physical Windows DPI and pointer behavior remain unverified.",
+    "PAR-0076 remains pending source-paired acceptance."
+  ]
+}

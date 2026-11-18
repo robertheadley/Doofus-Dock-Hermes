@@ -811,8 +811,27 @@ version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a373e3602691c3cdea496d2f0ee5935151e6168fe87739483c463db1b2f2f87"
 dependencies = [
+ "percent-encoding",
  "time",
  "version_check",
+]
+
+[[package]]
+name = "cookie_store"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b2c103cf610ec6cae3da84a766285b42fd16aad564758459e6ecf128c75206"
+dependencies = [
+ "cookie",
+ "document-features",
+ "idna",
+ "indexmap",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "time",
+ "url",
 ]
 
 [[package]]
@@ -1096,6 +1115,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
 dependencies = [
  "bitflags 2.13.2",
+ "block2 0.6.2",
+ "libc",
  "objc2 0.6.5",
 ]
 
@@ -1146,7 +1167,6 @@ dependencies = [
 [[package]]
 name = "doofusdock-core"
 version = "0.2.0"
-source = "git+https://github.com/robertheadley/doofusdock?rev=f6eb49b9e488f4e851d8d3abe18e95d296201bba#f6eb49b9e488f4e851d8d3abe18e95d296201bba"
 dependencies = [
  "serde",
  "serde_json",
@@ -1165,7 +1185,6 @@ dependencies = [
 [[package]]
 name = "doofusdock-presentation"
 version = "0.2.0"
-source = "git+https://github.com/robertheadley/doofusdock?rev=f6eb49b9e488f4e851d8d3abe18e95d296201bba#f6eb49b9e488f4e851d8d3abe18e95d296201bba"
 dependencies = [
  "doofusdock-core",
  "rand_pcg",
@@ -2065,6 +2084,7 @@ dependencies = [
 name = "hermes-native"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "doofusdock-core",
  "doofusdock-host-egui",
  "doofusdock-presentation",
@@ -2073,16 +2093,23 @@ dependencies = [
  "egui",
  "egui_commonmark",
  "egui_kittest",
+ "getrandom 0.3.4",
  "ignore",
  "image",
+ "open",
  "pdfium-render",
+ "qrcodegen",
+ "regex",
  "resvg",
+ "rfd",
  "serde",
  "serde_json",
  "sha2",
  "time",
  "tungstenite",
  "ureq",
+ "url",
+ "windows-sys 0.61.2",
  "wry",
  "zeroize",
 ]
@@ -3568,6 +3595,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
+name = "qrcodegen"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
+
+[[package]]
 name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3731,6 +3764,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "regex-automata"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3769,6 +3814,29 @@ dependencies = [
  "tiny-skia 0.12.0",
  "usvg",
  "zune-jpeg",
+]
+
+[[package]]
+name = "rfd"
+version = "0.17.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20dafead71c16a34e1ff357ddefc8afc11e7d51d6d2b9fbd07eaa48e3e540220"
+dependencies = [
+ "block2 0.6.2",
+ "dispatch2",
+ "js-sys",
+ "libc",
+ "log",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "percent-encoding",
+ "raw-window-handle",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4814,10 +4882,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ac5cecf619ca81f66a96482db09687c9f7465af65f4300a8c30cca05bd5a59d"
 dependencies = [
  "base64",
+ "cookie_store",
  "log",
  "percent-encoding",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "ureq-proto",
  "utf8-zero",
  "webpki-roots",

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://doofus.local/schemas/hermes-task-event-v1.json",
+  "title": "Hermes Native Task Event",
+  "type": "object",
+  "required": ["schema_version", "event_id", "event_type", "phase", "revision", "timestamp", "provider", "model", "task_id", "details"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {"type": "string", "minLength": 1},
+    "phase": {"type": "string", "enum": ["prepared", "committed", "reconciled"]},
+    "revision": {"type": "integer", "minimum": 1},
+    "timestamp": {"type": "string", "minLength": 1},
+    "provider": {"type": ["string", "null"], "enum": ["codex", "antigravity", "hermes", null]},
+    "model": {"type": ["string", "null"]},
+    "task_id": {"type": ["string", "null"]},
+    "details": {"type": "object"}
+  },
+  "additionalProperties": true
+}

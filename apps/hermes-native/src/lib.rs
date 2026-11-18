@@ -1,7 +1,14 @@
 pub mod app;
+pub mod artifacts;
 pub mod files;
 pub mod fonts;
 pub mod gateway;
 pub mod layout;
+pub mod native_oauth;
+pub mod native_token_store;
+pub mod native_window;
 pub mod plugin_catalog;
+pub mod remote_probe;
+pub mod repo_discovery;
 pub mod routes;
+pub mod session_peer_sync;

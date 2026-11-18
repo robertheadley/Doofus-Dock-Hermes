@@ -2,7 +2,22 @@
 
 The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/`: 499 stock Hermes Desktop requirements are in scope and 66 Hermes-Doofus requirements are excluded by the approved scope. The fixed target is downloaded Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`; later upstream updates do not expand scope. The reference package passes its offline consistency check. Completion requires source-paired validation for every in-scope behavior.
 
-**Acceptance progress snapshot (2026-11-15): 0/499 in-scope rows accepted (0%).** All 565 matrix rows currently say `pending`, including the 66 excluded research rows. Many partial implementation slices exist, but the project does not track a defensible weighted implementation percentage.
+**Status snapshot (2026-11-18):** pinned-source acceptance is 0/499. The evidence overlay records 6 implemented, 32 partial, 0 explicitly not implemented, and 461 not yet reviewed; 38/499 requirements (7.6%) have mapped evidence, not completion credit. All 499 source-pair states remain pending. PAR-0002 has a native child-process launch and isolated layout path; PAR-0010 has a guarded active-session move action. PAR-0011 now has profile-fenced session refresh, project trees, repository discovery settings/local and remote scan paths, and a forced post-scan refresh in headless coverage. PAR-0007/0008 now record existing split/zone-drop behavior as partial, with radial drop geometry matched; whole-zone targets, multi-zone drag, strip insertion, physical Windows interaction and source-paired acceptance remain open. Narrow overlays include the built-in Sessions, Files, Review and Bots panes. Bots has a read-only active-profile roster, bounded `profiles.list` parsing, stale-response fencing and a transient narrow reveal. Its conditional plugin lifecycle, boot-time enforcement, remote agent-union rows, management surfaces, exact zone geometry, runtime and visuals remain open. See [completion overview](../apps/hermes-native/docs/COMPLETION_OVERVIEW.md), [implementation progress](../apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv), and [requirement crosswalk](../apps/hermes-native/docs/status/REQUIREMENT_CROSSWALK.csv). The supplemental 491-row validator is not a progress denominator. No weighted overall percentage is published.
+
+**Agent continuity:** the portable checkpoint and manual Codex/Antigravity/Hermes handoff are implemented in [AGENT_HANDOFF.md](AGENT_HANDOFF.md) and tracked in `.doofus/`. Versioned schemas, atomic validated writes, leases, scope-narrowing handoff previews, reconciliation, and separate implementation/evidence/live/source-acceptance progress are present. The 499 fixed-source rows remain the only parity denominator. The user-supplied 33/59 checklist is retained as a separate, unverified measure. Cross-provider transfer is manual and requires the recipient to resume; no provider API transfer is claimed. ETA remains unavailable until phase-specific duration samples are sufficient.
+
+The native first-run remote form performs the pinned Desktop's credential-free public gateway probe and exact-payload token/OAuth connection test. Apply starts remote WebSocket attachment and startup can load the matching DPAPI credential. Remote sessions/history/search/capability reads and session metadata/toolset writes use static-token or bearer authentication, redirects are disabled, and request targets stay within the configured gateway prefix. Remaining first-run gaps include other remote APIs, legacy embedded/password login, live remote-service verification, and local bootstrap; PAR-0001 remains pending.
+
+Apply persists the normalized gateway URL and DPAPI-encrypts token-mode credentials as well as OAuth sessions. Reopening Connect probes the saved URL before restoring a credential of the matching auth mode. Remote attachment and the listed HTTP read/write surfaces are implemented but remain unaccepted until source-paired runtime verification.
+
+PAR-0075 now has native sidebar pinned/recent groups, an accessible pointer drag handle, gateway-scoped saved ordering and preservation of unresolved pin slots. Headless UI and persistence checks pass; source-paired Windows visual/physical interaction and authenticated gateway acceptance remain pending.
+
+PAR-0078 now has the source's 12-swatch Appearance submenu, row color markers, atomic local override persistence keyed by `_lineage_root_id`, clear action, bounded palette validation, and end-to-end headless menu interaction coverage. Profile-scoped `projects.tree` ownership/color lookup now provides the inherited fallback under the local override. It remains pending because source-paired Windows/live evidence is absent.
+PAR-0076 now has fixed-source recent-session date grouping and manual order persisted per gateway/profile and applied within each group. The headless egui protocol verifies same-group drag persistence and cross-group rejection; source-paired Windows visual/physical interaction and authenticated gateway acceptance remain pending.
+
+Messaging progress addendum (HUR-001-169): Telegram QR setup now supports profile-fenced start/status/apply/cancel, QR display, expiry, validated allowlist entry and one-time deep-link opening, backed by local HTTP and headless UI fixtures. Gateway restart execution is now implemented and fixture-tested; bot management, localization, live authenticated behavior and source-paired acceptance remain open. PAR-0282 remains pending.
+
+Messaging progress addendum (HUR-001-170): Telegram setup now starts or monitors the pinned gateway restart action and polls its profile-scoped terminal status with bounded retries. The restart endpoint/status route and disabled offline control are fixture-tested; live gateway behavior and source-paired acceptance remain pending. PAR-0282 remains pending.
 
 ## Delivered in this slice
 
@@ -22,7 +37,7 @@ The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDo
 
 1. Complete profile-aware gateway lifecycle and event isolation, including durable retry identities, background-session event replay, cross-reconnect rename recovery, and HTTP mutation retry identity; then source-paired chat parity: history replay, edit/regenerate/rewind, attachments, Streamdown-specific streaming repair, math/media/directives, rich diff/artifact/tool cards, and reconnect/recovery. CommonMark/GFM structure, links, tables, and syntax-highlighted code are now rendered natively but remain unverified against matched source screenshots.
 2. Implement files, previews, artifacts, terminal/PTy, Git and worktree views against the pinned source contracts.
-3. Implement models, profile/settings management, skills/plugins/MCP, messaging, scheduling, logs/analytics, voice, onboarding, and dashboard management.
+3. Implement models, profile/settings management, skills/plugins/MCP, scheduling, logs/analytics, voice, onboarding, and dashboard management. Messaging now has a profile-scoped channel inventory, confirmed enable/disable, metadata-driven configuration save/clear, and pairing approval/revocation with explicit revoke confirmation; Telegram QR onboarding and restart execution are implemented; bot management and source-paired acceptance remain open.
 4. Implement the authenticated Doofus Control and Models & Quota views while preserving Python truth/evidence ownership and vault secrecy.
 5. Finish DoofusDock parity: tab selection/reorder, resize, float/re-dock, custom profiles, recovery, accessibility and native-window lifecycle.
 6. Resolve plugin compatibility and remaining keyboard, focus, accessibility, localization, high contrast, reduced motion, stale/offline/retry, and large-data behaviors.
@@ -31,7 +46,64 @@ The preserved research inventory has 565 rows in `docs/reference/Hermes_DoofusDo
 ## Current limitations
 
 - Hermes gateway coverage is partial; many RPCs, events, and screens in the fixed snapshot are not implemented. The authenticated Doofus bridge is not connected.
-- The agent UI stdio process is headless and gateway isolated. A separate native launch can be inspected read-only through Windows UI Automation without foregrounding it, but UIA actions focus the window and pointer-message injection did not navigate. A no-focus in-process action/screenshot channel and authenticated live-gateway automation remain unimplemented.
+- Native background mode now has an isolated, generation-fenced process channel for route state, bounded layout/profile/session diagnostics, a read-only bounded UI Automation control tree, shared typed app actions with before/after state receipts, same-window renderer screenshots, and egui keypress dispatch with fail-closed receipts. `HermesPage.launchNative()` connects locator click/fill/type, ComboBox `selectOption`, keyboard, state reads and screenshot capture; actual-process selection/readback, palette navigation and PNG checks passed. Generation-fenced native viewport wheel input is visually verified on the loaded 2,379-entry Plugins route; exact-locator scrolling still hits the dense-tree timeout. Native drag/drop, live-gateway scenarios and source-paired captures remain open; offline screenshots remain target-only.
 - Models and Doofus views remain incomplete; only the wired gateway/session slices are operational.
 - Center/tab and edge-split docking commands are wired, but live drag/drop persistence is unverified. Resize, tab picker, float/detach, and hide/close lifecycle remain unavailable.
 - No complete feature crosswalk against current Hermes source, no end-to-end evidence matrix, and no cutover decision.
+
+- Hermes Native command palette (PAR-0025) is partially implemented in the fixed-source target: Ctrl/Cmd+K/P, bounded registered actions, query filtering and keyboard selection. The nine native-supported Go to destinations follow source order and were exercised through registered route actions. Full source commands, settings context, and paired visual/Windows acceptance remain open; query matching/ranking follows pinned source tiers. Palette sessions refresh from the source-shaped all-profile HTTP query on open, with request-ID fencing, cached display and direct ID jumps; drag-based pin reorder and authenticated live acceptance remain open; persisted gateway-scoped pin order is implemented with server-flagged fallback.
+
+- PAR-0078 session appearance is partially implemented: the 12 source HSL colors can be set/cleared from the row menu, stored by durable `_lineage_root_id` (falling back to stored ID), and verified through headless semantic UI. Session dots inherit profile-scoped owning project colors from `projects.tree` after a local override. Source-paired Windows/live acceptance remains open.
+
+- [ ] Finish the pinned `/artifacts` route. Recent-session indexing and oldest-first transcript paging run on a background worker; extraction covers assistant/tool outputs and supported media, file and link references. The UI has type filters, search, image previews, file/link tables, pagination and source-chat navigation. Remote file downloads preserve path, session and profile scope through authenticated `/api/fs/download`; gateway-local image paths load through authenticated `/api/fs/read-data-url` into bounded thumbnails. Exact route/query-state parity, source-matched visuals, live-gateway checks and PAR acceptance remain open. Fixed source: `8783054ef6cbafd86f10892241436862c1171a66`.
+
+Messaging progress addendum (HUR-001-171): the Telegram QR setup card now supports source-style removable allowed-user chips, validated single-ID entry, detected-owner status, empty-list apply rejection and a warning before replacing an existing bot. Credential management, localization, authenticated live checks and source-paired Windows acceptance remain open.
+
+Messaging progress addendum (HUR-001-172): the native QR setup card follows the source two-column order and groups Cancel beside the ready-state or waiting-state actions as appropriate. Source-paired Windows visuals remain open.
+
+Scheduled Jobs progress addendum (HUR-001-173): replaced the unavailable native route with a profile-scoped searchable job list and selected-job details; remote route/auth and headless UI fixtures pass. Mutations and source-paired acceptance remain open.
+
+Scheduled Jobs progress addendum (HUR-001-174): selected-job Pause/Resume uses profile-scoped authenticated calls with request/result fencing; create/edit and other lifecycle actions remain open.
+Scheduled Jobs progress addendum (HUR-001-175): selected-job run history now loads the latest 20 profile-owned rows with validated authenticated HTTP, selection/profile fencing and loading/empty/error/retry UI. Trigger/Stop, run-to-session navigation and remaining management flows remain incomplete.
+
+Scheduled Jobs progress addendum (HUR-001-179): added profile-scoped create/edit/delete, connected delivery targets, model catalog, typed automation blueprints and script-only-safe update payloads. Local authenticated HTTP fixtures and headless editor/delete tests pass. Run-to-session navigation, live proof and paired source visuals remain incomplete; the PAR-0302 timezone acceptance wording does not match the pinned Desktop editor.
+
+Scheduled Jobs progress addendum (HUR-001-181): blueprint forms now preserve source defaults, use scalar weekdays, validate 24-hour time fields and retain unavailable saved models. Focused fixtures pass; PAR-0301/0302 remain partial, timezone wording remains mismatched with the pinned UI, and source-paired acceptance is still pending.
+
+
+Hermes Native PAR-0016 progress addendum (HUR-001-180): the Plugins catalog now uses separate selectable results and selected-item detail columns. The accessible capabilities-split sash follows the pinned 180 px/320 px drag clamps, persists width by stable ID in atomic UI preferences, and double-click resets to the 0.75fr/1fr default. Geometry, persistence/reset, accessible pane discovery and real headless egui pointer dragging pass. PAR-0016 remains partial; narrow-width visual matching, physical Windows behavior, live runtime and source-paired acceptance remain open.
+
+
+Hermes Native PAR-0011 progress addendum (HUR-001-181): backend sessions.changed now refreshes the active idle transcript with a profile-scoped offset-zero latest-page GET. Request/session/endpoint-profile/runtime and transcript-snapshot fences prevent stale replacement; overlap merging preserves already loaded history, an empty or unprovable result is rejected, and drafts remain untouched. Local HTTP and headless tests pass. Busy deferral, all open tiles, peer-window BroadcastChannel parity, project/focus/reconnect refresh, live gateway and source-paired acceptance remain open.
+
+Hermes Native PAR-0011 peer session-list hints (HUR-001-182): successful local create, rename and matching turn completion publish a versioned opaque ping receipt under the per-user Native profile directory. Peers periodically request their own profile-scoped gateway snapshot; no session data is carried in the local event. Unit tests exercise self-suppression, startup residue, malformed/partial records, concurrent writers and refresh coalescing. Physical Windows multi-process behavior, profile ACL verification, other mutation callers, transcript/tile/project sync and source-paired acceptance remain open.
+
+PAR-0011 transcript/tile reconciliation is now implemented as a headless, source-shaped partial slice: peers re-read matching active/open session views over the canonical profile-scoped gateway path, with identity and idle-state fences. Physical Windows event delivery, live gateway, project-tree/focus backstops and source-paired acceptance remain open.
+
+PAR-0011 project-tree continuation (2026-11-17T17:56:43Z): the native Sessions sidebar now renders a single-profile project/repository/group/session hierarchy from bounded `projects.tree` data. Session changes and project-change events refresh through fenced cache-preserving reads. The all-profile REST path, project-list consistency, repository discovery, tombstones, live service, physical Windows behavior and source-paired acceptance remain backlog work.
+
+Hermes Native PAR-0011 project drill-in continuation (2026-11-17T18:39:07Z): open detail refresh on overview-node changes and archive-response tombstone filtering now have headless evidence. All-profile project hydration, 50-row show-all paging, project-list consistency, repository discovery, non-archive deletion, live Windows service behavior and source-paired acceptance remain open.
+
+
+PAR-0011 project-list continuation (2026-11-17): Hermes Native reads pinned `projects.list` for one explicit profile, renders its active pointer separately from the `projects.tree` structure, and fences results by request, generation, endpoint instance and authority epoch. Connection, matching project-change and focus recovery refresh the list; failures retain same-owner cache; aggregate mode sends no synthetic list RPC. Tests pass locally. Full metadata reconciliation, cross-gateway rows, repository discovery, deletion tombstones, live/physical-Windows checks and paired acceptance remain open.
+
+### Hermes Native continuity reporting
+
+Automatic provider-process checkpoint triggers, authoritative normalized task sizing, and a dependency-backed critical path remain future work. Current ETA output requires three measured phase samples and sizes for all remaining tasks; otherwise it reports the evidence gap and no numeric estimate.
+
+### PAR-0011 repository discovery — remaining validation
+
+- [x] Add source-equivalent Workspace settings for enabled flag, configured roots and excluded paths.
+- [x] Add configured-root local scanner and profile/policy-fenced projects.record_repos path.
+- [x] Add remote host projects.discover_repos(scan=true) request and explicit all-profile refusal.
+- [x] Trigger discovery in single-profile project context, skip all-profile mode, and throttle focus rescans.
+- [ ] Add live remote success/failure/cache-preservation receipts and physical Windows filesystem/focus checks.
+- [ ] Complete remaining PAR-0011 work, pair source/native visuals and runtime, and obtain acceptance.
+
+Headless implementation is recorded in Hermes Native PLAN Revision 196. It is partial and does not close strict acceptance.
+
+
+Hermes Native PAR-0013/0014 now has persisted semantic Sessions and File browser visibility controls, accessible toolbar entry points, shared agent actions, and a canonical DoofusDock group-minimize operation. Ctrl/Cmd+B/J use a live root-edge group when eligible and otherwise fall back to semantic visibility; minimized groups expose restore rails. Narrow widths use transient side-aware Sessions/Files/Review overlays with headless tests and no canonical layout mutation; the source 237px default width is capped at 85vw. The typed agent action accepts the source `chat-sidebar`/`file-browser` aliases. Dynamic plugin panes, arbitrary alias/event modes, zone width overrides, additional root/profile shapes, physical Windows input and visual pairs remain open; strict source acceptance stays pending. Dedicated Hide/Show left/right titlebar controls now use the same dispatcher as Ctrl/Cmd+B/J.
+
+
+Hermes' pinned DoofusDock core and presentation crates are vendored at the fixed revision with provenance and license notes; group minimize/restore is integrated. See Hermes Native PLAN Revision 202 for implementation scope and remaining acceptance requirements.

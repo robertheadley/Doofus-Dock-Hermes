@@ -1524,3 +1524,1401 @@ HUI-054/HUI-055 publication: `13d5ff4d6d26516ecd671dba21eb1bd7bbb86afd` is publi
   **performance:** No normal runtime overhead; isolated feature launch only.
   **risks:** UIA's `InvokePattern` is unsupported for egui buttons; `TogglePattern` changed route but activated the off-screen process even with `WS_EX_NOACTIVATE`. Posted mouse messages preserved foreground but did not navigate. Native UIA mutations are therefore intentionally undocumented as an allowed operation; no shared JS protocol or live native screenshot is connected.
   **follow_up:** Add a process-local semantic action/screenshot channel with generation fencing, then integrate it into `HermesPage` and validate that mutations preserve the user's foreground application.
+- **id:** HUR-001-120
+  **timestamp:** 2026-11-15T20:02:45Z
+  **what:** Added native off-screen route state, generation-checked typed app actions, screenshot capture and acknowledged close over inherited NDJSON.
+  **why:** Give the coding agent a persistent real-window target for distinct route inspection and captures without UIA activation or desktop focus theft.
+  **components:** `src/app.rs`; `src/bin/hermes-automation.rs`; native screenshot evidence; `PLAN.md`; `AGENT_AUTOMATION.md`; `ARCHITECTURE.md`; `BACKLOG.md`.
+  **type:** native UI automation and evidence.
+  **validation:** Formatting and all-target feature check passed. Actual native process transitioned `/` → `/capabilities` through `RegisteredUiAction::Navigate`, produced a 2160×1350 image with matching SHA-256 sidecar, closed cleanly, and left foreground PID 5220 unchanged.
+  **performance:** Opt-in automation feature only; 12 MiB response cap.
+  **risks:** No live gateway; semantic native locators and reliable raw pointer effects remain unsupported. Screenshot is target-only and does not imply source parity.
+  **follow_up:** Add UIA tree-to-Playwright locator reads and verify human-equivalent native input without activation; then compare against the pinned source.
+- **id:** HUR-001-121
+  **timestamp:** 2026-11-15T20:07:57Z
+  **what:** Documented the native-window stdio protocol separately from the semantic headless protocol and clarified what repeated default-shell captures prove.
+  **why:** Make route-specific screenshot evidence and the native locator/click limitations explicit to agent clients.
+  **components:** `docs/AGENT_AUTOMATION_PROTOCOL.md`; `docs/AGENT_AUTOMATION.md`.
+  **type:** protocol documentation and evidence quality.
+  **validation:** Confirmed the documented methods, response version, request ID and 4,096-request bounds against the native host; confirmed default route and screenshot limitations against the recorded isolated capture.
+  **performance:** Documentation only.
+  **risks:** Native semantic tree and verified user-equivalent native clicks remain unavailable.
+  **follow_up:** Add a trustworthy native accessibility/action adapter and capture distinct states only after checking route/action receipts.
+- **id:** HUR-001-122
+  **timestamp:** 2026-11-15T20:17:26Z
+  **what:** Exposed bounded application diagnostics and before/after diagnostic snapshots through the native-window stdio protocol.
+  **why:** Let headless agents inspect layout, profile, pane, gateway and session lifecycle state while operating the real renderer window.
+  **components:** `src/bin/hermes-automation.rs`; `src/app.rs`; native automation documentation.
+  **type:** native agent diagnostics.
+  **validation:** Pending direct native-process protocol validation of initial snapshot, diagnostics bundle, route action before/after state and clean close.
+  **performance:** Snapshot serialization occurs only on an explicit read/action request.
+  **risks:** The isolated native host remains offline; semantic locators and generic input remain unavailable.
+  **follow_up:** Validate the new protocol fields and later connect reliable native semantic locators without focus activation.
+- **id:** HUR-001-123
+  **timestamp:** 2026-11-15T20:21:28Z
+  **what:** Verified native diagnostic snapshots and action deltas in the actual off-screen Windows process.
+  **why:** Confirm the native agent can inspect layout and lifecycle state and prove which route/tab a typed action selected.
+  **components:** `src/bin/hermes-automation.rs`; native action protocol; execution evidence.
+  **type:** native protocol validation.
+  **validation:** `cargo fmt --all -- --check`, all-target feature `cargo check`, feature-gated binary build, and actual stdio execution passed. Snapshot included the layout document and pane/gateway/chat summaries; diagnostics identified the native offline window; Navigate returned `/`→`/capabilities` and full state `/capabilities?tab=skills` at generation 1; clean close exit 0; foreground PID 5220 remained unchanged.
+  **performance:** Snapshot is serialized only when requested.
+  **risks:** This does not validate UIA semantic locators, generic input, a live gateway, or source-paired UI parity.
+  **follow_up:** Connect native semantic locators and user-equivalent input, then exercise one matched source workflow end-to-end.
+- **id:** HUR-001-124
+  **timestamp:** 2026-11-15T20:28:40Z
+  **what:** Removed the non-source `Hermes Desktop · native Rust shell` label from the pane-control bar.
+  **why:** The development label is absent from the fixed Hermes source and clipped at the screenshot's right edge.
+  **components:** `src/app.rs`; plan and execution evidence.
+  **type:** visible UI fidelity correction.
+  **validation:** Pending feature build and headless accessibility-tree check for retained Review/Files/Terminal controls and absent development label.
+  **performance:** No expected runtime cost or behavioral effect.
+  **risks:** Source-paired screenshot acceptance remains open.
+  **follow_up:** Compare the remaining toolbar and pane geometry to the fixed-source capture at matched scale.
+- **id:** HUR-001-125
+  **timestamp:** 2026-11-15T20:29:59Z
+  **what:** Verified the corrected pane bar through the headless app's semantic tree.
+  **why:** Confirm retained app navigation controls and removal of the clipped development label without another redundant image.
+  **components:** Native Hermes app automation protocol and pane toolbar.
+  **type:** semantic UI verification.
+  **validation:** Formatting, all-target feature check, feature binary build, `ui.tree` assertions for visible Review/Files/Terminal buttons and absent `Hermes Desktop · native Rust shell`, acknowledged close, exit code 0, empty stderr.
+  **performance:** No runtime change beyond removed label construction.
+  **risks:** This does not provide source-paired screenshot acceptance.
+  **follow_up:** Compare the remaining visible toolbar against a matched state from the pinned source.
+- **id:** HUR-001-126
+  **timestamp:** 2026-11-15T20:33:54Z
+  **what:** Changed unverified native coordinate clicks to return `failed: target_effect_unverified` after dispatch.
+  **why:** Prevent background automation from mistaking pointer delivery for a confirmed UI action and capturing unchanged state as progress.
+  **components:** `src/bin/hermes-automation.rs`; native protocol documentation; `docs/BACKLOG.md`.
+  **type:** action receipt correctness.
+  **validation:** Pending native process execution of `ui.click`, state reread, and clean close with foreground PID check.
+  **performance:** No additional work beyond existing pointer handling.
+  **risks:** Generic user-equivalent clicks remain unsupported; the error means the action may have occurred, so retry is unsafe until state is reread.
+  **follow_up:** Build native semantic locators and verified user-like input without foreground activation.
+- **id:** HUR-001-127
+  **timestamp:** 2026-11-15T20:35:02Z
+  **what:** Verified the native pointer probe returns a fail-closed unverified receipt and leaves state inspectable.
+  **why:** Ensure screenshot automation cannot treat unverified pointer delivery as successful navigation.
+  **components:** Native Windows agent protocol and foreground-safety check.
+  **type:** native action receipt validation.
+  **validation:** Formatting, all-target feature check, feature binary build and actual off-screen stdio run passed. `ui.click` returned `failed` / `target_effect_unverified`, `input_dispatched: true`, generation 1; reread still showed `/`; clean close exit 0; foreground PID 5220 before/after; empty stderr.
+  **performance:** No additional runtime cost.
+  **risks:** The click itself remains unsupported as a verified user-equivalent action.
+  **follow_up:** Implement native semantic targets and effect-verified action dispatch; keep using typed handlers where available.
+- **id:** HUR-001-128
+  **timestamp:** 2026-11-15T20:36:01Z
+  **what:** Marked the fail-closed native pointer receipt behavior in the feature backlog.
+  **why:** Keep native semantic-action limitations and retry guidance visible at the implementation entry point.
+  **components:** `docs/BACKLOG.md`.
+  **type:** backlog synchronization.
+  **validation:** Confirmed the backlog describes `target_effect_unverified`, input dispatch context, generation advance and state reread before retry, matching the protocol implementation.
+  **performance:** Documentation only.
+  **risks:** Native semantic locators and effect-verified user-like actions remain open.
+  **follow_up:** Keep the unchecked native UIA/input item open until target activation is verified without focus theft.
+
+- **id:** HUR-001-129
+  **timestamp:** 2026-11-15T20:41:20Z
+  **what:** Added a bounded read-only UI Automation tree query to the off-screen native process protocol.
+  **why:** Let a background coding agent inspect native controls semantically while preserving the non-activating window boundary.
+  **components:** `src/bin/hermes-automation.rs`; `src/bin/hermes_automation/native_uia_tree.ps1`; protocol and architecture documentation.
+  **type:** native agent accessibility.
+  **validation:** Pending direct native-process query, route transition and foreground-owner check.
+  **performance:** The hidden UI Automation helper is asynchronous, capped at three seconds, 256 nodes and 16 levels.
+  **risks:** Tree names can still expose control labels; values and text-role contents are omitted. UIA mutation remains disabled because it can activate the window.
+  **follow_up:** Connect a verified, non-activating native locator action path and the HermesPage client.
+- **id:** HUR-001-130
+  **timestamp:** 2026-11-15T20:47:30Z
+  **what:** Verified native tree reads on the initial and Capabilities routes around a typed navigation action.
+  **why:** Prove semantic control discovery against the actual off-screen native app without relying on another screenshot.
+  **components:** Native Windows UI Automation worker; inherited stdio protocol; route action handler.
+  **type:** native process validation.
+  **validation:** Formatting, feature-gated all-target check and binary build passed. The actual process returned 26 nodes on `/`, navigated through `app.action.execute`, then returned 30 nodes on `/capabilities`; `protocol.close` exited 0 and foreground PID remained 5220. No screenshot was generated. An initial idle-loop timeout revealed a missing repaint wake-up and was fixed; a harness-only PascalCase action typo was corrected before the passing run.
+  **performance:** Tree query bounded to three seconds; observed protocol roundtrip completed within the 8-second harness bound.
+  **risks:** This enables read-only locator discovery only; native locator mutations and source-paired acceptance remain open.
+  **follow_up:** Implement action semantics that can be verified without UIA focus activation; preserve user confirmation paths.
+### Revision 120 — native semantic locator actions
+
+- **id:** HUR-001-131
+- **timestamp:** 2026-11-15T21:21:57Z
+- **what:** Added exact-locator native `ui.action` dispatch for click, focus, full-field set, and selected-text replacement through egui/AccessKit; increased the async UIA tree timeout to eight seconds; documented generation invalidation and verified receipts. Added a current 1440×900 offline Plugins-state screenshot.
+- **why:** Let an unattended coding agent inspect and operate common native controls without activating the user's desktop, and show a genuinely populated UI state.
+- **components:** `src/bin/hermes-automation.rs`, `src/bin/hermes_automation/native_uia_tree.ps1`, native protocol/architecture/backlog/README/plan docs, `artifacts/agent-ui/plugins-busy-current-20261115.png`.
+- **type:** Native accessibility and agent-control capability.
+- **validation:** Formatting, feature-gated all-target check and binary build passed. The real Windows process returned 26 controls on `/` and 30 on `/capabilities`; it verified focus/set/selected-text replacement, navigated to Capabilities, rejected a stale action, closed cleanly, returned no entered text, and its PID was never sampled as foreground. The 1440×900 Plugins fixture screenshot was captured and visually inspected. Source-paired parity count remains 0/499.
+- **performance:** Full protocol flow completed in under eight seconds; each UIA tree query is bounded to eight seconds, 256 nodes and depth 16.
+- **risks:** UIA focus metadata does not mirror egui focus; app-side receipts are authoritative for supported operations. Native keyboard/menu/drag actions, connected HermesPage integration, live gateway behavior and source-paired acceptance remain open.
+- **follow_up:** Extend native control coverage by input class, connect the Playwright-shaped client, and validate source-matched workflows against the fixed Hermes download.
+
+## HUR-001-132
+- **id:** HUR-001-132
+- **timestamp:** 2026-11-15T21:40:00Z
+- **what:** Added a native command-palette HUD with Ctrl/Cmd+K and Ctrl/Cmd+P shortcuts, bounded registered navigation/layout results, query filtering, keyboard selection, Escape dismissal, and automation-state visibility.
+- **why:** Implement a distinct pinned-source interaction surface and make it operable by unattended agents.
+- **components:** `src/app.rs`, `docs/PLAN.md`, `docs/BACKLOG.md`, `docs/ARCHITECTURE.md`, `README.md`, root architecture/backlog.
+- **type:** Native UI and agent-control capability.
+- **validation:** `cargo fmt --all -- --check`, focused command-palette automation test (1 passed), and `cargo check -p hermes-native --all-targets --features agent-automation` passed. Full source command contributions, exact fuzzy ranking, settings context, matched screenshots, and physical Windows key input remain unverified; parity acceptance remains 0/499.
+- **performance:** No performance claim; filtering a bounded in-memory list.
+- **risks:** The current list and token/substring scoring do not match all upstream command sources or ranking semantics.
+- **follow_up:** Add source-complete contributions and settings context, pair the HUD against the fixed source at the same viewport, and verify Windows keyboard behavior.
+## HUR-001-133
+- **id:** HUR-001-133
+- **timestamp:** 2026-11-15T21:43:59Z
+- **what:** Replaced the native palette's simplified search ranker with the pinned Desktop's AND semantics and exact/prefix/word/substring/scattered/keyword score tiers, including Unicode alphanumeric word splitting.
+- **why:** Make query results and keyboard auto-selection follow the downloaded source ordering.
+- **components:** `src/app.rs`, native README/architecture/backlog/plan.
+- **type:** Source interaction parity.
+- **validation:** Formatting and all-target feature check passed; dedicated ranking tier test and open/search/navigate/close test passed. Initial test inputs accidentally matched stronger tiers; corrected fixtures isolated the intended tiers and then passed.
+- **performance:** Bounded in-memory scan; no benchmark claim.
+- **risks:** Full palette contributions and settings context remain incomplete; no source-paired visual receipt.
+- **follow_up:** Implement the missing source command groups and settings hand-off; retain PAR-0025 pending until end-to-end source pairing.
+## HUR-001-134
+- **id:** HUR-001-134
+- **timestamp:** 2026-11-15T21:48:08Z
+- **what:** Added the pinned-order native-supported Go to destinations for Profiles, Agents, and Star map and reordered the group to match the source. Added an action-level route test across all nine destinations.
+- **why:** Bring available route navigation closer to the fixed Desktop palette and ensure results actually navigate.
+- **components:** `src/app.rs`, native README/architecture/backlog/plan.
+- **type:** Navigation parity.
+- **validation:** Go to ordering and all route dispatch assertions passed; ranker test, formatting, all-target feature check and diff check passed.
+- **performance:** No performance claim.
+- **risks:** New-window action and source dynamic/contributed command groups are absent; several destinations themselves remain incomplete UI routes.
+- **follow_up:** Build source dynamic groups and route content; keep PAR-0025 pending until paired screenshot and native keyboard evidence pass.
+## HUR-001-135
+- **id:** HUR-001-135
+- **timestamp:** 2026-11-15T21:51:40Z
+- **what:** Added query-scoped palette results for pinned, active and archived cached sessions, matching title/preview/ID/profile fields, and direct jumps for pinned-format session IDs.
+- **why:** Let an agent find and open session work from the same searchable surface used by the person.
+- **components:** `src/app.rs`, native README/architecture/backlog/plan.
+- **type:** Session navigation parity.
+- **validation:** Session fixture test covers all three groups, preview search, direct-ID match and actual profile-scoped session action; formatting and all-target feature check pass.
+- **performance:** Scans current in-memory records only; no benchmark claim.
+- **risks:** Source refreshes all-profile sessions and archived results on each palette open; native uses whatever is currently loaded and may have incomplete pin ordering.
+- **follow_up:** Add request-correlated all-profile session/archived reads and the source's full keyword metadata before accepting PAR-0025.
+## HUR-001-136
+- **id:** HUR-001-136
+- **timestamp:** 2026-11-15T22:01:38Z
+- **what:** Added an asynchronous, request-ID-fenced all-profile session refresh for the command palette using the pinned 200-row/minimum-one-message/recent query. Palette opening also refreshes archived inventory; cached results remain available during refresh. Added owner-profile fallback and observable result/pending/error flags.
+- **why:** Match the pinned Desktop's session discovery rather than limiting the command palette to whatever the active-profile sidebar already loaded.
+- **components:** `src/app.rs`, `src/gateway.rs`, native protocol, README/architecture/backlog/plan.
+- **type:** Authenticated read and session navigation.
+- **validation:** Five focused command-palette tests passed; HTTP fixture asserts the exact all-profile URL, ticket, response fields and active-owner fallback. All-target feature check and diff check passed.
+- **performance:** One active all-profile HTTP request plus archived refresh on each open; active results bounded to 200 and archived palette rows bounded to the first 200.
+- **risks:** Archived fetch currently loads pages through existing API; local ordered pin IDs and authenticated live endpoint behavior remain unverified.
+- **follow_up:** Add canonical local pin ordering; exercise refresh/timeout/reopen races through the actual gateway bridge and compare source/target session groups.
+## HUR-001-137
+- **id:** HUR-001-137
+- **timestamp:** 2026-11-15T22:12:10Z
+- **what:** Added validated, bounded, persistent pinned-session order per gateway scope in UiPreferences. Palette resolves the user's order before server-flagged fallback. Pin/unpin success receipts update the list; archive success removes the pin and updates cached session metadata.
+- **why:** Match fixed Desktop's persisted local pin ordering without sharing it between independent gateway instances.
+- **components:** `src/layout.rs`, `src/app.rs`, native plan/backlog/README/architecture.
+- **type:** Session navigation and persistent preferences.
+- **validation:** Layout test verifies order persistence across reload, gateway-scope isolation and unpin. App test verifies local order precedes server pin order. Five palette tests, all-target feature check and diff check passed.
+- **performance:** Bounded to 20,000 IDs per scope and persisted through the existing atomic preference writer; no benchmark claim.
+- **risks:** Manual drag reorder is missing. API origin plus instance ID is the current gateway key; exact equivalence to source local bare key/remote base-URL scope is unverified.
+- **follow_up:** Implement manual reordering and verify key stability across gateway restarts and remote profile switches.
+
+- **id:** HUR-001-138
+- **timestamp:** 2026-11-15T22:30:00Z
+- **what:** Added a separate saved-order pinned-session sidebar group and accessible row drag handles; added subset re-slot persistence that preserves unloaded pins.
+- **why:** Match the pinned Desktop's hand-reorderable Pinned list and retain IDs whose session rows are not currently loaded.
+- **components:** `src/app.rs`, `src/layout.rs`, automation protocol and native docs.
+- **type:** Session navigation and persistent preferences.
+- **validation:** Pending final full feature tests and runner build. The focused headless UI drag already persisted the expected order while retaining an unresolved pin.
+- **performance:** Reorders the bounded visible pin list and uses the existing atomic preferences writer; no benchmark claim.
+- **risks:** Source-paired Windows visual and physical interaction, authenticated live gateway behavior and exact gateway scope equivalence remain unverified; PAR-0075 stays pending.
+- **follow_up:** Complete source-paired sidebar acceptance and continue the remaining 499 in-scope behaviors.
+- **id:** HUR-001-139
+- **timestamp:** 2026-11-15T22:33:42Z
+- **what:** Recorded successful full validation for the pinned-session sidebar reorder slice.
+- **why:** Keep the tested state and its remaining source/native acceptance limits explicit.
+- **components:** `src/app.rs`, `src/layout.rs`, `src/bin/hermes_automation/automation_protocol.rs`, native docs.
+- **type:** Validation record.
+- **validation:** `cargo fmt --all -- --check`, 147 library tests, 13 automation protocol tests, all-target feature check, automation runner build and `git diff --check` passed. The pointer test dragged an accessible pinned-row handle and read back the exact saved order, including an unresolved pin.
+- **performance:** No performance change or benchmark claimed.
+- **risks:** Headless egui proof does not establish source-paired Windows visuals, physical pointer behavior or authenticated live gateway semantics.
+- **follow_up:** Continue with source-paired acceptance and the remaining parity inventory; do not mark PAR-0075 accepted yet.
+- **id:** HUR-001-140
+- **timestamp:** 2026-11-15T22:37:36Z
+- **what:** Added stale-drag fencing so a concurrent pin-order or gateway-scope change cancels the pending sidebar reorder.
+- **why:** Prevent an old pointer gesture from overwriting a newer pin or unpin receipt.
+- **components:** `src/app.rs`, native plan/architecture/automation docs.
+- **type:** Session ordering safety.
+- **validation:** `cargo fmt --all -- --check`, 148 library tests, 13 automation protocol tests, all-target feature check, automation runner build and `git diff --check` passed. Tests cover persisted pointer reorder, unresolved pin retention and concurrent-order cancellation.
+- **performance:** No benchmark claim.
+- **risks:** Source-paired Windows visual/physical acceptance and authenticated live gateway behavior remain open.
+- **follow_up:** Continue the remaining parity inventory; PAR-0075 remains pending.
+- **id:** HUR-001-141
+- **timestamp:** 2026-11-15T23:07:58Z
+- **what:** Added source-shaped recency date groups and profile-scoped manual ordering for recent Hermes sidebar sessions.
+- **why:** Preserve the downloaded Desktop snapshot's chronological date groups while letting users reorder sessions within a group.
+- **components:** `src/app.rs`, `src/layout.rs`, `src/bin/hermes-automation.rs`, `src/bin/hermes_automation/automation_protocol.rs`, `README.md`, native architecture/backlog/plan/automation docs, `artifacts/agent-ui/recent-session-groups-20261115-v3.png` and sidecar.
+- **type:** Native sidebar behavior and offline agent fixture.
+- **validation:** 154/154 library tests and 14/14 automation protocol tests passed. The protocol test performs a real egui pointer drag, verifies saved order, and confirms cross-group drag leaves order unchanged. Date tests cover 4 a.m. rollover, locale week start, head-run cutoff and fresh ID reconciliation. All-target feature check, agent binary build, rustfmt check and `git diff --check` passed. Headless screenshot plus provenance JSON captured at 1440x900.
+- **performance:** No benchmark claim.
+- **risks:** Source-paired Windows visuals/physical pointer behavior, live authenticated gateway behavior and accessibility outside the headless semantic path remain unverified; PAR-0076 stays pending.
+- **follow_up:** Continue the fixed-source acceptance matrix and gather matched source/native Windows evidence before accepting PAR-0076.
+- **id:** HUR-001-142
+- **timestamp:** 2026-11-15T23:19:14Z
+- **what:** Added the fixed-source 12-color session Appearance submenu, persisted overrides, session-row color dots and clear behavior.
+- **why:** Implement PAR-0078's per-session color interaction using the downloaded Hermes Desktop palette.
+- **components:** `src/layout.rs`, `src/app.rs`, `src/bin/hermes_automation/automation_protocol.rs`, README, plan, backlog, architecture and execution records.
+- **type:** Native sidebar appearance parity.
+- **validation:** 155/155 library tests and 15/15 automation protocol tests passed. The semantic UI test opens the actions menu and Appearance submenu, applies `hsl(120 68% 58%)`, checks persisted JSON, clears it and verifies removal. All-target feature check, agent binary build, rustfmt and `git diff --check` passed.
+- **performance:** No benchmark claim.
+- **risks:** Overrides currently key by stored session ID rather than upstream compression lineage; clearing uses a neutral dot because project-color inheritance is not implemented. Matched Windows source/target visuals and authenticated behavior remain open; PAR-0078 remains pending.
+- **follow_up:** Add lineage-root transport and project color fallback, then collect source-paired Windows interaction evidence before acceptance.
+- **id:** HUR-001-143
+- **timestamp:** 2026-11-15T23:28:57Z
+- **what:** Matched the upstream six-column color swatch presentation and captured the populated session Appearance state.
+- **why:** Make the new color control visually reviewable and visibly distinct from the prior empty or menu-closed screenshots.
+- **components:** `src/app.rs`, `README.md`, `docs/AGENT_AUTOMATION.md`, `artifacts/agent-ui/recent-session-appearance-20261115.png` and provenance sidecar.
+- **type:** Visual fixture and evidence.
+- **validation:** Full 155-test library suite, 15-test automation suite, all-target feature check, runner build, rustfmt and diff checks passed. Headless capture opened the session menu and Appearance grid, and was visually inspected at 1440×900.
+- **performance:** No benchmark claim.
+- **risks:** Synthetic offline target-only evidence; no fixed-source paired screenshot, authenticated gateway, or physical DPI proof. PAR-0078 remains pending.
+- **follow_up:** Preserve the screenshot's source, target binary and image hashes; collect paired source/native behavior for acceptance.
+- **id:** HUR-001-144
+- **timestamp:** 2026-11-15T23:32:00Z
+- **what:** Corrected palette rendering to convert the source HSL swatches as HSL and regenerated the Appearance screenshot.
+- **why:** Ensure the 12 visible native colors match the downloaded CSS HSL values rather than a visually similar HSV palette.
+- **components:** `src/app.rs`, HSL conversion test, and `artifacts/agent-ui/recent-session-appearance-20261115.png` with provenance.
+- **type:** Color fidelity correction and visual evidence.
+- **validation:** RGB checks for the 0°, 120° and 240° source hues passed. Full suite passed with 156 library and 15 automation tests; all-target check, runner build, formatting and diff checks passed. Screenshot recaptured and visually reviewed at 1440×900.
+- **performance:** No benchmark claim.
+- **risks:** Compression-lineage persistence and project-color fallback remain open. Matched source/native Windows and authenticated gateway acceptance remain pending.
+- **follow_up:** Complete remaining PAR-0078 behaviors and source-paired acceptance before marking the row accepted.
+- **id:** HUR-001-145
+- **timestamp:** 2026-11-15T23:40:39Z
+- **what:** Carried the pinned REST `_lineage_root_id` through native session summaries and keyed color overrides by the durable lineage identity.
+- **why:** Preserve a chosen session color when Hermes rotates the visible session ID after compression, matching the pinned `sessionPinId` behavior.
+- **components:** `src/gateway.rs`, `src/app.rs`, semantic automation test, `README.md`, plan, backlog and architecture docs, current Appearance capture.
+- **type:** Session identity parity.
+- **validation:** Session-list fixture decodes `_lineage_root_id`; semantic UI test selects and clears a color under `lineage-recent-a` while the visible row ID is `recent-a`. 156 library and 15 automation tests passed; all-target check, runner build, rustfmt and diff checks passed. Screenshot recaptured and visually reviewed.
+- **performance:** No benchmark claim.
+- **risks:** Project-color fallback and source-paired Windows/live acceptance remain open; PAR-0078 remains pending.
+- **follow_up:** Implement inherited project color resolution, then complete source-paired visual and authenticated behavior acceptance.
+- **id:** HUR-001-146
+- **timestamp:** 2026-11-15T23:52:34Z
+- **what:** Added profile-scoped project-tree color inheritance for native session row markers, below explicit durable session overrides.
+- **why:** Match the pinned Desktop's `sessionProjectColor` ownership fallback and neutral behavior for uncolored projects.
+- **components:** `src/gateway.rs`, `src/app.rs`, session color tests, README, plan, backlog, architecture docs.
+- **type:** Profile-scoped appearance parity.
+- **validation:** Full target suite passed with 158 library and 15 automation protocol tests; all-target feature check, automation runner build, rustfmt and diff checks passed. A WebSocket fixture asserts `projects.tree` method/profile scope and decodes an owning session color; parser/color tests cover preview/lane rows, HSL, hex, explicit override precedence and neutral fallback.
+- **performance:** No benchmark claim; project data is requested once per visible profile per gateway connection and refreshed after reconnect/session-list updates.
+- **risks:** Authenticated live gateway and matched Windows source/native screenshots remain unverified; PAR-0078 remains pending.
+- **follow_up:** Capture source-paired Appearance states and verify project ownership/color on an authenticated profile before accepting PAR-0078.
+- **id:** HUR-001-147
+- **timestamp:** 2026-11-16T00:10:00Z
+- **what:** Added stale-receipt rejection and cache-preserving failure handling for profile-scoped project colors.
+- **why:** Prevent delayed or denied project-tree reads from replacing valid row colors or crossing profile boundaries.
+- **components:** `src/app.rs`, project color receipt lifecycle test, plan and architecture documentation.
+- **type:** Async state correctness.
+- **validation:** Focused test rejects stale IDs, preserves the pending latest request, preserves last known good colors after failure, isolates profiles and applies a fresh replacement.
+- **performance:** No benchmark claim.
+- **risks:** PAR-0078 still requires authenticated live and source-paired Windows evidence.
+- **follow_up:** Run the full feature suite and finish source-paired/live acceptance when a safe test profile is available.
+- **id:** HUR-001-148
+- **timestamp:** 2026-11-16T00:16:35Z
+- **what:** Added generation-fenced `ui.keypress` to the off-screen native window protocol and verified Ctrl+P/Escape palette navigation by state readback.
+- **why:** Let agents exercise actual native-window keyboard workflows headlessly without activating the desktop window.
+- **components:** `src/bin/hermes-automation.rs`, native protocol parser visibility, protocol/architecture/README/backlog/plan documentation.
+- **type:** Native agent keyboard control.
+- **validation:** 159 library tests and 15 automation protocol tests passed; all-target feature check, automation binary build, rustfmt and diff check passed. Actual `--native-window --stdio` process opened then closed the command palette; both key receipts remained fail-closed, `protocol.close` exited 0, and stderr was empty.
+- **performance:** No benchmark claim; input is queued in the existing egui frame path.
+- **risks:** Generic key effects require state readback; selector menus, drag/drop, HermesPage integration, live gateway access and source-paired parity remain open.
+- **follow_up:** Extend native selector/menu and drag/drop operations, then connect the Playwright-shaped client to this native host.
+- **id:** HUR-001-149
+- **timestamp:** 2026-11-16T00:28:17Z
+- **what:** Added `HermesPage.launchNative()` and native locator/state/key/screenshot support for the off-screen Hermes window.
+- **why:** Give coding agents one Playwright-shaped API for both headless UI tests and actual native-window interaction.
+- **components:** `agent/hermes-page.mjs`, native-client fixtures, protocol/README/architecture/backlog/plan docs.
+- **type:** Agent UI client integration.
+- **validation:** Four Node client tests passed. A real Windows process used `HermesPage.launchNative()` to resolve/click Capabilities, verify `/capabilities`, dispatch Ctrl+P/Escape and read back palette state, capture a valid 2160×1350 PNG with SHA-256, and close with exit 0.
+- **performance:** No benchmark claim; UIA tree queries use the existing eight-second native bound.
+- **risks:** Native select, scroll and drag are unsupported; live gateway and source-paired parity remain unverified.
+- **follow_up:** Add native selector/menu and pointer gestures, then keep the screenshot matrix tied to pinned-source states.
+- **id:** HUR-001-150
+- **timestamp:** 2026-11-16T00:42:19Z
+- **what:** Added native ComboBox option selection through `HermesPage.selectOption()` and sanitized non-finite UIA popup bounds.
+- **why:** Make actual off-screen interface-mode and Dock-layout selectors agent-operable while keeping the UIA tree valid JSON.
+- **components:** `src/bin/hermes_automation/native_uia_tree.ps1`, `agent/hermes-page.mjs`, native client fixture tests, automation/control-crosswalk/architecture/backlog/plan docs.
+- **type:** Native selector control and UIA robustness.
+- **validation:** 159 Rust library and 15 protocol tests passed; all-target feature check/build, rustfmt, Node syntax and 4 client tests passed. Actual native HermesPage selected Simple/Advanced and Basic/Default, read each resulting state, and captured a PNG; process exited cleanly.
+- **performance:** No benchmark claim; each selection is bounded by current UIA tree and protocol request limits.
+- **risks:** The option label must resolve to one clickable item within the ComboBox and uniquely across the window. Native scroll/drag, live gateway and source-paired acceptance remain open.
+- **follow_up:** Extend native scroll and drag gestures, then validate more source-matched selector workflows.
+- **id:** HUR-001-151
+- **timestamp:** 2026-11-16T01:10:40Z
+- **what:** Added generation-fenced native viewport wheel input and `HermesPage.wheelAt()` for headless scrolling on dense screens.
+- **why:** Keep agents able to scroll the actual native renderer when a populated route complete Windows UIA tree exceeds the bounded locator-read time.
+- **components:** `src/bin/hermes-automation.rs`, `agent/hermes-page.mjs`, HermesPage protocol fixtures, native automation, architecture, backlog, README and parity plan.
+- **type:** Native agent pointer input.
+- **validation:** 159 Rust library tests and 15 automation protocol tests passed; all-target feature check/build, rustfmt, diff check and 4 Node client tests passed. The actual off-screen Hermes process loaded 2,379 plugin entries, dispatched `ui.wheel` at (900,700) with deltaY -640, and captured a different 2160×1350 image (SHA-256 before `cb5598815652630de43f03ff6bb6e94bf836c640802e96be6eccfd54ef53d5d0`, after `8ff6976c4011133a151550d4847a27b86fc6a1ad168de8578876731d2041283c`); visual inspection confirmed the visible catalog cards changed. The exact-locator UIA tree still times out on this dense view.
+- **performance:** No performance improvement claimed; the existing eight-second complete-tree bound remains.
+- **risks:** Viewport wheel uses explicit logical coordinates and cannot prove its target effect from dispatch alone; screenshot/state readback is required. Dense complete UIA trees and native drag/drop remain open.
+- **follow_up:** Add native drag, then optimize UIA traversal/virtualization for dense pages and expand source-matched interaction acceptance.
+- **id:** HUR-001-152
+  **timestamp:** 2026-11-16T01:25:51Z
+  **what:** Reworded the parity status snapshot to report accepted requirements as a count and removed the ambiguous 0% label. Corrected the plan header's working revision to match its appended revision history.
+  **why:** Keep source-parity acceptance distinct from partial engineering work; no overall implementation percentage has a defensible denominator.
+  **components:** `docs/BACKLOG.md`, `apps/hermes-native/docs/BACKLOG.md`, `apps/hermes-native/docs/PLAN.md`.
+  **type:** documentation / progress reporting.
+  **validation:** Exact legacy lines were checked before replacement. The acceptance scope remains 499 in-scope requirements plus 66 excluded research rows. No feature or acceptance row changed.
+  **performance:** No runtime change or performance claim.
+  **risks:** Accepted parity count remains 0 of 499; this edit does not change implementation or acceptance evidence.
+  **follow_up:** Report accepted parity counts separately from implemented features; do not give an aggregate percentage without a defined, validated measure.
+- **id:** HUR-001-153
+  **timestamp:** 2026-11-16T01:25:51Z
+  **what:** Updated the plan's acceptance snapshot to report a row count without a percentage and synchronized the working revision with the appended plan history.
+  **why:** Prevent the accepted-parity count from being mistaken for overall engineering completeness.
+  **components:** `apps/hermes-native/docs/PLAN.md`.
+  **type:** documentation / progress reporting.
+  **validation:** Plan history ends at revision 137, and the fixed scope remains 499 in-scope requirements plus 66 excluded rows. No acceptance status changed.
+  **performance:** No runtime change or performance claim.
+  **risks:** Accepted parity count remains 0 of 499; this edit does not change implementation or acceptance evidence.
+  **follow_up:** Keep acceptance counts separate from any future evidence-based implementation measure.
+- **id:** HUR-001-154
+  **timestamp:** 2026-11-16T01:42:09Z
+  **what:** Added credential-free, asynchronous first-run remote gateway discovery for public status and optional OAuth-provider endpoints, with URL debounce, timeout/size/redirect bounds, stale-result fencing, and visible auth/provider/version state.
+  **why:** Replace a dead first-run discovery surface with the pinned Desktop's real public auth-mode probe while keeping credentials out of discovery requests.
+  **components:** `src/remote_probe.rs`, `src/app.rs`, `Cargo.toml`, `Cargo.lock`, `README.md`, `docs/ARCHITECTURE.md`, `docs/BACKLOG.md`, `docs/PLAN.md`.
+  **type:** feat / parity workflow.
+  **validation:** 163 Rust library tests and 15 automation protocol tests passed; all-target feature check and automation binary build passed; rustfmt passed. A local HTTP fixture confirmed `/api/status` and `/api/auth/providers` discovery, OAuth provider/version rendering, and absence of Authorization or X-Hermes-Session-Token headers. An egui harness verified the visible OAuth provider status.
+  **performance:** Network probing is off the UI thread, starts after a 500 ms idle debounce, and uses an eight-second request timeout; no benchmark claim.
+  **risks:** Probe discovery does not authenticate or establish the live gateway. OAuth/token login, authenticated HTTP+WebSocket test, apply/config persistence, and local bootstrap remain incomplete; PAR-0001 stays pending.
+  **follow_up:** Implement source-compatible credential acquisition, exact tested-payload receipt, authenticated HTTP+WebSocket check, remote config persistence/apply, then local bootstrap lifecycle.
+- **id:** HUR-001-155
+  **timestamp:** 2026-11-16T16:09:56Z
+  **what:** Added token-mode first-run connection testing for authenticated Hermes HTTP status and WebSocket handshake, plus a masked zeroizing token field, worker-thread execution, stale-result fencing and diagnostics.
+  **why:** Move first-run remote setup toward the pinned Desktop's rule that a usable connection requires authenticated HTTP and live WebSocket transport, rather than public discovery alone.
+  **components:** `src/remote_probe.rs`, `src/app.rs`, `README.md`, `docs/ARCHITECTURE.md`, `docs/BACKLOG.md`, `docs/PLAN.md`.
+  **type:** feat / parity workflow.
+  **validation:** `cargo test -p hermes-native --all-targets --features agent-automation --quiet` passed (165 library tests, 15 protocol tests); all-target feature check, rustfmt check and `git diff --check` passed. A local fixture verified the token header on `/api/status`, token query on `/api/ws`, and both handshake results; an egui harness verified the password field and credential-gated Test button.
+  **performance:** HTTP requests use the existing eight-second bound and network work runs off the UI thread; no benchmark claim.
+  **risks:** The UI token remains in zeroizing memory only during the form; no credential/config is persisted. OAuth login, exact-payload result binding, Apply/persistence, live remote attachment and local bootstrap remain incomplete. The 499-row source acceptance matrix remains unchanged and pending.
+  **follow_up:** Implement OAuth browser sign-in and bind each passing test to the exact URL/auth/token payload; then implement isolated config persistence, remote gateway attach and first-run bootstrap parity.
+- **id:** HUR-001-156
+  **timestamp:** 2026-11-16T16:27:55Z
+  **what:** Added source-shaped native PKCE OAuth sign-in for compatible first-run gateways and OAuth transport testing through authenticated status, one-use WebSocket-ticket minting and WebSocket upgrade.
+  **why:** Complete the compatible RFC 8252 sign-in route required by pinned Desktop first-run remote setup.
+  **components:** `src/native_oauth.rs`, `src/remote_probe.rs`, `src/app.rs`, `src/lib.rs`, `Cargo.toml`, `Cargo.lock`, README and architecture/backlog/plan docs.
+  **type:** feat / parity workflow.
+  **validation:** All-target tests passed (167 library tests, 15 protocol tests), all-target feature check, rustfmt check and `git diff --check`. Local fixtures exercised PKCE verifier exchange, loopback state validation, bearer HTTP status, ticket mint and ticket-authenticated WebSocket; egui harness verified enabled provider-specific Sign in control.
+  **performance:** Login/network operations run off the UI thread; loopback flow is capped at five minutes, token exchange at 15 seconds, and HTTP response bodies at 512 KiB; no benchmark claim.
+  **risks:** User-triggered Sign in opens the system browser. Tokens remain zeroizing in memory only and are lost when the form closes; refresh, secure persistence, older/password-provider embedded login, exact-payload test receipts, Apply and live remote attachment remain incomplete. PAR-0001 remains pending.
+  **follow_up:** Add refresh and OS-secure token persistence, source-compatible fallback login, exact-payload receipts, isolated remote configuration/apply and remote gateway attachment.
+- **id:** HUR-001-157
+  **timestamp:** 2026-11-16T16:32:51Z
+  **what:** Matched mixed-provider PKCE eligibility to the pinned source, added OAuth URL normalization at the worker boundary, redacted tokens from OAuth-session Debug output, and covered callback state mismatch.
+  **why:** Harden the native sign-in path against cross-site callback injection, unsafe direct worker inputs and accidental secret disclosure while preserving source provider-selection behavior.
+  **components:** `src/native_oauth.rs`, `src/app.rs`, `docs/PLAN.md`.
+  **type:** fix / security hardening.
+  **validation:** Full all-target suite passed (169 library tests, 15 protocol tests); all-target feature check, rustfmt check and `git diff --check` passed. New tests reject mismatched callback state, ensure token Debug redaction and verify password-only/mixed/unknown provider cases.
+  **performance:** No material runtime change.
+  **risks:** Native OAuth tokens still lack refresh, persistent OS-secure storage, legacy embedded fallback and remote runtime attach. No parity rows were accepted.
+  **follow_up:** Implement secure credential persistence/refresh and remote attach before enabling Apply.
+- **id:** HUR-001-158
+  **timestamp:** 2026-11-16T16:34:14Z
+  **what:** Replaced raw WebSocket client errors with a bounded generic failure so a handshake error cannot echo a one-use OAuth ticket from the query URL.
+  **why:** Keep OAuth ticket values out of UI state and automation diagnostics.
+  **components:** `src/remote_probe.rs`, `docs/PLAN.md`.
+  **type:** fix / secret redaction.
+  **validation:** Full suite, all-target feature check, format and diff checks rerun after this change; the OAuth and token WebSocket fixture paths remain covered.
+  **performance:** No material runtime change.
+  **risks:** Detailed socket failure classification is reduced to protect the ephemeral ticket; HTTP/auth error context remains reported separately.
+  **follow_up:** Keep credential-bearing request URLs and values out of all surfaced error paths.
+
+- **id:** HUR-001-159
+**timestamp:** 2026-11-16T16:37:36Z
+**what:** Bound first-run Apply eligibility to the exact current remote-test payload using a private SHA-256 fingerprint of normalized URL, auth mode and credential; credential edits revoke the gate.
+**why:** Match the pinned editor rule that Apply requires a passing test of the exact values currently shown.
+**components:** `src/app.rs`, `README.md`, `docs/ARCHITECTURE.md`, `docs/BACKLOG.md`, `docs/PLAN.md`.
+**type:** feat / parity workflow.
+**validation:** All-target test suite passed (169 library tests and 15 protocol tests); all-target feature check, rustfmt check and diff check passed. The egui harness verified Apply stays disabled before a receipt, enables for a matching receipt, then disables after the token changes.
+**performance:** Fingerprint is computed locally from a short payload; no network overhead.
+**risks:** Apply's persistence and live attach handler remain unimplemented; clicking it reports that limitation. No source-parity row accepted.
+  **follow_up:** Implement isolated remote configuration persistence and attach before treating Apply as complete.
+
+- **id:** HUR-001-160
+  **timestamp:** 2026-11-16T17:05:02Z
+  **what:** Refresh near-expiry native OAuth sessions before first-run transport tests and persist OAuth credentials with Windows DPAPI in the separate Hermes Native profile directory.
+  **why:** The pinned Desktop rotates native tokens within 60 seconds of expiry and retains the encrypted session; memory-only sign-in could not survive expiry or restart.
+  **components:** `src/native_oauth.rs`, `src/remote_probe.rs`, `src/native_token_store.rs`, `src/app.rs`, `src/layout.rs`, Cargo metadata and parity docs.
+  **type:** feat / remote authentication.
+  **validation:** 173 library tests and 15 protocol tests passed; all-target feature check, rustfmt and diff checks passed. Local HTTP/WebSocket fixture verifies refresh → rotated bearer status → ticket mint → WebSocket; Windows DPAPI test verifies encrypted disk state, replacement, load and removal. Package validator passes. UCM checker reports existing EV-0016/17 schema errors and one unresolved evidence reconciliation; historical records were left unchanged.
+  **performance:** One bounded refresh request only when expiry is unknown or within 60 seconds; DPAPI and file writes occur during first-run auth/test.
+  **risks:** Startup restoration and ordinary runtime refresh are not wired; token-auth persistence, config apply and remote attach remain open. No parity row accepted.
+  **follow_up:** Restore stored credentials during setup, then save/select the remote configuration and attach the native gateway actor.
+
+- **id:** HUR-001-160
+  **timestamp:** 2026-11-16T17:01:12Z
+  **what:** Refresh near-expiry native OAuth sessions before the first-run transport test and persist OAuth credentials with Windows DPAPI in the separate Hermes Native profile directory.
+  **why:** The pinned Desktop rotates native tokens within a 60-second expiry window and retains the encrypted session for future use; in-memory-only sign-in could not preserve that flow.
+  **components:** `src/native_oauth.rs`, `src/remote_probe.rs`, `src/native_token_store.rs`, `src/app.rs`, `src/layout.rs`, Cargo metadata and parity docs.
+  **type:** feat / remote authentication.
+  **validation:** 173 library tests and 15 protocol tests passed; all-target feature check, rustfmt and diff checks passed. Local HTTP/WebSocket fixture verifies refresh → rotated bearer status → ticket mint → WebSocket; Windows DPAPI test verifies encrypted disk state, replacement, load and removal. Package validator passes. UCM checker reports existing EV-0016/17 schema errors and one unresolved evidence reconciliation; those historical records were left unchanged.
+  **performance:** One bounded refresh request only when expiry is unknown or within 60 seconds; DPAPI and file writes occur on first-run authentication/test results.
+  **risks:** Startup restoration and refresh for ordinary runtime requests are not wired; token-auth persistence, connection-config apply and remote attach remain open. No parity row accepted.
+  **follow_up:** Restore stored credentials during setup, then atomically save/select the remote configuration and attach the native gateway actor.
+
+## HUR-001-161 — Save and restore remote setup URL
+
+**id:** HUR-001-161
+**timestamp:** 2026-11-16T17:17:16Z
+**what:** Store the normalized gateway URL in Hermes Native UI preferences after the exact-payload Apply gate; prefill and probe that URL on next Connect, then restore a matching DPAPI OAuth session after status discovery.
+**why:** Preserve successful setup progress without placing OAuth credentials in preferences or touching the installed Hermes profile.
+**components:** `src/app.rs`, `src/layout.rs`, README, backlog, architecture and plan docs.
+**type:** feature / parity.
+**validation:** Workspace persistence test validates normalization, unsafe scheme rejection and reload. Targeted test passed. Full suite pending. PAR-0001 remains pending.
+**performance:** One small validated preference write on Apply; secure token-store read occurs only on setup re-entry after matching gateway discovery.
+**risks:** Does not auto-attach, persist token-mode credentials or replace the local-only gateway actor.
+**follow_up:** Implement source-compatible remote gateway attach and connection lifecycle.
+
+Validation update for HUR-001-161 (2026-11-16T17:21:50Z): full feature suite passed (174 library tests, 15 protocol tests), plus cargo check, rustfmt, diff check and package validator. Headless egui coverage verifies exact-payload Apply persistence and URL restoration on reopening Connect. PAR-0001 remains pending.
+
+## HUR-001-162 — Protect token-mode connection credentials
+
+**id:** HUR-001-162
+**timestamp:** 2026-11-16T17:21:50Z
+**what:** Encrypt static session tokens with DPAPI on exact-payload Apply and restore a credential only when the saved URL and discovered auth mode match.
+**why:** Preserve setup state while keeping static credentials out of UI preferences.
+**components:** src/app.rs, src/native_token_store.rs, README and parity docs.
+**type:** feature / security / parity.
+**validation:** DPAPI test covers plaintext absence and prevents token/OAuth cross-loading; headless app test covers Apply persistence. Full suite pending.
+**performance:** Bounded local encryption and file I/O on Apply; lookup follows setup probe.
+**risks:** Remote runtime attachment and automatic startup reconnect remain unimplemented.
+**follow_up:** Add pinned-source remote WebSocket and REST attach, then verify the full connection lifecycle.
+
+Validation update for HUR-001-162 (2026-11-16T17:35:35Z): 175 library tests and 15 protocol tests pass; cargo check, rustfmt, git diff --check and package validation pass. The package validator reports 491 pending items; PAR-0001 remains pending. Timestamp note: the HUR-001-162 timestamp field reused the preceding entry time; this addendum is the accurate validation time.
+### HUR-001-163
+
+- **id:** HUR-001-163
+- **timestamp:** 2026-11-16T17:45:31Z
+- **what:** Wire exact-test Apply to token/OAuth remote WebSocket attachment, read runtime identity and the initial session list, and restore saved remote credentials at startup.
+- **why:** Persisted remote settings were not used to connect the native workspace.
+- **components:** First-run UI, GatewayDiscovery, remote WebSocket attach, encrypted credential store, architecture/backlog/plan docs.
+- **type:** feature
+- **validation:** cargo check passed; all-target tests passed at 175 library and 15 protocol tests before two additional auth tests. A stale UI assertion failed and was updated. Final rerun pending; live-service verification remains open.
+- **performance:** Network work stays on the background gateway worker.
+- **risks:** Remote HTTP operations remain loopback-only; runtime OAuth refresh persistence is incomplete; attach lacks a dedicated server fixture.
+- **follow_up:** Add authenticated remote HTTP operations and test the complete attach lifecycle; source-paired acceptance remains pending.
+Validation update for HUR-001-163 (2026-11-16T17:45:31Z): 177 library tests and 15 protocol tests pass; cargo check, rustfmt check, git diff check, and package validation pass. No live remote service was contacted; remote HTTP-backed operations remain open.
+### HUR-001-164
+
+- **id:** HUR-001-164
+- **timestamp:** 2026-11-16T18:05:35Z
+- **what:** Add authenticated remote HTTP support for session/history/search/capability reads and session metadata/toolset writes, with gateway-prefix validation, redirect blocking, bounded responses and persisted OAuth refresh.
+- **why:** Remote WebSocket attachment was connected, but HTTP-backed views and mutations still refused remote endpoints.
+- **components:** Remote gateway auth, REST transport, session/archive/search/capability UI paths, DPAPI credential rotation, source audit and plan.
+- **type:** feature
+- **validation:** 181 library tests and 15 protocol tests pass; cargo check, rustfmt check, git diff check and pinned-package validator pass. Local HTTP fixtures check token/OAuth headers, target path boundaries and session snapshot/PATCH fencing. No live remote service was contacted.
+- **performance:** HTTP work stays on the background gateway worker; responses remain capped at 512 KiB and requests use an eight-second timeout.
+- **risks:** Other remote API routes and live source-paired behavior remain unverified; parity acceptance stays 0/499.
+- **follow_up:** Port remaining source-defined remote HTTP calls, verify remote OAuth refresh rotation, then exercise against a real configured gateway and source-paired UI flows.
+
+- **id:** HUI-2026-11-16-artifacts-extraction-core
+- **timestamp:** 2026-11-16T18:20:29Z
+- **what:** Added a Rust artifact model and extraction core for explicit MEDIA tags, Markdown media/link targets, URLs, file paths and producer-tool payloads, with type filtering, deduplication, timestamp normalization and Python package-download suppression.
+- **why:** The pinned Hermes Artifacts route scans recent transcript messages and exposes searchable typed results; this establishes a testable Rust port core.
+- **components:** apps/hermes-native/src/artifacts.rs; lib export; regex dependency; docs and execution records.
+- **type:** feature foundation
+- **validation:** 3 focused artifacts tests passed; cargo fmt completed. Full app tests and visible route validation not run.
+- **performance:** Pure in-memory parsing over supplied transcript message slices; transcript paging/index orchestration is not yet connected.
+- **risks:** Artifacts screen remains a placeholder; source page loading, exact producer-key mapping, shared media resolution, preview/open actions, query/tab route persistence and source-paired acceptance remain open. PAR requirements unchanged.
+- **follow_up:** Wire the fixed-source recent-session page and 100-message transcript scan into the background HTTP worker, then build search/filter/paging, preview/open, and origin-session navigation.
+
+- **id:** HUI-2026-11-16-artifacts-extraction-core
+- **timestamp:** 2026-11-16T18:20:29Z
+- **what:** Added a Rust artifact model and extraction core for explicit MEDIA tags, Markdown media/link targets, URLs, file paths and producer-tool payloads, with type filtering, deduplication, timestamp normalization and Python package-download suppression.
+- **why:** The pinned Hermes Artifacts route scans recent transcript messages and exposes searchable typed results; this establishes a testable Rust port core.
+- **components:** apps/hermes-native/src/artifacts.rs; lib export; regex dependency; docs and execution records.
+- **type:** feature foundation
+- **validation:** 3 focused artifacts tests passed; cargo fmt completed. Full app tests and visible route validation not run.
+- **performance:** Pure in-memory parsing over supplied transcript message slices; transcript paging/index orchestration is not yet connected.
+- **risks:** Artifacts screen remains a placeholder; source page loading, exact producer-key mapping, shared media resolution, preview/open actions, query/tab route persistence and source-paired acceptance remain open. PAR requirements unchanged.
+- **follow_up:** Wire the fixed-source recent-session page and 100-message transcript scan into the background HTTP worker, then build search/filter/paging, preview/open, and origin-session navigation.
+
+- **id:** HUI-2026-11-16-artifacts-route-hardening
+- **timestamp:** 2026-11-16T18:59:53Z
+- **what:** Completed the connected Artifacts route slice: bounded background indexing of recent sessions, oldest-first transcript paging, source-aware extraction for MEDIA/#media, browser screenshots and producer/terminal payloads, searchable type tabs, image previews, file/link tables, pagination and source-chat navigation. Fixed URL display labels and removed duplicate automation gating.
+- **why:** Replace the stale placeholder implementation note with observable progress against the pinned Hermes Desktop Artifacts behavior while preserving strict acceptance evidence.
+- **components:** apps/hermes-native/src/artifacts.rs; apps/hermes-native/src/app.rs; apps/hermes-native/src/gateway.rs; artifact fixture captures; README, architecture, backlog, source audit and plan.
+- **type:** feature and correctness
+- **validation:** 187 library tests and 15 automation protocol tests passed; all-target feature cargo check, formatting check, diff check and pinned package validator passed. Headless 1600x1000 gallery and links-filter captures were rendered and visually inspected.
+- **performance:** Transcript indexing remains on a dedicated worker; each session is paged in batches of 100, session count is bounded at 30, and page payloads have a fixed UTF-16 size ceiling.
+- **risks:** Remote artifact file resolution/open remains unavailable; exact route query state, matched source visuals, live gateway behavior and source-paired acceptance remain open. The acceptance matrix was not promoted from synthetic fixtures.
+- **follow_up:** Implement gateway-scoped remote artifact resolution; compare connected source and native UI states side by side; add failure and interaction acceptance for the complete artifact route.
+
+- **id:** HUI-2026-11-16-remote-artifact-downloads
+- **timestamp:** 2026-11-16T19:19:46Z
+- **what:** Added source-scoped remote artifact file downloads using `/api/fs/download`, profile/session/path query scope, token or OAuth bearer headers, disabled redirects, safe response filename handling, a background native Save File flow, and atomic streamed file replacement. Correlated completion, cancellation and failure with the initiating request.
+- **why:** Complete the artifact open action for remote sessions while keeping credential transport out of URLs and preventing partial destination files.
+- **components:** hermes-native gateway download worker, artifact-open UI, Windows Save dialog, architecture/backlog/source-audit/plan and README status.
+- **type:** feature and transport correctness
+- **validation:** 190 library tests and 15 automation protocol tests passed; all-target feature cargo check, rustfmt check, `git diff --check`, and fixed-source package validator passed. Local HTTP fixtures verify exact route/query/auth, RFC 5987 filename handling, atomic overwrite and picker cancellation. Active 499-row acceptance remains 0 accepted; supplemental package reports 491 pending.
+- **performance:** Runs on a dedicated worker and streams the response body to disk; no whole-file buffering.
+- **risks:** No authenticated live remote gateway was tested. Remote image previews, source-paired UI comparison and agent-specified headless save destinations remain open.
+- **follow_up:** Add explicit agent destination-path action for modal-free download control; implement remote image preview through source-equivalent media resolution; continue per-row source-paired acceptance.
+
+- **id:** HUI-2026-11-16-remote-artifact-image-preview
+- **timestamp:** 2026-11-16T19:31:30Z
+- **what:** Added authenticated, source-scoped `/api/fs/read-data-url` loading for gateway-owned Artifacts images, file-URL-to-gateway-path conversion, background image decode, aspect-preserving thumbnails bounded to 512×384, request/artifact correlation, and a 32-entry content/texture cache.
+- **why:** Complete preview rendering for image artifacts that reside on a remote Hermes gateway.
+- **components:** `hermes-native` gateway transport, image decoder and `FilePreviewStore`, Artifacts gallery, source audit, architecture, plan, backlog and README status.
+- **type:** feature and bounded media transport
+- **validation:** Focused HTTP/data-url tests passed; full feature suite passed with 192 library and 15 protocol tests; all-target check, format, diff, and pinned package validation passed. Supplemental validator reports 491 pending; source-paired acceptance was not promoted.
+- **performance:** Dedicated worker; response bounded to 24 MiB encoded and image input to 16 MiB; thumbnails capped at 512×384; content and GPU textures evicted after 32 artifact images.
+- **risks:** Inline HTTPS images do not yet use the source gateway proxy path; no live remote gateway or side-by-side visual check was run.
+- **follow_up:** Implement authenticated gateway proxy fallback for external HTTPS image artifacts, then compare the complete Artifacts route against the pinned source and continue row-level acceptance.
+
+- **id:** HUI-2026-11-16-remote-artifact-media-proxy
+- **timestamp:** 2026-11-16T19:36:47Z
+- **what:** Added the pinned Desktop remote media fallback for external HTTP(S) image artifacts through authenticated `/api/media/proxy`, preserving the encoded source URL and profile, rejecting embedded credentials, and reusing bounded image decoding and thumbnail caching.
+- **why:** Render external artifact image URLs when they need the Hermes gateway's media proxy, as the pinned Desktop does.
+- **components:** `hermes-native` gateway media transport, Artifacts source selection, README, architecture, backlog, plan and source audit.
+- **type:** feature and authenticated media transport
+- **validation:** Local HTTP proxy fixture verifies encoded target query, profile, token header, returned data URL and thumbnail. Full feature suite passed with 193 library and 15 protocol tests; all-target check, rustfmt, diff and source package validation passed. No parity acceptance rows were advanced.
+- **performance:** Reuses the background image worker, 24 MiB encoded response limit, 16 MiB decoded input limit, 512×384 aspect-preserving thumbnails and 32-item cache.
+- **risks:** No live gateway/remote origin or source-paired screenshot was verified. Other Artifacts UI/query behavior still needs source comparison.
+- **follow_up:** Capture source/native Artifacts image states from the fixed snapshot with matched fixture data and continue per-row acceptance; verify the full endpoint against a live remote gateway when available.
+
+- **id:** HUR-001-165
+- **timestamp:** 2026-11-16T19:59:52Z
+- **what:** Added profile-scoped Messaging channel inventory, source status mapping, counts, search, status filters, selection/details, explicit loading/offline/error/retry states, and stale-profile cache/request clearing.
+- **why:** Replace the empty Messaging route with the first directly source-backed workflow while preserving profile ownership and fail-closed behavior.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, Messaging architecture/backlog/source audit, root README/backlog/architecture, `docs/PLAN.md`.
+- **type:** feature
+- **validation:** Full all-target feature suite passed: 197 library tests and 15 protocol tests. A headless egui fixture verified all four status counts, the accessible search field, and status filtering. All-target feature check, rustfmt check, diff check, and the fixed-source package validator passed; the supplemental package still reports 491 pending requirements.
+- **performance:** Not measured.
+- **risks:** Channel configuration, pairing/QR, bot management, localization, live gateway acceptance, and source-paired Windows visual/interaction evidence are still absent. PAR-0282 remains pending; no source acceptance row advanced.
+- **follow_up:** Implement the remaining source channel management workflows and capture source-paired Windows evidence before evaluating PAR-0282.
+
+- **id:** HUR-001-166
+- **timestamp:** 2026-11-16T20:15:27Z
+- **what:** Added confirmed source-compatible enable/disable for Messaging channels via the profile-scoped Hermes PUT endpoint, with local one-use ticket and remote token/OAuth auth paths, receipt fencing, relay-managed control disabling, restart/live feedback, and plan revision synchronization.
+- **why:** Make channel state actions work through the native interface while preserving the gateway as the configuration authority and avoiding optimistic UI changes.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, Messaging architecture/backlog/plan/source audit, root README/backlog/architecture.
+- **type:** feature / gateway mutation
+- **validation:** All-target feature suite passed with 197 library and 15 protocol tests. Messaging fixtures verify exact encoded profile-scoped PUT path, auth header, body, receipt, and invalid platform ID rejection. Headless UI coverage verifies status summaries, search, disabled-offline control, and filtering. All-target check, rustfmt, diff check and source package validator passed; plan header now matches revision 154.
+- **performance:** Mutation runs on the existing gateway HTTP worker with five-second local and eight-second remote request timeout; no benchmark claim.
+- **risks:** Configuration field editing, pairing/QR, bot management, gateway restart execution, source localization/visual parity, and live authenticated acceptance remain incomplete. PAR-0282 stays pending.
+- **follow_up:** Implement configuration editing and pairing/review flows from the pinned source, then gather source-paired Windows acceptance evidence.
+
+- **id:** HUR-001-167
+- **timestamp:** 2026-11-16T20:31:30Z
+- **what:** Added source-metadata-driven Messaging channel config forms, including required/recommended/advanced grouping, blank password drafts, allowlist editing/normalization, explicit clears, field docs links, and confirmed save with schema refresh.
+- **why:** Replace the remaining static channel detail with the pinned Desktop's profile-scoped configuration workflow while keeping the gateway authoritative and preventing stale profile results from applying.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, Messaging architecture/backlog/plan, root README/backlog/architecture.
+- **type:** feature / gateway mutation
+- **validation:** All-target feature suite passed: 198 library tests and 15 automation protocol tests. Focused config mapping, HTTP fixture, and headless UI checks passed. All-target check, rustfmt, diff check, and pinned-source package validator passed; validator reports 491 supplemental pending capabilities. No acceptance row advanced.
+- **performance:** Uses existing bounded gateway HTTP worker and response limit; configuration request body capped at 256 KiB; no benchmark claim.
+- **risks:** Pairing/QR, bot management, restart execution, localization/source visual parity, and live authenticated acceptance remain incomplete. PAR-0282 remains pending.
+- **follow_up:** Implement source pairing and bot-management workflows, then capture source-paired Windows behavior and visual evidence.
+
+- **id:** HUR-001-168
+- **timestamp:** 2026-11-16T20:45:11Z
+- **what:** Added profile-scoped Messaging pairing inventory, pending counts, confirmed approval by request ID, and revocation after explicit confirmation by user ID.
+- **why:** Match the pinned Desktop's pairing access workflow while ensuring requests and mutations stay bound to the active Hermes profile.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, Messaging plan/architecture/backlog, root README/backlog/architecture.
+- **type:** feature / gateway mutation
+- **validation:** Full all-target feature suite passed: 199 library tests and 15 protocol tests. The remote HTTP fixture verifies profile query/body, token header, target IDs, approve/revoke receipts; the headless UI fixture checks pending/approved sections, badge, and offline-disabled actions. All-target check, rustfmt, diff, execution-log parsing and pinned-source package validator passed. No acceptance row advanced.
+- **performance:** Uses the existing bounded gateway HTTP worker and 512 KiB response limit; no benchmark claim.
+- **risks:** Telegram QR onboarding, bot management, gateway restart execution, localization/source visual parity, and live authenticated acceptance remain incomplete. PAR-0282 remains pending.
+- **follow_up:** Implement pinned Telegram QR onboarding and then continue into bot management, with profile ownership and restart outcomes preserved.
+
+- **id:** HUR-001-169
+- **timestamp:** 2026-11-16T21:09:43Z
+- **what:** Added profile-bound Telegram QR onboarding start, status polling, allowlist apply and cancel to Messaging, including QR rendering, expiry, safe Telegram deep links and stale-session receipt fencing.
+- **why:** Implement the pinned Desktop's Telegram bot setup path without leaking one-time QR data across Hermes profiles.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, `apps/hermes-native/Cargo.toml`, `Cargo.lock`, Messaging docs and backlogs.
+- **type:** feature / gateway workflow
+- **validation:** Two Telegram HTTP/input tests, Messaging headless QR/accessibility test, owner-reset test, and full all-target feature suite passed (201 library tests, 15 protocol tests). All-target feature check passed. Formatting, diff, and pinned-source package validation are recorded in the paired execution log. No source acceptance row advanced.
+- **performance:** Uses the existing bounded background HTTP worker, 512 KiB response cap, one in-flight status poll, and 2-second poll cadence; no benchmark claim.
+- **risks:** Post-setup gateway restart execution, bot management, localization, live authenticated behavior and source-paired Windows acceptance remain open. PAR-0282 remains pending.
+- **follow_up:** Implement the gateway restart action and status flow, then continue Telegram bot management and remaining Messaging parity.
+
+- **id:** HUR-001-170
+- **timestamp:** 2026-11-16T21:23:52Z
+- **what:** Added profile-scoped gateway restart and action-status polling, wired Telegram setup receipts into restart start/monitor, and displayed bounded progress, terminal outcomes and retry controls on Messaging.
+- **why:** Match the pinned Desktop's restart follow-through while keeping the native UI responsive and the restart bound to the profile that changed.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, Messaging plan/architecture/backlog and root summaries.
+- **type:** feature / gateway lifecycle
+- **validation:** Remote HTTP fixture verifies POST restart and GET action status route/query/token scope and terminal success. Headless Messaging fixture verifies the restart control is disabled offline. Full all-target feature suite passed: 202 library tests and 15 protocol tests; all-target feature check and format/diff passed. No acceptance row advanced.
+- **performance:** Status polling is asynchronous, one request at a time, at 1.2-second intervals, bounded to 18 attempts; no benchmark claim.
+- **risks:** Live restart behavior, transient outage/reconnect cases, bot management, localization and source-paired Windows acceptance remain open. PAR-0282 remains pending.
+- **follow_up:** Validate restart lifecycle against a live Hermes gateway when available, then continue Telegram bot management and remaining Messaging parity.
+
+- **id:** HUR-001-171
+- **timestamp:** 2026-11-16T21:38:07Z
+- **what:** Added source-style per-user Telegram QR allowlist editing, owner indication, source-style empty-list apply validation and configured-bot replacement warning.
+- **why:** Close a concrete interaction gap in the pinned Desktop quick-setup card while retaining profile-bound apply semantics.
+- **components:** `apps/hermes-native/src/app.rs`, Telegram QR Messaging UI, focused tests and parity documentation.
+- **type:** feature / messaging interaction parity
+- **validation:** Allowlist mutation test and headless Messaging/accessibility fixture passed; full suite, all-target check, rustfmt, diff and pinned-source package validator pending final run.
+- **performance:** Local UI-only operations; no network or benchmark impact.
+- **risks:** Existing manual bot credential management, localization, live authenticated behavior and source-paired Windows acceptance remain open. PAR-0282 remains pending.
+- **follow_up:** Continue remaining pinned Messaging behavior, then proceed to the next highest-impact unimplemented source route.
+
+- **id:** HUR-001-172
+- **timestamp:** 2026-11-16T21:41:36Z
+- **what:** Reordered the Telegram QR flow into source-aligned setup and QR columns and placed Cancel with the relevant waiting or ready actions.
+- **why:** Correct a major visible mismatch within the pinned Hermes Desktop Messaging quick-setup card.
+- **components:** `apps/hermes-native/src/app.rs`, Messaging headless fixture and parity documentation.
+- **type:** feature / visual interaction parity
+- **validation:** Focused ready-state headless Messaging fixture and full all-target feature suite passed (203 library plus 15 protocol tests); all-target feature check, rustfmt, diff check and validator passed (491 capability rows pending).
+- **performance:** No added redraw timers, polling or network requests.
+- **risks:** Pixel-paired Windows and multi-DPI acceptance remain open; PAR-0282 stays pending.
+- **follow_up:** Continue closing source-backed Messaging gaps, then move to the next unimplemented source route.
+
+- **id:** HUR-001-173
+- **timestamp:** 2026-11-16T21:51:24Z
+- **what:** Replaced the unavailable Scheduled Jobs route with a profile-scoped authenticated job inventory, search, sorted list and selected-job detail surface.
+- **why:** Close a first-party route gap against the pinned Hermes Desktop source.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, scheduled-jobs route tests and parity docs.
+- **type:** feature / route implementation
+- **validation:** Remote profile/auth/DTO fixture and headless master/detail fixture pass; full suite passed (205 library plus 15 protocol tests); all-target check, format and diff passed; validator reports 491 capabilities pending.
+- **performance:** Fetch runs on the existing bounded HTTP worker; no UI-thread networking or polling added.
+- **risks:** Job mutation, run/history, delivery/blueprint workflows, live authentication and source-paired Windows acceptance remain open; PAR-0282 remains pending.
+- **follow_up:** Implement source job actions and run history, then continue remaining first-party routes.
+
+- **id:** HUR-001-174
+- **timestamp:** 2026-11-16T21:57:42Z
+- **what:** Added profile-scoped Scheduled Job Pause/Resume controls and authenticated empty-body POST transport with returned identity/state validation.
+- **why:** Implement the first lifecycle action from the pinned Hermes Scheduled Jobs route.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, action fixture and parity records.
+- **type:** feature / scheduled-job lifecycle
+- **validation:** Focused pause/resume transport and headless UI fixtures pass; full suite passed (206 library plus 15 protocol tests); all-target check, format and diff passed; validator reports 491 capabilities pending.
+- **performance:** Uses existing async HTTP worker; no blocking UI or polling added.
+- **risks:** Create/edit, trigger/stop, delete, run history, live authentication and source-paired Windows validation remain open.
+- **follow_up:** Implement Trigger/Stop and run history, then create/edit/delete and blueprint flows.
+
+- **id:** HUR-001-175
+- **timestamp:** 2026-11-16T22:09:12Z
+- **what:** Added profile-scoped Scheduled Job run-history reads and selected-detail presentation for the latest 20 records.
+- **why:** Match the pinned Hermes Desktop job detail, which loads run history when a job is selected.
+- **components:** Native gateway DTO/worker, request/profile/job correlation, Scheduled Jobs detail UI, HTTP and headless fixtures, parity plan and audit docs.
+- **type:** feature / scheduled-job history
+- **validation:** Remote HTTP fixture verifies encoded job path, exact limit/profile query, token header, unique bounded rows and duplicate rejection; headless fixture verifies rendered run title. Full suite passed: 207 library tests and 15 protocol tests. All-target cargo check passed before the final small retry-owner correction; rerun final check/format/package validation.
+- **performance:** Uses existing bounded HTTP worker; one request per selected job, no polling or UI-thread networking.
+- **risks:** Trigger/Stop, clickable session navigation, create/edit, delete, delivery/blueprints, live gateway proof and source-paired Windows acceptance remain open; no parity row advanced.
+- **follow_up:** Implement source-compatible Run now/Stop and run-to-session navigation, then job editing/deletion and remaining route workflows.
+
+### HUR-001-175 validation addendum — 2026-11-16T22:12:38Z
+- **what:** Final validation completed after the run-history owner-fencing change.
+- **validation:** Full all-target feature suite passed (207 library + 15 protocol tests); all-target cargo check, rustfmt check, git diff check and fixed-source package validator passed. Validator reports 491 pending capabilities.
+- **follow_up:** Continue with Run now/Stop and session navigation. PAR-0282 remains pending; no requirement was promoted.
+
+- **id:** HUR-001-175-VALIDATION
+- **timestamp:** 2026-11-16T22:12:38Z
+- **what:** Recorded final run-history validation after the owner-fencing correction.
+- **why:** Close the validation follow-up recorded with the implementation entry and preserve the exact final suite evidence.
+- **components:** Hermes native Cron gateway fixture, headless Scheduled Jobs fixture, Rust feature suite and pinned-source package validator.
+- **type:** validation / scheduled-job history
+- **validation:** 207 library tests and 15 protocol tests passed; all-target cargo check, rustfmt check, git diff check and fixed-source package validator passed. The validator reports 491 pending capability rows; no source acceptance row or PAR-0282 state was advanced.
+- **performance:** No benchmark change; run-history retrieval is one request on the existing bounded worker and adds no polling.
+- **risks:** Live gateway behavior, source-paired screenshots, trigger/stop, run navigation and remaining job management are still unverified or incomplete.
+- **follow_up:** Continue with Run now/Stop, session navigation, and remaining source-pinned routes.
+
+- **id:** HUR-001-175-FINAL
+- **timestamp:** 2026-11-16T22:14:55Z
+- **what:** Revalidated Scheduled Job run history after the final owner/error-state fence.
+- **why:** Ensure the committed working result remains testable after final state handling was adjusted.
+- **components:** Hermes native Scheduled Jobs app, gateway transport, HTTP fixture, headless UI fixture and fixed-source validator.
+- **type:** validation / scheduled-job history
+- **validation:** 207 library tests and 15 automation protocol tests passed; all-target check, rustfmt, git diff check and pinned-source package validator passed. The validator reports 491 pending capabilities.
+- **performance:** No change from previous entry; no polling or UI-thread networking was added.
+- **risks:** Full source parity, trigger/stop, session navigation, live gateway proof and source-paired Windows acceptance remain incomplete; no source requirement was advanced.
+- **follow_up:** Continue with Run now/Stop and session navigation, then the remaining pinned-source routes.
+
+- **id:** HUR-001-176
+- **timestamp:** 2026-11-16T22:40:11Z
+- **what:** Added profile-scoped Scheduled Job Run now/Stop with independently completing trigger and cancellation, live-state polling, queued-history reconciliation and execution-aware stop outcomes.
+- **why:** Implement the pinned Desktop's selected-job run controls while allowing Stop to complete even when a trigger request is still open.
+- **components:** Hermes Native gateway trigger actor, HTTP command worker, Scheduled Jobs app state/UI, HTTP fixture and headless route fixture.
+- **type:** feature / scheduled-job run control
+- **validation:** Full feature suite passed (208 library + 15 protocol tests); all-target feature cargo check passed; rustfmt ran. Focused HTTP fixture confirms cancel completes before a held trigger response; headless UI fixture covers Running, Stop, Queued and run history. Package validator, final rustfmt check and diff check are recorded in the validation addendum below.
+- **performance:** Trigger work is isolated from the shared HTTP worker with a bounded capacity of eight; live list polling is 1.5 seconds while active, and history polls at 1 second while queued then 8 seconds normally.
+- **risks:** Live gateway, source-paired Windows visuals, run-to-session navigation, create/edit/delete and blueprints/delivery remain open. PAR-0282 and all source acceptance rows remain pending.
+- **follow_up:** Validate package and repository integrity; then add run-to-session navigation and remaining job lifecycle actions.
+
+- **id:** HUR-001-177
+- **timestamp:** 2026-11-16T22:40:11Z
+- **what:** Added a workstream-level completion overview that distinguishes partial implementation, headless evidence, live-runtime proof and strict source-paired acceptance.
+- **why:** The prior 0/499 acceptance-only counter omitted useful partial engineering progress and the 491 supplemental validator was easy to misread as a completion score.
+- **components:** Hermes Native completion documentation, plan, backlog and README.
+- **type:** documentation / progress reporting
+- **validation:** Claims were checked against the current plan/backlog and source audit; final feature suite, all-target cargo check, rustfmt check, diff check and supplemental package validator are recorded in execution logs. The 0/499 acceptance count is unchanged.
+- **performance:** No runtime change.
+- **risks:** This is a curated snapshot, not a generated dashboard. The Nov 12 fixed 499-row scope and Nov 13 supplemental 491-row package still need a row-by-row crosswalk before row-level partial counts or an aggregate percentage can be trusted.
+- **follow_up:** Reconcile source inventories, add requirement-level dimensions and evidence locators, and update the overview after substantial feature changes.
+
+### HUR-001-176/177 validation addendum — 2026-11-16T22:42:36Z
+- **what:** Final verification for Run now/Stop and the completion overview.
+- **validation:** `cargo test -p hermes-native --features agent-automation` passed: 208 library tests and 15 protocol tests. `cargo check -p hermes-native --all-targets --features agent-automation`, `cargo fmt --all -- --check`, and `git diff --check` passed. The supplemental reference validator passed and reported 491 pending rows. One initial `--exact` filter selected zero tests; rerun matched the intended tests. A headless UI fixture initially cleared its rows on first-frame polling; its test polling deadline was fixed and the fixture then passed.
+- **performance:** No benchmark change; trigger isolation and bounded polling parameters are recorded in HUR-001-176.
+- **risks:** Validation is local/fixture-based. Live Hermes runtime and source-paired visual acceptance remain unverified; strict parity remains 0/499.
+- **follow_up:** Reconcile the 499 fixed-scope and 491 supplemental inventories before publishing row-level partial counts; continue the pinned source implementation.
+
+- **id:** HUR-001-178
+- **timestamp:** 2026-11-16T22:57:19Z
+- **what:** Added a reproducible 599-relation crosswalk and a 499-row evidence-backed implementation overlay. Corrected stale Scheduled Jobs acceptance-ID references in the active status: Cron uses PAR-0300–0309; PAR-0282 is Messaging.
+- **why:** The supplemental 491-row package omits 42 rows still in the fixed source scope and adds 34 new requirements. Partial implementation needs exact pinned IDs and evidence rather than a binary package validator count.
+- **components:** `apps/hermes-native/tools/build_requirement_crosswalk.py`, `apps/hermes-native/tools/build_implementation_progress.py`, `apps/hermes-native/docs/status/REQUIREMENT_CROSSWALK.csv`, `apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv`, completion overview, active backlog and plan correction.
+- **type:** evidence / scope crosswalk and implementation status
+- **validation:** Both generators validate unique IDs, source pins, join counts and evidence locators before atomic output. Current implementation counts: 5 implemented locally, 6 partial, 1 not implemented, 487 unknown. All 499 fixed source-pair results remain pending.
+- **performance:** Offline deterministic CSV generation; no app/runtime change.
+- **risks:** The 457 exact capability-ID matches are structural candidates only; semantic review and all evidence transfer remain pending. The 12 seeded implementation rows do not imply live or source-paired acceptance.
+- **follow_up:** Expand evidence review over the remaining 487 rows; preserve source acceptance gates and continue missing Hermes UI behavior.
+
+- **id:** HUR-001-179
+- **timestamp:** 2026-11-16T23:42:35Z
+- **what:** Added the Scheduled Jobs editor lifecycle: profile-scoped create/edit/delete, delivery targets, model options, typed automation blueprints, script-only-safe updates, catch-up choices, last-result labels and confirmed deletion. Updated the evidence overlay and completion overview from the tested implementation evidence.
+- **why:** Close the next concrete Scheduled Jobs parity gaps in the pinned Hermes Desktop snapshot and expose partial implementation state accurately.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/tools/build_implementation_progress.py`, Scheduled Jobs plan/backlog/architecture/README/status artifacts, root backlog/architecture/README.
+- **type:** feature / evidence-backed progress
+- **validation:** Full `cargo test --features agent-automation` passed (217 library tests + 15 automation protocol tests); all-target feature check and format check passed. Focused Cron HTTP coverage passed (9 tests); Scheduled Jobs headless form/blueprint/delete tests passed. Fixed and supplemental package validators passed; both status generators reproduced byte-identical output; diff check passed. Current reviewed overlay: 6 implemented, 9 partial, 484 unknown; all 499 source-pair rows remain pending. UCM YAML parsing was skipped because PyYAML is unavailable.
+- **performance:** No benchmark performed or claimed. Cron HTTP requests remain on the bounded gateway HTTP worker; existing trigger isolation is unchanged.
+- **risks:** Authenticated live Hermes and source-paired Windows visuals remain unverified. PAR-0302's matrix says timezone editing but pinned Desktop exposes no timezone field. Run-to-session navigation, localization and PAR-0309 remain open.
+- **follow_up:** Test the complete create/edit/delete flows against an isolated authenticated Hermes runtime, capture matched pinned/native states, resolve the PAR-0302 contract discrepancy, and continue the remaining 484 unreviewed requirements.
+
+- **id:** HUR-001-180
+- **timestamp:** 2026-11-16T23:52:03Z
+- **what:** Reviewed fixed-source P0 session/window requirements PAR-0002 through PAR-0006 and expanded the evidence overlay. Marked separate native window creation explicitly not implemented; existing new-session, close, restore and reorder behavior is partial.
+- **why:** Replace unknown/binary status with current implementation and evidence gaps, and identify a high-priority missing capability for the 1:1 replacement.
+- **components:** `apps/hermes-native/tools/build_implementation_progress.py`, `apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, native/root backlogs and plan.
+- **type:** evidence review / progress correction
+- **validation:** Evidence locator generator passed over all 20 reviewed rows and the fixed 499-row pin; all source-pair results remain pending. Headless runtime tests were not run because this slice changes only evidence/documentation.
+- **performance:** No runtime change or benchmark claim.
+- **risks:** eframe root-window code inspection proves the current host lacks a child-window registry but does not prove native window behavior on Windows. The 20 reviewed rows remain a small sample of 499.
+- **follow_up:** Implement and validate native child windows, then review PAR-0010/0011; keep viewport ownership separate from the shared Hermes session/event lifecycle.
+
+- **id:** HUR-001-181
+- **timestamp:** 2026-11-17T00:17:12Z
+- **what:** Added an Open new window toolbar/action path that starts an isolated Hermes Native process with the active route/profile. Each process uses its own Dock layout key and preference file while sharing gateway credentials. Enabled `serde_json/float_roundtrip` and added separate-window layout reload coverage.
+- **why:** Advance P0 PAR-0002 and prevent child windows from sharing a mutable UI loop, Dock snapshot or preference file with the parent. Fix the checksum failure observed when persisted split weights were parsed and reloaded.
+- **components:** `apps/hermes-native/src/app.rs`, `src/layout.rs`, `src/main.rs`, `Cargo.toml`, `docs/COMPLETION_OVERVIEW.md`, `docs/PLAN.md`, `docs/BACKLOG.md`, `docs/ARCHITECTURE.md`, `README.md`, progress generator and ledger.
+- **type:** feature / persistence fix / evidence update
+- **validation:** Focused all-target `cargo test --features agent-automation window` passed (3 library matches and 2 binary argument tests); the layout test reloads both main and child checksummed layouts and verifies isolated preferences. Native OS window creation was not launched in this headless pass.
+- **performance:** No benchmark performed or claimed. Each separate window is a process with its own gateway connection.
+- **risks:** Physical Windows launch/close, duplicate gateway connection behavior, cross-window pane transfer, session-event synchronization, child recovery and source-paired acceptance remain open. PAR-0002 remains pending.
+- **follow_up:** Validate visible native window creation on Windows, then implement pane transfer and cross-window event synchronization for PAR-0010/0011 without changing the installed Hermes app.
+
+## HUR-001-178 — 2026-11-17
+
+- **id:** HUR-001-178
+- **timestamp:** 2026-11-17T01:06:48Z
+- **what:** Implemented portable checkpoint, ownership lease, provider-handoff preview/resume, explicit reconciliation, and evidence-separated progress reporting. Bootstrapped canonical `.doofus/` records for this checkout and updated parity reporting to keep the user-supplied 33/59 measure separate from the fixed 499-row source scope.
+- **why:** Preserve task continuity across Codex, Antigravity and Hermes while showing partial engineering status without conflating it with accepted 1:1 UI parity.
+- **components:** `.doofus/`, `apps/hermes-native/tools/doofus_task.py`, its isolated tests and schemas, `docs/AGENT_HANDOFF.md`, `docs/architecture/AGENT_TASK_CONTRACTS.md`, progress and backlog documentation.
+- **type:** workflow foundation and progress documentation
+- **validation:** 13 Python tests passed; Rust feature suite passed (220 library, 15 protocol, 2 launcher); versioned state validated; fixed-source progress generator passed (499 rows); cargo fmt and git diff checks passed. Source acceptance remains 0/499.
+- **performance:** No runtime performance claim; ETA stays unavailable because phase-specific samples are insufficient.
+- **risks:** Provider transfer is manual; a preview is not a delivery receipt. Live runtime, physical Windows multi-window behavior and source-paired visual acceptance remain open.
+- **follow_up:** Keep the active lease, checkpoint verified work with exact evidence locators, then proceed through the pinned 499 requirements by dependency and user-visible impact.
+
+## HUR-001-179 — 2026-11-17
+
+- **id:** HUR-001-179
+- **timestamp:** 2026-11-17T01:10:48Z
+- **what:** Corrected handoff preview reporting and added an output-level regression test.
+- **why:** The preview was non-mutating, but its CLI result said `handed_off` and showed a null recipient, which could falsely imply ownership transfer.
+- **components:** `apps/hermes-native/tools/doofus_task.py` and `apps/hermes-native/tools/test_doofus_task.py`.
+- **type:** correctness fix
+- **validation:** Python syntax check passed; all 14 isolated provider-handoff and recovery tests passed; the new assertion confirms owner/revision remain unchanged.
+- **performance:** Negligible CLI formatting and test-only changes.
+- **risks:** None identified; provider/API transfer remains manual by design.
+- **follow_up:** Preserve preview versus actual handoff semantics in any provider adapter; continue pinned UI parity under the active Codex lease.
+
+## HUR-001-180 — 2026-11-17
+
+- **id:** HUR-001-180
+- **timestamp:** 2026-11-17T01:11:40Z
+- **what:** Strengthened the PAR-0003 evidence mapping against the pinned source and corrected a stale reviewed-row count in the completion overview.
+- **why:** Preserve a useful partial state with exact evidence and explicit remaining behaviors.
+- **components:** `apps/hermes-native/tools/build_implementation_progress.py`, `apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`.
+- **type:** evidence review and documentation correction
+- **validation:** The progress generator validated the source/native locators; PAR-0003 remains partial, total reviewed rows remain 21, and all 499 source-acceptance rows remain pending.
+- **performance:** No runtime impact.
+- **risks:** Bot Mode route/fallback, first-message listing proof, live gateway behavior, and paired Windows acceptance remain open.
+- **follow_up:** Continue reviewing fixed-scope rows by source behavior and evidence; do not infer accepted parity.
+
+## HUR-001-181 — 2026-11-17
+
+- **id:** HUR-001-181
+- **timestamp:** 2026-11-17T01:21:24Z
+- **what:** Tightened Scheduled Jobs blueprint defaults and time-field fidelity, including missing/invalid-time rejection, scalar weekday selection and preservation of a saved model omitted from the refreshed catalog.
+- **why:** Avoid silently changing source defaults or saving malformed schedule data.
+- **components:** `apps/hermes-native/src/app.rs`, progress evidence generator/CSV, plan, completion overview, backlog and native README.
+- **type:** parity correctness fix
+- **validation:** Focused blueprint tests passed 2/2, saved unavailable-model UI test passed 1/1, formatter passed and progress locator generator passed. PAR-0301/0302 remain partial; 0/499 source acceptance.
+- **performance:** Local validation only; no runtime performance claim.
+- **risks:** Live gateway, source-paired visuals and PAR-0302 timezone contract discrepancy remain open.
+- **follow_up:** Run full native suite with the next window lifecycle slice; continue source-paired acceptance.
+
+## HUR-001-182 — 2026-11-17
+
+- **id:** HUR-001-182
+- **timestamp:** 2026-11-17T01:36:53Z
+- **what:** Added child-window first-frame readiness receipts and guarded session moves; corrected Scheduled Jobs blueprint defaults/time validation; expanded requirement evidence for PAR-0002, PAR-0010 and PAR-0301/0302 while preserving partial states.
+- **why:** Treat process startup as distinct from a usable window and prevent silent schedule-field changes; keep engineering progress distinct from fixed-source acceptance.
+- **components:** `apps/hermes-native/src/native_window.rs`, native app/CLI entry points, progress generator/CSV, plan, completion overview, architecture, backlogs, READMEs and continuity status.
+- **type:** parity behavior and evidence-quality improvements
+- **validation:** Full Rust suite passed (230 library, 15 automation protocol, 3 launcher tests); 14 Python handoff tests passed; targeted readiness and Scheduled Jobs tests passed; formatter and diff checks passed; fixed 499-row progress generator and handoff-state validator passed.
+- **performance:** Readiness receipt is bounded to 512 bytes; local poll interval is 100 ms and deadline is 20 seconds. No user-facing latency benchmark was run.
+- **risks:** Actual Windows window creation/move, cross-window event synchronization, authenticated live gateway behavior and source-paired visual acceptance remain open. PAR-0002/0010 remain partial; strict acceptance remains 0/499.
+- **follow_up:** Implement profile-fenced cross-window session/event synchronization for PAR-0011, then complete physical Windows and source-paired acceptance across the fixed 499 rows.
+
+## HUR-001-183 — 2026-11-17
+
+- **id:** HUR-001-183
+- **timestamp:** 2026-11-17T15:25:55Z
+- **what:** Implemented PAR-0011 backend `sessions.changed` refresh with profile/request fencing, burst coalescing and one trailing refresh; replaced refreshed-profile rows from the returned snapshot, retained other profile rows and recovered stale in-flight state after gateway profile changes. Added deterministic headless regression coverage and advanced the evidence ledger to 22 reviewed rows.
+- **why:** Keep separate native Hermes windows synchronized with backend session-list changes without applying stale results or retaining removed rows.
+- **components:** `apps/hermes-native/src/app.rs`, `src/gateway.rs`, progress generator/CSV, plan, architecture, completion overview, backlogs, READMEs, and `.doofus/` checkpoint/task ledger.
+- **type:** parity behavior and resumability improvement
+- **validation:** Focused Rust 5/5; full Rust 232 library + 15 automation protocol + 3 launcher tests; Python handoff 14/14; all-target check, format, diff, progress generator and handoff-state validation passed. PAR-0011 remains partial; source acceptance remains 0/499.
+- **performance:** Uses existing background HTTP reader and a single in-flight refresh plus at most one trailing refresh; no benchmark requested or claimed.
+- **risks:** Local peer-window `hermes:sessions` broadcasts, open transcript/project reconciliation, focus/reconnect backstops, physical Windows behavior, live service behavior and source-paired acceptance remain open.
+- **follow_up:** Implement the remaining PAR-0011 synchronization behaviors and then validate physical child-window lifecycle and source-paired Windows workflows.
+
+## HUR-001-184 — 2026-11-17
+
+- **id:** HUR-001-184
+- **timestamp:** 2026-11-17T16:36:51Z
+- **what:** Added a bounded cross-process session-list hint bus using opaque per-user event receipts; native peers re-read the profile-scoped canonical gateway list. Successful create, rename and matching transcript completion publish receipts. Added transport and app-level headless coverage and updated parity progress documentation.
+- **why:** Match the pinned `hermes:sessions` invalidation behavior across independent native processes without sending session data or credentials in the local signal.
+- **components:** `src/session_peer_sync.rs`, `src/lib.rs`, `src/app.rs`, `docs/PLAN.md`, `docs/SOURCE_AUDIT.md`, `docs/ARCHITECTURE.md`, `docs/COMPLETION_OVERVIEW.md`, `docs/BACKLOG.md`, `README.md`, and root project journals.
+- **type:** parity behavior and local synchronization
+- **validation:** Full Rust feature suite passed (243 library, 15 automation protocol, 3 launcher tests); a separate-process receipt test passed; 14 continuity tests passed; all-target cargo check, rustfmt and diff checks passed; progress generator passed (23/499 reviewed, 0/499 accepted); `.doofus` state validated. The optional fixed-source package validator was not present in this checkout and was not run. PAR-0011 remains partial.
+- **performance:** Native windows rescan a capped (512 final receipts) local directory every 250 ms while open; no CPU/latency benchmark or physical window interaction test was run.
+- **risks:** The existing `%APPDATA%\HermesNative` parent ACL grants the current user, SYSTEM and Administrators full control and the Codex sandbox group read/execute only. Physical parent/child window delivery and authenticated live behavior remain unverified. Process suspension longer than the bounded event retention can miss individual pings; periodic/initial canonical refresh must close that gap. Archive/pin and additional source mutation callers, transcript/tile/project peer sync, focus/reconnect and source-paired acceptance remain open.
+- **follow_up:** Inspect and wire remaining source mutation callers, then implement `hermes:transcript` tile reconciliation and verify the actual Windows parent/child interaction.
+
+## HUR-001-185 — 2026-11-17
+
+- **id:** HUR-001-185
+- **timestamp:** 2026-11-17T17:06:00Z
+- **what:** Implemented typed transcript-change peer events and request-fenced latest-page refresh for matching active routes and open profile-owned Dock session panes. Refreshed PAR-0011 evidence without changing the fixed 499-row scope.
+- **why:** Synchronize independent Hermes Native windows after a completed turn while retaining the backend as canonical and preserving resumable provider-neutral task state.
+- **components:** `apps/hermes-native/src/session_peer_sync.rs`, `src/app.rs`, `src/gateway.rs`, `src/layout.rs`, progress generator/CSV, plan, source audit, architecture, completion overview, backlogs, READMEs and root/crate journals.
+- **type:** parity behavior and continuity validation
+- **validation:** Full Rust feature suite passed (245 library, 15 automation protocol, 3 launcher tests); transport tests 5/5; tile refresh test 1/1; Python handoff suite 14/14 including simulated Codex → Antigravity → Hermes without transcript transfer; all-target check, formatter, progress generator (23/499 reviewed; 0/499 accepted), and `git diff --check` passed. PAR-0011 remains partial.
+- **performance:** Uses the existing 250 ms peer poll and background gateway HTTP reader; no runtime benchmark was performed.
+- **risks:** Physical Windows peer delivery, authenticated live gateway behavior, project-tree/focus recovery and source-paired acceptance remain unverified. ETA is unavailable due insufficient phase samples; critical path is not yet mapped from authoritative dependency data.
+- **follow_up:** Continue the next dependency-ready PAR-0011 gap; keep physical Windows, live gateway and source-pair proof as separate evidence gates.
+
+## HUR-001-186 — 2026-11-17
+
+- **id:** HUR-001-186
+- **timestamp:** 2026-11-17T17:10:00Z
+- **what:** Expanded isolated provider-handoff validation to exercise all six directed Codex/Antigravity/Hermes pairings, requiring relinquishment followed by an explicit recipient resume for each transfer. Updated the portable handoff and architecture contracts with the test boundary.
+- **why:** Verify that task continuity does not depend on one provider ordering or pass conversation history between agents.
+- **components:** `apps/hermes-native/tools/test_doofus_task.py`, `docs/AGENT_HANDOFF.md`, `docs/architecture/AGENT_TASK_CONTRACTS.md`, root/crate change and execution journals.
+- **type:** task continuity validation
+- **validation:** Full Python continuation suite passed 15/15, including the six-pair transfer test and Codex → Antigravity → Hermes state-preservation simulation. Rust validation for HUR-001-185 remains 245 library + 15 automation protocol + 3 launcher tests. Live provider delivery and actual takeover are not claimed.
+- **performance:** Temporary Git repositories only; no product runtime benchmark.
+- **risks:** Provider APIs are not integrated; recipient delivery remains a copyable manual prompt and requires an explicit resume receipt.
+- **follow_up:** Continue the pinned 499-row migration and retain the manual handoff workflow until a provider connector is explicitly implemented and verified.
+
+## HUR-001-187 — 2026-11-17
+
+- **id:** HUR-001-187
+- **timestamp:** 2026-11-17T17:23:47Z
+- **what:** Added throttled focus-regain recovery for the canonical session list and active/open transcript refresh, plus transcript recovery after gateway reconnect. Added a focused deterministic unit test and planned the remaining project-tree sync as PAR-0011 revision 185.
+- **why:** Continue the pinned Hermes focus/reconnect behavior without changing the 499-row scope or treating local test evidence as live UI acceptance.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, `apps/hermes-native/docs/BACKLOG.md`, root execution/change journals.
+- **type:** parity behavior
+- **validation:** Focused test `focus_recovery_is_edge_triggered_throttled_and_gateway_scoped` passed. Full suite and remaining repository checks are pending in this checkpoint.
+- **performance:** Adds no periodic work; checks focus state during frames and performs a gateway refresh only on a throttled focus edge or reconnect. No runtime benchmark recorded.
+- **risks:** Real OS focus/wake delivery, status rehydration, project-tree reconciliation, live gateway, Windows peer behavior and source-paired acceptance remain open.
+- **follow_up:** Complete source-paired focus/reconnect state handling, then implement project-tree event/backstop refresh and stale-response guards under PAR-0011 revision 185.
+
+### HUR-001-187 validation continuation (2026-11-17T17:25:59Z)
+
+The full native feature suite passes: 246 library, 15 automation protocol, and 3 launcher tests. The focused focus-recovery test is included. The portable continuity suite passes 15/15; all-target `cargo check`, rustfmt check, progress locator generation (23/499 reviewed; 0/499 accepted), and task checkpoint validation pass. `git diff --check` exits successfully with only existing CRLF conversion warnings. The pinned-source 499-row denominator and all acceptance states remain unchanged.
+
+## HUR-001-188 — 2026-11-17
+
+- **id:** HUR-001-188
+- **timestamp:** 2026-11-17T17:42:52Z
+- **what:** Implemented typed profile-scoped active-session status rehydration and accessible working/waiting indicators; added `projects.changed` invalidation for the existing color projection only. Added deterministic parser, exact RPC, stale response, profile-reap, event-trigger, project invalidation and accessible UI coverage.
+- **why:** Recover source-visible active-turn state across reconnects and events while explicitly preserving the remaining structural project-tree gap and 499-row scope.
+- **components:** `apps/hermes-native/src/gateway.rs`, `src/app.rs`, `docs/PLAN.md`, `docs/SOURCE_AUDIT.md`, `docs/ARCHITECTURE.md`, `docs/BACKLOG.md`, `docs/COMPLETION_OVERVIEW.md`, root architecture and change/execution journals.
+- **type:** parity behavior
+- **validation:** Focused parser, wire-contract, app snapshot/fencing, project-change and accessible-row tests pass. Full-suite/build/continuity checks are being recorded in the accompanying execution log.
+- **performance:** Reads are coalesced and capped at one focused 30-second backstop; RPC timeout is 10 seconds. No runtime benchmark recorded.
+- **risks:** Unsupported old gateway methods preserve cached state but do not yet reproduce source fallback/settle behavior; actual live status, OS focus/wake, structural project tree and source-paired acceptance remain open.
+- **follow_up:** Complete project tree/list structure and ownership/fencing, then validate through live gateway and matched source/native Windows flows.
+
+## HUR-001-189 — 2026-11-17
+
+- **id:** HUR-001-189
+- **timestamp:** 2026-11-17T17:56:43Z
+- **what:** Added bounded typed profile-scoped `projects.tree` parsing and refresh, a collapsible project → repository → group → session hierarchy in the Sessions sidebar, and accessible actions to open source-owned preview/group sessions. Added generation/profile/connection/cache-preservation coverage and refreshed PAR-0011 implementation evidence locators.
+- **why:** Close the first structural project-tree gap while improving partial completion reporting with precise implementation evidence and explicit remaining source/live dimensions.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, `apps/hermes-native/tools/build_implementation_progress.py`, PAR-0011 plan/source/architecture/backlog/overview, root architecture/backlog.
+- **type:** parity behavior and progress evidence
+- **validation:** Focused exact RPC/parser and request/profile/generation-fence tests pass; all-target feature suite and continuity suite remain to be rerun for this change. Implementation overlay stays 23/499 reviewed, 6 implemented, 17 partial, 476 unknown; formal acceptance 0/499.
+- **performance:** Project tree read has a 60-second RPC timeout; previews are limited to three per project. No live service benchmark recorded.
+- **risks:** All-profile ownership, project-list consistency, repo discovery, deletion tombstones, live gateway, physical Windows behavior and paired visuals are not implemented/verified.
+- **follow_up:** Run complete automated validation, update the current durable checkpoint, then continue PAR-0011 against the pinned live project/list/focus contracts.
+
+HUR-001-189 validation addendum (2026-11-17T18:02:52Z): full validation passed: 254 library, 15 automation protocol, and 3 launcher tests; Python continuity 15/15; all-target feature check; formatter; progress-locator generator; local handoff validation; and diff check. The durable local checkpoint is revision 33 and remains partial, with 23/499 evidence-reviewed and 0/499 source accepted.
+
+## HUR-001-190 — 2026-11-17
+
+- **id:** HUR-001-190
+- **timestamp:** 2026-11-17T18:39:07Z
+- **what:** Added source-shaped refresh of the entered project when its overview node changes and profile-scoped archive/restore lifecycle generations that filter stale project-session responses.
+- **why:** Prevent stale hydrated project details and archived session resurrection during asynchronous `projects.project_sessions` reads.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/tools/build_implementation_progress.py`, PAR-0011 plan/source audit/architecture/backlog/overview, root architecture/backlog/README.
+- **type:** parity behavior and evidence reporting
+- **validation:** Full suite passed: 259 Rust library, 15 automation protocol, 3 launcher tests; continuity suite 15/15; all-target feature check; formatter; progress locator builder; local task-state validation; fixed 565-row package validator; `git diff --check`.
+- **performance:** Project session read stays bounded by the existing gateway timeout; no live network benchmark was recorded.
+- **risks:** All-profile hydration and 50-row preview paging remain unimplemented; archive behavior is covered, but non-archive deletion tombstones, live gateway, physical Windows behavior and source-paired acceptance remain open.
+- **follow_up:** Implement source-faithful all-profile project entry and preview paging, then project-list consistency/repository discovery; continue paired live and Windows acceptance without changing 499-row scope.
+
+
+## HUR-001-191 — 2026-11-17
+
+- **id:** HUR-001-191
+- **timestamp:** 2026-11-17T19:00:00Z
+- **what:** Implemented pinned-source project overview “Show all” behavior: profile-scoped hydration, local all-profile aggregate entry, lifecycle-filtered merge, accessible 50-row paging, and retry/loading states. Updated PAR-0011 source evidence paths to the pinned `8783054` snapshot and refreshed progress and completion documentation.
+- **why:** Complete the next reviewable Sessions → Projects slice while preventing synthetic all-profile RPCs and archived rows from appearing.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/tools/build_implementation_progress.py`, `apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv`, PAR-0011 plan/backlog/architecture/overview, root README/handoff/architecture.
+- **type:** parity behavior and evidence reporting
+- **validation:** Focused Show all tests passed; full suite passed: 262 Rust library, 15 automation protocol, 3 launcher tests; continuity 15/15; all-target cargo check; rustfmt; progress locator builder; local task validator; 565-row pinned package validator; `git diff --check`.
+- **performance:** Project-session read remains bounded by existing gateway limits; no live service benchmark was recorded.
+- **risks:** Full result-ceiling behavior, projects.list consistency, dedicated all-profile nested hydration, repository discovery, non-archive deletion, live runtime/Windows behavior, and source-paired acceptance remain open.
+- **follow_up:** Continue PAR-0011 with project-list consistency, full pinned-source result ceiling, repository discovery and deletion tombstones, then pursue authenticated live and source-paired Windows evidence.
+
+
+## HUR-001-192 — 2026-11-17
+
+- **id:** HUR-001-192
+- **timestamp:** 2026-11-17T19:23:54Z
+- **what:** Added the pinned-source global “Show all sessions” preference, persisted it in native UI preferences, and wired the accessible Sessions → Projects control to request preview limits 3/2000 in single-profile and all-profile tree paths.
+- **why:** Match the downloaded snapshot's global project-preview behavior in addition to the per-project 50-row hydration paging already implemented.
+- **components:** `apps/hermes-native/src/layout.rs`, `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, PAR-0011 progress builder and status CSV, completion/plan/source-audit/architecture/backlog docs, root and native README.
+- **type:** parity behavior and persistence
+- **validation:** Full suite passed: 265 Rust library + 15 automation protocol + 3 launcher tests; continuity 15/15; all-target cargo check; rustfmt; progress builder; task validator; pinned 565-row package validator; `git diff --check`. Focused tests cover persisted preference, active-profile 3/2000 UI refresh, aggregate 2000 preview request, and expanded tree rendering.
+- **performance:** Opt-in tree preview widens from 3 to 2000 per the pinned contract. No live-service latency or production memory benchmark was recorded.
+- **risks:** Very large preview trees can increase native UI work; project-list metadata consistency, repo discovery, non-archive deletion, live behavior and source-paired acceptance remain open.
+- **follow_up:** Implement `projects.list` metadata/active-pointer reconciliation against the tree, with profile/connection/generation fencing and stale/error fixtures; then continue repository discovery and deletion semantics.
+
+
+## HUR-001-193 — 2026-11-17
+
+- **id:** HUR-001-193
+- **timestamp:** 2026-11-17T19:46:40Z
+- **what:** Added the pinned profile-scoped `projects.list` read and bounded parser; refreshed on connection, matching project-change events and focus recovery; fenced receipts by request, generation, endpoint instance and authority epoch; preserved same-owner cache on failures; and displayed the list-owned active pointer separately from the structural tree.
+- **why:** Match the pinned active-project behavior without merging distinct source snapshots or letting stale profile/gateway results affect the project overview.
+- **components:** app/gateway, PAR-0011 plan/source audit/architecture/backlog/completion status, progress evidence builder, root/native README/architecture/backlog, checkpoint.
+- **type:** parity behavior and evidence reporting
+- **validation:** `cargo test -p hermes-native --all-targets --features agent-automation --quiet` passed 270 library + 15 automation-protocol + 3 launcher tests; `python apps/hermes-native/tools/test_doofus_task.py` passed 15/15; all-target feature `cargo check` passed; formatter passed; progress evidence builder passed with 23 reviewed / 6 implemented / 17 partial / 476 unknown / 0 accepted; pinned package validation passed 565 rows, 14 source receipts and 2 implementation receipts (optional PyYAML unavailable); task validation passed at revision 39; `git diff --check` passed.
+- **performance:** Adds one bounded list read on connect, matching project-change and focus-recovery paths; no live-service benchmark was recorded.
+- **risks:** Live gateway, physical Windows focus, full metadata reconciliation, aggregate completeness, repository discovery, non-archive deletion, source-paired visuals and formal acceptance remain open.
+- **follow_up:** Continue PAR-0011 with repository discovery and deletion semantics, then live/source-paired validation; preserve the 499-row scope.
+
+
+## HUR-001-194 — 2026-11-17
+
+- **id:** HUR-001-194
+- **timestamp:** 2026-11-17T20:10:30Z
+- **what:** Added explicit project deletion with an accessible confirmation, concrete-profile `projects.delete`, optimistic project-list/tree removal and separate active-pointer clearing, profile-keyed late-read tombstones, authoritative-tree reconciliation, and failure rollback including project drill-in restoration. Auto-discovered and no-project nodes cannot use this action.
+- **why:** Match the pinned Hermes project menu/store behavior while preserving files and sessions and preventing cross-profile or stale-read mutations.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/tools/build_implementation_progress.py`, PAR-0011 plan/source audit/architecture/backlog/completion overview, README files, progress overlay, checkpoint and execution journals.
+- **type:** parity behavior and partial-evidence reporting
+- **validation:** Focused deletion tests passed; full Rust suite passed 273 library + 15 automation-protocol + 3 launcher tests; provider continuity passed 15/15; all-target feature `cargo check` and formatter passed; progress builder kept 23 reviewed / 6 implemented / 17 partial / 476 unknown / 0 of 499 accepted; pinned package validator passed 565 behaviors, 565 UI items, 565 pending tests, 14 source receipts and 2 implementation receipts (optional PyYAML unavailable); task state validated at pre-checkpoint revision 44; `git diff --check` passed with existing LF-to-CRLF notices.
+- **performance:** Adds one bounded delete RPC and one authoritative tree refresh after confirmed success; no live-service latency benchmark was recorded.
+- **risks:** Delete behavior has local headless evidence only; live gateway, auto-project dismiss/Undo, repository discovery, Windows interaction, all-profile project parity and source-paired acceptance remain open. One initial focused test failed because the fixture used `is_auto` rather than pinned JSON `isAuto`; corrected fixture and retry passed.
+- **follow_up:** Continue PAR-0011 with local repo discovery and auto-project dismiss/Undo; then verify authenticated live gateway and source-paired Windows behavior without changing the pinned 499-row scope.
+
+### HUR-001-195 — 2026-11-17
+
+- **id:** HUR-001-195
+- **timestamp:** 2026-11-17T20:43:51Z
+- **what:** Corrected phase-aware effort reporting so a numeric ETA requires three positive measured samples and positive size estimates for every remaining task. Missing task sizes now yield a null ETA and list exact task IDs; tested/verified/accepted tasks no longer count as remaining work. Documented handoff/progress limits and updated the partial completion overview.
+- **why:** Preserve the user's requirement for evidence-backed partial progress and avoid a false zero-minute or complete-looking ETA when task size is unknown.
+- **components:** doofus_task.py, isolated continuity tests, PLAN, ARCHITECTURE, BACKLOG, COMPLETION_OVERVIEW, README files, root architecture/backlog and execution/change journals.
+- **type:** progress accuracy, task continuity
+- **validation:** Provider continuity suite 16/16 passed, including three measured samples with a missing remaining size and the calculated EWMA after size evidence is added; fixed-scope progress generator passed at 23/499 reviewed, 6 implemented, 17 partial, 476 unknown, 0 accepted; handoff validator passed revision 49; machine-readable progress kept project ETA and critical path unavailable without evidence; git diff --check passed after removing one trailing blank line.
+- **performance:** Local progress calculation remains a linear pass over 502 task nodes and 499 parity rows; no benchmark was requested or recorded.
+- **risks:** Current repo has no normalized remaining task sizes, project start time, or dependency-backed critical path, so project-wide elapsed time, ETA, and critical path stay unavailable. Automatic process-boundary checkpoints and live external provider receipt/takeover remain unimplemented; isolated provider simulations do not prove live handoff delivery.
+- **follow_up:** Add authoritative dependency and size evidence; add safe provider process/checkpoint triggers when process ownership can be observed; continue pinned Hermes parity under the same handoff protocol.
+
+### HUR-001-196 — 2026-11-17
+
+- **id:** HUR-001-196
+- **timestamp:** 2026-11-17T20:54:17Z
+- **what:** Audited local/remote repo discovery in the pinned Hermes source and wrote an ordered implementation plan with file targets and isolated acceptance cases.
+- **why:** PAR-0011 currently lacks a native local scanner and remote host-discovery flow; source parity requires policy settings, bounded scanning, profile fencing and all-profile exclusion.
+- **components:** Pinned projects.ts, Electron git-repo-scan.ts, sidebar triggers, Workspace config settings, host projects.discover_repos/projects.record_repos, native plan/source audit/architecture/backlog.
+- **type:** source audit and implementation plan
+- **validation:** Read-only audit against pinned snapshot 8783054ef6cbafd86f10892241436862c1171a66; no implementation or runtime acceptance claimed. Existing progress remains 23/499 reviewed and 0/499 accepted.
+- **performance:** No product performance changes or benchmarks in this planning step.
+- **risks:** Current native build cannot discover repos; the planned scanner must use configured roots only and must not scan the user's home during tests.
+- **follow_up:** Implement PLAN Revision 195 through settings policy, local scanning, remote scanning and profile-safe refresh; keep all-profile discovery disabled.
+
+### HUR-001-197 — 2026-11-17
+
+- **id:** HUR-001-197
+- **timestamp:** 2026-11-17T21:02:16Z
+- **what:** Added and wired a deterministic local Git repository scanner for configured roots, including depth, normalization, exclusions, hidden/junk pruning and nested-repository boundary behavior.
+- **why:** Begin the highest-priority PAR-0011 repository discovery gap from the pinned source without ever guessing or crawling the operator's home directory.
+- **components:** `apps/hermes-native/src/repo_discovery.rs`, `apps/hermes-native/src/lib.rs`, PLAN Revision 195, SOURCE_AUDIT, BACKLOG, COMPLETION_OVERVIEW, execution journals.
+- **type:** parity implementation slice
+- **validation:** `cargo test -p hermes-native --lib repo_discovery -- --nocapture` passed 6/6 isolated temporary-fixture tests. No live gateway, settings UI, remote discovery, or strict source-pair acceptance is claimed.
+- **performance:** Deterministic single-thread traversal bounds concurrent filesystem operations to one; caller integration must keep scanning off the egui frame thread. No benchmark recorded.
+- **risks:** The scanner core is not yet invoked by the app; configured policy UI, profile-safe recording, remote-host scan and lifecycle triggers remain open. Worktree retains unrelated pre-existing edits.
+- **follow_up:** Continue Revision 195 with profile-scoped config read/save, local worker and `projects.record_repos`; then add remote `projects.discover_repos`, generation fences and single-profile triggers.
+
+Validation addendum (2026-11-17T21:04Z): the first repository-wide format check identified rustfmt differences in the new module. Two package-scoped format invocations used an incorrect workspace-relative path and changed nothing; formatting the owned module directly with Rust 2024 rustfmt resolved the issue. The complete workspace `cargo fmt --all -- --check` and the focused six-test scanner run then passed. `git diff --check` had already passed.
+
+- id: hermes-par-0011-repo-discovery-integration-20261117
+- timestamp: 2026-11-17T21:40:42Z
+- what: Added profile-scoped repo-discovery settings/config transport, configured-root local worker and recording RPC, remote host scan path, generation/profile fencing, single-profile triggers and read-only all-profile behavior; repaired the all-profile UI test to assert observable no-load/no-control behavior.
+- why: Continue the pinned-source PAR-0011 implementation and make the true partial state durable and reviewable.
+- components: src/app.rs, src/gateway.rs, src/repo_discovery.rs, status/IMPLEMENTATION_PROGRESS.csv, PLAN, SOURCE_AUDIT, BACKLOG, COMPLETION_OVERVIEW, execution logs.
+- type: parity implementation and progress evidence update.
+- validation: 294 Rust library + 15 automation protocol + 3 launcher tests passed; continuity 16/16; focused scanner 7/7; config/local-scan 4/4; settings 2/2; cargo check, workspace format, pinned package validation, overlay generation, and diff check passed. No live gateway or source-paired acceptance claimed.
+- performance: local scanning is off the UI thread; no reproducible benchmark measured.
+- risks: remote live behavior, Windows-specific discovery/focus behavior, complete PAR-0011 reconciliation and all visual/source acceptance remain open.
+- follow_up: inspect exact remaining tests/source requirements, exercise live profile-bound gateway where safely available, complete source-paired Windows states, update reviewed requirement evidence conservatively.
+
+- id: hermes-par-0011-repo-discovery-refresh-20261117
+- timestamp: 2026-11-17T21:50:58Z
+- what: Forced a project-tree refresh after successful discovery even when an older tree is already marked loaded; retained cached tree during refresh and kept profile/request fencing; added remote wire-shape and app-level success/failure/stale-profile tests.
+- why: Ensure newly recorded/discovered repository roots actually become visible and match the pinned refresh behavior.
+- components: src/app.rs, src/gateway.rs, PLAN Revision 197, SOURCE_AUDIT, COMPLETION_OVERVIEW, execution logs.
+- type: parity bug fix and regression coverage.
+- validation: 298 library + 15 protocol + 3 launcher tests passed; focused gateway and app discovery tests passed. Live gateway and source-paired acceptance remain open.
+- performance: No scanner timing benchmark; Rust traversal is currently sequential versus source concurrency 32.
+- risks: Runtime visibility still depends on live host response; Windows and visual parity remain unverified.
+- follow_up: Run remaining validation and continue PAR-0011; assess scanner throughput with reproducible benchmark before asserting latency parity.
+
+Validation addendum (2026-11-17T21:52:39Z): the full feature suite passed 298 library + 15 automation protocol + 3 launcher tests; continuity passed 16/16; cargo check, workspace format, progress generation, pinned package validation, and git diff --check passed. Optional PyYAML validation was skipped because the package is not installed. Strict acceptance remains 0/499.
+
+- id: hermes-parity-evidence-review-layout-pane-20261117
+- timestamp: 2026-11-17T22:04:27Z
+- what: Expanded the generator-backed fixed-scope evidence map from 23 to 34 reviewed rows, adding conservative partial classifications for layout profiles, Simple/Advanced arrangements, session pane lifecycle, context menus, active-tab persistence, and close policy; refreshed current progress summary and backlog counts.
+- why: Give the operator useful partial status while preserving the strict 499-row parity gate and not treating source/tests as live or visual acceptance.
+- components: tools/build_implementation_progress.py, docs/status/IMPLEMENTATION_PROGRESS.csv, COMPLETION_OVERVIEW, PLAN Revision 198, app/root backlog.
+- type: evidence review and progress-report correction.
+- validation: Generator verified all exact source/native file locators and preserved 499 rows; prior full suite passed 298 library + 15 protocol + 3 launcher and continuity 16/16. This turn did not mark any runtime, visual or formal acceptance row complete.
+- performance: No product performance change.
+- risks: Absence and deep-link cases remain unknown; audit coverage is still only 6.8%; runtime, visual matching and most requirement rows are unverified.
+- follow_up: Implement the missing source-equivalent sessions-sidebar/file-browser visibility controls, then map additional requirements from pinned source.
+
+
+- id: hermes-par-0013-14-semantic-visibility-20261117
+- timestamp: 2026-11-17T22:16:13Z
+- what: Added persisted sessions-sidebar and file-browser semantic visibility controls, toolbar buttons, Ctrl/Cmd+B and Ctrl/Cmd+J shortcuts, and shared typed agent action support; conservatively mapped PAR-0013 and PAR-0014 as partial.
+- why: Close two explicit pinned-source gaps while preserving the independent source-acceptance, runtime and visual-pair gates.
+- components: src/layout.rs, src/app.rs, tools/build_implementation_progress.py, tools/test_doofus_task.py, docs/status/IMPLEMENTATION_PROGRESS.csv, PLAN Revision 199, SOURCE_AUDIT, ARCHITECTURE, BACKLOG, COMPLETION_OVERVIEW.
+- type: parity implementation, tests and evidence update
+- validation: 300 library + 15 automation protocol + 3 launcher tests passed; continuity 16/16; cargo check, format, fixed 499-row overlay, task-state validation, pinned 491-row supplemental validator, and diff check passed. A first continuity run exposed a stale hard-coded expected reviewed-row count (23); the test was updated to the current 36 and rerun successfully. Strict source acceptance remains 0/499; live runtime and visual pairing remain open for all rows.
+- performance: No performance change or benchmark.
+- risks: Semantic controls do not yet reproduce positional live-tree left/right edge folding, narrow overlay behavior, physical Windows input, live runtime, or source-paired acceptance.
+- follow_up: Continue pinned-source review. Implement positional edge controls against arbitrary rearranged Dock trees if the parity matrix requires them; continue headless and source mapping while leaving host acceptance open.
+
+
+Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from legacy `pane_open.files`; final all-target suite passed 301 library + 15 protocol + 3 launcher tests. Continuity passed 16/16.
+
+
+- id: hermes-parity-doofusdock-group-minimize-contract-20261117
+- timestamp: 2026-11-17T22:24:00Z
+- what: Audited source positional side-fold controls against the pinned DoofusDock dependency; documented the absent whole-group minimized-state/operation and a versioned core/app implementation contract.
+- why: Avoid treating per-panel AutoHide or semantic Sessions/Files visibility as a 1:1 replacement for the source's physical left/right live-tree group folding.
+- components: pinned titlebar-controls.tsx and layout.ts; DoofusDock core operations/model/projection; Hermes PLAN Revision 200, SOURCE_AUDIT, ARCHITECTURE, BACKLOG, COMPLETION_OVERVIEW.
+- type: source audit and dependency plan
+- validation: Read-only inspection of Hermes pinned source and dependency checkout at f6eb49b9e488f4e851d8d3abe18e95d296201bba; no DoofusDock code changed. 0/499 formal acceptance remains.
+- performance: No performance change; scanner timing remains unmeasured.
+- risks: Exact positional UI behavior requires a DoofusDock core extension; per-panel auto-hide would lose group identity/restore rail equivalence. Existing DoofusDock checkout contains unrelated user changes and must remain untouched.
+- follow_up: Implement/test the framework feature in an isolated checkout, then integrate against Hermes Native and gather source-paired Windows proof.
+
+- id: hermes-progress-confidence-20261117
+- timestamp: 2026-11-17T22:42:27Z
+- what: Added qualitative estimate confidence and explicit uncertainty to phase effort reporting, with coverage for unavailable, missing-size, and limited EWMA cases.
+- why: Prevent a numeric ETA from implying precision unsupported by observed data.
+- components: tools/doofus_task.py, tools/test_doofus_task.py, ../../docs/AGENT_HANDOFF.md, ../../docs/architecture/AGENT_TASK_CONTRACTS.md, docs/COMPLETION_OVERVIEW.md.
+- type: progress reporting and continuity validation
+- validation: Python compilation passed; provider continuity suite passed 16/16.
+- performance: No measured performance impact; benchmark not applicable.
+- risks: Confidence is qualitative and is not a calibrated prediction interval.
+- follow_up: Record phase-sized remaining work and measured durations; calibrate EWMA error before raising confidence.
+
+- id: hermes-process-records-20261117
+- timestamp: 2026-11-17T23:05:22Z
+- what: Added lease-checked process and external-operation record CLI commands, typed schema constraints, reconciliation visibility in status, and handoff retention tests.
+- why: Ensure unknown/running provider work is not silently treated as stopped when a conversation or owner changes.
+- components: tools/doofus_task.py, tools/test_doofus_task.py, .doofus/schemas/handoff.schema.json, docs/AGENT_HANDOFF.md, docs/architecture/AGENT_TASK_CONTRACTS.md, docs/PLAN.md Revision 201, BACKLOG.md, COMPLETION_OVERVIEW.md.
+- type: handoff protocol and recovery implementation
+- validation: Python compilation passed; continuity suite passed 18/18; persisted schemas/ledger validate at revision 69. Independent DoofusDock verification in the isolated pinned worktree passed 427 tests in 42 suites.
+- performance: No performance change; no benchmark.
+- risks: Process discovery remains explicit and manual; provider-supplied state can become stale and must be re-observed by the incoming owner.
+- follow_up: Integrate canonical DoofusDock group minimize in Hermes Native; keep the immutable dependency source and acceptance state explicit.
+
+- id: hermes-positional-dock-group-fold-20261117
+- timestamp: 2026-11-17T23:20:12Z
+- what: Vendored pinned DoofusDock core/presentation crates; integrated canonical group minimize/restore rails, tab context-menu minimize, and root-edge-aware Ctrl/Cmd+B/J dispatch.
+- why: Provide a source-faithful whole-group fold primitive with persistent tab identity instead of per-panel hide approximations.
+- components: Cargo.toml, Cargo.lock, vendor/doofusdock-core, vendor/doofusdock-presentation, src/app.rs, src/layout.rs, docs/PLAN.md Revision 202, docs/ARCHITECTURE.md, docs/BACKLOG.md, docs/COMPLETION_OVERVIEW.md, README.md.
+- type: Native UI parity and pinned dependency integration.
+- validation: cargo check --workspace --all-targets --locked passed; Hermes Native feature suite passed 302 library + 15 automation + 3 launcher tests; format applied.
+- performance: No performance claim or benchmark; positional lookup is a bounded tree traversal on keypress.
+- risks: Native titlebar edge controls, owner-aware restoration, nested/narrow layouts, live Windows behavior, and source-paired acceptance remain open; no parity acceptance was promoted.
+- follow_up: Add focused root-edge fallback/restore interaction tests, then complete titlebar controls and headless screenshot-pair review before physical Windows acceptance.
+
+- id: hermes-titlebar-edge-controls-20261117
+- timestamp: 2026-11-17T23:33:53Z
+- what: Added accessible Hide/Show left/right titlebar controls that share the live root-edge dispatcher with Ctrl/Cmd+B/J.
+- why: Make pinned positional side folding discoverable through app controls as well as keyboard navigation.
+- components: src/app.rs, src/layout.rs, docs/PLAN.md Revision 203, docs/ARCHITECTURE.md, docs/SOURCE_AUDIT.md, docs/BACKLOG.md, docs/COMPLETION_OVERVIEW.md, README.md.
+- type: Native UI parity.
+- validation: All-target check passed; 304 library + 15 automation + 3 launcher tests; continuity 18/18; fixed-scope progress and task validators passed; format/diff checks passed.
+- performance: No benchmark claim; edge lookup occurs on click or shortcut.
+- risks: Side controls are functionally headless-tested; Windows visual/input parity, narrow layout and semantic-owner cross-restore remain open.
+- follow_up: Implement semantic-owner cross-restore and add headless test for root-edge button minimize/restore before source-paired Windows acceptance.
+
+- id: hermes-titlebar-edge-evidence-sync-20261117
+- timestamp: 2026-11-17T23:37:12Z
+- what: Updated PAR-0013/0014 evidence locators and current positional-fold gaps in the reproducible progress overlay.
+- why: Keep partial implementation status aligned with the current UI paths and tests without overstating acceptance.
+- components: tools/build_implementation_progress.py, docs/status/IMPLEMENTATION_PROGRESS.csv, docs/SOURCE_AUDIT.md, docs/COMPLETION_OVERVIEW.md, docs/PLAN.md Revision 203.
+- type: Evidence ledger and documentation.
+- validation: Progress generator passed with 499 rows and 36 reviewed; continuity passed 18/18; task validator revision 73; format and diff checks passed.
+- performance: No runtime change.
+- risks: Visual/runtime/source acceptance remains pending for all requirements.
+- follow_up: Continue source-to-native mapping and complete cross-restore, narrow and Windows acceptance gaps.
+
+
+- id: hermes-semantic-owner-cross-restore-20261117
+- timestamp: 2026-11-17T23:52:35Z
+- what: Separated persisted semantic pane visibility from physical side collapse and restored the semantic owner when reopening a collapsed edge, preserving canonical group identity and active tab. Added compensating Dock rollback if restoring a group succeeds but preference persistence fails.
+- why: Match the pinned Desktop behavior when the user hides Sessions or Files semantically and later reopens its physical left/right side.
+- components: apps/hermes-native/src/layout.rs, apps/hermes-native/tools/build_implementation_progress.py, apps/hermes-native/docs/PLAN.md Revision 204, SOURCE_AUDIT.md, ARCHITECTURE.md, BACKLOG.md, COMPLETION_OVERVIEW.md, README.md, repository README/architecture/backlog, EXECUTION_LOGS.md.
+- type: Native UI parity and evidence update.
+- validation: Focused semantic cross-restore test passed; `cargo test --workspace --locked` passed 165 library + 3 launcher tests; `cargo fmt --all --check` passed. Full automation feature suite, continuity, task-state, progress generator, all-target check and diff validation are pending.
+- performance: No performance change measured or claimed.
+- risks: Nested/non-leaf geometry, narrow layouts, physical Windows behavior, live runtime and source-paired acceptance remain open; strict acceptance remains unchanged.
+- follow_up: Complete automation-feature and continuity validation, regenerate 499-row progress overlay, validate the active checkpoint and inspect the final diff; then proceed to remaining pinned-source edge cases.
+
+
+- id: hermes-semantic-owner-cross-restore-validation-20261117
+- timestamp: 2026-11-17T23:56:59Z
+- what: Completed full headless validation for semantic-owner cross-restore and refreshed evidence output.
+- why: Confirm the current source slice builds, passes automation-facing tests and preserves strict progress accounting.
+- components: apps/hermes-native/src/layout.rs; apps/hermes-native/tools/build_implementation_progress.py; apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv; docs/PLAN.md Revision 204; source/architecture/backlog/completion docs; execution logs.
+- type: Validation and evidence.
+- validation: all-target locked check passed; 305 library + 15 automation + 3 launcher tests passed; continuity 18/18; generator reports 36/499 reviewed, 6 implemented, 30 partial, 463 unknown, 0 accepted; task validator revision 74/ledger 9 valid; supplemental validator 491 pending; Python compile, rustfmt and diff checks passed.
+- performance: No performance change measured.
+- risks: Physical Windows, live runtime, narrow/nested edge cases and source-paired acceptance remain open; no completion claim.
+- follow_up: Continue pinned-source coverage for non-leaf/nested and narrow layouts, then conduct source-paired Windows validation when the headless harness can exercise those states.
+
+
+- id: hermes-root-row-parity-validation-20261118
+- timestamp: 2026-11-18T00:09:45Z
+- what: Completed source-root-row and nested-edge fallback parity slice with headless regressions and full validation.
+- why: Match the pinned Hermes tree lookup in column-root profiles while preserving semantic fallback for a nested split edge.
+- components: apps/hermes-native/src/layout.rs; tools/build_implementation_progress.py; IMPLEMENTATION_PROGRESS.csv; PLAN Revision 205; SOURCE_AUDIT.md; ARCHITECTURE.md; BACKLOG.md; COMPLETION_OVERVIEW.md; README files; execution logs.
+- type: Native UI parity and validation.
+- validation: Focused tests for column-root cross-restore and nested-split fallback passed; full all-target check passed; 307 library + 15 automation + 3 launcher tests passed; continuity 18/18; generator 36/499 reviewed (6 implemented, 30 partial, 463 unknown, 0 accepted); task validator revision 75 / ledger 9; package validator 491 pending; Python compilation, rustfmt and diff checks passed.
+- performance: No performance change measured.
+- risks: Narrow overlays, other source root/profile shapes, live Windows behavior, runtime evidence and visual pairs remain open.
+- follow_up: Continue remaining pinned-snapshot behavior mapping and implementation, then source-paired Windows/headless visual and interaction acceptance; do not update the pinned upstream snapshot unless the user selects another download.
+
+
+- id: hermes-narrow-overlay-20261118
+- timestamp: 2026-11-18T00:27:48Z
+- what: Added source-shaped narrow Sessions and Files overlays with edge reveal, pin/close/Escape handling and same-group semantic pane tabs; narrow toggles leave canonical layout revision unchanged.
+- why: Match the pinned 640px narrow breakpoint while preserving DoofusDock canonical ownership and user layout identity.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/src/layout.rs; apps/hermes-native/tools/build_implementation_progress.py; parity plan, source audit, architecture, backlog, completion overview and README docs.
+- type: UI parity implementation and validation.
+- validation: 310 library + 15 automation + 3 launcher tests; continuity 18/18; all-target workspace check; progress 36/499 reviewed (6 implemented, 30 partial, 463 unknown, 0 accepted); task validator rev 76 / ledger 9; supplemental package validator 491 pending; Python compilation, rustfmt and git diff check passed.
+- performance: No performance change measured.
+- risks: Native pointer/focus behavior on Windows, mixed non-Sessions/Files overlay groups, authenticated runtime behavior and paired source screenshots remain unverified. PAR-0013/0014 remain partial.
+- follow_up: Continue remaining pinned source gaps and later obtain headless plus Windows source-paired evidence; preserve the pinned download and report review coverage separately from acceptance.
+
+
+- id: hermes-narrow-review-overlay-20261118
+- timestamp: 2026-11-18T00:58:21Z
+- what: Extended narrow transient overlays to the pinned built-in Review pane and same-zone built-in pane tabs; switched overlay default width to the pinned 237px with an 85vw cap; synchronized current parity status and source-gap documentation.
+- why: Pinned `narrow-overlays.tsx` accepts every registered collapsible pane, and `controller.tsx` marks Review collapsible alongside Sessions and Files. The previous native Sessions/Files allowlist made Review unreachable at narrow widths.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/src/layout.rs; apps/hermes-native/tools/build_implementation_progress.py; apps/hermes-native/docs/PLAN.md; SOURCE_AUDIT.md; ARCHITECTURE.md; BACKLOG.md; COMPLETION_OVERVIEW.md; README.md; root README, architecture and backlog; progress overlay.
+- type: UI parity implementation, evidence mapping, documentation and validation.
+- validation: Narrow Review interaction passed with unchanged canonical revision; full feature suite 311 library + 15 protocol + 3 launcher passed; all-target workspace check passed; continuity 18/18; generator 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); task validation revision 79 / ledger 9; supplemental package validator 491 pending; Python compilation, rustfmt and diff check passed.
+- performance: No performance change measured.
+- risks: Dynamic collapsible plugin panes such as Bots, reveal-alias event semantics, live zone-width overrides, top-layer Escape behavior, Windows input/live runtime and source-paired visuals remain open. Strict acceptance remains 0/499.
+- follow_up: Implement the remaining pinned generic contribution/zone behavior, then verify native runtime and matched source screenshots; preserve Hermes and DoofusDock pins and do not migrate the installed app without separate approval.
+
+
+- id: hermes-pane-reveal-aliases-20261118
+- timestamp: 2026-11-18T01:11:18Z
+- what: Added pinned `chat-sidebar` and `file-browser` aliases to the typed `toggle_pane` action schema and shared handler; added headless egui and protocol coverage and synced agent-control/source-parity docs.
+- why: The pinned source uses these pane IDs as `revealAliases`; both people and the coding agent need to invoke the same narrow reveal control.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs; progress seed/CSV; PLAN, SOURCE_AUDIT, ARCHITECTURE, BACKLOG, COMPLETION_OVERVIEW, AGENT_AUTOMATION_PROTOCOL and README docs.
+- type: Agent-control parity, narrow-pane behavior and validation.
+- validation: Both focused alias tests passed; full feature suite 311 library + 15 protocol + 3 launcher passed; all-target workspace check; continuity 18/18; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); task validator revision 81 / ledger 9; package validator 491 pending; Python compilation, format and diff checks passed.
+- performance: No performance change measured.
+- risks: Arbitrary plugin aliases, explicit open/close reveal events, dynamic Bots pane, persisted zone width overrides, live Windows/runtime and source-paired visuals remain open. Strict acceptance remains 0/499.
+- follow_up: Build the real Bots profile roster read and pane as a source-paired vertical slice; do not substitute a placeholder panel for plugin parity.
+
+### Bots roster vertical slice — 2026-11-18T15:17:11Z
+
+- id: hermes-bots-vertical-slice-20261118
+- timestamp: 2026-11-18T15:17:11Z
+- what: Added the real source-identified Bots pane with bounded active-profile roster parsing, lifecycle-safe refresh and read-only visible roster state in UI and agent snapshots; placed the HideOnly pane in Sessions groups and narrow transient reveal.
+- why: Replace the repeated empty-shell-only UI with a reviewable, headless-tested native pane based on the fixed Hermes snapshot.
+- components: Hermes gateway client, native layout/app, agent automation snapshot/actions, fixed-snapshot progress evidence and project documentation.
+- type: Feature slice and parity evidence update.
+- validation: PASS: cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet (317 library + 15 automation protocol + 3 launcher); cargo check --workspace --all-targets --locked; continuity 18/18; progress generator 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); supplemental package validation 491 pending; task validator revision 83 / ledger 9; Python compilation, rustfmt and git diff --check passed. Focused tests cover malformed roster rejection, exact profiles.list scope, stale-response fencing, cache retention, layout grouping and rendered/agent-visible rows.
+- performance: No benchmark claim; roster refresh is bounded to five seconds while visible and parser input is capped.
+- risks: This remains partial. Conditional plugin lifecycle, boot-time dock enforcement, exact routes, cross-gateway host.agents union, CRUD/search/filters/groups/activity/source health, live Windows and source-paired acceptance remain open.
+- follow_up: Continue the next fixed-source parity rows; do not promote PAR-0013/0014 or strict acceptance without runtime and source-paired evidence.
+
+### Files preview activation — 2026-11-18T15:27:13Z
+
+- id: hermes-files-activation-20261118
+- timestamp: 2026-11-18T15:27:13Z
+- what: File-row click activation now selects and opens the same file through the native dynamic preview pane.
+- why: The pinned Hermes Files tree activates a preview from a file row instead of requiring a double click.
+- components: Native file tree state, Files panel, dynamic DoofusDock preview descriptor, parity documentation.
+- type: Source-matched interaction slice.
+- validation: PASS: focused file activation unit test; full feature suite 318 library + 15 automation protocol + 3 launcher tests; locked workspace/all-target check; continuity 18/18; progress remains 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); package validator 491 pending; rustfmt; git diff --check. Focused unit coverage verifies that activation selects and returns the same path.
+- performance: No performance change measured.
+- risks: No real egui pointer/keyboard event test yet; remote Files, rename suppression, context actions, Windows runtime and source-paired acceptance remain open.
+- follow_up: Add direct egui activation coverage, then implement the next fixed-source interaction slice without promoting progress counts absent an exact mapped row.
+
+### Scheduled Jobs route host — 2026-11-18T15:29:50Z
+
+- id: hermes-cron-overlay-route-20261118
+- timestamp: 2026-11-18T15:29:50Z
+- what: Routed the existing Cron renderer through the actual overlay modal and stopped overlay routes from rendering the same page behind it.
+- why: The pinned Hermes route defines `/cron` as an overlay, but the native host covered its already-implemented UI with a generic unavailable message.
+- components: Native app route dispatcher, Scheduled Jobs overlay renderer, route-level test, parity documentation.
+- type: Route reachability defect fix.
+- validation: PASS: focused scheduled_jobs_route_renders_profile_owned_list_and_selected_details headless route test; generic unavailable-screen label is absent while scheduled-job data/details render in the overlay. Full-suite/workspace validation follows this documentation update.
+- performance: No performance change measured.
+- risks: Source-paired Windows visuals and live gateway remain unverified; Command Center and other contributed overlays still require their own native renderers.
+- follow_up: Run full validation, retain Scheduled Jobs as partial until exact-source and runtime evidence are accepted, then build Command Center sections from its pinned contract.
+
+### Command Center Sessions overlay — 2026-11-18T15:41:00Z
+
+- id: hermes-command-center-sessions-20261118
+- timestamp: 2026-11-18T15:41:00Z
+- what: Added the actual Command Center modal, source-ordered section controls, section-query initialization, searchable/recency-sorted Sessions and profile-aware opening through the registered OpenSession action.
+- why: The pinned `/command-center` route had no native renderer despite an established session list and shared session action.
+- components: App route overlay, Command Center section/session UI, gateway session-list refresh, registered action path and headless egui fixture.
+- type: User-visible feature slice.
+- validation: PASS: headless command_center_sessions_search_and_open_through_the_real_overlay test verifies /command-center?section=sessions route rendering, all four source-ordered section controls, title/ID search filtering, absence of the generic unavailable message, and profile-aware OpenSession route transition.
+- performance: No benchmark claim; local filtering operates on the currently loaded session page.
+- risks: Three sections are incomplete; no pin/export/delete/load-more or cross-profile union; query changes after selection are not yet mirrored to route state; live gateway/Windows/source-paired acceptance remain open.
+- follow_up: Implement the pinned System view's status/log filters or Usage/Maintenance as separate bounded source-backed slices; do not mark Command Center complete.
+
+### Command Center session pin action — 2026-11-18T15:46:23Z
+
+- id: hermes-command-center-pin-20261118
+- timestamp: 2026-11-18T15:46:23Z
+- what: Added Pin/Unpin to Command Center session rows using the existing native session mutation handler, pending state and offline guard.
+- why: The pinned Hermes Sessions section offers pin controls alongside open actions.
+- components: Command Center row UI, profile-scoped gateway mutation, canonical pin ordering and headless route test.
+- type: Source-matched session action.
+- validation: PASS: command_center_sessions_search_and_open_through_the_real_overlay confirms the source-ordered list, filtered rows, profile-aware open, and a labeled pin action that is disabled while the gateway is offline; existing session pin handler remains profile-fenced and receipt-driven.
+- performance: No performance change measured.
+- risks: Connected mutation and visual parity were not exercised; export/delete/pagination and other sections remain incomplete.
+- follow_up: Test a profile-scoped pin receipt in the deterministic gateway fixture, then port the next source action without changing strict acceptance.
+
+
+### Command Center System status and logs — 2026-11-18T16:00:51Z
+
+- id: hermes-command-center-system-20261118
+- timestamp: 2026-11-18T16:00:51Z
+- what: Added profile-scoped typed System status/log reads, selectable log file and level filters, refresh, local log search, bounded status/log rendering, cache retention and stale-response fences; added remote-auth transport and headless overlay regressions.
+- why: The pinned Command Center System section reads the active Hermes profile's gateway status and recent logs, but the native tab was an incomplete placeholder.
+- components: Gateway HTTP worker and response types, Command Center overlay state and renderer, headless route fixture, source audit and parity docs.
+- type: Source-matched read-only feature slice.
+- validation: Focused remote-authenticated profile-scoped HTTP test passed; focused egui route test passed. Full suite and project validators are pending in this change record until completed below.
+- performance: No performance change measured.
+- risks: Live gateway/Windows and source-paired visuals remain unverified; Usage/Maintenance, source query/debounce, cross-profile session actions and remaining Command Center behavior are open.
+- follow_up: Complete full validation, then implement the Usage and Maintenance sections with pinned-source contracts; do not promote fixed-snapshot acceptance without its required evidence.
+### Hermes feature tour — 2026-11-18T16:26:51Z
+
+- id: hermes-visual-tour-20261118
+- timestamp: 2026-11-18T16:26:51Z
+- what: Created a 12-screen interactive walkthrough of distinct currently ported Hermes UI features, with a HUD that names each screen and states its capture provenance.
+- why: Make the implemented surface reviewable one feature at a time without relying on repeated screenshots of the same empty state.
+- components: Standalone visual tour, two fresh headless Command Center route captures, embedded previews of existing native UI captures.
+- type: Review visualization.
+- validation: PASS: static visualization check; mock DOM slide/navigation/HUD checks; headless Edge Playwright verified Sessions-to-System slide transition and rendered preview with no page errors.
+- performance: No runtime performance change; static artifact is under 1 MB.
+- risks: Screenshot fixtures contain synthetic/offline data and demonstrate rendered routes, not live gateway behavior or source-paired visual acceptance.
+- follow_up: Use the tour to inspect currently captured features; continue fixed-snapshot parity work separately.
+
+
+### Command Center Usage — 2026-11-18T16:45:14Z
+
+- id: hermes-command-center-usage-20261118
+- timestamp: 2026-11-18T16:45:14Z
+- what: Added typed, bounded active-profile Usage analytics transport and a native 7/30/90-day view with summary stats, stacked daily token chart, top models/skills, refresh and loading/error states.
+- why: Port the pinned Command Center Usage section from the fixed Hermes snapshot.
+- components: Gateway HTTP worker and DTOs, Command Center state and overlay, authenticated HTTP fixture, headless egui fixture, source audit and parity docs.
+- type: Source-matched read-only feature slice.
+- validation: PASS: focused authenticated HTTP/UI tests; full suite 323 library + 15 automation protocol + 3 launcher; workspace check; continuity 18/18; progress 38/499; package validator 491 pending; task validation, compileall, rustfmt and diff check.
+- performance: No performance change measured; usage response remains under shared 512 KiB HTTP cap and UI displays a maximum of 90 daily bars and six rows per breakdown.
+- risks: No live gateway, physical Windows or source-paired visual acceptance; Maintenance and remaining Command Center interactions remain open.
+- follow_up: Port the pinned Maintenance panel with read-only inspection first, then implement its reviewed mutations behind source-equivalent confirmation and receipt handling.
+
+
+### Usage refresh cache parity — 2026-11-18T16:54:08Z
+
+- id: hermes-command-center-usage-cache-parity-20261118
+- timestamp: 2026-11-18T16:54:08Z
+- what: Preserve the current active-profile last-good Usage snapshot across range changes while the requested analytics refresh is pending or errors.
+- why: The pinned Command Center keeps its existing Usage response instead of clearing it when the 7/30/90-day selector changes.
+- components: Usage response cache selection and real-overlay headless regression.
+- type: Source-fidelity correction.
+- validation: Full 323 + 15 + 3 Rust suite, locked workspace check, continuity 18/18, progress and package validators, rustfmt and diff check pass.
+- performance: No performance change measured.
+- risks: The selected period can temporarily differ from the visible last-good chart until the response arrives, matching the pinned source behavior.
+- follow_up: Continue Maintenance and remaining Sessions route actions.
+
+
+### Command Center Maintenance — 2026-11-18T18:10:37Z
+
+- id: hermes-command-center-maintenance-20261118
+- timestamp: 2026-11-18T18:10:37Z
+- what: Completed and validated the native Command Center Maintenance section: profile-bound Curator/Memory status reads, background action launch and 1.2s status polling (`doctor`, `security-audit`, `backup`, `curator-run`), Curator pause toggle, pre-confirmation profile/instance/authority owner capture for Debug Share (`POST /api/ops/debug-share`) and confirmed `MEMORY.md` / `USER.md` resets (`POST /api/memory/reset` disabled when 0 bytes).
+- why: Resume and finish the in-flight Command Center Maintenance slice against the pinned Hermes snapshot.
+- components: `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, remote-authenticated HTTP wire test, headless egui overlay and confirmation owner-fence test, parity documentation.
+- type: Source-matched feature slice.
+- validation: PASS: focused HTTP and headless UI tests; full suite 325 library + 15 automation protocol + 3 launcher; locked workspace check; continuity 18/18; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); supplemental package validator 491 pending; compileall, rustfmt and diff check pass.
+- performance: No performance change measured; action status polling is capped at 200 lines and 240 intervals (~5 minutes).
+- risks: Live gateway, Windows and source-paired visual acceptance remain pending; remaining Command Center Sessions actions (confirmed delete, export, cross-profile pagination) remain open.
+- follow_up: Implement remaining Command Center Sessions behavior (confirmed delete, export, cross-profile pagination) while keeping strict acceptance separate.
+
+
+### Command Center Sessions confirmed deletion — 2026-11-18T19:45:00Z
+
+- id: hermes-command-center-session-delete-20261118
+- timestamp: 2026-11-18T19:45:00Z
+- what: Added confirmation-gated session deletion (`Delete…`) to Command Center session rows, foreground confirmation modal (`egui::Order::Foreground`), profile-scoped mutation-snapshot + CAS-fenced `DELETE /api/sessions/{id}` transport, multi-cache eviction, project-session tombstone recording, and peer session-list change broadcast.
+- why: Match the pinned Command Center Sessions delete confirmation (#99410) and fenced HTTP delete contract (`apps/desktop/src/api/sessions.ts#mutateSessionHttp`).
+- components: `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, remote-authenticated HTTP wire test, headless egui confirmation/receipt test, parity documentation.
+- type: Source-matched feature slice.
+- validation: PASS: focused HTTP and headless UI tests; full suite 327 library + 15 automation protocol + 3 launcher; locked workspace check; continuity 18/18; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); supplemental package validator 491 pending; compileall, rustfmt and diff check pass.
+- performance: No measurable runtime regression.
+- risks: Live gateway, physical Windows and source-paired visual acceptance remain pending; session JSON export and cross-profile truncated pagination remain open.
+- follow_up: Implement Command Center session JSON export and cross-profile truncated pagination while preserving strict acceptance boundaries.
+
+
+### Command Center Sessions JSON export + Load more & System restart/update actions — 2026-11-18T21:25:00Z
+
+- id: hermes-command-center-export-system-actions-20261118
+- timestamp: 2026-11-18T21:25:00Z
+- what: Added Command Center Sessions JSON export (`Export`, paging `GET /api/sessions/{id}/messages?limit=500&offset=N&order=oldest&include_compacted=true` up to 32M JSON chars and writing `{title}-{id}.json`), `"Load more (+200)"` pagination, and Command Center System `"Restart gateway"` (`POST /api/gateway/restart`) / `"Update Hermes"` (`POST /api/hermes/update`) actions with 18-poll / 1.2s status polling (`?lines=180`) and post-action System refresh.
+- why: Match the pinned Command Center Sessions export/load-more (`apps/desktop/src/lib/session-export.ts`, `apps/desktop/src/app/command-center/index.tsx`) and System action contracts (`apps/desktop/src/api/system.ts`).
+- components: `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, remote-authenticated HTTP wire tests, headless egui tests, parity documentation.
+- type: Source-matched feature slice.
+- validation: PASS: focused HTTP and headless UI tests; full suite 331 library + 15 automation protocol + 3 launcher; locked workspace check; continuity 18/18; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); supplemental package validator 491 pending; compileall, rustfmt and diff check pass.
+- performance: Export paging is bounded at 200 pages and 32,000,000 JSON characters; System action status polling is capped at 18 intervals (1.2s) and 180 lines.
+- risks: Live gateway, physical Windows and source-paired visual acceptance remain pending.
+- follow_up: Continue next pinned-source parity slices while preserving strict acceptance boundaries.

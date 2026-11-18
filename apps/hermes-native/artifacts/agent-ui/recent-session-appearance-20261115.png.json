@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-11-15T23:40:39Z",
+  "request_id": "hermes-native-session-color-20261115",
+  "hermes_snapshot_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+  "repository_head": "b8db79bbd16b6258473638ab8130a77da2cb4d28",
+  "source_diff_sha256": "7c1c6726b533aa4b6c1977d21b53d473830ec9749a97ee1d90cf1863c9ff8616",
+  "untracked_source_files_not_in_diff": [
+    "apps/hermes-native/src/bin/hermes_automation/native_uia_tree.ps1"
+  ],
+  "executable_sha256": "09d87fc8797495fb0cc6340377d681e515100078068767416024fdbea8d4b772",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale": 1.0,
+    "dpi": "headless logical viewport; physical Windows DPI not measured"
+  },
+  "screenshot_sha256": "25c41ca719ed14578eba699df18cba4e5ef2a1f2ce000f05d04b420cd00ee2d3",
+  "route": "/",
+  "fixture": "recent-session-reorder-fixture with two colored sessions",
+  "actions": [
+    "click Session actions session recent-a",
+    "click Appearance"
+  ],
+  "fixture_data": "Six synthetic sessions in two local-date groups, two stored color overrides keyed by lineage roots, plus a synthetic session transcript pane; Hermes gateway remains isolated.",
+  "visual_review": "The screenshot visibly shows the session action menu and six-color-by-two-row swatch grid, selected ring, clear action, two colored session markers, two date groups and populated transcript.",
+  "limitations": [
+    "Synthetic offline content; no authenticated Hermes gateway.",
+    "Target-only screenshot; no matched fixed-source screenshot.",
+    "Headless logical scale only; physical Windows DPI and pointer behavior remain unverified.",
+    "PAR-0078 remains pending source-paired acceptance.",
+    "Project-color fallback is not implemented."
+  ]
+}

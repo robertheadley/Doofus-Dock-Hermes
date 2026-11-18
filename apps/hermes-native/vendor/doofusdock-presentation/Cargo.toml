@@ -1,0 +1,17 @@
+[package]
+name = "doofusdock-presentation"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+repository = "https://github.com/robertheadley/doofusdock"
+
+[package.metadata.doofusdock-vendor]
+source_revision = "f6eb49b9e488f4e851d8d3abe18e95d296201bba"
+local_changes = "Group minimization projection and restore rail geometry"
+
+[dependencies]
+doofusdock-core = { path = "../doofusdock-core", version = "0.2.0" }
+rand_pcg = "0.10.2"
+serde = { version = "1", features = [ "derive", "rc" ] }
+serde_json = { version = "1", features = [ "preserve_order" ] }

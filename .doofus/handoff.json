@@ -1,0 +1,2745 @@
+{
+  "active_processes": [
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Delegated DoofusDock implementation and review completed; no live process remains to reconcile.",
+      "observed_at": "2026-11-17T23:04:04Z",
+      "pid": null,
+      "process_id": "subagent:dock_group_minimize",
+      "provider": "codex",
+      "state": "stopped"
+    }
+  ],
+  "approved_plan_revision": 173,
+  "authorization": {
+    "scope": "pinned Hermes Native parity plus portable checkpoint/handoff foundation",
+    "source": "direct user request in this Codex task",
+    "status": "authorized"
+  },
+  "blockers": [],
+  "changed_files": [
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "gitignore",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "Cargo.lock",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "Cargo.toml",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/Cargo.toml",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/agent/hermes-page.mjs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/agent/hermes-page.test.mjs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/AGENT_AUTOMATION.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/AGENT_CONTROL_CROSSWALK.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/docs/SOURCE_AUDIT.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/bin/hermes-automation.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/files.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/layout.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/lib.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/main.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "antigravity",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/events.jsonl",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/schemas/event.schema.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/schemas/handoff.schema.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/schemas/task-ledger.schema.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/hermes-native-window-capabilities-20261115.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/hermes-native-window-capabilities-20261115.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/plugins-busy-current-20261115.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/recent-session-appearance-20261115.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/recent-session-appearance-20261115.png.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v1.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v2.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v3.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v3.png.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "antigravity",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/REQUIREMENT_CROSSWALK.csv",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/artifacts.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/bin/hermes_automation/native_uia_tree.ps1",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/native_oauth.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/native_token_store.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/native_window.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/remote_probe.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/repo_discovery.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/session_peer_sync.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_requirement_crosswalk.py",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/doofus_task.py",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/test_doofus_task.py",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/Cargo.toml",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/VENDOR_NOTES.md",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/examples/standalone_consumer.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/audit.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/constraints.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/custom_layout.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/diff.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/drag.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/events.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/extensions.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/history.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/lib.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/modality.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/model.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/operations.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/persistence.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/profiles.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/replacement.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/rules.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/service.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/theme.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/urne.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/src/workspaces.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/capability_projection_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/core_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/drag_session_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/group_minimize_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/modality_switch_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/native_window_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/profile_catalog_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/scratchpad_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/service_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/structural_modality_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/tab_pinning_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/theme_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-core/tests/workspace_membership_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/Cargo.toml",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/VENDOR_NOTES.md",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/examples/framework_consumer.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/examples/snap_policy_bench.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/examples/spatial_index_bench.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/src/animation.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/src/camera.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/src/effects.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/src/lib.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/src/scene.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/src/spatial.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/src/timeline.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/effects_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/group_minimize_projection.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/layout_provider_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/morph_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/stress_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/timeline_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/transition_group_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/tween_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/workspace_membership_contract.rs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-busy-long-transcript-20261115.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-busy-plugin-catalog-20261115.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-busy-recent-sessions-20261115.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-native-artifacts-files-20261116.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-native-artifacts-index-20261116.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-native-artifacts-links-20261116.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-native-plugins-live-after-wheel-20261116.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-native-plugins-live-after-wheel-final-20261116.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/hermes-native-plugins-live-before-scroll-20261116.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/AGENT_HANDOFF.md",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/architecture/AGENT_TASK_CONTRACTS.md",
+      "status": "??"
+    }
+  ],
+  "checkpoint": {
+    "command": "resume",
+    "evidence": [],
+    "state": "in_progress",
+    "summary": "Resumed from validated repository checkpoint.",
+    "verified_at": "2026-11-18T21:38:07Z"
+  },
+  "completed_subtasks": [
+    "hermes-cross-provider-handoff"
+  ],
+  "created_at": "2026-11-17T01:04:31Z",
+  "current_owner": {
+    "lease_expires_at": "2026-11-18T22:38:07Z",
+    "lease_id": "6d978810-7db8-41bb-941e-2791a8c25aeb",
+    "model": null,
+    "ownership_state": "active",
+    "provider": "codex",
+    "scope_task_id": "hermes-native-project"
+  },
+  "external_operations": [
+    {
+      "evidence": [],
+      "kind": "cargo_test_workspace_locked",
+      "note": "PASS: cargo test -p hermes-native --features agent-automation; 331 library + 15 protocol + 3 launcher tests.",
+      "observed_at": "2026-11-18T21:39:47Z",
+      "operation_id": "codex-current-main-validation-20261118",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_commit_push",
+      "note": "Publishing the already validated accumulated Hermes parity work on main only; origin/main was fetched and is exactly at the current HEAD.",
+      "observed_at": "2026-11-18T21:41:55Z",
+      "operation_id": "codex-main-publish-20261118",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_check_workspace_locked",
+      "note": "PASS: cargo check --workspace --all-targets --locked; only existing dead-code warnings.",
+      "observed_at": "2026-11-18T21:40:04Z",
+      "operation_id": "codex-workspace-check-20261118",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_test_workspace_locked",
+      "note": "Independently verified in the isolated pinned worktree: cargo test --workspace --locked exited 0; 427 tests passed across 42 test suites.",
+      "observed_at": "2026-11-17T23:04:43Z",
+      "operation_id": "doofusdock-workspace-test-f6eb49b",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "operation": "headless_rust_validation",
+      "state": "not_running_at_bootstrap",
+      "verified_at": "2026-11-17T01:04:31Z"
+    }
+  ],
+  "intended_recipient": null,
+  "known_failures": [],
+  "last_event_id": "06d955b9-31d3-4b89-9ad3-073e096d210f",
+  "last_operation": {
+    "request_id": "06d955b9-31d3-4b89-9ad3-073e096d210f",
+    "state": "committed",
+    "type": "external_operation.state_changed"
+  },
+  "legacy_checklist_measurement": {
+    "comparable_to_parity": false,
+    "completed": 33,
+    "source": "user-supplied supplement; original measurement file not found in the repository",
+    "total": 59
+  },
+  "parent_task_id": "hermes-native-ui-parity",
+  "pending_user_approvals": [],
+  "phase": "01-foundation",
+  "phase_effort_samples": [],
+  "previous_agent": {
+    "model": null,
+    "provider": null
+  },
+  "project_id": "doofus-dock-hermes",
+  "recommended_next_action": "Continue next pinned-source parity slices while preserving strict acceptance boundaries (0/499 accepted, 38/499 reviewed)",
+  "remaining_subtasks": [
+    "hermes-native-project",
+    "hermes-native-ui-parity",
+    "hermes-par-0001",
+    "hermes-par-0002",
+    "hermes-par-0003",
+    "hermes-par-0004",
+    "hermes-par-0005",
+    "hermes-par-0006",
+    "hermes-par-0007",
+    "hermes-par-0008",
+    "hermes-par-0009",
+    "hermes-par-0010",
+    "hermes-par-0011",
+    "hermes-par-0012",
+    "hermes-par-0013",
+    "hermes-par-0014",
+    "hermes-par-0015",
+    "hermes-par-0016",
+    "hermes-par-0017",
+    "hermes-par-0018",
+    "hermes-par-0019",
+    "hermes-par-0020",
+    "hermes-par-0021",
+    "hermes-par-0022",
+    "hermes-par-0023",
+    "hermes-par-0024",
+    "hermes-par-0025",
+    "hermes-par-0026",
+    "hermes-par-0027",
+    "hermes-par-0028",
+    "hermes-par-0029",
+    "hermes-par-0030",
+    "hermes-par-0031",
+    "hermes-par-0032",
+    "hermes-par-0033",
+    "hermes-par-0034",
+    "hermes-par-0035",
+    "hermes-par-0036",
+    "hermes-par-0037",
+    "hermes-par-0038",
+    "hermes-par-0039",
+    "hermes-par-0040",
+    "hermes-par-0041",
+    "hermes-par-0042",
+    "hermes-par-0043",
+    "hermes-par-0044",
+    "hermes-par-0045",
+    "hermes-par-0046",
+    "hermes-par-0047",
+    "hermes-par-0048",
+    "hermes-par-0049",
+    "hermes-par-0050",
+    "hermes-par-0051",
+    "hermes-par-0052",
+    "hermes-par-0053",
+    "hermes-par-0054",
+    "hermes-par-0055",
+    "hermes-par-0056",
+    "hermes-par-0057",
+    "hermes-par-0058",
+    "hermes-par-0059",
+    "hermes-par-0060",
+    "hermes-par-0061",
+    "hermes-par-0062",
+    "hermes-par-0063",
+    "hermes-par-0064",
+    "hermes-par-0065",
+    "hermes-par-0066",
+    "hermes-par-0067",
+    "hermes-par-0068",
+    "hermes-par-0069",
+    "hermes-par-0070",
+    "hermes-par-0071",
+    "hermes-par-0072",
+    "hermes-par-0073",
+    "hermes-par-0074",
+    "hermes-par-0075",
+    "hermes-par-0076",
+    "hermes-par-0077",
+    "hermes-par-0078",
+    "hermes-par-0079",
+    "hermes-par-0080",
+    "hermes-par-0081",
+    "hermes-par-0082",
+    "hermes-par-0083",
+    "hermes-par-0084",
+    "hermes-par-0085",
+    "hermes-par-0086",
+    "hermes-par-0087",
+    "hermes-par-0088",
+    "hermes-par-0089",
+    "hermes-par-0090",
+    "hermes-par-0091",
+    "hermes-par-0092",
+    "hermes-par-0093",
+    "hermes-par-0094",
+    "hermes-par-0095",
+    "hermes-par-0096",
+    "hermes-par-0097",
+    "hermes-par-0098",
+    "hermes-par-0099",
+    "hermes-par-0100",
+    "hermes-par-0101",
+    "hermes-par-0102",
+    "hermes-par-0103",
+    "hermes-par-0104",
+    "hermes-par-0105",
+    "hermes-par-0106",
+    "hermes-par-0107",
+    "hermes-par-0108",
+    "hermes-par-0109",
+    "hermes-par-0110",
+    "hermes-par-0111",
+    "hermes-par-0112",
+    "hermes-par-0113",
+    "hermes-par-0114",
+    "hermes-par-0115",
+    "hermes-par-0116",
+    "hermes-par-0117",
+    "hermes-par-0118",
+    "hermes-par-0119",
+    "hermes-par-0120",
+    "hermes-par-0121",
+    "hermes-par-0122",
+    "hermes-par-0123",
+    "hermes-par-0124",
+    "hermes-par-0125",
+    "hermes-par-0126",
+    "hermes-par-0127",
+    "hermes-par-0128",
+    "hermes-par-0129",
+    "hermes-par-0130",
+    "hermes-par-0131",
+    "hermes-par-0132",
+    "hermes-par-0133",
+    "hermes-par-0134",
+    "hermes-par-0135",
+    "hermes-par-0136",
+    "hermes-par-0137",
+    "hermes-par-0138",
+    "hermes-par-0139",
+    "hermes-par-0140",
+    "hermes-par-0141",
+    "hermes-par-0142",
+    "hermes-par-0143",
+    "hermes-par-0144",
+    "hermes-par-0145",
+    "hermes-par-0146",
+    "hermes-par-0147",
+    "hermes-par-0148",
+    "hermes-par-0149",
+    "hermes-par-0150",
+    "hermes-par-0151",
+    "hermes-par-0152",
+    "hermes-par-0153",
+    "hermes-par-0154",
+    "hermes-par-0155",
+    "hermes-par-0156",
+    "hermes-par-0157",
+    "hermes-par-0158",
+    "hermes-par-0159",
+    "hermes-par-0160",
+    "hermes-par-0161",
+    "hermes-par-0162",
+    "hermes-par-0163",
+    "hermes-par-0164",
+    "hermes-par-0165",
+    "hermes-par-0166",
+    "hermes-par-0167",
+    "hermes-par-0168",
+    "hermes-par-0169",
+    "hermes-par-0170",
+    "hermes-par-0171",
+    "hermes-par-0172",
+    "hermes-par-0173",
+    "hermes-par-0174",
+    "hermes-par-0175",
+    "hermes-par-0176",
+    "hermes-par-0177",
+    "hermes-par-0178",
+    "hermes-par-0179",
+    "hermes-par-0180",
+    "hermes-par-0181",
+    "hermes-par-0182",
+    "hermes-par-0183",
+    "hermes-par-0184",
+    "hermes-par-0185",
+    "hermes-par-0186",
+    "hermes-par-0187",
+    "hermes-par-0188",
+    "hermes-par-0189",
+    "hermes-par-0190",
+    "hermes-par-0191",
+    "hermes-par-0192",
+    "hermes-par-0193",
+    "hermes-par-0194",
+    "hermes-par-0195",
+    "hermes-par-0196",
+    "hermes-par-0197",
+    "hermes-par-0198",
+    "hermes-par-0199",
+    "hermes-par-0200",
+    "hermes-par-0201",
+    "hermes-par-0202",
+    "hermes-par-0203",
+    "hermes-par-0204",
+    "hermes-par-0205",
+    "hermes-par-0206",
+    "hermes-par-0207",
+    "hermes-par-0208",
+    "hermes-par-0209",
+    "hermes-par-0210",
+    "hermes-par-0211",
+    "hermes-par-0212",
+    "hermes-par-0213",
+    "hermes-par-0214",
+    "hermes-par-0215",
+    "hermes-par-0216",
+    "hermes-par-0217",
+    "hermes-par-0218",
+    "hermes-par-0219",
+    "hermes-par-0220",
+    "hermes-par-0221",
+    "hermes-par-0222",
+    "hermes-par-0223",
+    "hermes-par-0224",
+    "hermes-par-0225",
+    "hermes-par-0226",
+    "hermes-par-0227",
+    "hermes-par-0228",
+    "hermes-par-0229",
+    "hermes-par-0230",
+    "hermes-par-0231",
+    "hermes-par-0232",
+    "hermes-par-0233",
+    "hermes-par-0234",
+    "hermes-par-0235",
+    "hermes-par-0236",
+    "hermes-par-0237",
+    "hermes-par-0238",
+    "hermes-par-0239",
+    "hermes-par-0240",
+    "hermes-par-0241",
+    "hermes-par-0242",
+    "hermes-par-0243",
+    "hermes-par-0244",
+    "hermes-par-0245",
+    "hermes-par-0246",
+    "hermes-par-0247",
+    "hermes-par-0248",
+    "hermes-par-0249",
+    "hermes-par-0250",
+    "hermes-par-0251",
+    "hermes-par-0252",
+    "hermes-par-0253",
+    "hermes-par-0254",
+    "hermes-par-0255",
+    "hermes-par-0256",
+    "hermes-par-0257",
+    "hermes-par-0258",
+    "hermes-par-0259",
+    "hermes-par-0260",
+    "hermes-par-0261",
+    "hermes-par-0262",
+    "hermes-par-0263",
+    "hermes-par-0264",
+    "hermes-par-0265",
+    "hermes-par-0266",
+    "hermes-par-0267",
+    "hermes-par-0268",
+    "hermes-par-0269",
+    "hermes-par-0270",
+    "hermes-par-0271",
+    "hermes-par-0272",
+    "hermes-par-0273",
+    "hermes-par-0274",
+    "hermes-par-0275",
+    "hermes-par-0276",
+    "hermes-par-0277",
+    "hermes-par-0278",
+    "hermes-par-0279",
+    "hermes-par-0280",
+    "hermes-par-0281",
+    "hermes-par-0282",
+    "hermes-par-0283",
+    "hermes-par-0284",
+    "hermes-par-0285",
+    "hermes-par-0286",
+    "hermes-par-0287",
+    "hermes-par-0288",
+    "hermes-par-0289",
+    "hermes-par-0290",
+    "hermes-par-0291",
+    "hermes-par-0292",
+    "hermes-par-0293",
+    "hermes-par-0294",
+    "hermes-par-0295",
+    "hermes-par-0296",
+    "hermes-par-0297",
+    "hermes-par-0298",
+    "hermes-par-0299",
+    "hermes-par-0300",
+    "hermes-par-0301",
+    "hermes-par-0302",
+    "hermes-par-0303",
+    "hermes-par-0304",
+    "hermes-par-0305",
+    "hermes-par-0306",
+    "hermes-par-0307",
+    "hermes-par-0308",
+    "hermes-par-0309",
+    "hermes-par-0310",
+    "hermes-par-0311",
+    "hermes-par-0312",
+    "hermes-par-0313",
+    "hermes-par-0314",
+    "hermes-par-0315",
+    "hermes-par-0316",
+    "hermes-par-0317",
+    "hermes-par-0318",
+    "hermes-par-0319",
+    "hermes-par-0320",
+    "hermes-par-0321",
+    "hermes-par-0322",
+    "hermes-par-0323",
+    "hermes-par-0324",
+    "hermes-par-0325",
+    "hermes-par-0326",
+    "hermes-par-0327",
+    "hermes-par-0328",
+    "hermes-par-0329",
+    "hermes-par-0330",
+    "hermes-par-0331",
+    "hermes-par-0332",
+    "hermes-par-0333",
+    "hermes-par-0334",
+    "hermes-par-0335",
+    "hermes-par-0336",
+    "hermes-par-0337",
+    "hermes-par-0338",
+    "hermes-par-0339",
+    "hermes-par-0340",
+    "hermes-par-0341",
+    "hermes-par-0342",
+    "hermes-par-0343",
+    "hermes-par-0344",
+    "hermes-par-0345",
+    "hermes-par-0346",
+    "hermes-par-0347",
+    "hermes-par-0348",
+    "hermes-par-0349",
+    "hermes-par-0350",
+    "hermes-par-0351",
+    "hermes-par-0352",
+    "hermes-par-0353",
+    "hermes-par-0354",
+    "hermes-par-0355",
+    "hermes-par-0356",
+    "hermes-par-0357",
+    "hermes-par-0358",
+    "hermes-par-0359",
+    "hermes-par-0360",
+    "hermes-par-0361",
+    "hermes-par-0362",
+    "hermes-par-0363",
+    "hermes-par-0364",
+    "hermes-par-0365",
+    "hermes-par-0366",
+    "hermes-par-0367",
+    "hermes-par-0368",
+    "hermes-par-0369",
+    "hermes-par-0370",
+    "hermes-par-0371",
+    "hermes-par-0372",
+    "hermes-par-0373",
+    "hermes-par-0374",
+    "hermes-par-0375",
+    "hermes-par-0376",
+    "hermes-par-0377",
+    "hermes-par-0378",
+    "hermes-par-0379",
+    "hermes-par-0380",
+    "hermes-par-0381",
+    "hermes-par-0382",
+    "hermes-par-0383",
+    "hermes-par-0384",
+    "hermes-par-0385",
+    "hermes-par-0386",
+    "hermes-par-0387",
+    "hermes-par-0388",
+    "hermes-par-0389",
+    "hermes-par-0390",
+    "hermes-par-0391",
+    "hermes-par-0392",
+    "hermes-par-0393",
+    "hermes-par-0394",
+    "hermes-par-0395",
+    "hermes-par-0396",
+    "hermes-par-0397",
+    "hermes-par-0398",
+    "hermes-par-0399",
+    "hermes-par-0400",
+    "hermes-par-0401",
+    "hermes-par-0402",
+    "hermes-par-0403",
+    "hermes-par-0404",
+    "hermes-par-0405",
+    "hermes-par-0406",
+    "hermes-par-0407",
+    "hermes-par-0408",
+    "hermes-par-0409",
+    "hermes-par-0410",
+    "hermes-par-0411",
+    "hermes-par-0412",
+    "hermes-par-0413",
+    "hermes-par-0414",
+    "hermes-par-0415",
+    "hermes-par-0482",
+    "hermes-par-0483",
+    "hermes-par-0484",
+    "hermes-par-0485",
+    "hermes-par-0486",
+    "hermes-par-0487",
+    "hermes-par-0488",
+    "hermes-par-0489",
+    "hermes-par-0490",
+    "hermes-par-0491",
+    "hermes-par-0492",
+    "hermes-par-0493",
+    "hermes-par-0494",
+    "hermes-par-0495",
+    "hermes-par-0496",
+    "hermes-par-0497",
+    "hermes-par-0498",
+    "hermes-par-0499",
+    "hermes-par-0500",
+    "hermes-par-0501",
+    "hermes-par-0502",
+    "hermes-par-0503",
+    "hermes-par-0504",
+    "hermes-par-0505",
+    "hermes-par-0506",
+    "hermes-par-0507",
+    "hermes-par-0508",
+    "hermes-par-0509",
+    "hermes-par-0510",
+    "hermes-par-0511",
+    "hermes-par-0512",
+    "hermes-par-0513",
+    "hermes-par-0514",
+    "hermes-par-0515",
+    "hermes-par-0516",
+    "hermes-par-0517",
+    "hermes-par-0518",
+    "hermes-par-0519",
+    "hermes-par-0520",
+    "hermes-par-0521",
+    "hermes-par-0522",
+    "hermes-par-0523",
+    "hermes-par-0524",
+    "hermes-par-0525",
+    "hermes-par-0526",
+    "hermes-par-0527",
+    "hermes-par-0528",
+    "hermes-par-0529",
+    "hermes-par-0530",
+    "hermes-par-0531",
+    "hermes-par-0532",
+    "hermes-par-0533",
+    "hermes-par-0534",
+    "hermes-par-0535",
+    "hermes-par-0536",
+    "hermes-par-0537",
+    "hermes-par-0538",
+    "hermes-par-0539",
+    "hermes-par-0540",
+    "hermes-par-0541",
+    "hermes-par-0542",
+    "hermes-par-0543",
+    "hermes-par-0544",
+    "hermes-par-0545",
+    "hermes-par-0546",
+    "hermes-par-0547",
+    "hermes-par-0548",
+    "hermes-par-0549",
+    "hermes-par-0550",
+    "hermes-par-0551",
+    "hermes-par-0552",
+    "hermes-par-0553",
+    "hermes-par-0554",
+    "hermes-par-0555",
+    "hermes-par-0556",
+    "hermes-par-0557",
+    "hermes-par-0558",
+    "hermes-par-0559",
+    "hermes-par-0560",
+    "hermes-par-0561",
+    "hermes-par-0562",
+    "hermes-par-0563",
+    "hermes-par-0564",
+    "hermes-par-0565"
+  ],
+  "repository": {
+    "branch": "main",
+    "change_fingerprint": "2de370c7fd848733af796560fda5210c2650d573cc8d11bdbe7dc2dc37e934fa",
+    "changed_files": [
+      {
+        "path": "gitignore",
+        "status": "M "
+      },
+      {
+        "path": "Cargo.lock",
+        "status": " M"
+      },
+      {
+        "path": "Cargo.toml",
+        "status": " M"
+      },
+      {
+        "path": "README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/Cargo.toml",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/agent/hermes-page.mjs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/agent/hermes-page.test.mjs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/AGENT_AUTOMATION.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/AGENT_CONTROL_CROSSWALK.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/SOURCE_AUDIT.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/bin/hermes-automation.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/files.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/layout.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/lib.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/main.rs",
+        "status": " M"
+      },
+      {
+        "path": "docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/events.jsonl",
+        "status": "??"
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": "??"
+      },
+      {
+        "path": ".doofus/schemas/event.schema.json",
+        "status": "??"
+      },
+      {
+        "path": ".doofus/schemas/handoff.schema.json",
+        "status": "??"
+      },
+      {
+        "path": ".doofus/schemas/task-ledger.schema.json",
+        "status": "??"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/hermes-native-window-capabilities-20261115.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/hermes-native-window-capabilities-20261115.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/plugins-busy-current-20261115.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/recent-session-appearance-20261115.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/recent-session-appearance-20261115.png.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v1.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v2.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v3.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/recent-session-groups-20261115-v3.png.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/REQUIREMENT_CROSSWALK.csv",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/artifacts.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/bin/hermes_automation/native_uia_tree.ps1",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/native_oauth.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/native_token_store.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/native_window.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/remote_probe.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/repo_discovery.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/session_peer_sync.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_requirement_crosswalk.py",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/tools/doofus_task.py",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/tools/test_doofus_task.py",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/Cargo.toml",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/VENDOR_NOTES.md",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/examples/standalone_consumer.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/audit.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/constraints.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/custom_layout.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/diff.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/drag.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/events.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/extensions.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/history.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/lib.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/modality.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/model.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/operations.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/persistence.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/profiles.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/replacement.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/rules.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/service.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/theme.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/urne.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/src/workspaces.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/capability_projection_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/core_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/drag_session_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/group_minimize_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/modality_switch_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/native_window_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/profile_catalog_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/scratchpad_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/service_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/structural_modality_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/tab_pinning_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/theme_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-core/tests/workspace_membership_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/Cargo.toml",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/VENDOR_NOTES.md",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/examples/framework_consumer.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/examples/snap_policy_bench.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/examples/spatial_index_bench.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/src/animation.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/src/camera.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/src/effects.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/src/lib.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/src/scene.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/src/spatial.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/src/timeline.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/effects_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/group_minimize_projection.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/layout_provider_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/morph_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/stress_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/timeline_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/transition_group_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/tween_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/vendor/doofusdock-presentation/tests/workspace_membership_contract.rs",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-busy-long-transcript-20261115.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-busy-plugin-catalog-20261115.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-busy-recent-sessions-20261115.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-native-artifacts-files-20261116.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-native-artifacts-index-20261116.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-native-artifacts-links-20261116.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-native-plugins-live-after-wheel-20261116.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-native-plugins-live-after-wheel-final-20261116.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/hermes-native-plugins-live-before-scroll-20261116.png",
+        "status": "??"
+      },
+      {
+        "path": "docs/AGENT_HANDOFF.md",
+        "status": "??"
+      },
+      {
+        "path": "docs/architecture/AGENT_TASK_CONTRACTS.md",
+        "status": "??"
+      }
+    ],
+    "head_commit": "b8db79bbd16b6258473638ab8130a77da2cb4d28",
+    "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
+    "worktree_id": "1322166886f6d3be0108b6ae"
+  },
+  "revision": 110,
+  "schema_version": 1,
+  "scope_task_id": "hermes-native-project",
+  "state_revision": 110,
+  "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
+  "task_id": "hermes-par-0011",
+  "task_ledger_revision": 9,
+  "tests_executed": [
+    {
+      "command": "test_doofus_task.py provider handoff and crash recovery suite",
+      "result": "pass",
+      "timestamp": "2026-11-17T01:08:15Z"
+    },
+    {
+      "command": "cargo all-target feature suite",
+      "result": "pass",
+      "timestamp": "2026-11-17T01:08:15Z"
+    },
+    {
+      "command": "provider handoff, crash recovery, and preview output suite",
+      "result": "pass",
+      "timestamp": "2026-11-17T01:14:17Z"
+    },
+    {
+      "command": "provider handoff/crash recovery/preview suite",
+      "result": "PASS: Python 14/14; Rust 230+15+3; progress generator and schema validation pass",
+      "timestamp": "2026-11-17T01:36:49Z"
+    },
+    {
+      "command": "full Rust all-target feature suite",
+      "result": "PASS: Python 14/14; Rust 230+15+3; progress generator and schema validation pass",
+      "timestamp": "2026-11-17T01:36:49Z"
+    },
+    {
+      "command": "full pinned-feature Rust suite",
+      "result": "PASS: Rust 248 total; Python 14 total; evidence/state validators pass",
+      "timestamp": "2026-11-17T01:38:07Z"
+    },
+    {
+      "command": "provider-neutral handoff and crash recovery suite",
+      "result": "PASS: Rust 248 total; Python 14 total; evidence/state validators pass",
+      "timestamp": "2026-11-17T01:38:07Z"
+    },
+    {
+      "command": "cargo test --all-targets --features agent-automation: PASS 232 library + 15 protocol + 3 launcher",
+      "result": "PASS: Rust 250 tests; Python 14/14; check, format, diff, progress generator, and handoff schema/state validation passed. PAR-0011 partial; source acceptance 0/499.",
+      "timestamp": "2026-11-17T15:27:02Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py -q: PASS 14/14",
+      "result": "PASS: Rust 250 tests; Python 14/14; check, format, diff, progress generator, and handoff schema/state validation passed. PAR-0011 partial; source acceptance 0/499.",
+      "timestamp": "2026-11-17T15:27:02Z"
+    },
+    {
+      "command": "cargo check --all-targets --features agent-automation: PASS",
+      "result": "PASS: Rust 250 tests; Python 14/14; check, format, diff, progress generator, and handoff schema/state validation passed. PAR-0011 partial; source acceptance 0/499.",
+      "timestamp": "2026-11-17T15:27:02Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check; git diff --check: PASS",
+      "result": "PASS: Rust 250 tests; Python 14/14; check, format, diff, progress generator, and handoff schema/state validation passed. PAR-0011 partial; source acceptance 0/499.",
+      "timestamp": "2026-11-17T15:27:02Z"
+    },
+    {
+      "command": "build_implementation_progress.py; doofus_task.py validate: PASS",
+      "result": "PASS: Rust 250 tests; Python 14/14; check, format, diff, progress generator, and handoff schema/state validation passed. PAR-0011 partial; source acceptance 0/499.",
+      "timestamp": "2026-11-17T15:27:02Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: check/fmt/progress/state/diff; fixed package 565/565 inventory rows and 14 source inspection receipts; PyYAML missing so optional YAML parse skipped.",
+      "timestamp": "2026-11-17T16:00:31Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py -q",
+      "result": "PASS: check/fmt/progress/state/diff; fixed package 565/565 inventory rows and 14 source inspection receipts; PyYAML missing so optional YAML parse skipped.",
+      "timestamp": "2026-11-17T16:00:31Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation; cargo fmt --all -- --check; python apps/hermes-native/tools/build_implementation_progress.py; python apps/hermes-native/tools/doofus_task.py validate; fixed source package validator; git diff --check",
+      "result": "PASS: check/fmt/progress/state/diff; fixed package 565/565 inventory rows and 14 source inspection receipts; PyYAML missing so optional YAML parse skipped.",
+      "timestamp": "2026-11-17T16:00:31Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --all-targets --features agent-automation",
+      "result": "PASS: Rust 245 library + 15 automation protocol + 3 launcher; Python 14/14; check/fmt/progress/diff passed; 23/499 reviewed and 0/499 accepted",
+      "timestamp": "2026-11-17T17:08:00Z"
+    },
+    {
+      "command": "python test_doofus_task.py -v (cwd apps/hermes-native/tools)",
+      "result": "PASS: Rust 245 library + 15 automation protocol + 3 launcher; Python 14/14; check/fmt/progress/diff passed; 23/499 reviewed and 0/499 accepted",
+      "timestamp": "2026-11-17T17:08:00Z"
+    },
+    {
+      "command": "cargo check --manifest-path apps/hermes-native/Cargo.toml --all-targets --features agent-automation",
+      "result": "PASS: Rust 245 library + 15 automation protocol + 3 launcher; Python 14/14; check/fmt/progress/diff passed; 23/499 reviewed and 0/499 accepted",
+      "timestamp": "2026-11-17T17:08:00Z"
+    },
+    {
+      "command": "cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check",
+      "result": "PASS: Rust 245 library + 15 automation protocol + 3 launcher; Python 14/14; check/fmt/progress/diff passed; 23/499 reviewed and 0/499 accepted",
+      "timestamp": "2026-11-17T17:08:00Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: Rust 245 library + 15 automation protocol + 3 launcher; Python 14/14; check/fmt/progress/diff passed; 23/499 reviewed and 0/499 accepted",
+      "timestamp": "2026-11-17T17:08:00Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS: Rust 245 library + 15 automation protocol + 3 launcher; Python 14/14; check/fmt/progress/diff passed; 23/499 reviewed and 0/499 accepted",
+      "timestamp": "2026-11-17T17:08:00Z"
+    },
+    {
+      "command": "python -m unittest test_doofus_task.DoofusTaskTests.test_all_provider_pairings_require_explicit_resume_and_preserve_task_state -v",
+      "result": "PASS: all six directed provider pairings explicitly resumed; full Python continuation suite 15/15",
+      "timestamp": "2026-11-17T17:11:01Z"
+    },
+    {
+      "command": "python test_doofus_task.py -v (cwd apps/hermes-native/tools)",
+      "result": "PASS: all six directed provider pairings explicitly resumed; full Python continuation suite 15/15",
+      "timestamp": "2026-11-17T17:11:01Z"
+    },
+    {
+      "command": "python -m unittest test_doofus_task.DoofusTaskTests.test_all_provider_pairings_require_explicit_resume_and_preserve_task_state -v",
+      "result": "PASS: all six directed handoff pairings explicitly resume; full Python suite 15/15",
+      "timestamp": "2026-11-17T17:12:17Z"
+    },
+    {
+      "command": "python test_doofus_task.py -v (cwd apps/hermes-native/tools)",
+      "result": "PASS: all six directed handoff pairings explicitly resume; full Python suite 15/15",
+      "timestamp": "2026-11-17T17:12:17Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --all-targets --features agent-automation: 245 library +15 automation protocol +3 launcher passed",
+      "result": "PASS: canonical state valid; 25 recorded runs passed; 23/499 reviewed, 0/499 accepted, 0 blocked; ETA unavailable for insufficient phase evidence",
+      "timestamp": "2026-11-17T17:13:09Z"
+    },
+    {
+      "command": "python test_doofus_task.py -v from apps/hermes-native/tools: 15/15 passed including all six directed provider pairs",
+      "result": "PASS: canonical state valid; 25 recorded runs passed; 23/499 reviewed, 0/499 accepted, 0 blocked; ETA unavailable for insufficient phase evidence",
+      "timestamp": "2026-11-17T17:13:09Z"
+    },
+    {
+      "command": "cargo check --manifest-path apps/hermes-native/Cargo.toml --all-targets --features agent-automation; cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check; python apps/hermes-native/tools/build_implementation_progress.py; git diff --check",
+      "result": "PASS: canonical state valid; 25 recorded runs passed; 23/499 reviewed, 0/499 accepted, 0 blocked; ETA unavailable for insufficient phase evidence",
+      "timestamp": "2026-11-17T17:13:09Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py progress --json",
+      "result": "PASS: prior report had 28 passing evidence commands, 23/499 reviewed and 0/499 accepted; this report is recorded as command 29; ETA unavailable and critical path unmapped",
+      "timestamp": "2026-11-17T17:14:33Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: 246 library, 15 automation protocol, 3 launcher tests",
+      "timestamp": "2026-11-17T17:25:59Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: 251 library, 15 automation protocol, 3 launcher tests",
+      "timestamp": "2026-11-17T17:43:05Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "passed",
+      "timestamp": "2026-11-17T18:02:52Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "passed",
+      "timestamp": "2026-11-17T18:02:52Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation",
+      "result": "passed",
+      "timestamp": "2026-11-17T18:02:52Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "passed",
+      "timestamp": "2026-11-17T18:02:52Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "passed",
+      "timestamp": "2026-11-17T18:02:52Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "passed",
+      "timestamp": "2026-11-17T18:02:52Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "timestamp": "2026-11-17T18:02:52Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS: Rust 259 library + 15 protocol + 3 launcher; Python continuity 15/15; cargo check, format, progress locator generation, task validation, fixed package validation and diff check passed.",
+      "timestamp": "2026-11-17T18:41:59Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS: 262 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:04:53Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: revision 36 state validated before this checkpoint; 54 prior evidence commands; 499-row status summary and diff check pass; revision 37 records 58 total commands.",
+      "timestamp": "2026-11-17T19:06:32Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py progress --json",
+      "result": "PASS: revision 36 state validated before this checkpoint; 54 prior evidence commands; 499-row status summary and diff check pass; revision 37 records 58 total commands.",
+      "timestamp": "2026-11-17T19:06:32Z"
+    },
+    {
+      "command": "CSV summary: 499 rows; 6 implemented, 17 partial, 476 unknown, 0 accepted",
+      "result": "PASS: revision 36 state validated before this checkpoint; 54 prior evidence commands; 499-row status summary and diff check pass; revision 37 records 58 total commands.",
+      "timestamp": "2026-11-17T19:06:32Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS: revision 36 state validated before this checkpoint; 54 prior evidence commands; 499-row status summary and diff check pass; revision 37 records 58 total commands.",
+      "timestamp": "2026-11-17T19:06:32Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS: 265 library + 15 automation protocol + 3 launcher; continuity 15/15; check/fmt/progress/task/package/diff all pass.",
+      "timestamp": "2026-11-17T19:24:41Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS: 270 library + 15 protocol + 3 launcher; continuity 15/15; all-target check/format/progress/task/package/diff pass; 23 reviewed, 6 implemented, 17 partial, 476 unknown; 0/499 accepted; package 565 rows.",
+      "timestamp": "2026-11-17T19:50:28Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet (273 library + 15 protocol + 3 launcher)",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py (15/15)",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py (23 reviewed; 6 implemented, 17 partial, 476 unknown; 0/499 accepted)",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "pinned package validator (565 rows; optional PyYAML skipped)",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS; focused project deletion tests also passed",
+      "timestamp": "2026-11-17T20:12:57Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --lib auto_project --features agent-automation -- --nocapture",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS; Rust 280+15+3, provider continuity 15/15, progress 23/499 reviewed; 0/499 accepted",
+      "timestamp": "2026-11-17T20:38:46Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py: 16/16 passed",
+      "result": "PASS",
+      "timestamp": "2026-11-17T20:45:58Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate: revision 50 valid before checkpoint",
+      "result": "PASS",
+      "timestamp": "2026-11-17T20:45:58Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py: 23 reviewed; 6 implemented, 17 partial, 476 unknown; 0/499 accepted",
+      "result": "PASS",
+      "timestamp": "2026-11-17T20:45:58Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py progress --json: fixed 499 denominator and unavailable project ETA/critical path retained",
+      "result": "PASS",
+      "timestamp": "2026-11-17T20:45:58Z"
+    },
+    {
+      "command": "git diff --check: passed with existing LF-to-CRLF notices",
+      "result": "PASS",
+      "timestamp": "2026-11-17T20:45:58Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --lib repo_discovery -- --nocapture",
+      "result": "PASS: 6 passed, 0 failed, 149 filtered out",
+      "timestamp": "2026-11-17T21:05:33Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:42:58Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:42:58Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --lib repo_scan -- --nocapture",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:42:58Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --lib repo_discovery -- --nocapture",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:42:58Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --lib settings_overlay -- --nocapture",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:42:58Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation; cargo fmt --all -- --check; pinned package validator; progress generation; git diff --check",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:42:58Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:52:56Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:52:56Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --lib remote_repo_discovery_uses_source_params_and_rejects_missing_repo_list -- --nocapture",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:52:56Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --lib repo_discovery_ -- --nocapture",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:52:56Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation; cargo fmt --all -- --check; progress generator; pinned package validator; git diff --check",
+      "result": "PASS; package validator skipped optional PyYAML parsing",
+      "timestamp": "2026-11-17T21:52:56Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; all format/check/progress/task/package/diff validations pass",
+      "timestamp": "2026-11-17T22:21:20Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; all format/check/progress/task/package/diff validations pass",
+      "timestamp": "2026-11-17T22:21:20Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; all format/check/progress/task/package/diff validations pass",
+      "timestamp": "2026-11-17T22:21:20Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; all format/check/progress/task/package/diff validations pass",
+      "timestamp": "2026-11-17T22:21:20Z"
+    },
+    {
+      "command": "python apps/hermes-native/docs/reference/Hermes_Upstream_UI_DoofusDock_Rust_Parity_2026-11-13/tools/validate_package.py",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; all format/check/progress/task/package/diff validations pass",
+      "timestamp": "2026-11-17T22:21:20Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check; cargo check -p hermes-native --all-targets --features agent-automation; git diff --check",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; all format/check/progress/task/package/diff validations pass",
+      "timestamp": "2026-11-17T22:21:20Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --quiet",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; fixed overlay 36/499; task state valid; supplemental validator 491 pending; diff clean",
+      "timestamp": "2026-11-17T22:28:11Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 301 library + 15 protocol + 3 launcher; continuity 16/16; fixed overlay 36/499; task state valid; supplemental validator 491 pending; diff clean",
+      "timestamp": "2026-11-17T22:28:11Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS 16/16; Python compilation PASS; progress preserves 36/499 reviewed, 0/499 accepted, 499 live unverified, 499 visual pairs unpaired, ETA unavailable/confidence unavailable.",
+      "timestamp": "2026-11-17T22:43:13Z"
+    },
+    {
+      "command": "python -m py_compile apps/hermes-native/tools/doofus_task.py apps/hermes-native/tools/test_doofus_task.py; python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS 16/16; Python compilation PASS; durable task ledger revision 9; state revision 64 valid; 36/499 reviewed; 0/499 accepted; 499 live unverified; 499 visuals unpaired; ETA/confidence unavailable.",
+      "timestamp": "2026-11-17T22:46:06Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS 18/18; Python compilation PASS; task/handoff schema valid; git diff --check exit 0 with CRLF notices; isolated DoofusDock workspace PASS 427 tests / 42 suites; 36/499 reviewed, 0/499 accepted, 499 live-unverified, 499 visual pairs unpaired, ETA/confidence unavailable.",
+      "timestamp": "2026-11-17T23:06:24Z"
+    },
+    {
+      "command": "cargo test --workspace --locked in isolated DoofusDock worktree",
+      "result": "PASS: 427 tests across 42 suites; pinned HEAD f6eb49b9e488f4e851d8d3abe18e95d296201bba; no commit.",
+      "timestamp": "2026-11-17T23:07:20Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 303 library + 15 automation + 3 launcher; provider continuity 18/18; progress 36/499 reviewed (6 implemented, 30 partial, 463 unknown; 0 accepted); git diff --check exit 0.",
+      "timestamp": "2026-11-17T23:25:24Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 304 library + 15 automation + 3 launcher; continuity 18/18; progress 36/499 reviewed (6 implemented, 30 partial, 463 unknown; 0 accepted); task ledger validation passed.",
+      "timestamp": "2026-11-17T23:34:48Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 304 library + 15 automation + 3 launcher; continuity 18/18; overlay 36/499 reviewed (6 implemented, 30 partial, 463 unknown; 0 accepted); source acceptance, live runtime and visual pairs unchanged pending.",
+      "timestamp": "2026-11-17T23:37:53Z"
+    },
+    {
+      "command": "layout::tests::semantic_file_visibility_restores_the_same_right_edge_group",
+      "result": "PASS: 305 library + 15 protocol + 3 launcher",
+      "timestamp": "2026-11-17T23:58:02Z"
+    },
+    {
+      "command": "agent-automation feature suite",
+      "result": "PASS: 305 library + 15 protocol + 3 launcher",
+      "timestamp": "2026-11-17T23:58:02Z"
+    },
+    {
+      "command": "layout::tests::semantic_file_cross_restore_supports_main_row_inside_column_root",
+      "result": "PASS: 307 library + 15 protocol + 3 launcher",
+      "timestamp": "2026-11-18T00:10:49Z"
+    },
+    {
+      "command": "layout::tests::nested_physical_edge_split_falls_back_to_semantic_file_toggle",
+      "result": "PASS: 307 library + 15 protocol + 3 launcher",
+      "timestamp": "2026-11-18T00:10:49Z"
+    },
+    {
+      "command": "agent-automation feature suite",
+      "result": "PASS: 307 library + 15 protocol + 3 launcher",
+      "timestamp": "2026-11-18T00:10:49Z"
+    },
+    {
+      "command": "narrow_pane_overlay_is_transient_below_dock_breakpoint",
+      "result": "PASS: 310 library, 15 automation protocol, 3 launcher; continuity 18/18; all-target check and format pass; progress 36/499 reviewed, 6 implemented, 30 partial, 463 unknown, 0 accepted; package validator 491 pending.",
+      "timestamp": "2026-11-18T00:33:51Z"
+    },
+    {
+      "command": "dock_breakpoint_uses_available_content_width",
+      "result": "PASS: 310 library, 15 automation protocol, 3 launcher; continuity 18/18; all-target check and format pass; progress 36/499 reviewed, 6 implemented, 30 partial, 463 unknown, 0 accepted; package validator 491 pending.",
+      "timestamp": "2026-11-18T00:33:51Z"
+    },
+    {
+      "command": "wide_pane_toggle_mutates_canonical_dock_layout",
+      "result": "PASS: 310 library, 15 automation protocol, 3 launcher; continuity 18/18; all-target check and format pass; progress 36/499 reviewed, 6 implemented, 30 partial, 463 unknown, 0 accepted; package validator 491 pending.",
+      "timestamp": "2026-11-18T00:33:51Z"
+    },
+    {
+      "command": "narrow_pane_overlay_is_transient_below_dock_breakpoint",
+      "result": "PASS focused 1/1; full suite 311 library + 15 automation protocol + 3 launcher; continuity 18/18; all-target check; progress 38/499 reviewed, 0 accepted; task validation rev79/ledger9; supplemental 491 pending; Python compile, format and diff.",
+      "timestamp": "2026-11-18T01:02:12Z"
+    },
+    {
+      "command": "narrow_pane_overlay_is_transient_below_dock_breakpoint",
+      "result": "PASS: focused 1/1; full 311+15+3 feature tests; continuity 18/18; all-target check; progress 38/499, 0 accepted; validators, Python compile, format and diff checks.",
+      "timestamp": "2026-11-18T01:02:57Z"
+    },
+    {
+      "command": "typed_app_action_and_human_widget_share_the_registered_handler; narrow_pane_overlay_is_transient_below_dock_breakpoint",
+      "result": "PASS 311 library + 15 automation protocol + 3 launcher; focused UI alias and protocol tests; continuity 18/18; all-target check; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); task validator rev81/ledger9; package 491 pending; Python compile, format and diff.",
+      "timestamp": "2026-11-18T01:12:36Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 317 library + 15 automation protocol + 3 launcher tests; workspace/all-target check passed; continuity 18/18; progress 38/499 reviewed, 6 implemented, 32 partial, 461 unknown, acceptance 0/499; package validation 491 pending; task validation revision 83/ledger 9; pycompile, rustfmt and git diff --check passed.",
+      "timestamp": "2026-11-18T15:17:46Z"
+    },
+    {
+      "command": "doofus_task validate",
+      "result": "PASS: checkpoint 84 logged; advancing final tested checkpoint and validating ledger.",
+      "timestamp": "2026-11-18T15:18:12Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 318 library + 15 automation protocol + 3 launcher tests; workspace all-target check; continuity 18/18; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); package validator 491 pending; Python compile, rustfmt, diff check; task validator revision85/ledger9. Focused Files activation and Cron route regressions pass.",
+      "timestamp": "2026-11-18T15:31:23Z"
+    },
+    {
+      "command": "doofus_task validate",
+      "result": "PASS: checkpoint 86 recorded; advancing final checkpoint and validating canonical ledger.",
+      "timestamp": "2026-11-18T15:42:38Z"
+    },
+    {
+      "command": "gateway::tests::command_center_system_loads_profile_scoped_status_and_filtered_logs",
+      "result": "PASS: 321 library + 15 automation protocol + 3 launcher tests; workspace check; continuity 18/18; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); package validator 491 pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:03:02Z"
+    },
+    {
+      "command": "app::tests::command_center_system_renders_cached_gateway_status_and_recent_logs",
+      "result": "PASS: 321 library + 15 automation protocol + 3 launcher tests; workspace check; continuity 18/18; progress 38/499 (6 implemented, 32 partial, 461 unknown, 0 accepted); package validator 491 pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:03:02Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:46:42Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:46:42Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:46:42Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:46:42Z"
+    },
+    {
+      "command": "pinned 2026-11-13 validate_package.py",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:46:42Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:55:22Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:55:22Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:55:22Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:55:22Z"
+    },
+    {
+      "command": "pinned 2026-11-13 validate_package.py",
+      "result": "PASS: 323 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T16:55:22Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 325 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T18:18:36Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked",
+      "result": "PASS: 325 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T18:18:36Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 325 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T18:18:36Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 325 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T18:18:36Z"
+    },
+    {
+      "command": "pinned 2026-11-13 validate_package.py",
+      "result": "PASS: 325 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T18:18:36Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS: 327 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T19:52:49Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked",
+      "result": "PASS: 327 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T19:52:49Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 327 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T19:52:49Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_implementation_progress.py",
+      "result": "PASS: 327 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T19:52:49Z"
+    },
+    {
+      "command": "pinned 2026-11-13 validate_package.py",
+      "result": "PASS: 327 library + 15 protocol + 3 launcher; workspace check; continuity 18/18; 38/499 reviewed (6 implemented, 32 partial, 461 unknown, 0 accepted); 491 supplemental pending; compileall, rustfmt and diff check pass.",
+      "timestamp": "2026-11-18T19:52:49Z"
+    }
+  ],
+  "uncertain_operations": [],
+  "unresolved_questions": [],
+  "updated_at": "2026-11-18T21:41:55Z"
+}
