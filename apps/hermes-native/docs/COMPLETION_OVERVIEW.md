@@ -163,3 +163,10 @@ Full validation passes: 337 library tests, 15 automation-protocol tests, 3 launc
 The Command Center list now shows only a compact session title and local activity time, with pin/export/delete glyphs visually revealed on row hover or focus and an available-height scroll area. Native-only row metadata was removed. The headless runner now has an isolated eight-row fixture and captured a distinct 1440×900 image. Icons are approximations and date formatting is not localized like browser `Intl`; the screenshot is target-only and does not prove source visual parity.
 
 Validation passes: 339 library tests, 15 automation protocol tests, 3 launcher tests, locked workspace/all-target check, task continuity 18/18, package validation (491 pending), progress generation (38/499 reviewed; 0/499 accepted), Python compileall, rustfmt, diff check, and fixture inspect/capture. Workspace warnings are existing dead-code warnings. No live gateway or installed app was opened.
+
+
+### Command Center navigation frame — 2026-11-18T23:45:00Z
+
+Implemented: wide left-rail section navigation, compact dropdown, breadcrumb with Sessions search, replace-style section route readback, near-fullscreen overlay and floating close control. Headless wide/compact captures and interaction tests pass.
+
+Partial/unverified: narrow global toolbar still overlaps behind the modal; icons are approximations; captures are synthetic and target-only. No pinned-source screenshot pair, installed Windows UI/live gateway proof, browser-history behavior or formal matrix acceptance. Project-level fixed-source review is still 38/499 (7.6%); accepted is still 0/499.

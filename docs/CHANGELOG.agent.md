@@ -2198,3 +2198,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No benchmark was requested or run; list height is bounded to available content.
 - risks: Icons are glyph approximations; date formatting is English medium/short style rather than locale-specific Intl; capture is target-only, offline evidence.
 - follow_up: Complete all validators and continue remaining pinned Command Center visual/state gaps on `main` only.
+
+
+### Hermes Native Command Center navigation and overlay framing — 2026-11-18T23:45:00Z
+
+- id: `hermes-command-center-navigation-frame-20261118`
+- timestamp: `2026-11-18T23:45:00Z`
+- what: Added pinned wide left-rail and narrow dropdown navigation, breadcrumb/search header placement, near-full viewport Command Center overlay and floating close control. Fixed clipped session action hit targets and removed duplicate Maintenance heading. Added wide and compact target-only screenshots.
+- why: Existing Command Center screenshots and layout diverged visibly from the pinned source structure.
+- components: `apps/hermes-native/src/app.rs`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/SOURCE_AUDIT.md`, `apps/hermes-native/docs/BACKLOG.md`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, `apps/hermes-native/README.md`, `artifacts/agent-ui/command-center-sessions-navigation.png`, `artifacts/agent-ui/command-center-sessions-compact.png`.
+- type: Fixed-source UI parity and responsive interaction.
+- validation: PASS 340 library + 15 automation protocol + 3 launcher tests; headless wide/compact runner captures and route/delete/maintenance regressions. Remaining validators and publication are recorded in execution log after completion. No live gateway or installed UI was opened.
+- performance: No benchmark requested; session actions remain bounded by the existing page contract.
+- risks: 700px global toolbar still overlaps behind the overlay; vector icon artwork is approximate; captures are synthetic target-only; formal acceptance remains 0/499.
+- follow_up: Fix narrow global toolbar and continue pinned Command Center source review on `main` only.

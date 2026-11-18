@@ -1,5 +1,5 @@
 {
-  "revision": 9,
+  "revision": 10,
   "schema_version": 1,
   "tasks": [
     {
@@ -903,8 +903,8 @@
             },
             {
               "agent_identity": {
-                "model": null,
-                "provider": null
+                "model": "gpt-6.2-astra",
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -913,12 +913,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-18T23:47:52Z",
+              "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
               "objective": "ui-display-breadcrumbs-and-navigation-history",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "implementation",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -926,12 +927,16 @@
                 "source_pair_state": "pending",
                 "visual_pair_state": "not_paired"
               },
-              "size_units": null,
+              "size_units": 1.0,
               "started_at": null,
-              "state": "unknown",
+              "state": "in_progress",
               "task_id": "hermes-par-0027",
               "title": "PAR-0027 Display breadcrumbs and navigation history",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#command_center_section_selection_updates_replace_style_route_query",
+                "apps/hermes-native/src/app.rs#command_center_navigation_uses_compact_picker_below_source_breakpoint",
+                "apps/hermes-native/docs/PLAN.md#Revision 225"
+              ]
             },
             {
               "agent_identity": {
@@ -16169,5 +16174,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-17T22:43:23Z"
+  "updated_at": "2026-11-18T23:47:52Z"
 }

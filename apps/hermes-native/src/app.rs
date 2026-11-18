@@ -138,6 +138,66 @@ enum CommandCenterSection {
     Maintenance,
 }
 
+fn paint_command_center_section_icon(
+    ui: &Ui,
+    rect: Rect,
+    section: CommandCenterSection,
+    color: Color32,
+) {
+    let center = egui::pos2(rect.left() + 17.0, rect.center().y);
+    let stroke = Stroke::new(1.25, color);
+    let painter = ui.painter();
+    match section {
+        CommandCenterSection::Sessions => {
+            painter.circle_stroke(center, 5.0, stroke);
+            painter.line_segment(
+                [
+                    center + egui::vec2(-3.5, 3.5),
+                    center + egui::vec2(-5.0, 6.0),
+                ],
+                stroke,
+            );
+        }
+        CommandCenterSection::System => {
+            let points = [
+                center + egui::vec2(-7.0, 0.0),
+                center + egui::vec2(-3.0, 0.0),
+                center + egui::vec2(-1.0, -4.0),
+                center + egui::vec2(2.0, 4.0),
+                center + egui::vec2(4.0, -2.0),
+                center + egui::vec2(7.0, -2.0),
+            ];
+            for pair in points.windows(2) {
+                painter.line_segment([pair[0], pair[1]], stroke);
+            }
+        }
+        CommandCenterSection::Usage => {
+            for (index, height) in [5.0, 9.0, 7.0].into_iter().enumerate() {
+                let left = center.x - 6.0 + index as f32 * 4.5;
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        egui::pos2(left, center.y + 5.0 - height),
+                        egui::vec2(2.5, height),
+                    ),
+                    0.5,
+                    color,
+                );
+            }
+        }
+        CommandCenterSection::Maintenance => {
+            painter.circle_stroke(center, 3.5, stroke);
+            for direction in [
+                egui::vec2(0.0, -6.5),
+                egui::vec2(0.0, 6.5),
+                egui::vec2(-6.5, 0.0),
+                egui::vec2(6.5, 0.0),
+            ] {
+                painter.line_segment([center + direction * 0.72, center + direction], stroke);
+            }
+        }
+    }
+}
+
 fn format_compact_count(value: u64) -> String {
     match value {
         value if value >= 1_000_000_000 => format!("{:.1}B", value as f64 / 1_000_000_000.0),
@@ -3899,6 +3959,9 @@ fn render_message() -> &'static str {
             return;
         }
         let rect = rect.intersect(ui.clip_rect());
+        if rect.width() < 2.0 || rect.height() < 2.0 {
+            return;
+        }
         let mut child = ui.new_child(
             egui::UiBuilder::new()
                 .max_rect(rect)
@@ -17510,7 +17573,6 @@ fn render_message() -> &'static str {
         let mut pause_curator = None;
         let mut confirmation = None;
         ui.horizontal(|ui| {
-            ui.heading("Maintenance");
             if ui
                 .add_enabled(connected && !busy, egui::Button::new("Refresh"))
                 .clicked()
@@ -17809,20 +17871,103 @@ fn render_message() -> &'static str {
         let mut load_system = false;
         let mut load_usage = false;
         let mut load_maintenance = false;
-        ui.horizontal_wrapped(|ui| {
+        let content_rect = ui.available_rect_before_wrap().intersect(ui.clip_rect());
+        let wide_viewport = ui.ctx().viewport_rect().width() >= 760.0;
+        let rail_width = if wide_viewport {
+            208.0
+        } else {
+            content_rect.width()
+        };
+        let rail_height = if wide_viewport {
+            content_rect.height()
+        } else {
+            34.0
+        };
+        let rail_rect = Rect::from_min_size(content_rect.min, egui::vec2(rail_width, rail_height));
+        let main_rect = if wide_viewport {
+            Rect::from_min_max(
+                egui::pos2(rail_rect.max.x, content_rect.min.y),
+                content_rect.max,
+            )
+        } else {
+            Rect::from_min_max(
+                egui::pos2(content_rect.min.x, rail_rect.max.y),
+                content_rect.max,
+            )
+        };
+        let main_rect = Rect::from_min_max(
+            egui::pos2(main_rect.min.x + 40.0, main_rect.min.y),
+            egui::pos2(main_rect.max.x - 40.0, main_rect.max.y),
+        );
+        let mut rail_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(rail_rect)
+                .layout(Layout::top_down(Align::Min)),
+        );
+        rail_ui.set_clip_rect(rail_rect);
+        rail_ui.painter().rect_filled(rail_rect, 0.0, PANEL_ALT);
+        let mut main_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(main_rect)
+                .layout(Layout::top_down(Align::Min)),
+        );
+        main_ui.set_clip_rect(main_rect);
+
+        if wide_viewport {
+            rail_ui.add_space(8.0);
             for (section, label) in CommandCenterSection::ALL {
-                let response = ui
-                    .selectable_value(&mut self.command_center_section, section, label)
+                let selected = self.command_center_section == section;
+                let response = rail_ui
+                    .add_sized(
+                        [rail_ui.available_width(), 28.0],
+                        egui::Button::new(" ")
+                            .left_text(RichText::new(format!("   {label}")))
+                            .selected(selected)
+                            .frame(selected),
+                    )
                     .accessible_name(format!("Command Center section: {label}"));
-                if response.clicked() && section == CommandCenterSection::System {
-                    load_system = true;
-                } else if response.clicked() && section == CommandCenterSection::Usage {
-                    load_usage = true;
-                } else if response.clicked() && section == CommandCenterSection::Maintenance {
-                    load_maintenance = true;
+                paint_command_center_section_icon(
+                    &rail_ui,
+                    response.rect,
+                    section,
+                    if selected { TEXT } else { MUTED },
+                );
+                if response.clicked() {
+                    self.command_center_section = section;
+                    load_system |= section == CommandCenterSection::System;
+                    load_usage |= section == CommandCenterSection::Usage;
+                    load_maintenance |= section == CommandCenterSection::Maintenance;
                 }
             }
-        });
+            let divider = Rect::from_min_max(
+                egui::pos2(rail_rect.max.x - 1.0, rail_rect.min.y),
+                rail_rect.max,
+            );
+            ui.painter().rect_filled(divider, 0.0, BORDER);
+        } else {
+            let selected_label = CommandCenterSection::ALL
+                .iter()
+                .find_map(|(section, label)| {
+                    (*section == self.command_center_section).then_some(*label)
+                })
+                .unwrap_or("Sessions");
+            let picker = egui::ComboBox::from_id_salt("command-center-section-picker")
+                .selected_text(selected_label)
+                .width((rail_rect.width() - 16.0).max(100.0))
+                .show_ui(&mut rail_ui, |ui| {
+                    for (section, label) in CommandCenterSection::ALL {
+                        let response = ui
+                            .selectable_value(&mut self.command_center_section, section, label)
+                            .accessible_name(format!("Command Center section: {label}"));
+                        if response.changed() {
+                            load_system |= section == CommandCenterSection::System;
+                            load_usage |= section == CommandCenterSection::Usage;
+                            load_maintenance |= section == CommandCenterSection::Maintenance;
+                        }
+                    }
+                });
+            picker.response.accessible_name("Command Center sections");
+        }
         if load_system {
             self.request_command_center_system();
         }
@@ -17832,20 +17977,44 @@ fn render_message() -> &'static str {
         if load_maintenance {
             self.request_command_center_maintenance_snapshot();
         }
-        ui.separator();
 
-        match self.command_center_section {
-            CommandCenterSection::Sessions => {
+        let ui = &mut main_ui;
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Command Center").small().color(MUTED))
+                .accessible_name("Command Center breadcrumb root");
+            ui.label(RichText::new("›").small().color(MUTED));
+            let section_label = CommandCenterSection::ALL
+                .iter()
+                .find_map(|(section, label)| {
+                    (*section == self.command_center_section).then_some(*label)
+                })
+                .unwrap_or("Sessions");
+            ui.label(RichText::new(section_label).small())
+                .accessible_name(format!("Command Center current section: {section_label}"));
+
+            if self.command_center_section == CommandCenterSection::Sessions {
+                let max_search_width = ui.ctx().viewport_rect().width() * 0.4;
+                let search_width = ui.available_width().min(max_search_width).max(80.0);
                 let search = ui
-                    .add(
-                        egui::TextEdit::singleline(&mut self.command_center_query)
-                            .hint_text("Search sessions")
-                            .desired_width(f32::INFINITY),
-                    )
+                    .with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.add_sized(
+                            [search_width, 26.0],
+                            egui::TextEdit::singleline(&mut self.command_center_query)
+                                .hint_text("Search sessions"),
+                        )
+                    })
+                    .inner
                     .accessible_name("Search Command Center sessions");
                 if search.changed() {
                     self.command_center_query_changed_at = Some(std::time::Instant::now());
                 }
+            }
+        });
+        ui.add_space(10.0);
+
+        match self.command_center_section {
+            CommandCenterSection::Sessions => {
                 if let Some(wait) =
                     self.update_command_center_search_debounce(std::time::Instant::now())
                 {
@@ -17919,7 +18088,8 @@ fn render_message() -> &'static str {
                             };
                             ui.horizontal(|ui| {
                                 let action_width = 3.0 * 24.0 + 2.0 * ui.spacing().item_spacing.x;
-                                let title_width = (ui.available_width() - action_width).max(80.0);
+                                let title_width =
+                                    (ui.available_width() - action_width - 24.0).max(80.0);
                                 let mut title_focused = false;
                                 ui.allocate_ui_with_layout(
                                     egui::vec2(title_width, 38.0),
@@ -17929,7 +18099,8 @@ fn render_message() -> &'static str {
                                         let open = ui
                                             .add_sized(
                                                 [title_width, 22.0],
-                                                egui::Button::new(RichText::new(title).strong())
+                                                egui::Button::new(" ")
+                                                    .left_text(RichText::new(title).strong())
                                                     .frame(false),
                                             )
                                             .accessible_name(format!("Open session: {title}"));
@@ -17945,13 +18116,7 @@ fn render_message() -> &'static str {
                                         }
                                         let timestamp =
                                             command_center_session_display_time(&session);
-                                        ui.add_sized(
-                                            [title_width, 16.0],
-                                            egui::Label::new(
-                                                RichText::new(timestamp).small().color(MUTED),
-                                            )
-                                            .halign(Align::Min),
-                                        );
+                                        ui.label(RichText::new(timestamp).small().color(MUTED));
                                     },
                                 );
                                 let pin = ui
@@ -18476,21 +18641,48 @@ fn render_message() -> &'static str {
         }
         let mut close = false;
         egui::Modal::new(Id::unique("hermes-route-overlay")).show(ctx, |ui| {
-            ui.set_min_width(420.0);
-            ui.set_max_width(640.0);
-            ui.horizontal(|ui| {
-                ui.heading(self.route.title());
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    close = ui.button("Close").clicked();
+            if self.route == AppRoute::CommandCenter {
+                let viewport = ctx.viewport_rect();
+                let overlay_size = egui::vec2(
+                    (viewport.width() - 108.0).max(420.0),
+                    (viewport.height() - 108.0).max(420.0),
+                );
+                ui.set_min_size(overlay_size);
+                ui.set_max_size(overlay_size);
+                let modal_rect = ui.available_rect_before_wrap();
+                let close_rect = Rect::from_min_size(
+                    egui::pos2(modal_rect.right() - 34.0, modal_rect.top()),
+                    egui::vec2(30.0, 28.0),
+                );
+                let mut close_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(close_rect)
+                        .layout(Layout::top_down(Align::Center)),
+                );
+                close = close_ui
+                    .add_sized([30.0, 28.0], egui::Button::new("×").frame(false))
+                    .accessible_name("Close Command Center")
+                    .on_hover_text("Close")
+                    .clicked();
+                self.command_center_content(ui);
+            } else {
+                ui.set_min_width(420.0);
+                ui.set_max_width(640.0);
+                ui.horizontal(|ui| {
+                    ui.heading(self.route.title());
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        close = ui.button("Close").clicked();
+                    });
                 });
-            });
-            ui.separator();
-            match self.route {
-                AppRoute::Settings => self.show_repo_scan_settings(ui),
-                AppRoute::Cron => self.cron_content(ui),
-                AppRoute::CommandCenter => self.command_center_content(ui),
-                _ => {
-                    ui.label(RichText::new("Connect to Hermes to load this screen.").color(MUTED));
+                ui.separator();
+                match self.route {
+                    AppRoute::Settings => self.show_repo_scan_settings(ui),
+                    AppRoute::Cron => self.cron_content(ui),
+                    _ => {
+                        ui.label(
+                            RichText::new("Connect to Hermes to load this screen.").color(MUTED),
+                        );
+                    }
                 }
             }
         });
@@ -28714,6 +28906,21 @@ mod tests {
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
 
         assert_eq!(app.borrow().automation_state()["route"], "/command-center");
+        let session_nav = harness
+            .query_by_label("Command Center section: Sessions")
+            .expect("wide Command Center exposes its section rail");
+        let search = harness
+            .query_by_label("Search Command Center sessions")
+            .expect("Sessions search is in the breadcrumb header");
+        assert!(session_nav.rect().width() < 240.0);
+        assert!(session_nav.rect().right() < search.rect().left());
+        assert!(search.rect().right() > 1_000.0);
+        assert!(search.rect().right() < 1_360.0);
+        assert!(harness.query_by_label("Close Command Center").is_some());
+        assert!(
+            harness.query_by_label("Command Center").is_some(),
+            "the breadcrumb header exposes the Command Center root"
+        );
         harness
             .query_by_label("Command Center section: System")
             .expect("System section is navigable")
@@ -28729,6 +28936,38 @@ mod tests {
             .click();
         harness.run();
         assert_eq!(app.borrow().automation_state()["route"], "/command-center");
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_navigation_uses_compact_picker_below_source_breakpoint() {
+        let (mut app, profile_dir) = isolated_app();
+        app.navigate_path("/command-center")
+            .expect("Command Center route should be recognized");
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(700.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        harness
+            .query_by_label("Command Center sections")
+            .expect("narrow Command Center uses the compact section picker")
+            .click();
+        harness.run();
+        harness
+            .query_by_label("Command Center section: System")
+            .expect("compact picker exposes the System route")
+            .click();
+        harness.run();
+        assert_eq!(
+            app.borrow().automation_state()["route"],
+            "/command-center?section=system"
+        );
 
         drop(harness);
         drop(app);
@@ -29127,12 +29366,13 @@ mod tests {
             .with_size(egui::vec2(1440.0, 1100.0))
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
 
-        harness
+        let delete_button = harness
             .query_by_label("Delete Command Center session sess-1")
-            .expect("delete action is rendered")
-            .click();
+            .expect("delete action is rendered");
+        delete_button.click();
         harness.run();
         assert_eq!(app.borrow().sessions.len(), 1);
+        assert!(app.borrow().command_center_delete_confirmation.is_some());
         assert!(harness.query_by_label("Delete session?").is_some());
 
         harness

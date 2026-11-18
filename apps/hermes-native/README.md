@@ -135,3 +135,6 @@ Command Center session rows also expose Pin/Unpin, Export, and confirmation-gate
 
 
 The Command Center System section now displays active-profile gateway health, version and active session count, `"Restart gateway"` (`POST /api/gateway/restart`) and `"Update Hermes"` (`POST /api/hermes/update`) actions with 18-poll / 1.2s status polling (`?lines=180`), plus recent logs from agent/errors/gateway/desktop with level and local search filters. Reads and actions are profile scoped, authenticated, bounded and stale-response fenced. Usage and Maintenance use the same profile-bound HTTP worker and reject stale results by request, endpoint and authority. Live Windows behavior and source-paired acceptance remain open.
+
+
+Command Center navigation now follows the pinned wide/compact split: a persistent left rail above 760 logical pixels and a dropdown below it. The section breadcrumb shares its header with Sessions search; the overlay uses near-full viewport framing and a floating close button. Headless synthetic captures are available at `artifacts/agent-ui/command-center-sessions-navigation.png` (1440×900) and `artifacts/agent-ui/command-center-sessions-compact.png` (700×900). The compact capture also exposes a remaining global-toolbar overlap. These captures do not claim live gateway or source-paired proof.
