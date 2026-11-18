@@ -947,6 +947,8 @@ pub struct HermesNativeApp {
     route: AppRoute,
     command_center_section: CommandCenterSection,
     command_center_query: String,
+    command_center_debounced_query: String,
+    command_center_query_changed_at: Option<std::time::Instant>,
     command_center_system: Option<CachedCommandCenterSystem>,
     command_center_system_pending: Option<PendingCommandCenterSystem>,
     command_center_system_generation: u64,
@@ -3128,6 +3130,8 @@ fn render_message() -> &'static str {
             route: AppRoute::NewChat,
             command_center_section: CommandCenterSection::Sessions,
             command_center_query: String::new(),
+            command_center_debounced_query: String::new(),
+            command_center_query_changed_at: None,
             command_center_system: None,
             command_center_system_pending: None,
             command_center_system_generation: 0,
@@ -17702,6 +17706,27 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn update_command_center_search_debounce(
+        &mut self,
+        now: std::time::Instant,
+    ) -> Option<std::time::Duration> {
+        const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(180);
+        let query = self.command_center_query.trim();
+        if query == self.command_center_debounced_query {
+            self.command_center_query_changed_at = None;
+            return None;
+        }
+        let changed_at = *self.command_center_query_changed_at.get_or_insert(now);
+        let elapsed = now.saturating_duration_since(changed_at);
+        if elapsed >= DEBOUNCE {
+            self.command_center_debounced_query = query.to_owned();
+            self.command_center_query_changed_at = None;
+            None
+        } else {
+            Some(DEBOUNCE - elapsed)
+        }
+    }
+
     fn command_center_content(&mut self, ui: &mut Ui) {
         let refresh_hotkey =
             ui.input(|input| input.key_pressed(egui::Key::R) && !input.modifiers.any());
@@ -17745,23 +17770,28 @@ fn render_message() -> &'static str {
 
         match self.command_center_section {
             CommandCenterSection::Sessions => {
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.command_center_query)
-                        .hint_text("Search sessions")
-                        .desired_width(f32::INFINITY),
-                )
-                .accessible_name("Search Command Center sessions");
+                let search = ui
+                    .add(
+                        egui::TextEdit::singleline(&mut self.command_center_query)
+                            .hint_text("Search sessions")
+                            .desired_width(f32::INFINITY),
+                    )
+                    .accessible_name("Search Command Center sessions");
+                if search.changed() {
+                    self.command_center_query_changed_at = Some(std::time::Instant::now());
+                }
+                if let Some(wait) =
+                    self.update_command_center_search_debounce(std::time::Instant::now())
+                {
+                    ui.ctx().request_repaint_after(wait);
+                }
 
-                let query = self.command_center_query.trim().to_lowercase();
+                let query = self.command_center_debounced_query.trim().to_lowercase();
                 let mut sessions = self
                     .sessions
                     .iter()
                     .filter(|session| !session.archived)
-                    .filter(|session| {
-                        query.is_empty()
-                            || session.title.to_lowercase().contains(&query)
-                            || session.id.to_lowercase().contains(&query)
-                    })
+                    .filter(|session| command_center_session_matches(session, &query))
                     .cloned()
                     .collect::<Vec<_>>();
                 sessions.sort_by(|left, right| {
@@ -17798,11 +17828,7 @@ fn render_message() -> &'static str {
                         for session in sessions {
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
-                                    let title = if session.title.trim().is_empty() {
-                                        "Untitled session"
-                                    } else {
-                                        session.title.as_str()
-                                    };
+                                    let title = command_center_session_title(&session);
                                     let open = ui
                                         .button(title)
                                         .accessible_name(format!("Open session: {title}"))
@@ -23564,6 +23590,25 @@ fn session_matches_filter(session: &SessionSummary, filter: &str) -> bool {
     .any(|field| field.to_lowercase().contains(&query.to_lowercase()))
 }
 
+fn command_center_session_title(session: &SessionSummary) -> &str {
+    if !session.title.trim().is_empty() {
+        session.title.trim()
+    } else if !session.preview.trim().is_empty() {
+        session.preview.trim()
+    } else {
+        "Untitled session"
+    }
+}
+
+fn command_center_session_matches(session: &SessionSummary, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    format!("{} {}", command_center_session_title(session), session.id)
+        .to_lowercase()
+        .contains(query)
+}
+
 fn merge_session_search_results(
     loaded: &[SessionSummary],
     query: &str,
@@ -28182,6 +28227,153 @@ mod tests {
 
     #[cfg(feature = "agent-automation")]
     #[test]
+    fn command_center_search_waits_180ms_then_filters_and_hides_load_more() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::CommandCenter;
+        app.command_center_section = CommandCenterSection::Sessions;
+        app.command_center_query = "alpha".into();
+        app.command_center_query_changed_at =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+        app.session_profiles_truncated
+            .insert("profile-a".into(), true);
+        app.sessions = vec![
+            session_summary("alpha-id", "profile-a", "Alpha session"),
+            session_summary("beta-id", "profile-a", "Beta session"),
+        ];
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        assert!(
+            harness
+                .query_by_label("Open session: Alpha session")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Open session: Beta session")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Load more Command Center sessions")
+                .is_some(),
+            "the previous debounced empty query keeps Load more visible while typing"
+        );
+
+        app.borrow_mut().command_center_query_changed_at =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(181));
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Open session: Alpha session")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Open session: Beta session")
+                .is_none()
+        );
+        assert!(
+            harness
+                .query_by_label("Load more Command Center sessions")
+                .is_none(),
+            "Load more is hidden when the debounced query is nonempty"
+        );
+
+        {
+            let mut app = app.borrow_mut();
+            app.command_center_query.clear();
+            app.command_center_query_changed_at =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+        }
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Open session: Alpha session")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Open session: Beta session")
+                .is_none(),
+            "the active filter remains until the cleared query settles"
+        );
+        assert!(
+            harness
+                .query_by_label("Load more Command Center sessions")
+                .is_none()
+        );
+
+        app.borrow_mut().command_center_query_changed_at =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(181));
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Open session: Alpha session")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Open session: Beta session")
+                .is_some(),
+            "clearing the search restores every loaded session after 180 ms"
+        );
+        assert!(
+            harness
+                .query_by_label("Load more Command Center sessions")
+                .is_some()
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
+    fn command_center_search_uses_source_title_fallback_and_180ms_boundary() {
+        let (mut app, profile_dir) = isolated_app();
+        let now = std::time::Instant::now();
+        app.command_center_query = "untitled".into();
+        assert_eq!(
+            app.update_command_center_search_debounce(now),
+            Some(std::time::Duration::from_millis(180))
+        );
+        assert_eq!(app.command_center_debounced_query, "");
+        assert_eq!(
+            app.update_command_center_search_debounce(now + std::time::Duration::from_millis(179)),
+            Some(std::time::Duration::from_millis(1))
+        );
+        assert_eq!(
+            app.update_command_center_search_debounce(now + std::time::Duration::from_millis(180)),
+            None
+        );
+        assert_eq!(app.command_center_debounced_query, "untitled");
+        let empty_title = session_summary("row-1", "profile-a", "");
+        assert_eq!(
+            command_center_session_title(&empty_title),
+            "Untitled session"
+        );
+        assert!(command_center_session_matches(&empty_title, "untitled"));
+        assert!(command_center_session_matches(&empty_title, "row-1"));
+        let preview_title = SessionSummary {
+            preview: "Preview title".into(),
+            ..empty_title
+        };
+        assert_eq!(
+            command_center_session_title(&preview_title),
+            "Preview title"
+        );
+        assert!(command_center_session_matches(&preview_title, "preview"));
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
     fn command_center_sessions_search_and_open_through_the_real_overlay() {
         let (mut app, profile_dir) = isolated_app();
         app.navigate_path("/command-center?section=sessions")
@@ -28211,6 +28403,7 @@ mod tests {
             },
         ];
         app.command_center_query = "alpha".into();
+        app.command_center_debounced_query = "alpha".into();
         assert_eq!(
             CommandCenterSection::from_route("/command-center?section=usage"),
             CommandCenterSection::Usage

@@ -2142,3 +2142,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No performance measurement was part of publication.
 - risks: The change is partial fixed-source parity; 38/499 rows reviewed, 0/499 formally accepted, live runtime and visual source pairs unverified.
 - follow_up: Continue the next pinned-source gap on `main` only.
+
+
+### Hermes Native Command Center search debounce — 2026-11-18T22:26Z
+
+- id: `hermes-command-center-search-debounce-20261118`
+- timestamp: `2026-11-18T22:26:00Z`
+- what: Added the pinned 180 ms debounced Sessions search, title/preview/Untitled fallback matching, session ID matching, delayed empty-state/Load more transitions, and deterministic headless regressions for typing and clearing.
+- why: Match the downloaded fixed Hermes source snapshot and avoid presenting unsettled query results.
+- components: `apps/hermes-native/src/app.rs`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/SOURCE_AUDIT.md`, `apps/hermes-native/docs/backlog.md`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, `README.md`.
+- type: Fixed-source UI parity behavior.
+- validation: PASS focused debounce tests (2); PASS full native feature suite (336 library + 15 automation protocol + 3 launcher); PASS locked workspace/all-target check; PASS continuity 18/18; PASS pinned package validator (491 pending); PASS progress generation (38/499 reviewed, 0/499 accepted), Python compileall, rustfmt and diff checks.
+- performance: No performance benchmark change; one repaint is scheduled for the remaining debounce duration.
+- risks: Live Hermes runtime, Windows behavior, all 499 source-paired visual captures and formal source acceptance remain unverified.
+- follow_up: Continue the next incomplete pinned Command Center/session state on `main` only.
