@@ -2102,3 +2102,15 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No measurable runtime regression.
 - risks: Live gateway, physical Windows and source-paired visual acceptance remain pending.
 - follow_up: Continue next pinned-source parity slices.
+### Hermes Native main publication — 2026-11-18T21:42:43Z
+
+- id: `codex-main-publish-20261118`
+- timestamp: `2026-11-18T21:42:43Z`
+- what: Published the handoff's accumulated 130-file Hermes native parity change set as commit `95198cda1b92ae4c56eb795a8586b138c88801d5` on `main` and pushed it to `origin/main`.
+- why: The operator requested the repository stay current and specified `main` only.
+- components: Hermes Native implementation, vendored DoofusDock crates, source audit and progress artifacts, agent tooling, execution evidence, and durable `.doofus` task state.
+- type: Repository publication.
+- validation: 331 library + 15 protocol + 3 launcher tests; locked all-target workspace check; 18 task-ledger tests; pinned capability validator; Python compile, format and diff checks; post-push fetch shows `HEAD == origin/main`, zero ahead/behind, clean checkout.
+- performance: No performance measurement was part of this synchronization.
+- risks: The published project is still partial: 38/499 source requirements reviewed, 0/499 accepted, live runtime and source-paired visual evidence remain unverified.
+- follow_up: Continue with the next fixed-source parity slice on `main` only.
