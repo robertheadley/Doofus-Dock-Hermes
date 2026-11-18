@@ -157,3 +157,9 @@ The Sessions search now matches the pinned 180 ms query debounce, including pres
 Clicking a Command Center section now updates the native agent-visible route state using the pinned query shape: `/command-center?section=system` for System and `/command-center` for default Sessions. The regression clicks both tabs in the actual egui overlay. This validates native route-state reporting; browser navigation history is not part of the native shell. Formal source-matrix acceptance and source-paired visuals remain unverified.
 
 Full validation passes: 337 library tests, 15 automation-protocol tests, 3 launcher tests, locked workspace/all-target check, task continuity 18/18, package validation (491 pending), progress generation, Python compileall, rustfmt and diff checks. Existing workspace dead-code warnings remain; no additional warning was introduced.
+
+### Command Center Sessions row visual pass — 2026-11-18T23:00Z
+
+The Command Center list now shows only a compact session title and local activity time, with pin/export/delete glyphs visually revealed on row hover or focus and an available-height scroll area. Native-only row metadata was removed. The headless runner now has an isolated eight-row fixture and captured a distinct 1440×900 image. Icons are approximations and date formatting is not localized like browser `Intl`; the screenshot is target-only and does not prove source visual parity.
+
+Validation passes: 339 library tests, 15 automation protocol tests, 3 launcher tests, locked workspace/all-target check, task continuity 18/18, package validation (491 pending), progress generation (38/499 reviewed; 0/499 accepted), Python compileall, rustfmt, diff check, and fixture inspect/capture. Workspace warnings are existing dead-code warnings. No live gateway or installed app was opened.

@@ -59,6 +59,14 @@ Run a headless agent navigation and screenshot capture without opening a window:
 cargo run --features agent-automation --bin hermes-automation -- --inspect --click Files --screenshot artifacts\agent-ui\files-panel.png
 ```
 
+Capture a populated Command Center Sessions state with synthetic rows and no gateway:
+
+```powershell
+cargo run --features agent-automation --bin hermes-automation -- --command-center-sessions-fixture --viewport 1440x900 --inspect --screenshot artifacts\agent-ui\command-center-sessions.png
+```
+
+This fixture uses eight distinct synthetic sessions and does not start Hermes. The current reference capture is [command-center-sessions.png](../../artifacts/agent-ui/command-center-sessions.png).
+
 To capture the separate Files tree and a live text preview pane, start from the isolated named fixture instead of the default New session route:
 
 ```powershell

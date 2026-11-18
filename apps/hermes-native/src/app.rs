@@ -959,6 +959,7 @@ pub struct HermesNativeApp {
     command_center_query: String,
     command_center_debounced_query: String,
     command_center_query_changed_at: Option<std::time::Instant>,
+    command_center_focused_session_actions: Option<String>,
     command_center_system: Option<CachedCommandCenterSystem>,
     command_center_system_pending: Option<PendingCommandCenterSystem>,
     command_center_system_generation: u64,
@@ -2617,6 +2618,53 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_command_center_sessions_fixture_for_automation(&mut self) {
+        const TITLES: [&str; 8] = [
+            "DoofusDock Rust parity review",
+            "Hermes native UI acceptance",
+            "Command Center pagination smoke",
+            "Agent automation bridge contract",
+            "Gateway profile isolation test",
+            "Files preview regression",
+            "Usage analytics review",
+            "Repository checkpoint audit",
+        ];
+        let now = time::OffsetDateTime::now_utc().unix_timestamp() as f64;
+        self.route = AppRoute::CommandCenter;
+        self.command_center_section = CommandCenterSection::Sessions;
+        self.command_center_query.clear();
+        self.command_center_debounced_query.clear();
+        self.command_center_query_changed_at = None;
+        self.command_center_focused_session_actions = None;
+        self.session_list_error = None;
+        self.sessions = TITLES
+            .iter()
+            .enumerate()
+            .map(|(index, title)| {
+                let started_at = now - (index as f64 * 3_600.0);
+                SessionSummary {
+                    cwd: None,
+                    id: format!("command-center-fixture-{:02}", index + 1),
+                    lineage_root_id: None,
+                    profile: Some("fixture-profile".into()),
+                    title: (*title).into(),
+                    preview: format!("Synthetic preview for {title}"),
+                    message_count: 3 + index * 7,
+                    source: "fixture".into(),
+                    started_at,
+                    last_active: (index % 3 != 1).then_some(started_at + 900.0),
+                    pinned: index == 1 || index == 5,
+                    unread: index == 0,
+                    archived: false,
+                }
+            })
+            .collect();
+        self.session_profiles_truncated
+            .insert("fixture-profile".into(), true);
+        self.status = "Command Center Sessions fixture · synthetic rows · gateway isolated".into();
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_pinned_session_reorder_fixture_for_automation(&mut self) {
         let endpoint = GatewayEndpoint {
             profile_id: "fixture-profile".into(),
@@ -3142,6 +3190,7 @@ fn render_message() -> &'static str {
             command_center_query: String::new(),
             command_center_debounced_query: String::new(),
             command_center_query_changed_at: None,
+            command_center_focused_session_actions: None,
             command_center_system: None,
             command_center_system_pending: None,
             command_center_system_generation: 0,
@@ -17812,12 +17861,11 @@ fn render_message() -> &'static str {
                     .cloned()
                     .collect::<Vec<_>>();
                 sessions.sort_by(|left, right| {
-                    let left_time = left.last_active.unwrap_or(left.started_at);
-                    let right_time = right.last_active.unwrap_or(right.started_at);
+                    let left_time = command_center_session_recency(left);
+                    let right_time = command_center_session_recency(right);
                     right_time.total_cmp(&left_time)
                 });
 
-                ui.label(format!("{} sessions", sessions.len()));
                 if let Some(error) = self.session_list_error.as_deref() {
                     ui.colored_label(Color32::from_rgb(220, 150, 100), error);
                 }
@@ -17836,106 +17884,159 @@ fn render_message() -> &'static str {
                 let mut pin_update = None;
                 let mut export_request = None;
                 let mut delete_confirmation = None;
+                let mut focused_session_actions = None;
                 let has_more_sessions = query.is_empty()
                     && self.session_profiles_truncated.values().any(|value| *value);
+                let list_height = ui.available_height();
                 egui::ScrollArea::vertical()
                     .id_salt("command-center-sessions")
-                    .max_height(620.0)
+                    .max_height(list_height)
                     .show(ui, |ui| {
                         for session in sessions {
-                            ui.group(|ui| {
-                                ui.horizontal(|ui| {
-                                    let title = command_center_session_title(&session);
-                                    let open = ui
-                                        .button(title)
-                                        .accessible_name(format!("Open session: {title}"))
-                                        .on_hover_text(format!("Open {}", session.id));
-                                    if open.clicked() {
-                                        self.execute_registered_action(
-                                            RegisteredUiAction::OpenSession {
-                                                session_id: session.id.clone(),
-                                                profile: session.profile.clone(),
-                                            },
+                            let action_key =
+                                session_identity_key(&session.id, session.profile.as_deref());
+                            let row_rect = Rect::from_min_size(
+                                ui.cursor().min,
+                                egui::vec2(ui.available_width(), 42.0),
+                            );
+                            let row_hovered = ui
+                                .ctx()
+                                .pointer_hover_pos()
+                                .is_some_and(|position| row_rect.contains(position));
+                            let reveal_actions = row_hovered
+                                || self.command_center_focused_session_actions.as_deref()
+                                    == Some(action_key.as_str());
+                            let pin_pending = self.pending_session_pins.contains_key(&action_key);
+                            let export_pending =
+                                self.pending_session_exports.contains_key(&action_key);
+                            let delete_pending =
+                                self.pending_session_deletes.contains_key(&action_key);
+                            let pinned = session.pinned;
+                            let pin_label = if pinned {
+                                format!("Unpin Command Center session {}", session.id)
+                            } else {
+                                format!("Pin Command Center session {}", session.id)
+                            };
+                            ui.horizontal(|ui| {
+                                let action_width = 3.0 * 24.0 + 2.0 * ui.spacing().item_spacing.x;
+                                let title_width = (ui.available_width() - action_width).max(80.0);
+                                let mut title_focused = false;
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(title_width, 38.0),
+                                    Layout::top_down(Align::Min),
+                                    |ui| {
+                                        let title = command_center_session_title(&session);
+                                        let open = ui
+                                            .add_sized(
+                                                [title_width, 22.0],
+                                                egui::Button::new(RichText::new(title).strong())
+                                                    .frame(false),
+                                            )
+                                            .accessible_name(format!("Open session: {title}"));
+                                        title_focused = open.has_focus();
+                                        if open.clicked() {
+                                            self.execute_registered_action(
+                                                RegisteredUiAction::OpenSession {
+                                                    session_id: session.id.clone(),
+                                                    profile: session.profile.clone(),
+                                                },
+                                            )
+                                            .unwrap_or_else(|error| self.status = error);
+                                        }
+                                        let timestamp =
+                                            command_center_session_display_time(&session);
+                                        ui.add_sized(
+                                            [title_width, 16.0],
+                                            egui::Label::new(
+                                                RichText::new(timestamp).small().color(MUTED),
+                                            )
+                                            .halign(Align::Min),
+                                        );
+                                    },
+                                );
+                                let pin = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !pin_pending && !delete_pending,
+                                        egui::Button::new(
+                                            RichText::new(if pinned { "★" } else { "☆" }).color(
+                                                if reveal_actions {
+                                                    ui.visuals().text_color()
+                                                } else {
+                                                    Color32::TRANSPARENT
+                                                },
+                                            ),
                                         )
-                                        .unwrap_or_else(|error| self.status = error);
-                                    }
-                                    let action_key = session_identity_key(
-                                        &session.id,
-                                        session.profile.as_deref(),
-                                    );
-                                    let pin_pending =
-                                        self.pending_session_pins.contains_key(&action_key);
-                                    let export_pending =
-                                        self.pending_session_exports.contains_key(&action_key);
-                                    let delete_pending =
-                                        self.pending_session_deletes.contains_key(&action_key);
-                                    let pinned = session.pinned;
-                                    let pin_label = if pinned {
-                                        format!("Unpin Command Center session {}", session.id)
+                                        .min_size(egui::vec2(24.0, 22.0))
+                                        .frame_when_inactive(false),
+                                    )
+                                    .accessible_name(pin_label)
+                                    .on_hover_text(if pinned {
+                                        "Unpin session"
                                     } else {
-                                        format!("Pin Command Center session {}", session.id)
-                                    };
-                                    if ui
-                                        .add_enabled(
-                                            self.gateway_connected
-                                                && !pin_pending
-                                                && !delete_pending,
-                                            egui::Button::new(if pinned { "Unpin" } else { "Pin" }),
-                                        )
-                                        .accessible_name(pin_label)
-                                        .clicked()
-                                    {
-                                        pin_update = Some((session.clone(), !pinned));
-                                    }
-                                    if ui
-                                        .add_enabled(
-                                            self.gateway_connected
-                                                && !export_pending
-                                                && !delete_pending,
-                                            egui::Button::new("Export"),
-                                        )
-                                        .accessible_name(format!(
-                                            "Export Command Center session {}",
-                                            session.id
-                                        ))
-                                        .clicked()
-                                    {
-                                        export_request = Some(session.clone());
-                                    }
-                                    if ui
-                                        .add_enabled(
-                                            self.gateway_connected && !delete_pending,
-                                            egui::Button::new("Delete…"),
-                                        )
-                                        .accessible_name(format!(
-                                            "Delete Command Center session {}",
-                                            session.id
-                                        ))
-                                        .clicked()
-                                    {
-                                        delete_confirmation = Some(session.clone());
-                                    }
-                                    ui.label(
-                                        RichText::new(format!(
-                                            "{} messages{}",
-                                            session.message_count,
-                                            session
-                                                .profile
-                                                .as_deref()
-                                                .map(|profile| format!(" · {profile}"))
-                                                .unwrap_or_default()
-                                        ))
-                                        .small()
-                                        .color(MUTED),
-                                    );
-                                });
-                                if !session.preview.trim().is_empty() {
-                                    ui.label(session.preview.trim());
+                                        "Pin session"
+                                    });
+                                if pin.clicked() {
+                                    pin_update = Some((session.clone(), !pinned));
                                 }
-                                ui.label(RichText::new(&session.id).small().color(MUTED));
+                                let export = ui
+                                    .add_enabled(
+                                        self.gateway_connected
+                                            && !export_pending
+                                            && !delete_pending,
+                                        egui::Button::new(RichText::new("⇩").color(
+                                            if reveal_actions {
+                                                ui.visuals().text_color()
+                                            } else {
+                                                Color32::TRANSPARENT
+                                            },
+                                        ))
+                                        .min_size(egui::vec2(24.0, 22.0))
+                                        .frame_when_inactive(false),
+                                    )
+                                    .accessible_name(format!(
+                                        "Export Command Center session {}",
+                                        session.id
+                                    ))
+                                    .on_hover_text("Export session");
+                                if export.clicked() {
+                                    export_request = Some(session.clone());
+                                }
+                                let delete = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !delete_pending,
+                                        egui::Button::new(RichText::new("×").color(
+                                            if reveal_actions {
+                                                ui.visuals().text_color()
+                                            } else {
+                                                Color32::TRANSPARENT
+                                            },
+                                        ))
+                                        .min_size(egui::vec2(24.0, 22.0))
+                                        .frame_when_inactive(false),
+                                    )
+                                    .accessible_name(format!(
+                                        "Delete Command Center session {}",
+                                        session.id
+                                    ))
+                                    .on_hover_text("Delete session");
+                                if delete.clicked() {
+                                    delete_confirmation = Some(session.clone());
+                                }
+                                if title_focused
+                                    || pin.has_focus()
+                                    || export.has_focus()
+                                    || delete.has_focus()
+                                {
+                                    focused_session_actions = Some(action_key.clone());
+                                }
                             });
+                            ui.add_space(6.0);
                         }
                     });
+                if self.command_center_focused_session_actions != focused_session_actions {
+                    self.command_center_focused_session_actions = focused_session_actions;
+                    ui.ctx().request_repaint();
+                }
                 if has_more_sessions
                     && ui
                         .add_enabled(
@@ -23617,6 +23718,34 @@ fn command_center_session_title(session: &SessionSummary) -> &str {
     }
 }
 
+fn command_center_session_recency(session: &SessionSummary) -> f64 {
+    session
+        .last_active
+        .filter(|timestamp| *timestamp != 0.0)
+        .unwrap_or(session.started_at)
+}
+
+fn command_center_session_display_time(session: &SessionSummary) -> String {
+    let timestamp = command_center_session_recency(session);
+    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    format_command_center_timestamp(timestamp, offset).unwrap_or_default()
+}
+
+fn format_command_center_timestamp(timestamp: f64, offset: time::UtcOffset) -> Option<String> {
+    if !timestamp.is_finite() || timestamp == 0.0 {
+        return None;
+    }
+    let nanos = (timestamp * 1_000_000_000.0).round() as i128;
+    let local = time::OffsetDateTime::from_unix_timestamp_nanos(nanos)
+        .ok()?
+        .to_offset(offset);
+    let format = time::format_description::parse_borrowed::<1>(
+        "[month repr:short] [day padding:none], [year], [hour repr:12]:[minute] [period case:upper]",
+    )
+    .ok()?;
+    local.format(&format).ok()
+}
+
 fn command_center_session_matches(session: &SessionSummary, query: &str) -> bool {
     if query.is_empty() {
         return true;
@@ -28391,6 +28520,76 @@ mod tests {
     }
 
     #[test]
+    fn command_center_session_time_matches_source_fallback_and_medium_short_format() {
+        let timestamp = time::Date::from_calendar_date(2026, time::Month::January, 2)
+            .unwrap()
+            .with_time(time::Time::from_hms(16, 40, 0).unwrap())
+            .assume_utc()
+            .unix_timestamp() as f64;
+        let offset = time::UtcOffset::from_hms(-6, 0, 0).unwrap();
+        assert_eq!(
+            format_command_center_timestamp(timestamp, offset).as_deref(),
+            Some("Jan 2, 2026, 10:40 AM")
+        );
+
+        let session = SessionSummary {
+            started_at: timestamp,
+            last_active: Some(0.0),
+            ..session_summary("time-row", "profile-a", "Time row")
+        };
+        assert_eq!(command_center_session_recency(&session), timestamp);
+        assert_eq!(
+            format_command_center_timestamp(0.0, offset),
+            None,
+            "the source renders an empty date for a falsy timestamp"
+        );
+        assert_eq!(format_command_center_timestamp(f64::NAN, offset), None);
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn command_center_sessions_fixture_renders_distinct_rows_offline() {
+        let (mut app, profile_dir) = isolated_app();
+        app.load_command_center_sessions_fixture_for_automation();
+        assert_eq!(app.route, AppRoute::CommandCenter);
+        assert!(!app.gateway_connected);
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        for title in [
+            "DoofusDock Rust parity review",
+            "Hermes native UI acceptance",
+            "Command Center pagination smoke",
+            "Agent automation bridge contract",
+            "Gateway profile isolation test",
+            "Files preview regression",
+            "Usage analytics review",
+            "Repository checkpoint audit",
+        ] {
+            assert!(
+                harness
+                    .query_by_label(&format!("Open session: {title}"))
+                    .is_some(),
+                "fixture row should be visible: {title}"
+            );
+        }
+        assert!(
+            harness
+                .query_by_label("Load more Command Center sessions")
+                .expect("fixture includes backend truncation metadata")
+                .accesskit_node()
+                .is_disabled()
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
     fn command_center_sessions_search_and_open_through_the_real_overlay() {
         let (mut app, profile_dir) = isolated_app();
         app.navigate_path("/command-center?section=sessions")
@@ -28441,12 +28640,31 @@ mod tests {
                 .query_by_label("Open session: Recent alpha session")
                 .is_some()
         );
+        let expected_timestamp = command_center_session_display_time(&app.borrow().sessions[0]);
+        assert!(
+            harness.query_by_label(&expected_timestamp).is_some(),
+            "the session row renders its source-formatted activity time"
+        );
         assert!(
             harness
                 .query_by_label("Pin Command Center session recent-alpha")
                 .expect("Command Center exposes the shared pin action")
                 .accesskit_node()
                 .is_disabled()
+        );
+        assert!(
+            harness
+                .query_by_label("Export Command Center session recent-alpha")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Delete Command Center session recent-alpha")
+                .is_some()
+        );
+        assert!(
+            harness.query_by_label("4 messages · worker").is_none(),
+            "the source session row does not display native-only message/profile metadata"
         );
         assert!(
             harness

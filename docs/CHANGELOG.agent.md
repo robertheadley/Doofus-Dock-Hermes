@@ -2184,3 +2184,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No performance benchmark was part of publication.
 - risks: This is partial fixed-source parity; formal acceptance remains 0/499 and runtime/visual evidence remains unverified.
 - follow_up: Continue native parity on `main` only.
+
+
+### Hermes Native Command Center Sessions row presentation — 2026-11-18T23:00Z
+
+- id: `hermes-command-center-session-row-presentation-20261118`
+- timestamp: `2026-11-18T23:00:00Z`
+- what: Matched the compact title/activity-time row, source recency fallback, hover/focus-revealed compact action glyphs, removed native-only row metadata, and sized scrolling to the available pane. Added an offline eight-row CLI fixture and captured a distinct 1440×900 screenshot.
+- why: The native session rows had conspicuous screenshot-level mismatches with the pinned Command Center.
+- components: `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/bin/hermes-automation.rs`, `apps/hermes-native/README.md`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/SOURCE_AUDIT.md`, `apps/hermes-native/docs/BACKLOG.md`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, `artifacts/agent-ui/command-center-sessions.png`.
+- type: Fixed-source visual/interaction parity and headless fixture.
+- validation: PASS focused timestamp, actual overlay row/open and offline fixture tests; full suite (339 library + 15 protocol + 3 launcher); locked workspace/all-target check (existing dead-code warnings only); task continuity 18/18; pinned package validator (491 pending); progress 38/499 reviewed, 6 implemented, 32 partial, 461 unknown, 0/499 accepted; Python compileall, rustfmt and diff check; headless runner inspect and 1440x900 PNG capture. No live gateway or installed UI validation.
+- performance: No benchmark was requested or run; list height is bounded to available content.
+- risks: Icons are glyph approximations; date formatting is English medium/short style rather than locale-specific Intl; capture is target-only, offline evidence.
+- follow_up: Complete all validators and continue remaining pinned Command Center visual/state gaps on `main` only.
