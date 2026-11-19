@@ -6,6 +6,7 @@ def load_json(p): return json.loads((root/p).read_text(encoding='utf-8'))
 def load_csv(p):
   with (root/p).open(newline='',encoding='utf-8-sig') as f: return list(csv.DictReader(f))
 cap=load_json('maps/full_program_capability_map.json')['capabilities']
+capability_map_text=(root/'maps/capabilities.yaml').read_text(encoding='utf-8')
 ui=load_csv('maps/UI_ELEMENT_INVENTORY.csv')
 cross=load_csv('maps/CAPABILITY_CROSSWALK.csv')
 ledger=load_csv('planning/REQUIREMENTS_LEDGER.csv')
@@ -42,6 +43,13 @@ for f in files:
  elif d['kind']=='implementation':
   assert d['outcome'] in {'partial','pass'} and re.fullmatch(r'[a-f0-9]{40}',d['commit'])
   assert d['capability_id'] in status_by_id and status_by_id[d['capability_id']] in {'partial','implemented','verified'}
+  implementation_count+=1
+ elif d['kind']=='test_result':
+  assert d['outcome'] in {'partial','pass'} and re.fullmatch(r'[a-f0-9]{40}',d['commit'])
+  assert re.fullmatch(r'[a-z0-9-]+',d['capability_id'])
+  assert re.search(rf'(?m)^- id: {re.escape(d["capability_id"])}$',capability_map_text)
+  assert isinstance(d.get('scenario'),str) and d['scenario']
+  assert isinstance(d.get('locator'),str) and d['locator']
   implementation_count+=1
  else: raise AssertionError(f"unsupported evidence kind: {d['kind']}")
 try:

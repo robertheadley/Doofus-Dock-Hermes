@@ -9823,7 +9823,7 @@ capabilities:
   name: Reattach to in-flight turn without duplicating submit
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can reattach to in-flight turn without duplicating submit.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -9836,8 +9836,18 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: implemented
+    tests: partial
+  verification:
+    scenarios:
+    - id: headless-trigger
+      description: An already-active sidebar reselect queues one correctly scoped resume and no prompt submit; the draft and visible transcript stay intact while pending.
+    - id: live-inflight
+      description: A live in-flight turn reattaches, continues streaming once, and refreshes the transcript without losing queued or pending messages.
+    - id: failure-recovery
+      description: Offline, denied, stale, and reconnect outcomes preserve ownership and never submit the prompt twice.
+  evidence:
+  - EV-0018
 - id: ui-replay-session-transcript-after-disconnect
   name: Replay session transcript after disconnect
   area: protocol-reliability

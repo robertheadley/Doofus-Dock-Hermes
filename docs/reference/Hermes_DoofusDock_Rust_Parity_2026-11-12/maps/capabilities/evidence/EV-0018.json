@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0018",
+  "capability_id": "ui-reattach-to-in-flight-turn-without-duplicating-submit",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "headless-trigger",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "82426709e09654d34e47493913b2bc360be39a26",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui harness; no live Hermes backend or installed app.",
+  "notes": "The real sidebar-row test proves explicit reselect of a warm active session sends one profile-scoped session.resume command and no SubmitPrompt; it preserves the visible transcript/runtime and draft while pending, fences an older response, and applies the current snapshot. Pending archive/delete suppression has a separate test. This supports partial only: live in-flight-turn transport, real failure/reconnect paths, source connection-plus-profile ownership, Windows interaction, and source-paired visual acceptance remain unverified."
+}

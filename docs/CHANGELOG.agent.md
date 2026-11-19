@@ -2240,3 +2240,31 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** no performance change measured or expected.
 - **risks:** No live gateway/in-flight turn or Windows UI was exercised; native owner routing has profile identity but not source connection identity.
 - **follow_up:** Exercise live in-flight reattach and failure/reconnect cases, then collect same-environment source/target evidence for PAR-0510.
+
+
+### Hermes UCM partial evidence for PAR-0510 — 2026-11-19T00:40:50Z
+
+- **id:** hermes-ucm-par-0510-ev0018-20261119
+- **timestamp:** 2026-11-19T00:40:50Z
+- **what:** Added EV-0018 and changed the supplemental UCM capability to `partial`, with explicit headless, live-in-flight, and failure/recovery scenarios.
+- **why:** Keep the product capability map current without implying live gateway verification or formal PAR acceptance.
+- **components:** `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml`, `maps/capabilities/evidence/EV-0018.json`, parity plan.
+- **type:** evidence-backed capability status update.
+- **validation:** Targeted UCM report shows PAR-0510 as partial, with the headless scenario covered and live/failure scenarios open. Global checker still reports historical EV-0016/17 schema errors and EV-0017 timestamp reconciliation.
+- **performance:** no performance change.
+- **risks:** This evidence is headless only; no live backend, Windows installed UI, or matched screenshots.
+- **follow_up:** Verify the in-flight and failure/recovery scenarios against a live target and preserve the current source pin.
+
+
+### Hermes package validator accepts typed test evidence — 2026-11-19T00:46:33Z
+
+- **id:** hermes-ucm-test-result-validator-20261119
+- **timestamp:** 2026-11-19T00:46:33Z
+- **what:** Extended the pinned package validator to recognize `test_result` evidence with a passing or partial outcome, pinned commit, mapped capability, scenario, and locator.
+- **why:** EV-0018 uses the UCM skill's `test_result` evidence kind; the prior validator rejected it before validating the map.
+- **components:** `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py`
+- **type:** validation compatibility fix.
+- **validation:** Pinned package validator, targeted UCM capability report, task continuity tests, and `git diff --check`.
+- **performance:** no runtime impact; validator-only.
+- **risks:** Existing historical UCM evidence inconsistencies remain separate and unchanged.
+- **follow_up:** Keep evidence-kind validation aligned with the installed UCM schema as new evidence types are added.
