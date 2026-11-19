@@ -667,6 +667,13 @@ struct ToolsetEnabledResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct SkillEnabledResponse {
+    ok: bool,
+    name: String,
+    enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct SessionMutationSnapshot {
     session_id: String,
     exists: bool,
@@ -2038,6 +2045,14 @@ pub enum GatewayEvent {
         name: String,
         result: Result<bool, String>,
     },
+    SkillEnabled {
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<bool, String>,
+    },
     SessionPinUpdated {
         request_id: String,
         session_id: String,
@@ -2423,6 +2438,11 @@ enum GatewayHttpCommand {
         policy: RepoScanPolicy,
     },
     SetToolsetEnabled {
+        request_id: String,
+        name: String,
+        enabled: bool,
+    },
+    SetSkillEnabled {
         request_id: String,
         name: String,
         enabled: bool,
@@ -2956,6 +2976,55 @@ impl GatewayDiscovery {
                 artifact_image_sender,
             },
             request_receiver,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_skill_enabled() -> (
+        Self,
+        Receiver<(String, String, bool)>,
+        mpsc::Sender<GatewayEvent>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::SetSkillEnabled {
+                    request_id,
+                    name,
+                    enabled,
+                } = command
+                    && request_sender.send((request_id, name, enabled)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
         )
     }
 
@@ -4298,6 +4367,21 @@ impl GatewayDiscovery {
     ) -> Result<(), String> {
         self.http_sender
             .send(GatewayHttpCommand::SetToolsetEnabled {
+                request_id,
+                name,
+                enabled,
+            })
+            .map_err(|_| "Hermes capability writer has closed".to_owned())
+    }
+
+    pub fn set_skill_enabled(
+        &self,
+        request_id: String,
+        name: String,
+        enabled: bool,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::SetSkillEnabled {
                 request_id,
                 name,
                 enabled,
@@ -7888,6 +7972,18 @@ fn gateway_http_actor(
                 name: name.clone(),
                 result: set_toolset_enabled_http(&endpoint, &name, enabled),
             },
+            GatewayHttpCommand::SetSkillEnabled {
+                request_id,
+                name,
+                enabled,
+            } => GatewayEvent::SkillEnabled {
+                request_id,
+                name: name.clone(),
+                profile_id: endpoint.profile_id.clone(),
+                instance_id: endpoint.instance_id.clone(),
+                authority_epoch: endpoint.authority_epoch,
+                result: set_skill_enabled_http(&endpoint, &name, enabled),
+            },
             GatewayHttpCommand::SetSessionPinned {
                 request_id,
                 session_id,
@@ -10956,6 +11052,84 @@ fn request_toolset_enabled(
         .map_err(|_| "Hermes returned invalid toolset update JSON".to_owned())?;
     if !response.ok || response.name != name || response.enabled != enabled {
         return Err("Hermes did not confirm the requested toolset state".into());
+    }
+    Ok(response.enabled)
+}
+
+fn set_skill_enabled_http(
+    endpoint: &GatewayEndpoint,
+    name: &str,
+    enabled: bool,
+) -> Result<bool, String> {
+    if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+        return Err("Hermes skill name is invalid".into());
+    }
+    if endpoint.remote_auth.is_some() {
+        let url = format!(
+            "{}/api/skills/toggle",
+            endpoint.api_origin.trim_end_matches('/')
+        );
+        let response: SkillEnabledResponse = request_remote_gateway_mutation(
+            endpoint,
+            "PUT",
+            &url,
+            serde_json::json!({"name":name,"enabled":enabled}),
+        )?;
+        if !response.ok || response.name != name || response.enabled != enabled {
+            return Err("Hermes did not confirm the requested skill state".into());
+        }
+        return Ok(response.enabled);
+    }
+    if !is_bare_loopback_origin(&endpoint.api_origin) {
+        return Err("Hermes skill updates require the verified loopback API origin".into());
+    }
+    let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+    validate_http_ticket(&ticket)?;
+    request_skill_enabled(&endpoint.api_origin, ticket.as_str(), name, enabled)
+}
+
+fn request_skill_enabled(
+    api_origin: &str,
+    ticket: &str,
+    name: &str,
+    enabled: bool,
+) -> Result<bool, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err("Hermes skill updates require the verified loopback API origin".into());
+    }
+    if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+        return Err("Hermes skill name is invalid".into());
+    }
+    let url = format!("{}/api/skills/toggle", api_origin.trim_end_matches('/'));
+    let body = serde_json::json!({"name":name,"enabled":enabled}).to_string();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .proxy(None)
+        .timeout_global(Some(Duration::from_secs(5)))
+        .max_redirects(0)
+        .build()
+        .into();
+    let response = agent
+        .put(url.as_str())
+        .header("X-Hermes-Gateway-Ticket", ticket)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .send(body)
+        .map_err(|_| "Hermes skill update request failed".to_owned())?;
+    let mut bytes = Vec::new();
+    response
+        .into_body()
+        .into_reader()
+        .take(GATEWAY_HTTP_RESPONSE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Could not read Hermes skill update response".to_owned())?;
+    if bytes.len() as u64 > GATEWAY_HTTP_RESPONSE_LIMIT {
+        return Err("Hermes API response exceeded 512 KiB".into());
+    }
+    let response: SkillEnabledResponse = serde_json::from_slice(&bytes)
+        .map_err(|_| "Hermes returned invalid skill update JSON".to_owned())?;
+    if !response.ok || response.name != name || response.enabled != enabled {
+        return Err("Hermes did not confirm the requested skill state".into());
     }
     Ok(response.enabled)
 }
@@ -16762,6 +16936,73 @@ mod tests {
         assert_eq!(snapshot.toolsets[0].label, "Web Search");
         assert_eq!(snapshot.toolsets[0].tools, ["web_search", "web_extract"]);
         server.join().expect("capability fixture server exits");
+    }
+
+    #[test]
+    fn skill_toggle_uses_pinned_put_payload_and_validates_receipt() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            for response_enabled in [false, true] {
+                let (mut stream, _) = listener.accept().expect("accept skill update");
+                let mut request = Vec::new();
+                let mut buffer = [0; 1024];
+                let body_range = loop {
+                    let count = stream.read(&mut buffer).expect("read skill update request");
+                    if count == 0 {
+                        panic!("request closed before headers completed");
+                    }
+                    request.extend_from_slice(&buffer[..count]);
+                    if let Some(boundary) =
+                        request.windows(4).position(|window| window == b"\r\n\r\n")
+                    {
+                        let header_end = boundary + 4;
+                        let headers = String::from_utf8_lossy(&request[..boundary]);
+                        let content_length = headers
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|value| value.trim().parse::<usize>().ok())
+                            })
+                            .expect("content-length header");
+                        if request.len() >= header_end + content_length {
+                            break (header_end, content_length);
+                        }
+                    }
+                };
+                let request_text = String::from_utf8_lossy(&request);
+                assert!(request_text.starts_with("PUT /api/skills/toggle HTTP/1.1\r\n"));
+                assert!(
+                    request_text
+                        .to_ascii_lowercase()
+                        .contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n")
+                );
+                let body: serde_json::Value =
+                    serde_json::from_slice(&request[body_range.0..body_range.0 + body_range.1])
+                        .expect("parse skill toggle body");
+                assert_eq!(body, json!({"name":"web-research","enabled":false}));
+                let response = json!({
+                    "ok":true,
+                    "name":"web-research",
+                    "enabled":response_enabled
+                })
+                .to_string();
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response)
+                    .expect("write skill response");
+            }
+        });
+        let origin = format!("http://{address}");
+        assert!(
+            !request_skill_enabled(&origin, "fixture-native-http-ticket", "web-research", false)
+                .expect("decode matching skill update receipt")
+        );
+        assert!(
+            request_skill_enabled(&origin, "fixture-native-http-ticket", "web-research", false)
+                .is_err(),
+            "mismatched skill state receipt must fail closed"
+        );
+        server.join().expect("skill update fixture exits");
     }
 
     #[test]

@@ -258,3 +258,8 @@ The capabilities view consumes Gateway `SkillInfo` rows and filters them case-in
 
 
 Skills search results are filtered by name/category/description, then sorted by usage descending and name ascending. Native tie-breaking uses lowercase ordinal comparison; localized names may order differently from the pinned Desktop locale comparison.
+
+
+## Skill enable mutations
+
+A skill row dispatches a profile-bound Gateway HTTP mutation. The current skill list is optimistically updated and keyed pending state disables duplicate toggles; response receipts must match request, profile, connection instance and authority epoch. A denial restores the previous `enabled` value and surfaces the error.

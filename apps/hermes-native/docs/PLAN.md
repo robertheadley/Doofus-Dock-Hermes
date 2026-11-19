@@ -1514,3 +1514,8 @@ PAR-0252 is partial. The pinned `filteredSkills` query and native shared filter 
 ### Revision 251 — Skills ordering follow-up (2026-11-19T19:59Z)
 
 The PAR-0252 filter now orders matches by usage descending and then lowercase skill name, matching the pinned `filteredSkills` order for ordinary English identifiers. The focused regression asserts both search fields and ordering. Locale-sensitive tie-breaking, rendered search interaction, profile switching, live Gateway, Windows and source-paired acceptance remain open, so the row stays partial.
+
+
+### Revision 252 — Profile-scoped Skills toggle (2026-11-19T20:07Z)
+
+PAR-0254 is partial. The Skills list now has an accessible per-skill checkbox that issues the pinned `PUT /api/skills/toggle` `{name, enabled}` request through the current Gateway endpoint. The row updates optimistically, shows a pending state, fences receipts by request/profile/instance/authority epoch, and restores the previous state on denial. Focused HTTP and app tests pass, including a denied update followed by successful retry. Bulk enable/disable, disable-unused, skill edit/lock/details and hub lifecycle are separate features; rendered Windows, live Gateway and source-paired acceptance remain open.

@@ -323,3 +323,5 @@ PAR-0062/0063 composer attachments (2026-11-19):
 - PAR-0251 is partial: add dedicated headless Skills row rendering and match pinned usage ordering, then cover profile switching, unavailable/error behavior and source-paired Gateway acceptance. Keep skill toggles/details/install/update as separate requirements.
 
 - PAR-0252 now matches pinned field filtering and usage-descending/name ordering; remaining work is rendered search interaction, locale-sensitive ties, profile switching and live/source-paired acceptance.
+
+- PAR-0254 now covers one-at-a-time skill toggles with optimistic state, owner fencing and rollback. Bulk toggles, disable-unused, lock/edit/details, profile-switch UI behavior and live/source-paired acceptance remain open.

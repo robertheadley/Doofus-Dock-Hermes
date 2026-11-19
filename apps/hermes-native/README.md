@@ -170,7 +170,7 @@ The native chat composer can attach images and files to a session using Hermes G
 
 ## Current scoped evidence
 
-The generated 173-row chat/tool/skills/plugins view currently reports 1 implemented, 20 partial, and 152 unknown. Twenty-one requirements have mapped implementation evidence; live runtime is unverified for all 173, source-paired acceptance is pending for all 173, and visual pairs are absent for all 173. See `docs/status/CHAT_TOOL_PROGRESS.csv`; these are independent evidence dimensions, not a completion percentage.
+The generated 173-row chat/tool/skills/plugins view currently reports 1 implemented, 21 partial, and 151 unknown. Twenty-two requirements have mapped implementation evidence; live runtime is unverified for all 173, source-paired acceptance is pending for all 173, and visual pairs are absent for all 173. See `docs/status/CHAT_TOOL_PROGRESS.csv`; these are independent evidence dimensions, not a completion percentage.
 
 
 Older transcript pagination currently loads profile-scoped offset pages, rejects mismatched page receipts, and merges boundary overlap. The pinned Desktop prompt-anchor/around-window flow and separated-page behavior remain open; see `docs/status/CHAT_TOOL_PROGRESS.csv`.
@@ -183,3 +183,6 @@ Installed Skills are loaded from Hermes Gateway and searched across name, catego
 
 
 Installed Skills search now sorts matches by usage descending and then skill name, matching the pinned ordering for ordinary English identifiers. Locale-sensitive name ties and rendered search interaction remain open.
+
+
+Installed Skills can now be enabled or disabled individually with Gateway confirmation and denial rollback. Bulk controls, detail/edit/lock, hub lifecycle, live Gateway and rendered Windows acceptance remain open.

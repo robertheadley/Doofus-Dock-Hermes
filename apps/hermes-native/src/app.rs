@@ -93,6 +93,10 @@ pub enum RegisteredUiAction {
         name: String,
         enabled: bool,
     },
+    SetSkillEnabled {
+        name: String,
+        enabled: bool,
+    },
     SetAgentPluginEnabled {
         key: String,
         enabled: bool,
@@ -483,6 +487,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"refresh_capabilities","permission":"ui_interaction","mutates":false,"schema":{}}
             ,{"type":"refresh_plugin_catalog","permission":"ui_interaction","mutates":false,"schema":{}}
             ,{"type":"set_toolset_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded toolsets, max 128 bytes","enabled":"boolean"}}
+            ,{"type":"set_skill_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded skills, max 128 bytes","enabled":"boolean"}}
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
@@ -675,6 +680,15 @@ struct MasterDetailResizeSession {
 struct PendingToolsetUpdate {
     request_id: String,
     previous_enabled: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PendingSkillUpdate {
+    request_id: String,
+    previous_enabled: bool,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -1345,6 +1359,7 @@ pub struct HermesNativeApp {
     plugin_catalog_facet_group: PluginCatalogFacetGroup,
     plugin_catalog_sort: PluginCatalogSort,
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
+    pending_skill_updates: BTreeMap<String, PendingSkillUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
     window_was_focused: bool,
@@ -3649,6 +3664,7 @@ fn render_message() -> &'static str {
             plugin_catalog_facet_group: PluginCatalogFacetGroup::default(),
             plugin_catalog_sort: PluginCatalogSort::default(),
             pending_toolset_updates: BTreeMap::new(),
+            pending_skill_updates: BTreeMap::new(),
             fonts_installed: false,
             gateway_connected: false,
             window_was_focused: false,
@@ -9989,6 +10005,32 @@ fn render_message() -> &'static str {
                             }
                             if !skill.description.is_empty() {
                                 ui.label(RichText::new(&skill.description).size(12.0).color(MUTED));
+                            }
+                            let update_pending =
+                                self.pending_skill_updates.contains_key(&skill.name);
+                            let mut enabled = skill.enabled;
+                            let toggle = ui
+                                .add_enabled(
+                                    self.gateway_connected && !update_pending,
+                                    egui::Checkbox::new(&mut enabled, ""),
+                                )
+                                .on_hover_text(if skill.enabled {
+                                    format!("Disable {}", skill.name)
+                                } else {
+                                    format!("Enable {}", skill.name)
+                                })
+                                .accessible_name(format!("Toggle Skill {}", skill.name));
+                            if toggle.changed() {
+                                self.execute_registered_action(
+                                    RegisteredUiAction::SetSkillEnabled {
+                                        name: skill.name.clone(),
+                                        enabled,
+                                    },
+                                )
+                                .unwrap_or_else(|error| self.capabilities_error = Some(error));
+                            }
+                            if update_pending {
+                                ui.label(RichText::new("Saving…").size(11.0).color(MUTED));
                             }
                         });
                         ui.add_space(6.0);
@@ -16941,6 +16983,9 @@ fn render_message() -> &'static str {
             RegisteredUiAction::SetToolsetEnabled { name, enabled } => {
                 self.set_toolset_enabled(name, enabled)?;
             }
+            RegisteredUiAction::SetSkillEnabled { name, enabled } => {
+                self.set_skill_enabled(name, enabled)?;
+            }
             RegisteredUiAction::SetAgentPluginEnabled { key, enabled } => {
                 self.set_agent_plugin_enabled(key, enabled)?;
             }
@@ -17837,6 +17882,63 @@ fn render_message() -> &'static str {
         );
         self.status = format!(
             "{} {label}…",
+            if enabled { "Enabling" } else { "Disabling" }
+        );
+        Ok(())
+    }
+
+    fn set_skill_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before changing a Skill".into());
+        }
+        if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+            return Err("Skill name is invalid".into());
+        }
+        let Some(skills) = &self.skills else {
+            return Err("Load Skills before changing one".into());
+        };
+        let Some(skill) = skills.iter().find(|skill| skill.name == name) else {
+            return Err(format!("Skill {name:?} is not in the loaded inventory"));
+        };
+        if self.pending_skill_updates.contains_key(&name) {
+            return Err(format!("Skill {name:?} already has an update in progress"));
+        }
+        if skill.enabled == enabled {
+            return Ok(());
+        }
+        let previous_enabled = skill.enabled;
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        let profile_id = endpoint.profile_id.clone();
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let request_id = operation_id("skill-enabled");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes capability writer is unavailable".to_owned())?;
+        gateway.set_skill_enabled(request_id.clone(), name.clone(), enabled)?;
+        if let Some(skill) = self
+            .skills
+            .as_mut()
+            .and_then(|skills| skills.iter_mut().find(|skill| skill.name == name))
+        {
+            skill.enabled = enabled;
+        }
+        self.pending_skill_updates.insert(
+            name.clone(),
+            PendingSkillUpdate {
+                request_id,
+                previous_enabled,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            },
+        );
+        self.status = format!(
+            "{} Skill {name}…",
             if enabled { "Enabling" } else { "Disabling" }
         );
         Ok(())
@@ -22106,6 +22208,61 @@ fn render_message() -> &'static str {
                                 self.uncertain_session_renames.remove(&action_key);
                                 self.status = error;
                             }
+                        }
+                    }
+                }
+                GatewayEvent::SkillEnabled {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_skill_updates.get(&name) else {
+                        continue;
+                    };
+                    if pending.request_id != request_id {
+                        continue;
+                    }
+                    let pending = self
+                        .pending_skill_updates
+                        .remove(&name)
+                        .expect("pending Skill update checked");
+                    let owner_matches = profile_id == pending.profile_id
+                        && instance_id == pending.instance_id
+                        && authority_epoch == pending.authority_epoch
+                        && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                            endpoint.profile_id == profile_id
+                                && endpoint.instance_id == instance_id
+                                && endpoint.authority_epoch == authority_epoch
+                        });
+                    if !owner_matches {
+                        continue;
+                    }
+                    match result {
+                        Ok(enabled) => {
+                            if let Some(skill) = self.skills.as_mut().and_then(|skills| {
+                                skills.iter_mut().find(|skill| skill.name == name)
+                            }) {
+                                skill.enabled = enabled;
+                            }
+                            self.capabilities_error = None;
+                            self.status = format!(
+                                "{} Skill {name}",
+                                if enabled { "Enabled" } else { "Disabled" }
+                            );
+                        }
+                        Err(error) => {
+                            if let Some(skill) = self.skills.as_mut().and_then(|skills| {
+                                skills.iter_mut().find(|skill| skill.name == name)
+                            }) {
+                                skill.enabled = pending.previous_enabled;
+                            }
+                            if self.route == AppRoute::Capabilities {
+                                self.capabilities_error = Some(error.clone());
+                            }
+                            self.status = error;
                         }
                     }
                 }
@@ -36800,6 +36957,87 @@ mod tests {
             ["api-research", "web-research", "notes-index"],
             "usage sorts descending, then equal-usage skill names sort ascending"
         );
+    }
+
+    #[test]
+    fn skill_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_skill_enabled();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.skills = Some(vec![SkillInfo {
+            category: "research".into(),
+            description: "Research sources".into(),
+            enabled: true,
+            name: "web-research".into(),
+            usage: Some(2),
+            provenance: Some("hub".into()),
+        }]);
+
+        app.set_skill_enabled("web-research".into(), false)
+            .expect("queue skill update");
+        let (request_id, name, enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("profile-scoped worker receives update");
+        assert_eq!(name, "web-research");
+        assert!(!enabled);
+        assert!(
+            !app.skills.as_ref().unwrap()[0].enabled,
+            "toggle is optimistic"
+        );
+        assert!(app.pending_skill_updates.contains_key(&name));
+
+        events
+            .send(GatewayEvent::SkillEnabled {
+                request_id,
+                name: name.clone(),
+                profile_id: "research".into(),
+                instance_id: "gateway-research".into(),
+                authority_epoch: 7,
+                result: Err("permission denied".into()),
+            })
+            .expect("deliver denied update result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            app.skills.as_ref().unwrap()[0].enabled,
+            "denial restores prior state"
+        );
+        assert!(!app.pending_skill_updates.contains_key(&name));
+        assert_eq!(app.capabilities_error.as_deref(), Some("permission denied"));
+
+        app.set_skill_enabled("web-research".into(), false)
+            .expect("retry after denial");
+        let (request_id, name, enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("retry reaches writer");
+        assert!(!enabled);
+        events
+            .send(GatewayEvent::SkillEnabled {
+                request_id,
+                name,
+                profile_id: "research".into(),
+                instance_id: "gateway-research".into(),
+                authority_epoch: 7,
+                result: Ok(false),
+            })
+            .expect("deliver confirmed update result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(!app.skills.as_ref().unwrap()[0].enabled);
+        assert!(app.pending_skill_updates.is_empty());
+        assert_eq!(app.status, "Disabled Skill web-research");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

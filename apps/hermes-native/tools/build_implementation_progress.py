@@ -526,6 +526,23 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "physical Windows clipboard behavior and source-paired visuals/acceptance remain unverified",
         ],
     },
+    "PAR-0254": {
+        "state": "partial",
+        "level": "headless_skill_toggle_http_scope_optimistic_and_rollback_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/skills.ts#setSkillEnabled",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/skills/skills-tab.tsx#applyEnabled",
+            "apps/hermes-native/src/app.rs#set_skill_enabled",
+            "apps/hermes-native/src/app.rs#skill_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial",
+            "apps/hermes-native/src/gateway.rs#set_skill_enabled_http",
+            "apps/hermes-native/src/gateway.rs#skill_toggle_uses_pinned_put_payload_and_validates_receipt",
+            "apps/hermes-native/docs/PLAN.md#Revision 252",
+        ],
+        "gaps": [
+            "native bulk skill enable/disable, disable-unused action, edit/lock/details, and install/update flows are separate and remain open",
+            "rendered toggle interaction, profile-switch in-flight behavior, live Gateway, installed Windows and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0252": {
         "state": "partial",
         "level": "native_installed_skill_search_fields_tested",

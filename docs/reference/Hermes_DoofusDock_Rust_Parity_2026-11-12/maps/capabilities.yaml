@@ -5081,7 +5081,7 @@ capabilities:
   name: Toggle a skill on or off
   area: skills-plugins
   claim: In the new native Rust DoofusDock UI, a user can toggle a skill on or off.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions

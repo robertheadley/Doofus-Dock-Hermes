@@ -2846,3 +2846,17 @@ UCM evidence addendum (2026-11-19T19:58Z): EV-0037 records the Skills search fie
 - **follow_up:** Add rendered search interaction and locale-aware ordering acceptance.
 
 UCM evidence addendum (2026-11-19T20:00Z): EV-0038 records Skills search filtering and usage/name ordering, bound to behavior commit `073befedd710bfd619d9007e615f1181ad5f1460`; capability remains partial.
+
+
+## PAR-0254 per-skill enable toggle
+
+- **id:** hermes-par-0254-skill-toggle-20261119
+- **timestamp:** 2026-11-19T20:07:00Z
+- **what:** Added the accessible native per-skill toggle, pinned Gateway PUT payload, optimistic update, pending guard, owner-fenced receipt and denial rollback.
+- **why:** Implement the missing individual enable/disable behavior from the fixed Hermes source.
+- **components:** Skills capabilities list, Gateway HTTP actor, mutation reducer and automation action schema.
+- **type:** behavior implementation
+- **validation:** Focused Gateway HTTP contract and app mutation tests pass; progress and UCM validators run before publication.
+- **performance:** One bounded 5-second HTTP mutation; no polling or repeated reads.
+- **risks:** Bulk controls, profile-switch interaction, live runtime, Windows rendering and source-paired acceptance remain open.
+- **follow_up:** Validate the rendered checkbox on Windows/headless accessibility tree and implement remaining skill management controls.

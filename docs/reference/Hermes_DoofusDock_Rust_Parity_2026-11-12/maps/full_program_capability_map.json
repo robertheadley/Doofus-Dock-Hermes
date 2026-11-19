@@ -4841,7 +4841,7 @@
       "primitives": "searchable-list; toggles; detail-pane; install-log; permission-dialog",
       "dock_support": "layout shell only; domain widgets application-owned",
       "source_confidence": "upstream-documented+code-index",
-      "target_status": "not_implemented",
+      "target_status": "partial",
       "priority": "P2",
       "acceptance": "With target scope active, a user can toggle a skill on or off; side-by-side behavior and failure case are recorded.",
       "test_id": "PAR-0254",
