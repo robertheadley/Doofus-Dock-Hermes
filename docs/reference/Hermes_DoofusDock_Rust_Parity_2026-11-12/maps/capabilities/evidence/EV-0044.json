@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0044",
+  "capability_id": "ui-remove-mcp-server",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "confirmation-gated-profile-scoped-mcp-server-removal",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "2c30e5956bc0ad439fe42f439eff7f83219bf0a4",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust WebSocket JSON-RPC fixture, app reducer and headless egui AccessKit confirmation test; no live Gateway, profile credential cleanup, MCP worker shutdown, installed UI or physical Windows input used.",
+  "notes": "Gateway actor test verifies mcp.servers.remove with explicit home-bot profile, connection identity and authority epoch; only {ok:true,removed:true} succeeds, while removed=false becomes an error. App test proves request does not send before confirmation, a profile change invalidates confirmation, stale profile result is ignored, and a matching receipt removes the row. Headless dialog test confirms accessible confirm/cancel controls are rendered. Test locators: apps/hermes-native/src/gateway.rs#mcp_server_remove_uses_profile_scoped_rpc_and_requires_removed_receipt and apps/hermes-native/src/app.rs#mcp_server_removal_requires_current_confirmation_and_fences_receipt. Live Hermes config/credential cleanup and MCP process shutdown/restart behavior, packaged UI and source-paired acceptance remain open; capability remains partial."
+}

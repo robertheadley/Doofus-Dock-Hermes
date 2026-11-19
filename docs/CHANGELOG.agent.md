@@ -2931,3 +2931,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** One foreground RPC after user confirmation; duplicate pending removals are blocked.
 - **risks:** Live config/credential cleanup, worker shutdown/restart and packaged Windows behavior remain unverified.
 - **follow_up:** Continue MCP catalog/install and other scoped chat/tool gaps, then verify live Gateway behavior.
+
+### PAR-0266 evidence — MCP server removal (2026-11-19T21:30Z)
+
+- **id:** hermes-par0266-ev0044-20261119
+- **timestamp:** 2026-11-19T21:30:00Z
+- **what:** Added EV-0044 for confirmation-gated MCP removal at commit `2c30e5956bc0ad439fe42f439eff7f83219bf0a4`; task ledger records the slice as tested.
+- **why:** Preserve traceable test evidence while accurately retaining partial capability status.
+- **components:** UCM evidence, Doofus task ledger and handoff, append-only audit docs.
+- **type:** evidence and task-state update
+- **validation:** Task ledger revision 309 valid; focused tests and cargo check recorded in EV-0044; package validator run before publication.
+- **performance:** No runtime behavior change.
+- **risks:** Live config/credential cleanup, MCP worker shutdown/restart and packaged UI remain unverified.
+- **follow_up:** Continue pinned-source chat/tool feature coverage, prioritizing end-to-end user value.
