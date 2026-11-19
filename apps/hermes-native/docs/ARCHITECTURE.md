@@ -216,3 +216,8 @@ Command Center session rows expose a confirmation-gated `"Delete…"` action (`D
 ## Connection-owned session views (2026-11-19)
 
 Session panes persist `hermes.session.connection_id` alongside profile and session identity. The pane ID and in-memory session-view key include the connection owner, so two Gateways may expose the same profile/session ID without sharing a pane or transcript state. Closing and restoring retains that owner. The selected `GatewayDiscovery` stamps its stable ID onto `SessionResumed`; sidebar reselect and resume completion are fenced to the exact owner. Peer transcript refresh uses the same owner check. This is scoped session-view and resume coverage, not complete multi-connection routing: a saved-connection picker, concurrent discovery lifecycle, and owner routing for all other session operations remain open.
+
+
+## Transcript replay-gap recovery (2026-11-19)
+
+A `session.replay_gap` event requests a fresh `session.resume` snapshot for exactly one active or open session view on the selected Gateway connection. The handler preserves the cached transcript and draft while the snapshot is pending, retains profile and connection identity, and coalesces repeated gaps until the matching resume settles. This handler does not create an automatic reconnect loop; live Gateway replay behavior and production reconnect remain unverified.

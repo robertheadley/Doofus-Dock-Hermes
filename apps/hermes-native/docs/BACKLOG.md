@@ -294,3 +294,10 @@ PAR-0510 connection-owned resume progress (2026-11-19T16:41:18Z):
 - [x] Add same-profile/same-session cross-connection pane isolation and persistence regression coverage.
 - [ ] Add the saved-connection picker and concurrent discovery actor lifecycle/generation fencing.
 - [ ] Carry exact owner routing through every remaining session request, result and mutation; validate with live Gateway reconnect behavior and Windows/source-paired evidence.
+
+
+PAR-0511 replay-gap recovery progress (2026-11-19T16:58:47Z):
+- [x] Detect `session.replay_gap` and request an authoritative resume for the uniquely matched active session or open pane.
+- [x] Preserve transcript/draft state, keep connection/profile owner scope, and coalesce duplicate gap events while a resume is pending.
+- [ ] Add automatic WebSocket reconnect and validate replay semantics against a live Hermes Gateway.
+- [ ] Verify ambiguous-owner/offline failure behavior and collect installed-Windows, source-paired, and formal acceptance evidence.

@@ -155,3 +155,6 @@ Advanced mode also supports user-created named layout presets from the Layout pr
 
 
 Session resume and pane identity now retain the selected Gateway connection owner in addition to profile/session identity. This prevents same-ID sessions on different saved connections from sharing pane state and ensures resume results return only to the requesting connection's view. Automated tests cover owner attribution, pane persistence/isolation, and stale-result fencing. The app still lacks a saved-connection picker and full multi-connection request routing; live Gateway and installed-Windows verification remain pending.
+
+
+When Hermes reports `session.replay_gap`, the native app requests a fresh authoritative resume for the unique matching active chat or open session tile. The cached transcript and draft remain visible while the snapshot is pending, and repeated gap events are coalesced. Automatic Gateway reconnect and live backend replay verification remain open.

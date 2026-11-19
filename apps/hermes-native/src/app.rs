@@ -14720,6 +14720,18 @@ fn render_message() -> &'static str {
             .get("payload")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+        if event_type == "session.replay_gap" {
+            if let Some(runtime_session_id) = session_id {
+                self.recover_session_replay_gap(
+                    runtime_session_id,
+                    event
+                        .get("profile")
+                        .or_else(|| payload.get("profile"))
+                        .and_then(|value| value.as_str()),
+                );
+            }
+            return;
+        }
         if matches!(
             event_type,
             "message.start"
@@ -15412,6 +15424,80 @@ fn render_message() -> &'static str {
             return;
         }
         self.queue_session_resume(session_id, profile, true);
+    }
+
+    fn recover_session_replay_gap(
+        &mut self,
+        runtime_session_id: &str,
+        event_profile: Option<&str>,
+    ) {
+        if !self.gateway_connected || self.gateway_discovery.is_none() {
+            return;
+        }
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let mut candidates = BTreeSet::new();
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && event_profile
+                .is_none_or(|profile| self.active_session_profile.as_deref() == Some(profile))
+            && let AppRoute::Session(stored_session_id) = &self.route
+        {
+            candidates.insert((
+                stored_session_id.clone(),
+                self.active_session_profile.clone(),
+            ));
+        }
+        let open_owners = self.workspace.open_session_pane_owner_identities();
+        for (pane_connection, stored_session_id, pane_profile) in open_owners {
+            let pane_connection =
+                pane_connection.or_else(|| self.untagged_pane_connection_id().map(str::to_owned));
+            if pane_connection.as_deref() != Some(connection_id.as_str())
+                || event_profile.is_some_and(|profile| pane_profile.as_deref() != Some(profile))
+            {
+                continue;
+            }
+            let key = self.session_identity_key_for_connection(
+                Some(&connection_id),
+                &stored_session_id,
+                pane_profile.as_deref(),
+            );
+            if self
+                .session_chat_views
+                .get(&key)
+                .is_some_and(|view| view.runtime_session_id.as_deref() == Some(runtime_session_id))
+            {
+                candidates.insert((stored_session_id, pane_profile));
+            }
+        }
+        let mut candidates = candidates.into_iter();
+        let Some((stored_session_id, profile)) = candidates.next() else {
+            return;
+        };
+        if candidates.next().is_some() {
+            return;
+        }
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id) {
+            self.save_active_chat_view();
+        }
+        let key = self.session_identity_key_for_connection(
+            Some(&connection_id),
+            &stored_session_id,
+            profile.as_deref(),
+        );
+        if self
+            .session_chat_views
+            .get(&key)
+            .is_some_and(|view| view.resume_request_id.is_some())
+        {
+            return;
+        }
+        self.request_explicit_session_resume(&stored_session_id, profile.clone());
+        if self
+            .session_chat_views
+            .get(&key)
+            .is_some_and(|view| view.resume_request_id.is_some())
+        {
+            self.status = "Recovering session transcript…".into();
+        }
     }
 
     fn queue_session_resume(&mut self, session_id: &str, profile: Option<String>, force: bool) {
@@ -34332,6 +34418,110 @@ mod tests {
         assert_eq!(app.status, "Hermes response complete");
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn replay_gap_resumes_active_session_and_preserves_transcript_and_draft() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _refreshes) =
+            crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.transcript = vec![serde_json::json!({"role":"assistant","content":"Visible answer"})];
+        app.draft = "Keep typing".into();
+
+        app.handle_server_event(serde_json::json!({
+            "type":"session.replay_gap",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "payload":{"latest_seq":41,"replay_epoch":"epoch-next"}
+        }));
+        let command = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("replay gap requests an authoritative session resume");
+        assert!(matches!(
+            command,
+            crate::gateway::TestGatewayCommand::ResumeSession {
+                session_id,
+                profile: Some(profile),
+                ..
+            } if session_id == "stored-session" && profile == "work"
+        ));
+        assert!(
+            commands.try_recv().is_err(),
+            "one replay gap queues one resume"
+        );
+        assert_eq!(app.transcript[0]["content"], "Visible answer");
+        assert_eq!(app.draft, "Keep typing");
+        let key = app.session_identity_key("stored-session", Some("work"));
+        let view = app
+            .session_chat_views
+            .get(&key)
+            .expect("active owner view is cached");
+        assert!(view.resume_request_id.is_some());
+        assert_eq!(view.draft, "Keep typing");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn replay_gap_resumes_only_the_exact_open_session_pane_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _refreshes) =
+            crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_connected = true;
+        app.workspace
+            .open_session_pane_for_owner(Some(&connection_id), Some("work"), "stored-tile", "Tile")
+            .expect("open owner-scoped session pane");
+        let key = app.session_identity_key("stored-tile", Some("work"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-tile".into()),
+                transcript: vec![serde_json::json!({"role":"assistant","content":"Tile answer"})],
+                draft: "Tile draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        let replay_gap = serde_json::json!({
+            "type":"session.replay_gap",
+            "session_id":"runtime-tile",
+            "profile":"work",
+            "payload":{"latest_seq":42,"replay_epoch":"epoch-tile"}
+        });
+        app.handle_server_event(replay_gap.clone());
+        app.handle_server_event(replay_gap);
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)).expect("tile resume"),
+            crate::gateway::TestGatewayCommand::ResumeSession {
+                session_id,
+                profile: Some(profile),
+                ..
+            } if session_id == "stored-tile" && profile == "work"
+        ));
+        assert!(
+            commands.try_recv().is_err(),
+            "repeated gaps are coalesced while resume is pending"
+        );
+        let view = app
+            .session_chat_views
+            .get(&key)
+            .expect("tile view remains cached");
+        assert_eq!(view.transcript[0]["content"], "Tile answer");
+        assert_eq!(view.draft, "Tile draft");
+        assert!(view.resume_request_id.is_some());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

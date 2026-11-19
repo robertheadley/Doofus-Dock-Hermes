@@ -2509,3 +2509,20 @@ Publication addendum (2026-11-19T16:47:12Z): Commit `b349bf96378e250c8ec10f2dae6
 - **performance:** No runtime behavior changed.
 - **risks:** The UCM checker remains unavailable in this environment without PyYAML; package validator confirms its own crosswalk and receipt constraints.
 - **follow_up:** Keep UCM evidence and the 173-row implementation view synchronized as requirements are implemented.
+
+
+### Gateway replay-gap transcript recovery — 2026-11-19T16:58:47Z
+
+- **id:** hermes-par-0511-replay-gap-implementation-20261119
+- **timestamp:** 2026-11-19T16:58:47Z
+- **what:** Added `session.replay_gap` handling that resolves one exact active/open session owner and requests an authoritative resume; preserves transcript and draft; coalesces repeated events while resume is pending. Added active-route and pane tests.
+- **why:** Recover missed transcript events according to the pinned Hermes replay-gap behavior without duplicating or misrouting session state.
+- **components:** Gateway event routing, session-owner cache lookup, transcript recovery, PAR-0511 progress evidence.
+- **type:** Functional implementation and headless regression coverage.
+- **validation:** Focused replay-gap tests pass (2/2); app package check passes. Full suite and progress/task validators pending. PAR-0511 remains partial.
+- **performance:** No runtime benchmark or live Gateway was run.
+- **risks:** No automatic reconnect loop; live replay behavior and ambiguous-owner failure path remain unverified.
+- **follow_up:** Add live/automatic reconnect and formal source-paired evidence; prioritize source-defined attachment and session-branch behavior after this protocol recovery slice.
+
+
+Validation addendum (2026-11-19T17:01:09Z): PASS complete Hermes Native feature suite (384 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` with existing dead-code warnings; PASS task protocol tests (18/18); PASS PAR-0511 task update and schema validation at revision 200; PASS scoped progress generator (1 implemented, 9 partial, 163 unknown; 10/173 mapped evidence); PASS UCM package validator (565 target behaviors; optional PyYAML parse skipped); PASS rustfmt and diff check. Automatic Gateway reconnect, live replay behavior, Windows acceptance and source-paired visuals remain open.
