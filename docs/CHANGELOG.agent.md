@@ -2903,3 +2903,4 @@ UCM evidence addendum (2026-11-19T20:42Z): EV-0041 binds the PAR-0265 MCP toggle
 - **performance:** One bounded background request per server test, maximum four concurrent tests, 60-second request timeout and 512 KiB response cap.
 - **risks:** Automatic probe/cache behavior, live/remote Gateway behavior, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** Continue through MCP add/catalog lifecycle and scoped chat/tool features; keep visual redesign as a separate later stage.
+UCM evidence addendum (2026-11-19T20:53Z): EV-0042 binds the PAR-0264 manual MCP test and its focused HTTP/app tests to behavior commit c44a520f3f936ab444ef189ca7a3d9aec4c044ea. The capability remains partial pending automatic probe/cache, live Gateway and source-paired acceptance.

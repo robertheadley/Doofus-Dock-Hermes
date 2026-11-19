@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0042",
+  "capability_id": "ui-test-mcp-connection",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-manual-mcp-connection-test",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "c44a520f3f936ab444ef189ca7a3d9aec4c044ea",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Rust HTTP fixture and profile-scoped app result test; no live Gateway, remote authenticated profile, installed UI or physical Windows input used.",
+  "notes": "Gateway test verifies the profile-scoped POST /api/mcp/servers/docs/test?profile=home-bot with local ticket and response containing tool schema length, prompts and resources. App test confirms result state is displayed and a stale profile/connection response is ignored. Test locators: apps/hermes-native/src/gateway.rs#mcp_server_test_uses_pinned_profile_scoped_post_and_returns_tools and apps/hermes-native/src/app.rs#mcp_server_test_shows_result_and_ignores_stale_profile_response. Automatic five-minute probe/cache behavior, live and remote Gateway execution, installed UI, Windows packaging and source-paired acceptance remain open; capability remains partial."
+}
