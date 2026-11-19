@@ -94,6 +94,12 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/README.md",
       "status": " M"
     },
@@ -148,18 +154,6 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
       "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
       "status": " M"
     },
@@ -185,12 +179,12 @@
   "checkpoint": {
     "command": null,
     "evidence": [
-      "apps/hermes-native/src/app.rs#skill_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial",
-      "apps/hermes-native/src/gateway.rs#skill_toggle_uses_pinned_put_payload_and_validates_receipt"
+      "apps/hermes-native/src/gateway.rs#mcp_server_inventory_uses_profile_scoped_ticketed_get",
+      "apps/hermes-native/src/app.rs#connectors_directory_shows_connected_state_and_account_details"
     ],
     "state": "tested",
-    "summary": "PAR-0254 Skills enable/disable toggle implemented and focused tests pass: profile-fenced optimistic UI rollback and pinned PUT payload/receipt validation. Feature remains partial pending live Gateway and rendered native UI verification.",
-    "verified_at": "2026-11-19T20:15:32Z"
+    "summary": "PAR-0262 MCP server inventory is source-traced and tested: profile-scoped ticketed local GET, bounded typed server data, and AccessKit-visible rows in Connectors. The capability remains partial because mutation/catalog flows and live/remote/rendered acceptance remain open.",
+    "verified_at": "2026-11-19T20:30:48Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -206,6 +200,7 @@
     "hermes-par-0251",
     "hermes-par-0252",
     "hermes-par-0254",
+    "hermes-par-0262",
     "hermes-par-0333",
     "hermes-par-0334",
     "hermes-par-0511",
@@ -213,7 +208,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T21:15:32Z",
+    "lease_expires_at": "2026-11-19T21:30:48Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -615,14 +610,14 @@
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0039.json#EV-0039"
       ],
       "kind": "git_push_main",
-      "note": "Publishing PAR-0254 behavior commit 0d6207564b8b5a753c5b5b2b519d1c5c05a99539 and UCM EV-0039 evidence to origin/main.",
-      "observed_at": "2026-11-19T20:17:35Z",
+      "note": "Pushed PAR-0254 behavior and EV-0039 evidence to main; git fetch confirms origin/main equals a512024deb9760ed7b9ce87827b871e6949a3dcb.",
+      "observed_at": "2026-11-19T20:17:55Z",
       "operation_id": "hermes-par0254-publish-20261119",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -725,11 +720,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0254-push-start-20261119",
+  "last_event_id": "hermes-par0262-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-par0254-push-start-20261119",
+    "request_id": "hermes-par0262-checkpoint-20261119",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -746,7 +741,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit the implementation and evidence projections to main, push, verify origin, then select the next dependency-ready chat/tool/skills/plugins capability.",
+  "recommended_next_action": "Commit implementation and partial evidence projections to main, bind EV-0040 to the behavior commit, publish and verify, then continue with MCP server mutations or chat rewind based on dependency priority.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -998,7 +993,6 @@
     "hermes-par-0259",
     "hermes-par-0260",
     "hermes-par-0261",
-    "hermes-par-0262",
     "hermes-par-0263",
     "hermes-par-0264",
     "hermes-par-0265",
@@ -1236,7 +1230,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "fc40f13c57645e2cd8ee74cb1a6f2ae59ee91782aec225df49f277586e05584d",
+    "change_fingerprint": "815bae624f4c86c3779d3571d7ab21c57717cca8ba10df7f75984cb6e70971d6",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1244,6 +1238,10 @@
       },
       {
         "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
         "status": " M"
       },
       {
@@ -1283,14 +1281,6 @@
         "status": " M"
       },
       {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
-        "status": " M"
-      },
-      {
         "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
         "status": " M"
       },
@@ -1307,17 +1297,17 @@
         "status": " M"
       }
     ],
-    "head_commit": "ecf2dbc86a05bc60419519cdb2b057be6b2562d2",
+    "head_commit": "a512024deb9760ed7b9ce87827b871e6949a3dcb",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 292,
+  "revision": 296,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 292,
+  "state_revision": 296,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0254",
-  "task_ledger_revision": 41,
+  "task_id": "hermes-par-0262",
+  "task_ledger_revision": 42,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2368,9 +2358,19 @@
       "command": "cargo test -p hermes-native --features agent-automation skill_toggle_uses_pinned_put_payload_and_validates_receipt",
       "result": "PASS 1 passed for each focused skill toggle test",
       "timestamp": "2026-11-19T20:15:32Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation mcp_server_inventory_uses_profile_scoped_ticketed_get",
+      "result": "PASS 1 passed for each focused MCP inventory test",
+      "timestamp": "2026-11-19T20:30:48Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation connectors_directory_shows_connected_state_and_account_details",
+      "result": "PASS 1 passed for each focused MCP inventory test",
+      "timestamp": "2026-11-19T20:30:48Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T20:17:35Z"
+  "updated_at": "2026-11-19T20:30:48Z"
 }

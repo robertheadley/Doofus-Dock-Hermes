@@ -2862,3 +2862,15 @@ UCM evidence addendum (2026-11-19T20:00Z): EV-0038 records Skills search filteri
 - **follow_up:** Validate the rendered checkbox on Windows/headless accessibility tree and implement remaining skill management controls.
 
 UCM evidence addendum (2026-11-19T20:17Z): EV-0039 records the PAR-0254 per-skill enable/disable Gateway mutation and focused tests, bound to behavior commit 0d6207564b8b5a753c5b5b2b519d1c5c05a99539. The capability remains partial pending live and rendered UI verification.
+### PAR-0262 — Profile-scoped MCP server inventory (2026-11-19T20:30Z)
+
+- **id:** hermes-par0262-mcp-inventory-20261119
+- **timestamp:** 2026-11-19T20:30:52Z
+- **what:** Added typed MCP server inventory loading through the profile-bound Gateway HTTP worker and visible server rows in the Connectors capability view.
+- **why:** Start porting pinned Hermes MCP server management with a bounded, read-only inventory slice.
+- **components:** Gateway HTTP commands and events, local/remote authenticated reads, Connectors UI/search, headless automation fixture, progress/UCM evidence projection.
+- **type:** feature implementation
+- **validation:** PASS cargo check, cargo fmt --check, focused ticketed profile GET test, focused AccessKit row test, progress generators, UCM package validator and task validator.
+- **performance:** Single bounded HTTP read on Connectors entry/refresh; existing worker and response limits apply.
+- **risks:** Add/edit/test/toggle/remove/catalog install are not implemented; live Gateway, remote auth and packaged Windows UI remain unverified. PyYAML is unavailable, so package validator skipped optional YAML parse.
+- **follow_up:** Implement MCP server enable/test mutations and catalog flows as separate reviewable slices.

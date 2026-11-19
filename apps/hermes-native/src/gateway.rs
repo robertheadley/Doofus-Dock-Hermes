@@ -1445,6 +1445,29 @@ pub struct ConnectorsSnapshot {
     pub accounts: Vec<ConnectorAccountEntry>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct McpServerSummary {
+    pub name: String,
+    #[serde(default)]
+    pub transport: String,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub tools: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct McpServersSnapshot {
+    #[serde(default)]
+    pub servers: Vec<McpServerSummary>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct AgentPluginServerInfo {
     #[serde(default)]
@@ -1949,6 +1972,11 @@ pub enum GatewayEvent {
         request_id: String,
         result: Result<ConnectorsSnapshot, String>,
     },
+    McpServersLoaded {
+        request_id: String,
+        profile_id: String,
+        result: Result<McpServersSnapshot, String>,
+    },
     AgentPluginsLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2291,6 +2319,9 @@ enum GatewayHttpCommand {
         query: String,
     },
     LoadCapabilities {
+        request_id: String,
+    },
+    LoadMcpServers {
         request_id: String,
     },
     LoadMessagingPlatforms {
@@ -4085,6 +4116,12 @@ impl GatewayDiscovery {
         self.command_sender
             .send(GatewayCommand::LoadConnectors { request_id })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn load_mcp_servers(&self, request_id: String) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadMcpServers { request_id })
+            .map_err(|_| "Hermes MCP server reader has closed".to_owned())
     }
 
     pub fn load_agent_plugins(
@@ -7639,6 +7676,11 @@ fn gateway_http_actor(
                     result: load_capabilities_http(&endpoint),
                 }
             }
+            GatewayHttpCommand::LoadMcpServers { request_id } => GatewayEvent::McpServersLoaded {
+                request_id,
+                profile_id: endpoint.profile_id.clone(),
+                result: load_mcp_servers_http(&endpoint),
+            },
             GatewayHttpCommand::LoadMessagingPlatforms {
                 request_id,
                 profile,
@@ -10769,6 +10811,58 @@ fn load_capabilities_http(endpoint: &GatewayEndpoint) -> Result<CapabilitiesSnap
         skills_ticket.as_str(),
         toolsets_ticket.as_str(),
     )
+}
+
+fn load_mcp_servers_http(endpoint: &GatewayEndpoint) -> Result<McpServersSnapshot, String> {
+    let origin = endpoint.api_origin.trim_end_matches('/');
+    let url = format!(
+        "{origin}/api/mcp/servers{}",
+        session_profile_suffix(&endpoint.profile_id)
+    );
+    let snapshot: McpServersSnapshot = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json(endpoint, &url)?
+    } else {
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        read_mcp_servers(&endpoint.api_origin, &ticket, &endpoint.profile_id)?
+    };
+    validate_mcp_servers(snapshot)
+}
+
+fn read_mcp_servers(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+) -> Result<McpServersSnapshot, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err("Hermes MCP server reads require the verified loopback API origin".into());
+    }
+    let url = format!(
+        "{}/api/mcp/servers{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let snapshot: McpServersSnapshot = request_gateway_json(api_origin, ticket, &url)?;
+    validate_mcp_servers(snapshot)
+}
+
+fn validate_mcp_servers(snapshot: McpServersSnapshot) -> Result<McpServersSnapshot, String> {
+    if snapshot.servers.len() > 10_000 {
+        return Err("Hermes returned too many MCP servers".into());
+    }
+    if snapshot.servers.iter().any(|server| {
+        server.name.is_empty()
+            || server.name.len() > 512
+            || server.name.chars().any(char::is_control)
+            || server.args.len() > 1024
+            || server
+                .tools
+                .as_ref()
+                .is_some_and(|tools| tools.len() > 10_000)
+    }) {
+        return Err("Hermes returned an invalid MCP server inventory".into());
+    }
+    Ok(snapshot)
 }
 
 fn load_display_timestamps_http(
@@ -17182,6 +17276,62 @@ mod tests {
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn mcp_server_inventory_uses_profile_scoped_ticketed_get() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept MCP inventory request");
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            loop {
+                let count = stream.read(&mut buffer).expect("read MCP request");
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..count]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let request = String::from_utf8(request).expect("HTTP request is ASCII");
+            assert!(request.starts_with("GET /api/mcp/servers?profile=home-bot HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-mcp-inventory-ticket\r\n")
+            );
+            let body = json!({"servers":[{
+                "name":"docs",
+                "transport":"stdio",
+                "command":"uvx",
+                "args":["mcp-server-docs"],
+                "url":null,
+                "enabled":true,
+                "tools":["search","fetch"]
+            }]})
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write MCP inventory response");
+        });
+
+        let snapshot = read_mcp_servers(
+            &format!("http://{address}"),
+            "fixture-mcp-inventory-ticket",
+            "home-bot",
+        )
+        .expect("read MCP server inventory");
+        assert_eq!(snapshot.servers.len(), 1);
+        assert_eq!(snapshot.servers[0].name, "docs");
+        assert_eq!(snapshot.servers[0].transport, "stdio");
+        assert_eq!(snapshot.servers[0].args, ["mcp-server-docs"]);
+        assert_eq!(
+            snapshot.servers[0].tools.as_deref().unwrap(),
+            &["search".to_owned(), "fetch".to_owned()]
+        );
+        server.join().expect("MCP inventory fixture exits");
     }
 
     #[test]

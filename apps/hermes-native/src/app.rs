@@ -12,13 +12,14 @@ use crate::gateway::{
     CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ComposerAttachmentReceipt,
     ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload, CronDeliveryTarget,
     CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus,
-    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, MessagingEnvVarInfo,
-    MessagingPlatformInfo, MessagingPlatformUpdate, MessagingPlatformsSnapshot,
-    ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
-    ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
-    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillInfo,
-    SlashCompletionItem, SlashCompletionResult, TelegramOnboardingApplyReceipt,
-    TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
+    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpServersSnapshot,
+    MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformUpdate,
+    MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot,
+    PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot,
+    PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult,
+    SessionSummary, SkillInfo, SlashCompletionItem, SlashCompletionResult,
+    TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
+    project_tree_session_colors,
 };
 use crate::keybindings::{KeyPlatform, KeybindingStore};
 use crate::keybindings_ui::{KeybindingsPanel, key_event_to_combo};
@@ -1330,6 +1331,10 @@ pub struct HermesNativeApp {
     connectors_request_id: Option<String>,
     connectors_pending: bool,
     connectors_error: Option<String>,
+    mcp_servers: Option<McpServersSnapshot>,
+    mcp_servers_request_id: Option<String>,
+    mcp_servers_pending: bool,
+    mcp_servers_error: Option<String>,
     agent_plugins: Option<AgentPluginsSnapshot>,
     agent_plugins_profile: Option<String>,
     agent_plugins_request_id: Option<String>,
@@ -3352,6 +3357,20 @@ fn render_message() -> &'static str {
                 created_at: "2026-11-15T00:00:00Z".into(),
             }],
         });
+        self.mcp_servers = Some(McpServersSnapshot {
+            servers: vec![crate::gateway::McpServerSummary {
+                name: "docs".into(),
+                transport: "stdio".into(),
+                command: Some("uvx".into()),
+                args: vec!["mcp-server-docs".into()],
+                url: None,
+                enabled: true,
+                tools: Some(vec!["search".into(), "fetch".into()]),
+            }],
+        });
+        self.mcp_servers_request_id = None;
+        self.mcp_servers_pending = false;
+        self.mcp_servers_error = None;
         self.connectors_request_id = None;
         self.connectors_pending = false;
         self.connectors_error = None;
@@ -3635,6 +3654,10 @@ fn render_message() -> &'static str {
             connectors_request_id: None,
             connectors_pending: false,
             connectors_error: None,
+            mcp_servers: None,
+            mcp_servers_request_id: None,
+            mcp_servers_pending: false,
+            mcp_servers_error: None,
             agent_plugins: None,
             agent_plugins_profile: None,
             agent_plugins_request_id: None,
@@ -11218,7 +11241,6 @@ fn render_message() -> &'static str {
                             "No matching connectors"
                         },
                     );
-                    return;
                 }
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let mut previous_group = None;
@@ -11285,6 +11307,106 @@ fn render_message() -> &'static str {
                         ui.add_space(4.0);
                     }
                 });
+                ui.add_space(12.0);
+                ui.separator();
+                ui.label(
+                    RichText::new(format!(
+                        "MCP servers · {}",
+                        self.mcp_servers
+                            .as_ref()
+                            .map_or(0, |snapshot| snapshot.servers.len())
+                    ))
+                    .strong()
+                    .color(TEXT),
+                );
+                if self.mcp_servers_pending && self.mcp_servers.is_none() {
+                    ui.label(
+                        RichText::new("Loading MCP servers…")
+                            .size(12.0)
+                            .color(MUTED),
+                    );
+                }
+                if let Some(error) = &self.mcp_servers_error {
+                    ui.label(
+                        RichText::new(format!("MCP servers could not be loaded: {error}"))
+                            .size(12.0)
+                            .color(MUTED),
+                    );
+                }
+                if let Some(mcp_snapshot) = self.mcp_servers.clone() {
+                    let mcp_rows = mcp_snapshot
+                        .servers
+                        .iter()
+                        .filter(|server| {
+                            query.is_empty()
+                                || server.name.to_lowercase().contains(&query)
+                                || server.transport.to_lowercase().contains(&query)
+                                || server
+                                    .url
+                                    .as_deref()
+                                    .is_some_and(|url| url.to_lowercase().contains(&query))
+                                || server
+                                    .command
+                                    .as_deref()
+                                    .is_some_and(|command| command.to_lowercase().contains(&query))
+                        })
+                        .collect::<Vec<_>>();
+                    if mcp_rows.is_empty() {
+                        self.empty_panel(
+                            ui,
+                            if query.is_empty() {
+                                "No MCP servers configured"
+                            } else {
+                                "No matching MCP servers"
+                            },
+                        );
+                    } else {
+                        for server in mcp_rows {
+                            ui.group(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(&server.name).strong().color(TEXT));
+                                    ui.label(
+                                        RichText::new(if server.enabled {
+                                            "Enabled"
+                                        } else {
+                                            "Disabled"
+                                        })
+                                        .color(MUTED),
+                                    );
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        ui.label(RichText::new(&server.transport).color(ACCENT));
+                                    });
+                                });
+                                if let Some(url) = server.url.as_deref() {
+                                    ui.label(RichText::new(url).size(11.0).color(MUTED));
+                                }
+                                if let Some(command) = server.command.as_deref() {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{}{}",
+                                            command,
+                                            if server.args.is_empty() {
+                                                String::new()
+                                            } else {
+                                                format!(" {}", server.args.join(" "))
+                                            }
+                                        ))
+                                        .size(11.0)
+                                        .color(MUTED),
+                                    );
+                                }
+                                if let Some(tools) = &server.tools {
+                                    ui.label(
+                                        RichText::new(format!("{} tools", tools.len()))
+                                            .size(11.0)
+                                            .color(MUTED),
+                                    );
+                                }
+                            });
+                            ui.add_space(4.0);
+                        }
+                    }
+                }
             }
         }
     }
@@ -16657,6 +16779,8 @@ fn render_message() -> &'static str {
             self.capabilities_pending = false;
             self.connectors_request_id = None;
             self.connectors_pending = false;
+            self.mcp_servers_request_id = None;
+            self.mcp_servers_pending = false;
             self.agent_plugins_request_id = None;
             self.agent_plugins_pending = false;
         }
@@ -16767,6 +16891,8 @@ fn render_message() -> &'static str {
             if tab != CapabilitiesTab::Connectors {
                 self.connectors_request_id = None;
                 self.connectors_pending = false;
+                self.mcp_servers_request_id = None;
+                self.mcp_servers_pending = false;
             }
             if tab != CapabilitiesTab::Plugins {
                 self.agent_plugins_request_id = None;
@@ -16788,6 +16914,15 @@ fn render_message() -> &'static str {
             {
                 self.load_connectors()
                     .unwrap_or_else(|error| self.connectors_error = Some(error));
+            }
+            if tab == CapabilitiesTab::Connectors
+                && self.mcp_servers.is_none()
+                && !self.mcp_servers_pending
+                && self.mcp_servers_error.is_none()
+                && self.gateway_connected
+            {
+                self.load_mcp_servers()
+                    .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
             }
             if tab == CapabilitiesTab::Plugins
                 && self.plugin_catalog.is_none()
@@ -16970,7 +17105,10 @@ fn render_message() -> &'static str {
                 self.navigate_path(&format!("/capabilities?tab={}", tab.as_str()))?;
             }
             RegisteredUiAction::RefreshCapabilities => match self.capabilities_tab {
-                CapabilitiesTab::Connectors => self.load_connectors()?,
+                CapabilitiesTab::Connectors => {
+                    self.load_connectors()?;
+                    self.load_mcp_servers()?;
+                }
                 CapabilitiesTab::Plugins => {
                     self.load_plugin_catalog()?;
                     if self.gateway_connected {
@@ -17107,6 +17245,25 @@ fn render_message() -> &'static str {
         self.connectors_request_id = Some(request_id);
         self.connectors_pending = true;
         self.connectors_error = None;
+        Ok(())
+    }
+
+    fn load_mcp_servers(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before loading MCP servers".into());
+        }
+        if self.mcp_servers_pending {
+            return Ok(());
+        }
+        let request_id = operation_id("mcp-servers");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway reader is unavailable".to_owned())?;
+        gateway.load_mcp_servers(request_id.clone())?;
+        self.mcp_servers_request_id = Some(request_id);
+        self.mcp_servers_pending = true;
+        self.mcp_servers_error = None;
         Ok(())
     }
 
@@ -23787,6 +23944,10 @@ fn render_message() -> &'static str {
                     }
                     self.capabilities_pending = false;
                     self.capabilities_request_id = None;
+                    self.mcp_servers_pending = false;
+                    self.mcp_servers_request_id = None;
+                    self.mcp_servers = None;
+                    self.mcp_servers_error = None;
                     match result {
                         Ok(CapabilitiesSnapshot { skills, toolsets }) => {
                             self.skills = Some(skills);
@@ -24499,6 +24660,31 @@ fn render_message() -> &'static str {
                         Err(error) => self.connectors_error = Some(error),
                     }
                 }
+                GatewayEvent::McpServersLoaded {
+                    request_id,
+                    profile_id,
+                    result,
+                } => {
+                    if self.route != AppRoute::Capabilities
+                        || self.capabilities_tab != CapabilitiesTab::Connectors
+                        || self.mcp_servers_request_id.as_deref() != Some(&request_id)
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .is_none_or(|endpoint| endpoint.profile_id != profile_id)
+                    {
+                        continue;
+                    }
+                    self.mcp_servers_request_id = None;
+                    self.mcp_servers_pending = false;
+                    match result {
+                        Ok(snapshot) => {
+                            self.mcp_servers = Some(snapshot);
+                            self.mcp_servers_error = None;
+                        }
+                        Err(error) => self.mcp_servers_error = Some(error),
+                    }
+                }
                 GatewayEvent::Disconnected(error) => {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
@@ -24625,6 +24811,8 @@ fn render_message() -> &'static str {
         if load_connectors_after_connect {
             self.load_connectors()
                 .unwrap_or_else(|error| self.connectors_error = Some(error));
+            self.load_mcp_servers()
+                .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
         }
         if load_agent_plugins_after_connect {
             self.load_agent_plugins()
@@ -29529,6 +29717,9 @@ mod tests {
         );
         assert!(harness.query_by_label("Available 1").is_some());
         assert!(harness.query_by_label("Off 1").is_some());
+        assert!(harness.query_by_label("MCP servers · 1").is_some());
+        assert!(harness.query_by_label("docs").is_some());
+        assert!(harness.query_by_label("2 tools").is_some());
         harness
             .query_by_label("Available 1")
             .expect("available connector group selector")
@@ -38130,6 +38321,9 @@ impl HermesNativeApp {
                 "connectors_available": self.connectors.as_ref().map(|value| value.available),
                 "connectors_catalog_count": self.connectors.as_ref().map(|value| value.catalog.len()),
                 "connectors_account_count": self.connectors.as_ref().map(|value| value.accounts.len()),
+                "mcp_servers_pending": self.mcp_servers_pending,
+                "mcp_servers_error": self.mcp_servers_error,
+                "mcp_servers_count": self.mcp_servers.as_ref().map(|value| value.servers.len()),
             },
             "interface_mode": mode,
             "layout_profile": self.workspace.active_profile(),

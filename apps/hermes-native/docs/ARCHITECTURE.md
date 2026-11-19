@@ -263,3 +263,5 @@ Skills search results are filtered by name/category/description, then sorted by 
 ## Skill enable mutations
 
 A skill row dispatches a profile-bound Gateway HTTP mutation. The current skill list is optimistically updated and keyed pending state disables duplicate toggles; response receipts must match request, profile, connection instance and authority epoch. A denial restores the previous `enabled` value and surfaces the error.
+
+The Connectors view also reads the pinned Hermes MCP inventory from `GET /api/mcp/servers` through the bounded HTTP worker. Requests include the selected profile, use a one-use native ticket on verified local loopback, and use configured authentication for remote Gateways. Rows expose transport, command or URL, enabled state, and any known tool count; MCP mutations remain separate work.

@@ -543,6 +543,23 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "rendered toggle interaction, profile-switch in-flight behavior, live Gateway, installed Windows and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0262": {
+        "state": "partial",
+        "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/mcp.ts#listMcpServers",
+            ".staging/hermes-pinned-878305/apps/desktop/src/types/hermes.ts#McpServerSummary",
+            "apps/hermes-native/src/gateway.rs#load_mcp_servers_http",
+            "apps/hermes-native/src/gateway.rs#mcp_server_inventory_uses_profile_scoped_ticketed_get",
+            "apps/hermes-native/src/app.rs#CapabilitiesTab::Connectors",
+            "apps/hermes-native/src/app.rs#connectors_directory_shows_connected_state_and_account_details",
+            "apps/hermes-native/docs/PLAN.md#Revision 253",
+        ],
+        "gaps": [
+            "MCP server add, edit, test, enable/disable, remove, catalog and integration install workflows remain open",
+            "live Gateway, remote authenticated profile, rendered installed UI, Windows packaging and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0252": {
         "state": "partial",
         "level": "native_installed_skill_search_fields_tested",

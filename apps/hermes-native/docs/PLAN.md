@@ -1519,3 +1519,8 @@ The PAR-0252 filter now orders matches by usage descending and then lowercase sk
 ### Revision 252 — Profile-scoped Skills toggle (2026-11-19T20:07Z)
 
 PAR-0254 is partial. The Skills list now has an accessible per-skill checkbox that issues the pinned `PUT /api/skills/toggle` `{name, enabled}` request through the current Gateway endpoint. The row updates optimistically, shows a pending state, fences receipts by request/profile/instance/authority epoch, and restores the previous state on denial. Focused HTTP and app tests pass, including a denied update followed by successful retry. Bulk enable/disable, disable-unused, skill edit/lock/details and hub lifecycle are separate features; rendered Windows, live Gateway and source-paired acceptance remain open.
+
+
+### Revision 253 — Profile-scoped MCP server inventory (2026-11-19T20:28Z)
+
+PAR-0262 is partial. The Connectors view now reads the pinned `GET /api/mcp/servers` inventory through the profile-bound HTTP worker. Local requests require the verified loopback origin and a native one-use ticket; remote profiles use the existing authenticated request path. Server rows expose transport, command or URL, enabled state, and the known tool count, and share the Connectors search field. Focused Gateway fixture and headless AccessKit tests pass. Adding, editing, testing, toggling, removing, catalog installation, live Gateway behavior, authenticated remote behavior, packaged Windows and source-paired acceptance remain open.

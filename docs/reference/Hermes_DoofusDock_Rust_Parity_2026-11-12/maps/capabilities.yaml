@@ -5233,7 +5233,7 @@ capabilities:
   name: Browse MCP servers
   area: skills-plugins
   claim: In the new native Rust DoofusDock UI, a user can browse MCP servers.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -5245,9 +5245,9 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
 - id: ui-add-mcp-server-via-http-or-stdio
   name: Add MCP server via HTTP or stdio
   area: skills-plugins
