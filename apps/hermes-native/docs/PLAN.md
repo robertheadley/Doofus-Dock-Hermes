@@ -2,16 +2,16 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 198 (implementation in progress).
-- **Status:** in progress; do not describe this crate as a 1:1 replacement until all acceptance gates pass.
+- **Working revision:** 234 (implementation in progress).
+- **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
-- **Scope:** stock upstream Hermes Desktop UI, native Rust/egui with DoofusDock; upstream Python Hermes gateway remains authoritative.
+- **Scope:** complete, verified chat and tool functionality from pinned Hermes source `8783054ef6cbafd86f10892241436862c1171a66`, implemented in native Rust/egui with DoofusDock; Hermes Gateway/runtime/tool execution remains authoritative. Feature parity is required; pixel parity is not.
 - **Excluded:** Hermes-Doofus plugin UI/backend, Doofus Vault/Control and the separate browser Dashboard.
 
 ## Completion and runtime boundary
 
-Parity completion means functional support for every feature and setting in the pinned Hermes snapshot. Pixel accuracy and presentation polish follow functional coverage and are not completion gates; screenshots are used for functional inspection. DoofusDock is a reusable framework and owns canonical layout, docking, profiles and UI presentation. Hermes remains the authoritative agent/runtime: the Rust client integrates with its gateway and must not recreate Hermes tool execution or agent loops.
+Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 138-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
 
 ## Downloaded parity source snapshot
 
@@ -1353,3 +1353,16 @@ The app now resolves each tagged sidebar session owner through the saved connect
 This is an owner-validation and lifecycle foundation only. The app still has one `GatewayDiscovery`; the saved-connection picker, exact connection/profile/session keys across app state, owner metadata on Gateway requests/results, and same-ID cross-connection isolation are not implemented. Formal source acceptance, live Gateway behavior and Windows UI acceptance remain open.
 
 Validation addendum (2026-11-19T15:23Z): PASS focused owner-boundary regression (1/1); PASS full Hermes native feature suite (378 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` with existing dead-code warnings; PASS `cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check`. `git diff --check` initially flagged an existing pending changelog receipt's extra blank line at EOF; it will be rerun after appending this revision. The first test compile caught a private local-connection constant reference and a field/method typo; both were corrected before the passing runs. No live gateway or installed Windows UI was used.
+
+
+### Revision 234 — User narrows target to chat and tool functionality (2026-11-19T15:41Z)
+
+The user has changed the completion target from replacing the full Hermes Desktop feature set to supporting all pinned-source chat and tool functionality. Pixel-level parity is not a gate. The project retains the full 499-row pinned-source matrix as its reference inventory and measures the current goal against a separate explicit 138-row scope at `docs/status/CHAT_TOOL_SCOPE.csv`; its generated status is `docs/status/CHAT_TOOL_PROGRESS.csv`.
+
+The scoped gate includes chat startup and tabs, prompt composition and transcript behavior, saved-session lifecycle, Gateway/chat protocol and blocking prompts, delegated/background tool work, in-chat model controls, skill/toolset availability, plugin tool output, voice chat, chat history search/export, terminal-output-to-chat, and per-session/profile resource scope. The visual shell may use DoofusDock; Hermes remains the authoritative runtime and tool loop. The Doofus Hermes backport stays after this scoped gate.
+
+Current scoped evidence is 1 implemented, 8 partial, and 129 unknown; 9/138 have mapped evidence, 138/138 lack live-runtime verification and source-paired acceptance, and 138/138 lack visual pairs. These are separate measures, not a single completion percentage. The full-desktop review/acceptance history remains available in the original matrix and is not substituted into the new denominator. Standalone Files, Terminal, Review, Messaging, Scheduled Jobs, broad model catalog/quota, maintenance, layout-profile and unrelated administration workflows are outside this goal unless another scoped requirement depends on them.
+
+Validation addendum (2026-11-19T15:41Z): `build_chat_tool_progress.py` expands every explicit scope selector, rejects duplicate or missing requirement IDs, and atomically writes a 138-row progress overlay from the 499-row source evidence. Direct execution reports 1 implemented, 8 partial, 129 unknown, 9 requirements with mapped evidence, 138 runtime-unverified, 138 source-pair pending and 138 visual-pair absent. Python compilation passes; full task-state and repository checks follow before publication.
+
+Validation addendum (2026-11-19T15:47:28Z): PASS scoped progress generator (138 unique IDs; 1 implemented, 8 partial, 129 unknown); PASS `python -m py_compile`; PASS task-state schema validation (revision 185, ledger revision 20, 439 events); PASS `git diff --check`. No product tests were run because this change only changes goal scope tracking and documentation.

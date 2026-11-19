@@ -2445,3 +2445,18 @@ Validation addendum: The targeted UCM report marks named layout preset persisten
 - **performance:** no runtime starts or new Gateway connections were initiated by publication.
 - **risks:** Functional parity remains incomplete; published change is a fail-closed owner and lifecycle foundation.
 - **follow_up:** Continue connection-aware session keys and Gateway request/result correlation before adding the saved connection picker.
+
+### Chat and tool goal scope revision — 2026-11-19T15:41Z
+
+- **id:** hermes-chat-tool-scope-revision-20261119
+- **timestamp:** 2026-11-19T15:41:34Z
+- **what:** Reframed the active acceptance target from whole-desktop parity to 138 pinned-source chat/tool requirements; added an explicit selector CSV and an atomic progress-overlay generator.
+- **why:** Apply the user's narrowed goal while retaining the 499-row source inventory as a separate reference.
+- **components:** Chat/tool scope matrix, scoped progress generator/output, native plan/backlog/README/architecture/completion overview.
+- **type:** goal scope and progress tracking.
+- **validation:** PASS generator output: 138 rows; 1 implemented, 8 partial, 129 unknown; 9 with mapped evidence; all 138 live runtime, source pair and visual pair states remain unverified/pending. PASS Python bytecode compilation. Diff and task validation pending final checkpoint.
+- **performance:** generator completes in under one second on the current 499-row overlay.
+- **risks:** Boundary is a deliberate working interpretation; standalone desktop panes and administration are out unless a scoped chat/tool requirement depends on them.
+- **follow_up:** Continue in-scope chat/session/Gateway and tool lifecycle work, maintaining the scoped denominator separately from all-desktop source review.
+
+Validation addendum (2026-11-19T15:47:28Z): PASS scoped progress generator (138 unique IDs), Python compilation, `.doofus` schema validation (revision 185 / ledger revision 20 / 439 events), and `git diff --check`. The project plan, README, backlog, architecture and completion overview now state the narrowed chat/tool goal.

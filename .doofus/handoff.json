@@ -43,25 +43,73 @@
     },
     {
       "change_type": "modified",
-      "owner": "codex",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "codex",
+      "owner": "unattributed_preexisting",
       "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_SCOPE.csv",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_chat_tool_progress.py",
+      "status": "??"
     }
   ],
   "checkpoint": {
     "command": null,
     "evidence": [
-      "apps/hermes-native/src/app.rs#session_actions_fail_closed_for_non_active_connection_owners"
+      "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv#1"
     ],
     "state": "in_progress",
-    "summary": "Published the owner-boundary and Gateway retirement slice as d930ad3 on main; fetched origin/main and verified exact SHA equality. Recording the publication receipt and final task checkpoint.",
-    "verified_at": "2026-11-19T15:30:45Z"
+    "summary": "User narrowed Hermes Native delivery from 1:1 whole-desktop replacement to complete verified chat and tool functionality from pinned snapshot 8783054ef6cbafd86f10892241436862c1171a66; pixel parity is not required. Defined 138-row scope and generated separate evidence view; 1 implemented, 8 partial, 129 unknown; 9 mapped evidence; runtime/source acceptance/visual pairs remain unverified.",
+    "verified_at": "2026-11-19T15:48:15Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -72,8 +120,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T16:30:45Z",
-    "lease_id": "40c3430e-7dfd-417b-9526-1b9d7d9e7df3",
+    "lease_expires_at": "2026-11-19T16:48:15Z",
+    "lease_id": "dd8d53f7-041b-4779-ad65-87b5ded5e85a",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -360,9 +408,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par-0510-publication-receipt-checkpoint-20261119",
+  "last_event_id": "hermes-chat-tool-scope-revision-20261119",
   "last_operation": {
-    "request_id": "hermes-par-0510-publication-receipt-checkpoint-20261119",
+    "request_id": "hermes-chat-tool-scope-revision-20261119",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -381,7 +429,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue connection-aware session keys and Gateway request/result correlation; keep the saved-connection picker behind owner and lifecycle fencing.",
+  "recommended_next_action": "Continue implementation against CHAT_TOOL_SCOPE.csv; preserve Hermes runtime/tool loops; after scoped parity backport Doofus Hermes. User may update Codex goal text to: Deliver a complete, verified native Rust/egui implementation of all chat and tool functionality in pinned Hermes snapshot 8783054ef6cbafd86f10892241436862c1171a66, using DoofusDock for UI and Hermes for gateway/runtime/tool execution. Feature parity is required; pixel parity is not. After completion, backport Doofus Hermes to the new UI.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -883,7 +931,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "72af14231dbc0c7a995f601a2f8baf7ba86b53480bf3fe5bf1717196bedf0b09",
+    "change_fingerprint": "842100ca553432c4c47524c389b52e18a2b13636a3ece14cb7e9cf51c597d0bc",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -894,22 +942,54 @@
         "status": " M"
       },
       {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
         "path": "docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
         "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_SCOPE.csv",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_chat_tool_progress.py",
+        "status": "??"
       }
     ],
-    "head_commit": "d930ad3a05b33a015fec8254bae2fe47ab90dd18",
+    "head_commit": "f995b53dd64e351c59366a1f47bc12a804d54947",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 183,
+  "revision": 186,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 183,
+  "state_revision": 186,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0510",
   "task_ledger_revision": 20,
@@ -1818,9 +1898,14 @@
       "command": "git fetch origin main; git rev-parse HEAD; git rev-parse origin/main",
       "result": "PASS exact SHA equality at d930ad3a05b33a015fec8254bae2fe47ab90dd18.",
       "timestamp": "2026-11-19T15:30:45Z"
+    },
+    {
+      "command": "build_chat_tool_progress.py; python -m py_compile; doofus_task.py validate; git diff --check",
+      "result": "PASS; 138 scoped requirements; 1 implemented, 8 partial, 129 unknown; .doofus revision 185/ledger 20/439 events valid",
+      "timestamp": "2026-11-19T15:48:15Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T15:30:45Z"
+  "updated_at": "2026-11-19T15:48:15Z"
 }
