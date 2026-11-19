@@ -2791,3 +2791,7 @@ UCM evidence addendum (2026-11-19T19:44Z): EV-0034 records the five focused pagi
 - **performance:** No runtime change.
 - **risks:** Live, Windows and source-paired behavior are unverified; run summary/ticker/disclosure remain absent.
 - **follow_up:** Implement pinned run grouping and live disclosure, then validate against live Gateway and fixed-source UI behavior.
+
+UCM evidence addendum (2026-11-19T19:49Z): EV-0035 records the focused generation-scoped tool-card test and is bound to commit `077677f0d08c07cf7a590fc104986e7c3182611d`; capability and crosswalk remain partial.
+
+Correction (2026-11-19T19:50Z): EV-0035 implementation commit is `077677f1c8e184b1a3b614024626b0ed41061692`; the initially typed abbreviated hash expanded incorrectly and was corrected before receipt commit.

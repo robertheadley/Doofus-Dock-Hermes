@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0035",
+  "capability_id": "ui-render-inline-tool-invocation-rows",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "generation-scoped-accessible-tool-card-rendering",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "077677f1c8e184b1a3b614024626b0ed41061692",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native headless egui/Rust tests and pinned-source review; no live Gateway or installed Windows UI was used.",
+  "notes": "Focused test tool_start_and_complete_render_generation_scoped_transcript_cards passes. It feeds start/complete events for one tool ID across two execution generations and verifies separate completed transcript rows with accessible labels. Pinned Desktop groups consecutive calls into a ToolRun summary/disclosure with a live ticker and persisted disclosure state, and uses specialized fallback renderers. Native individual cards do not yet match those grouped/live behaviors; live Gateway, Windows, and source-paired acceptance remain open. Capability is partial."
+}
