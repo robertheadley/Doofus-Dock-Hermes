@@ -2432,3 +2432,16 @@ Validation addendum: The targeted UCM report marks named layout preset persisten
 - **performance:** registry resolution scans the small saved descriptor list per session action; shutdown has no wait/join and closes receiver/sender channels synchronously.
 - **risks:** No connection picker or multi-actor route exists yet. An already-sent HTTP mutation or network attach is not canceled by shutdown. Session cache keys and Gateway results still need exact owner tags.
 - **follow_up:** Add connection-aware session cache/request/result ownership and prove same-ID cross-connection isolation before exposing live connection switching.
+
+### PAR-0510 main publication receipt — 2026-11-19T15:30Z
+
+- **id:** hermes-par-0510-owner-boundary-main-publication-20261119
+- **timestamp:** 2026-11-19T15:30:06Z
+- **what:** Published the validated owner-boundary and Gateway retirement slice as commit d930ad3a05b33a015fec8254bae2fe47ab90dd18 on main.
+- **why:** Keep the repository current on the user-requested main-only delivery path and preserve exact publication evidence.
+- **components:** Doofus Hermes main branch and publication audit.
+- **type:** main publication.
+- **validation:** Fetched origin/main after push and verified exact SHA equality with local HEAD.
+- **performance:** no runtime starts or new Gateway connections were initiated by publication.
+- **risks:** Functional parity remains incomplete; published change is a fail-closed owner and lifecycle foundation.
+- **follow_up:** Continue connection-aware session keys and Gateway request/result correlation before adding the saved connection picker.
