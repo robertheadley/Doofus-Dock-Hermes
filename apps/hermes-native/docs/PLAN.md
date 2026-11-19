@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 255 (implementation in progress).
+- **Working revision:** 256 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1534,3 +1534,8 @@ PAR-0265 is partial. MCP server rows now expose an accessible enable/disable che
 ### Revision 255 — Profile-scoped MCP connection test (2026-11-19T20:53Z)
 
 PAR-0264 is partial. The Connectors MCP directory now exposes a manual connection test for each loaded server. Native Rust issues the pinned `POST /api/mcp/servers/{name}/test` request through a bounded 60-second worker, using a one-use ticket for local profiles and authenticated headers for remote profiles. Results are size-validated and fenced by request, profile, connection instance and authority epoch; the UI reports connection errors or discovered tools/prompts/resources. Focused HTTP and app tests pass, including stale-profile rejection. Automatic probe/cache behavior, live Gateway execution, installed Windows interaction and source-paired acceptance remain open.
+
+
+### Revision 256 — Add profile-scoped MCP servers (2026-11-19T21:15Z)
+
+PAR-0263 is partial. The Connectors form now creates MCP servers over the pinned `mcp.servers.add` RPC for stdio and HTTP transports. It accepts command, arguments, environment variables, working directory, URL, headers, OAuth, and bearer authentication. Bearer credentials are passed in the RPC's dedicated secret field for Hermes profile storage; they are not serialized into the displayed server configuration or result. The shared registered UI action allows the automation agent to add the same configuration that a person can. Headless tests cover exact profile-scoped RPC payload/receipt, stale-result rejection, secret separation, transport payloads, duplicate-key validation, and accessible fields. Paste/import parsing, passthrough environment rows, live secret storage/OAuth/runtime behavior, installed Windows interaction and source-paired acceptance remain open.

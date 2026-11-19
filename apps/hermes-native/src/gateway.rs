@@ -2021,6 +2021,14 @@ pub enum GatewayEvent {
         authority_epoch: u64,
         result: Result<McpServerTestResult, String>,
     },
+    McpServerAdded {
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<McpServerSummary, String>,
+    },
     AgentPluginsLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2185,6 +2193,15 @@ enum GatewayCommand {
     LoadBotRoster {
         request_id: String,
         profile: String,
+    },
+    AddMcpServer {
+        request_id: String,
+        name: String,
+        config: serde_json::Value,
+        bearer_token: Option<String>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
     },
     DeleteProject {
         request_id: String,
@@ -3179,6 +3196,77 @@ impl GatewayDiscovery {
             while let Ok(command) = http_receiver.recv() {
                 if let GatewayHttpCommand::TestMcpServer { request_id, name } = command
                     && request_sender.send((request_id, name)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_mcp_server_add() -> (
+        Self,
+        Receiver<(
+            String,
+            String,
+            serde_json::Value,
+            Option<String>,
+            String,
+            String,
+            u64,
+        )>,
+        mpsc::Sender<GatewayEvent>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, _http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = command_receiver.recv() {
+                if let GatewayCommand::AddMcpServer {
+                    request_id,
+                    name,
+                    config,
+                    bearer_token,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                } = command
+                    && request_sender
+                        .send((
+                            request_id,
+                            name,
+                            config,
+                            bearer_token,
+                            profile_id,
+                            instance_id,
+                            authority_epoch,
+                        ))
+                        .is_err()
                 {
                     break;
                 }
@@ -4289,6 +4377,29 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes MCP server tester has closed".to_owned())
     }
 
+    pub fn add_mcp_server(
+        &self,
+        request_id: String,
+        name: String,
+        config: serde_json::Value,
+        bearer_token: Option<String>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::AddMcpServer {
+                request_id,
+                name,
+                config,
+                bearer_token,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn load_agent_plugins(
         &self,
         request_id: String,
@@ -5310,6 +5421,41 @@ fn gateway_actor(
                     .send(GatewayEvent::BotRosterLoaded {
                         request_id,
                         profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::AddMcpServer {
+                request_id,
+                name,
+                config,
+                bearer_token,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            }) => {
+                let result = mcp_server_add_params(&name, config, bearer_token, &profile_id)
+                    .and_then(|params| {
+                        rpc_with_events(
+                            socket,
+                            next_request_id,
+                            "mcp.servers.add",
+                            params,
+                            Some(&events),
+                        )
+                    })
+                    .and_then(|value| parse_mcp_server_add_result(value, &name));
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::McpServerAdded {
+                        request_id,
+                        name,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
                         result,
                     })
                     .is_err()
@@ -11072,7 +11218,20 @@ fn validate_mcp_servers(snapshot: McpServersSnapshot) -> Result<McpServersSnapsh
         server.name.is_empty()
             || server.name.len() > 512
             || server.name.chars().any(char::is_control)
+            || server.transport.len() > 128
+            || server.transport.chars().any(char::is_control)
+            || server
+                .url
+                .as_ref()
+                .is_some_and(|url| url.len() > 16_384 || url.chars().any(char::is_control))
+            || server.command.as_ref().is_some_and(|command| {
+                command.len() > 16_384 || command.chars().any(char::is_control)
+            })
             || server.args.len() > 1024
+            || server
+                .args
+                .iter()
+                .any(|arg| arg.len() > 16_384 || arg.chars().any(char::is_control))
             || server
                 .tools
                 .as_ref()
@@ -11081,6 +11240,96 @@ fn validate_mcp_servers(snapshot: McpServersSnapshot) -> Result<McpServersSnapsh
         return Err("Hermes returned an invalid MCP server inventory".into());
     }
     Ok(snapshot)
+}
+
+fn mcp_server_add_params(
+    name: &str,
+    config: serde_json::Value,
+    bearer_token: Option<String>,
+    profile_id: &str,
+) -> Result<serde_json::Value, String> {
+    if name.trim().is_empty()
+        || name.trim() != name
+        || name.len() > 512
+        || name.chars().any(char::is_control)
+        || !config.is_object()
+        || !serde_json::to_vec(&config)
+            .is_ok_and(|bytes| bytes.len() as u64 <= GATEWAY_HTTP_RESPONSE_LIMIT)
+        || bearer_token
+            .as_ref()
+            .is_some_and(|token| token.len() > 16_384 || token.chars().any(char::is_control))
+    {
+        return Err("MCP server add request is invalid or oversized".into());
+    }
+    let mut params = serde_json::json!({ "name": name, "config": config });
+    if let Some(token) = bearer_token.filter(|token| !token.trim().is_empty()) {
+        params["bearer_token"] = serde_json::Value::String(token);
+    }
+    session_profile_params(params, Some(profile_id))
+}
+
+fn parse_mcp_server_add_result(
+    value: serde_json::Value,
+    requested_name: &str,
+) -> Result<McpServerSummary, String> {
+    if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
+        || value.get("name").and_then(serde_json::Value::as_str) != Some(requested_name)
+    {
+        return Err("Hermes did not confirm the requested MCP server add".into());
+    }
+    let server = value
+        .get("server")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "Hermes omitted the MCP server summary".to_owned())?;
+    let name = server
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .filter(|name| *name == requested_name)
+        .ok_or_else(|| "Hermes returned a mismatched MCP server summary".to_owned())?;
+    let summary = McpServerSummary {
+        name: name.to_owned(),
+        transport: server
+            .get("transport")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned(),
+        command: server
+            .get("command")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        args: server
+            .get("args")
+            .and_then(serde_json::Value::as_array)
+            .map(|args| {
+                args.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        url: server
+            .get("url")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        enabled: server
+            .get("enabled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true),
+        tools: server
+            .get("tools")
+            .and_then(serde_json::Value::as_array)
+            .map(|tools| {
+                tools
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                    .collect()
+            }),
+    };
+    validate_mcp_servers(McpServersSnapshot {
+        servers: vec![summary],
+    })
+    .map(|snapshot| snapshot.servers.into_iter().next().expect("one MCP server"))
 }
 
 fn set_mcp_server_enabled_http(
@@ -19406,6 +19655,90 @@ mod tests {
         assert!(matches!(second, GatewayEvent::ClarifyResponded {
             request_id, prompt_id, result: Err(_), ..
         } if request_id == "clarify-2" && prompt_id == "question-2"));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn mcp_server_add_uses_profile_scoped_rpc_and_keeps_bearer_out_of_result() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read MCP add") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse MCP add"),
+                other => panic!("expected MCP add text, got {other:?}"),
+            };
+            assert_eq!(request["method"], "mcp.servers.add");
+            assert_eq!(request["params"]["profile"], "home-bot");
+            assert_eq!(request["params"]["name"], "docs");
+            assert_eq!(
+                request["params"]["config"]["url"],
+                "https://mcp.example/mcp"
+            );
+            assert_eq!(request["params"]["bearer_token"], "secret-value");
+            let id = request["id"].as_u64().expect("RPC id");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":id,
+                        "result":{
+                            "ok":true,
+                            "name":"docs",
+                            "server":{
+                                "name":"docs",
+                                "transport":"http",
+                                "url":"https://mcp.example/mcp",
+                                "args":[],
+                                "env":[],
+                                "enabled":true,
+                                "tools":[]
+                            }
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("return MCP add receipt");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::AddMcpServer {
+                request_id: "mcp-add-1".into(),
+                name: "docs".into(),
+                config: json!({"url":"https://mcp.example/mcp"}),
+                bearer_token: Some("secret-value".into()),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+            })
+            .expect("queue MCP add");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("MCP add receipt"),
+            GatewayEvent::McpServerAdded {
+                request_id,
+                name,
+                profile_id,
+                instance_id,
+                authority_epoch: 12,
+                result: Ok(McpServerSummary { transport, url: Some(url), .. }),
+            } if request_id == "mcp-add-1" && name == "docs" && profile_id == "home-bot"
+                && instance_id == "gateway-home-bot" && transport == "http"
+                && url == "https://mcp.example/mcp"
+        ));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

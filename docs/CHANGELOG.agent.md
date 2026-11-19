@@ -2904,3 +2904,16 @@ UCM evidence addendum (2026-11-19T20:42Z): EV-0041 binds the PAR-0265 MCP toggle
 - **risks:** Automatic probe/cache behavior, live/remote Gateway behavior, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** Continue through MCP add/catalog lifecycle and scoped chat/tool features; keep visual redesign as a separate later stage.
 UCM evidence addendum (2026-11-19T20:53Z): EV-0042 binds the PAR-0264 manual MCP test and its focused HTTP/app tests to behavior commit c44a520f3f936ab444ef189ca7a3d9aec4c044ea. The capability remains partial pending automatic probe/cache, live Gateway and source-paired acceptance.
+
+### PAR-0263 — Add profile-scoped MCP servers (2026-11-19T21:16Z)
+
+- **id:** hermes-par0263-mcp-add-20261119
+- **timestamp:** 2026-11-19T21:16:26Z
+- **what:** Added accessible stdio and HTTP server setup with args, environment, working directory, headers, OAuth and bearer-token authentication; results update the MCP inventory only for the owning profile/connection epoch.
+- **why:** Provide the next core MCP integration feature so the native UI can configure servers instead of only listing, toggling and testing them.
+- **components:** Registered agent action, Connectors form, Gateway JSON-RPC actor, MCP response validation, progress and UCM maps.
+- **type:** feature implementation
+- **validation:** PASS four focused MCP add tests: exact profile-scoped `mcp.servers.add` RPC and secret field, app success/stale fencing, stdio/HTTP payload construction and input validation, and accessible rendered controls for both transports. `cargo check` and `git diff --check` also pass.
+- **performance:** One foreground bounded RPC per add; app prevents duplicate in-flight adds and server names already in the loaded inventory.
+- **risks:** Live secret-store behavior, OAuth handoff, server startup and installed Windows behavior remain unverified. Bearer token is masked in the form and sent separately from MCP config.
+- **follow_up:** Implement pinned MCP import/paste and passthrough environment rows; continue remove/catalog operations and verify against a running Gateway.

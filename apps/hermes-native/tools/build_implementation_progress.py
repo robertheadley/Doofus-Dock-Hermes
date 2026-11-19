@@ -592,6 +592,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live/remote Gateway, concurrent profile changes, rendered installed UI, Windows packaging and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0263": {
+        "state": "partial",
+        "level": "headless_mcp_stdio_http_add_rpc_secret_and_accessibility_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/connectors/add-dialog.tsx#controller.addServerEntry",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/connectors/add-server-draft.ts#entryOfDraft",
+            ".staging/hermes-pinned-878305/apps/shared/src/gateway-contract.generated.ts#McpServersAddParams",
+            "apps/hermes-native/src/gateway.rs#mcp_server_add_params",
+            "apps/hermes-native/src/gateway.rs#mcp_server_add_uses_profile_scoped_rpc_and_keeps_bearer_out_of_result",
+            "apps/hermes-native/src/app.rs#mcp_server_add_sends_config_and_secret_and_fences_result",
+            "apps/hermes-native/src/app.rs#mcp_server_add_form_renders_transport_controls_and_submit_accessibly",
+            "apps/hermes-native/docs/PLAN.md#Revision 256",
+        ],
+        "gaps": [
+            "the pinned paste/import parser and environment passthrough rows are not implemented",
+            "live profile-secret storage, OAuth authorization, server startup, Windows interaction and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0252": {
         "state": "partial",
         "level": "native_installed_skill_search_fields_tested",

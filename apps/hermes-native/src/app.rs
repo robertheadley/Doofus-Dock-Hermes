@@ -105,6 +105,11 @@ pub enum RegisteredUiAction {
     TestMcpServer {
         name: String,
     },
+    AddMcpServer {
+        name: String,
+        config: serde_json::Value,
+        bearer_token: Option<String>,
+    },
     SetAgentPluginEnabled {
         key: String,
         enabled: bool,
@@ -498,6 +503,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"set_skill_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded skills, max 128 bytes","enabled":"boolean"}}
             ,{"type":"set_mcp_server_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded MCP servers, max 512 bytes","enabled":"boolean"}}
             ,{"type":"test_mcp_server","permission":"ui_interaction","mutates":false,"schema":{"name":"one of the loaded MCP servers, max 512 bytes"}}
+            ,{"type":"add_mcp_server","permission":"ui_interaction","mutates":true,"schema":{"name":"new MCP server name, max 512 bytes","config":"HTTP or stdio MCP server configuration object","bearer_token":"optional secret; passed only to Hermes secret storage and never displayed back"}}
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
@@ -716,6 +722,144 @@ struct PendingMcpServerTest {
     profile_id: String,
     instance_id: String,
     authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMcpServerAdd {
+    request_id: String,
+    name: String,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct McpServerAddDraft {
+    name: String,
+    transport: String,
+    command: String,
+    args: String,
+    env: String,
+    cwd: String,
+    url: String,
+    headers: String,
+    auth: String,
+    bearer_token: String,
+}
+
+impl Default for McpServerAddDraft {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            transport: "stdio".into(),
+            command: String::new(),
+            args: String::new(),
+            env: String::new(),
+            cwd: String::new(),
+            url: String::new(),
+            headers: String::new(),
+            auth: "none".into(),
+            bearer_token: String::new(),
+        }
+    }
+}
+
+fn parse_mcp_key_value_lines(
+    text: &str,
+    label: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let mut values = serde_json::Map::new();
+    for (index, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(format!("{label} line {} must use KEY=VALUE", index + 1));
+        };
+        let key = key.trim();
+        if key.is_empty() || key.chars().any(char::is_control) || values.contains_key(key) {
+            return Err(format!(
+                "{label} line {} has an empty, invalid, or duplicate key",
+                index + 1
+            ));
+        }
+        values.insert(
+            key.to_owned(),
+            serde_json::Value::String(value.trim().to_owned()),
+        );
+    }
+    Ok(values)
+}
+
+fn mcp_server_add_draft_payload(
+    draft: &McpServerAddDraft,
+) -> Result<(String, serde_json::Value, Option<String>), String> {
+    let name = draft.name.trim().to_owned();
+    if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+        return Err("Enter an MCP server name (up to 512 characters)".into());
+    }
+    let config = if draft.transport == "stdio" {
+        let command = draft.command.trim();
+        if command.is_empty() {
+            return Err("Enter a command for the stdio server".into());
+        }
+        let args = draft
+            .args
+            .lines()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let env = parse_mcp_key_value_lines(&draft.env, "Environment")?;
+        let mut config = serde_json::Map::new();
+        config.insert(
+            "command".into(),
+            serde_json::Value::String(command.to_owned()),
+        );
+        if !args.is_empty() {
+            config.insert("args".into(), serde_json::json!(args));
+        }
+        if !env.is_empty() {
+            config.insert("env".into(), serde_json::Value::Object(env));
+        }
+        if !draft.cwd.trim().is_empty() {
+            config.insert(
+                "cwd".into(),
+                serde_json::Value::String(draft.cwd.trim().to_owned()),
+            );
+        }
+        (serde_json::Value::Object(config), None)
+    } else if draft.transport == "http" {
+        let url = draft.url.trim();
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            return Err("Enter an HTTP or HTTPS MCP server URL".into());
+        }
+        let headers = parse_mcp_key_value_lines(&draft.headers, "Header")?;
+        let mut config = serde_json::Map::new();
+        config.insert("url".into(), serde_json::Value::String(url.to_owned()));
+        if !headers.is_empty() {
+            config.insert("headers".into(), serde_json::Value::Object(headers));
+        }
+        let token = match draft.auth.as_str() {
+            "none" => None,
+            "oauth" => {
+                config.insert("auth".into(), serde_json::Value::String("oauth".into()));
+                None
+            }
+            "bearer" if !draft.bearer_token.trim().is_empty() => {
+                Some(draft.bearer_token.trim().to_owned())
+            }
+            "bearer" => {
+                return Err("Enter the bearer token or choose another authentication mode".into());
+            }
+            _ => return Err("Choose a supported HTTP authentication mode".into()),
+        };
+        (serde_json::Value::Object(config), token)
+    } else {
+        return Err("Choose stdio or HTTP transport".into());
+    };
+    Ok((name, config.0, config.1))
 }
 
 #[derive(Clone, Debug)]
@@ -1364,6 +1508,10 @@ pub struct HermesNativeApp {
     pending_mcp_server_updates: BTreeMap<String, PendingMcpServerUpdate>,
     mcp_server_test_results: BTreeMap<String, McpServerTestResult>,
     pending_mcp_server_tests: BTreeMap<String, PendingMcpServerTest>,
+    mcp_server_add_open: bool,
+    mcp_server_add_draft: McpServerAddDraft,
+    mcp_server_add_error: Option<String>,
+    pending_mcp_server_add: Option<PendingMcpServerAdd>,
     agent_plugins: Option<AgentPluginsSnapshot>,
     agent_plugins_profile: Option<String>,
     agent_plugins_request_id: Option<String>,
@@ -3690,6 +3838,10 @@ fn render_message() -> &'static str {
             pending_mcp_server_updates: BTreeMap::new(),
             mcp_server_test_results: BTreeMap::new(),
             pending_mcp_server_tests: BTreeMap::new(),
+            mcp_server_add_open: false,
+            mcp_server_add_draft: McpServerAddDraft::default(),
+            mcp_server_add_error: None,
+            pending_mcp_server_add: None,
             agent_plugins: None,
             agent_plugins_profile: None,
             agent_plugins_request_id: None,
@@ -11351,6 +11503,139 @@ fn render_message() -> &'static str {
                     .strong()
                     .color(TEXT),
                 );
+                if ui
+                    .button(if self.mcp_server_add_open {
+                        "Cancel add"
+                    } else {
+                        "Add MCP server"
+                    })
+                    .clicked()
+                {
+                    self.mcp_server_add_open = !self.mcp_server_add_open;
+                    self.mcp_server_add_error = None;
+                    if !self.mcp_server_add_open {
+                        self.mcp_server_add_draft = McpServerAddDraft::default();
+                    }
+                }
+                let mut add_server_payload = None;
+                if self.mcp_server_add_open {
+                    ui.group(|ui| {
+                        ui.label(RichText::new("Add MCP server").strong().color(TEXT));
+                        ui.horizontal(|ui| {
+                            ui.label("Name");
+                            ui.text_edit_singleline(&mut self.mcp_server_add_draft.name)
+                                .accessible_name("MCP server name");
+                        });
+                        egui::ComboBox::from_label("Transport")
+                            .selected_text(if self.mcp_server_add_draft.transport == "http" {
+                                "HTTP"
+                            } else {
+                                "stdio"
+                            })
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.mcp_server_add_draft.transport,
+                                    "stdio".into(),
+                                    "stdio",
+                                );
+                                ui.selectable_value(
+                                    &mut self.mcp_server_add_draft.transport,
+                                    "http".into(),
+                                    "HTTP",
+                                );
+                            });
+                        if self.mcp_server_add_draft.transport == "stdio" {
+                            ui.label("Command");
+                            ui.text_edit_singleline(&mut self.mcp_server_add_draft.command)
+                                .accessible_name("MCP server command");
+                            ui.label("Arguments (one per line)");
+                            ui.add(
+                                egui::TextEdit::multiline(&mut self.mcp_server_add_draft.args)
+                                    .desired_rows(2)
+                                    .hint_text("One argument per line"),
+                            )
+                            .accessible_name("MCP server arguments");
+                            ui.label("Environment variables (KEY=VALUE, one per line)");
+                            ui.add(
+                                egui::TextEdit::multiline(&mut self.mcp_server_add_draft.env)
+                                    .desired_rows(2)
+                                    .hint_text("KEY=VALUE, one per line"),
+                            )
+                            .accessible_name("MCP server environment variables");
+                            ui.horizontal(|ui| {
+                                ui.label("Working directory");
+                                ui.text_edit_singleline(&mut self.mcp_server_add_draft.cwd)
+                                    .accessible_name("MCP server working directory");
+                            });
+                        } else {
+                            ui.horizontal(|ui| {
+                                ui.label("URL");
+                                ui.text_edit_singleline(&mut self.mcp_server_add_draft.url)
+                                    .accessible_name("MCP server URL");
+                            });
+                            ui.label("Headers (KEY=VALUE, one per line)");
+                            ui.add(
+                                egui::TextEdit::multiline(&mut self.mcp_server_add_draft.headers)
+                                    .desired_rows(2)
+                                    .hint_text("KEY=VALUE, one per line"),
+                            )
+                            .accessible_name("MCP server HTTP headers");
+                            egui::ComboBox::from_label("Authentication")
+                                .selected_text(match self.mcp_server_add_draft.auth.as_str() {
+                                    "oauth" => "OAuth",
+                                    "bearer" => "Bearer token",
+                                    _ => "None",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.mcp_server_add_draft.auth,
+                                        "none".into(),
+                                        "None",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.mcp_server_add_draft.auth,
+                                        "oauth".into(),
+                                        "OAuth",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.mcp_server_add_draft.auth,
+                                        "bearer".into(),
+                                        "Bearer token",
+                                    );
+                                });
+                            if self.mcp_server_add_draft.auth == "bearer" {
+                                ui.label(
+                                    "Bearer token (stored by Hermes in profile secret storage)",
+                                );
+                                ui.add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.mcp_server_add_draft.bearer_token,
+                                    )
+                                    .password(true),
+                                )
+                                .accessible_name("MCP server bearer token");
+                            }
+                        }
+                        if let Some(error) = &self.mcp_server_add_error {
+                            ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+                        }
+                        if self.pending_mcp_server_add.is_some() {
+                            ui.label(RichText::new("Saving MCP server…").color(MUTED));
+                        }
+                        if ui
+                            .add_enabled(
+                                self.gateway_connected && self.pending_mcp_server_add.is_none(),
+                                egui::Button::new("Save server"),
+                            )
+                            .clicked()
+                        {
+                            match mcp_server_add_draft_payload(&self.mcp_server_add_draft) {
+                                Ok(payload) => add_server_payload = Some(payload),
+                                Err(error) => self.mcp_server_add_error = Some(error),
+                            }
+                        }
+                    });
+                }
                 if self.mcp_servers_pending && self.mcp_servers.is_none() {
                     ui.label(
                         RichText::new("Loading MCP servers…")
@@ -11551,6 +11836,14 @@ fn render_message() -> &'static str {
                             .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
                         }
                     }
+                }
+                if let Some((name, config, bearer_token)) = add_server_payload {
+                    self.execute_registered_action(RegisteredUiAction::AddMcpServer {
+                        name,
+                        config,
+                        bearer_token,
+                    })
+                    .unwrap_or_else(|error| self.mcp_server_add_error = Some(error));
                 }
             }
         }
@@ -17285,6 +17578,13 @@ fn render_message() -> &'static str {
             RegisteredUiAction::TestMcpServer { name } => {
                 self.test_mcp_server(name)?;
             }
+            RegisteredUiAction::AddMcpServer {
+                name,
+                config,
+                bearer_token,
+            } => {
+                self.add_mcp_server(name, config, bearer_token)?;
+            }
             RegisteredUiAction::SetAgentPluginEnabled { key, enabled } => {
                 self.set_agent_plugin_enabled(key, enabled)?;
             }
@@ -18359,6 +18659,68 @@ fn render_message() -> &'static str {
                 authority_epoch,
             },
         );
+        Ok(())
+    }
+
+    fn add_mcp_server(
+        &mut self,
+        name: String,
+        config: serde_json::Value,
+        bearer_token: Option<String>,
+    ) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before adding an MCP server".into());
+        }
+        let name = name.trim().to_owned();
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err(
+                "MCP server name must be 1–512 characters without control characters".into(),
+            );
+        }
+        if !config.is_object()
+            || !serde_json::to_vec(&config).is_ok_and(|bytes| bytes.len() <= 512 * 1024)
+            || bearer_token
+                .as_ref()
+                .is_some_and(|token| token.len() > 16_384 || token.chars().any(char::is_control))
+        {
+            return Err("MCP server configuration or bearer token is invalid or too large".into());
+        }
+        if self.pending_mcp_server_add.is_some() {
+            return Err("An MCP server add is already pending".into());
+        }
+        if self
+            .mcp_servers
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.servers.iter().any(|server| server.name == name))
+        {
+            return Err("An MCP server with that name already exists".into());
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return Err("Hermes Gateway endpoint is unavailable".into());
+        };
+        let request_id = operation_id("mcp-server-add");
+        let pending = PendingMcpServerAdd {
+            request_id: request_id.clone(),
+            name: name.clone(),
+            profile_id: endpoint.profile_id.clone(),
+            instance_id: endpoint.instance_id.clone(),
+            authority_epoch: endpoint.authority_epoch,
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return Err("Hermes Gateway connection is unavailable".into());
+        };
+        gateway.add_mcp_server(
+            request_id,
+            name,
+            config,
+            bearer_token.filter(|token| !token.trim().is_empty()),
+            pending.profile_id.clone(),
+            pending.instance_id.clone(),
+            pending.authority_epoch,
+        )?;
+        self.pending_mcp_server_add = Some(pending);
+        self.mcp_server_add_error = None;
+        self.status = "Adding MCP server…".into();
         Ok(())
     }
 
@@ -25034,6 +25396,48 @@ fn render_message() -> &'static str {
                     };
                     self.mcp_server_test_results.insert(name, result);
                 }
+                GatewayEvent::McpServerAdded {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_mcp_server_add.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.name != name
+                        || pending.profile_id != profile_id
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    self.pending_mcp_server_add = None;
+                    match result {
+                        Ok(server) => {
+                            let servers = self.mcp_servers.get_or_insert_with(Default::default);
+                            servers.servers.retain(|entry| entry.name != server.name);
+                            servers.servers.push(server);
+                            self.mcp_server_add_open = false;
+                            self.mcp_server_add_draft = McpServerAddDraft::default();
+                            self.mcp_server_add_error = None;
+                            self.mcp_server_test_results.remove(&name);
+                            self.status = format!("Added MCP server {name}");
+                        }
+                        Err(error) => {
+                            self.mcp_server_add_error = Some(error.clone());
+                            self.status = format!("Could not add MCP server {name}: {error}");
+                        }
+                    }
+                }
                 GatewayEvent::Disconnected(error) => {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
@@ -25123,6 +25527,7 @@ fn render_message() -> &'static str {
                         );
                     }
                     self.pending_mcp_server_tests.clear();
+                    self.pending_mcp_server_add = None;
                     self.mcp_server_test_results.clear();
                     self.agent_plugins_pending = false;
                     self.agent_plugins_request_id = None;
@@ -37752,6 +38157,200 @@ mod tests {
         assert!(!app.pending_mcp_server_tests.contains_key("docs"));
         assert_eq!(app.mcp_server_test_results["docs"].tools[0].name, "search");
         assert_eq!(app.status, "MCP server docs connected · 1 tools");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_server_add_sends_config_and_secret_and_fences_result() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_mcp_server_add();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.mcp_servers = Some(McpServersSnapshot {
+            servers: Vec::new(),
+        });
+
+        app.execute_registered_action(RegisteredUiAction::AddMcpServer {
+            name: "docs".into(),
+            config: json!({"url":"https://mcp.example/mcp","auth":"oauth"}),
+            bearer_token: Some("secret-value".into()),
+        })
+        .expect("queue MCP add");
+        let (request_id, name, config, token, profile, instance, epoch) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("MCP server add reaches gateway actor");
+        assert_eq!(name, "docs");
+        assert_eq!(config["url"], "https://mcp.example/mcp");
+        assert_eq!(token.as_deref(), Some("secret-value"));
+        assert_eq!(profile, "home-bot");
+        assert_eq!(instance, "gateway-home-bot");
+        assert_eq!(epoch, 12);
+        assert!(app.pending_mcp_server_add.is_some());
+
+        events
+            .send(GatewayEvent::McpServerAdded {
+                request_id: request_id.clone(),
+                name: name.clone(),
+                profile_id: "stale-profile".into(),
+                instance_id: "stale-gateway".into(),
+                authority_epoch: epoch,
+                result: Ok(crate::gateway::McpServerSummary {
+                    name: name.clone(),
+                    transport: "http".into(),
+                    command: None,
+                    args: Vec::new(),
+                    url: Some("https://mcp.example/mcp".into()),
+                    enabled: true,
+                    tools: None,
+                }),
+            })
+            .expect("send stale MCP add result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_mcp_server_add.is_some());
+        assert!(app.mcp_servers.as_ref().unwrap().servers.is_empty());
+
+        events
+            .send(GatewayEvent::McpServerAdded {
+                request_id,
+                name: name.clone(),
+                profile_id: profile,
+                instance_id: instance,
+                authority_epoch: epoch,
+                result: Ok(crate::gateway::McpServerSummary {
+                    name: name.clone(),
+                    transport: "http".into(),
+                    command: None,
+                    args: Vec::new(),
+                    url: Some("https://mcp.example/mcp".into()),
+                    enabled: true,
+                    tools: Some(Vec::new()),
+                }),
+            })
+            .expect("send current MCP add result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_mcp_server_add.is_none());
+        assert_eq!(app.mcp_servers.as_ref().unwrap().servers[0].name, "docs");
+        assert!(!app.status.contains("secret-value"));
+        assert_eq!(app.status, "Added MCP server docs");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_server_add_form_builds_stdio_and_http_payloads_without_plaintext_bearer_config() {
+        let draft = McpServerAddDraft {
+            name: "local-docs".into(),
+            transport: "stdio".into(),
+            command: "uvx".into(),
+            args: "mcp-server-docs\n--read-only".into(),
+            env: "DOCS_ROOT=C:/docs\nAPI_MODE=readonly".into(),
+            cwd: "C:/project".into(),
+            ..McpServerAddDraft::default()
+        };
+        let (name, config, token) = mcp_server_add_draft_payload(&draft).unwrap();
+        assert_eq!(name, "local-docs");
+        assert_eq!(config["command"], "uvx");
+        assert_eq!(config["args"], json!(["mcp-server-docs", "--read-only"]));
+        assert_eq!(config["env"]["DOCS_ROOT"], "C:/docs");
+        assert_eq!(config["cwd"], "C:/project");
+        assert!(token.is_none());
+
+        let draft = McpServerAddDraft {
+            name: "remote-docs".into(),
+            transport: "http".into(),
+            url: "https://mcp.example/mcp".into(),
+            headers: "X-Team=engineering".into(),
+            auth: "bearer".into(),
+            bearer_token: "secret-value".into(),
+            ..McpServerAddDraft::default()
+        };
+        let (name, config, token) = mcp_server_add_draft_payload(&draft).unwrap();
+        assert_eq!(name, "remote-docs");
+        assert_eq!(config["url"], "https://mcp.example/mcp");
+        assert_eq!(config["headers"]["X-Team"], "engineering");
+        assert!(config.get("bearer_token").is_none());
+        assert_eq!(token.as_deref(), Some("secret-value"));
+
+        let invalid = McpServerAddDraft {
+            env: "DUP=first\nDUP=second".into(),
+            ..McpServerAddDraft {
+                name: "bad".into(),
+                command: "node".into(),
+                ..McpServerAddDraft::default()
+            }
+        };
+        assert!(mcp_server_add_draft_payload(&invalid).is_err());
+    }
+
+    #[test]
+    fn mcp_server_add_form_renders_transport_controls_and_submit_accessibly() {
+        let (mut app, profile_dir) = isolated_app();
+        app.load_connectors_fixture_for_automation();
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Connectors;
+        app.gateway_connected = true;
+        app.mcp_servers = Some(McpServersSnapshot {
+            servers: Vec::new(),
+        });
+        app.mcp_server_add_open = true;
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3000.0))
+            .build_ui(|ui| app.draw(ui));
+        let labels = harness
+            .query_all_by(|_| true)
+            .filter_map(|node| node.accesskit_node().label())
+            .collect::<Vec<_>>();
+        assert!(
+            labels.iter().any(|label| label == "Save server"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels.iter().any(|label| label == "Transport"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels.iter().any(|label| label == "MCP server command"),
+            "labels: {labels:?}"
+        );
+        drop(harness);
+        app.mcp_server_add_draft.transport = "http".into();
+        app.mcp_server_add_draft.auth = "bearer".into();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3000.0))
+            .build_ui(|ui| app.draw(ui));
+        let labels = harness
+            .query_all_by(|_| true)
+            .filter_map(|node| node.accesskit_node().label())
+            .collect::<Vec<_>>();
+        assert!(
+            labels.iter().any(|label| label == "MCP server URL"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label == "MCP server HTTP headers"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label == "MCP server bearer token"),
+            "labels: {labels:?}"
+        );
+        drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
