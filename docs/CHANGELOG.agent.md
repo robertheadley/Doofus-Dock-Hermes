@@ -2268,3 +2268,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** no runtime impact; validator-only.
 - **risks:** Existing historical UCM evidence inconsistencies remain separate and unchanged.
 - **follow_up:** Keep evidence-kind validation aligned with the installed UCM schema as new evidence types are added.
+
+
+### Publish the PAR-0510 evidence batch on main — 2026-11-19T00:49:50Z
+
+- **id:** hermes-par-0510-evidence-publish-20261119
+- **timestamp:** 2026-11-19T00:49:50Z
+- **what:** Published the UCM partial record, validator support, and task/docs checkpoint as `08eb30f` on `main`.
+- **why:** Keep finished evidence and validation tooling synchronized with the implementation already published on `main`.
+- **components:** UCM capability map/evidence, pinned package validator, parity plan, execution log, Doofus handoff state.
+- **type:** evidence and validation publication.
+- **validation:** Pushed to `origin/main`, fetched, and confirmed `HEAD == origin/main == 08eb30f73393a39de4e07b924f12603d7fe0a4d8`; package validator and 18/18 task continuity tests pass; targeted UCM report keeps PAR-0510 partial with two scenarios open.
+- **performance:** no runtime impact.
+- **risks:** Global UCM report continues to show historical EV-0016/17 schema errors and reconciliation warning; no live gateway evidence was added.
+- **follow_up:** Validate the live in-flight reattach and owner-routing/recovery cases when a safe test gateway is available.

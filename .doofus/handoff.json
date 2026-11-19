@@ -34,12 +34,6 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
       "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
@@ -48,29 +42,16 @@
       "owner": "unattributed_preexisting",
       "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0018.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "git fetch origin main; compare HEAD with origin/main; inspect targeted UCM capability report",
+    "command": "git fetch origin main; verify HEAD==origin/main; package validator; task continuity; targeted UCM report; Doofus validate",
     "evidence": [
-      "apps/hermes-native/docs/PLAN.md#Revision 227",
       "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0018.json#EV-0018"
     ],
     "state": "tested",
-    "summary": "PAR-0510 active-session reselect code and partial progress overlay are published as 82426709e09654d34e47493913b2bc360be39a26 on main; local main and origin/main match. Progress is 39/499 reviewed (6 implemented, 33 partial, 460 unknown), acceptance 0/499. UCM EV-0018 is prepared as partial evidence against this commit; global checker has pre-existing EV-0016/17 issues.",
-    "verified_at": "2026-11-19T00:43:06Z"
+    "summary": "All tracked parity work is published on main through 08eb30f73393a39de4e07b924f12603d7fe0a4d8; only one local main/worktree exists and it matched origin/main after fetch. PAR-0510 remains partial with headless trigger evidence only; live in-flight and failure recovery remain open. Package validator passes, task continuity 18/18, targeted UCM says partial; global UCM has historical EV-0016/17 errors.",
+    "verified_at": "2026-11-19T00:51:14Z"
   },
   "completed_subtasks": [
     "hermes-par-0074",
@@ -79,7 +60,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T01:43:06Z",
+    "lease_expires_at": "2026-11-19T01:51:14Z",
     "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
     "model": null,
     "ownership_state": "active",
@@ -198,6 +179,20 @@
     },
     {
       "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0018.json#EV-0018"
+      ],
+      "kind": "git_push",
+      "note": "Published UCM EV-0018 partial evidence and test_result validator support as 08eb30f73393a39de4e07b924f12603d7fe0a4d8 on main; fetch verified HEAD equals origin/main.",
+      "observed_at": "2026-11-19T00:51:14Z",
+      "operation_id": "hermes-par-0510-evidence-publish-20261119",
+      "owner": {
+        "model": "gpt-6.2-astra",
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "apps/hermes-native/docs/PLAN.md#Revision 227"
       ],
       "kind": "git_push",
@@ -283,9 +278,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par-0510-published-20261119",
+  "last_event_id": "hermes-par-0510-publish-audit-20261119",
   "last_operation": {
-    "request_id": "hermes-par-0510-published-20261119",
+    "request_id": "hermes-par-0510-publish-audit-20261119",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -304,7 +299,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit/push the UCM EV-0018 partial evidence. Then validate reattach against a real in-flight Hermes gateway and cover owner routing, reconnect/failure, Windows runtime, and source-paired visuals.",
+  "recommended_next_action": "Inspect the pinned-source gateway test harness and available headless loopback fixtures; safely cover live in-flight reattach, owner routing, failure/reconnect without using private user sessions; then pursue Windows and source-paired visual validation.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -808,7 +803,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "4855dd82d46abe3d7bdd1e41499bc336eeaf1f4834e6b00babb98fdbedef5cc3",
+    "change_fingerprint": "216b00cba2fcbb1a62891bedb295affdf9486ecd1d89557c5065da43a46f0039",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -819,34 +814,22 @@
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
         "path": "docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
         "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0018.json",
-        "status": "??"
       }
     ],
-    "head_commit": "82426709e09654d34e47493913b2bc360be39a26",
+    "head_commit": "08eb30f73393a39de4e07b924f12603d7fe0a4d8",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 150,
+  "revision": 152,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 150,
+  "state_revision": 152,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0510",
   "task_ledger_revision": 13,
@@ -1710,9 +1693,14 @@
       "command": "reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit; UCM target report",
       "result": "PASS 344 library + 15 protocol + 3 launcher; workspace check existing warnings only; package 491 pending; review 39/499, accepted 0; target UCM cap partial, headless trigger covered. Global UCM retains historical errors.",
       "timestamp": "2026-11-19T00:43:06Z"
+    },
+    {
+      "command": "apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS 18/18; package 565 target behaviors, 14 source inspection receipts, 3 implementation/test receipts; targeted UCM partial; push confirmed at 08eb30f",
+      "timestamp": "2026-11-19T00:51:14Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T00:43:06Z"
+  "updated_at": "2026-11-19T00:51:14Z"
 }
