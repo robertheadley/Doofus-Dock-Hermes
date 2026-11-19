@@ -78,28 +78,15 @@
     "status": "authorized"
   },
   "blockers": [],
-  "changed_files": [
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "doofus/events.jsonl",
-      "status": "M "
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    }
-  ],
+  "changed_files": [],
   "checkpoint": {
     "command": null,
     "evidence": [
       "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0049.json#EV-0049"
     ],
     "state": "in_progress",
-    "summary": "PAR-0042 tool payload disclosure is published as partial with EV-0049. Exact main SHA a677b049510bc81077fa6f7c472a6048749c6e65; 431/15/3 suite and validators passed; progress is 63/499 reviewed and 31/173 chat/tool mapped. PAR-0044 is selected next.",
-    "verified_at": "2026-11-19T23:31:02Z"
+    "summary": "PAR-0042 evidence publication and final audit log are on main; clean worktree and fresh origin/main match e5c71f36b5a84bb07025a6c0de22443475f40dce. Task PAR-0044 is selected next.",
+    "verified_at": "2026-11-19T23:32:11Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -107,6 +94,7 @@
     "hermes-par-0041",
     "hermes-par-0042",
     "hermes-par-0043",
+    "hermes-par-0044",
     "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0063",
@@ -131,7 +119,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T00:31:02Z",
+    "lease_expires_at": "2026-11-20T00:32:11Z",
     "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
     "model": null,
     "ownership_state": "active",
@@ -713,11 +701,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0042-postpublish-checkpoint-20261119",
+  "last_event_id": "hermes-par0044-tested-20261119",
   "last_operation": {
-    "request_id": "hermes-par0042-postpublish-checkpoint-20261119",
+    "request_id": "hermes-par0044-tested-20261119",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "task.state_updated"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -734,7 +722,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned PAR-0044 generated-image fallback and native transcript support; implement enlarge action and test it.",
+  "recommended_next_action": "Inspect pinned PAR-0044 generated image tool output and native artifact preview/enlarge support; implement a functional image enlarge action and validate it.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -776,7 +764,6 @@
     "hermes-par-0037",
     "hermes-par-0038",
     "hermes-par-0039",
-    "hermes-par-0044",
     "hermes-par-0045",
     "hermes-par-0046",
     "hermes-par-0047",
@@ -1215,28 +1202,19 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "1da0fb9b17397187f4ff0d0f7ad9b8203d17c0c889936f1d88ddfc08fef90777",
-    "changed_files": [
-      {
-        "path": "doofus/events.jsonl",
-        "status": "M "
-      },
-      {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      }
-    ],
-    "head_commit": "a677b049510bc81077fa6f7c472a6048749c6e65",
+    "change_fingerprint": "04a8769a433b82d3e4e279925e4f623b7149e9c647983124ffef96e269f11abc",
+    "changed_files": [],
+    "head_commit": "e5c71f36b5a84bb07025a6c0de22443475f40dce",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 341,
+  "revision": 343,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 341,
+  "state_revision": 343,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0044",
-  "task_ledger_revision": 52,
+  "task_ledger_revision": 53,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2341,5 +2319,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T23:31:02Z"
+  "updated_at": "2026-11-19T23:51:09Z"
 }

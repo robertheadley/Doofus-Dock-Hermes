@@ -1,5 +1,5 @@
 {
-  "revision": 52,
+  "revision": 53,
   "schema_version": 1,
   "tasks": [
     {
@@ -1467,7 +1467,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1476,11 +1476,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T23:51:09Z",
+              "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
               "objective": "ui-render-tool-generated-images-with-enlarge-action",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -1491,10 +1491,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0044",
               "title": "PAR-0044 Render tool-generated images with enlarge action",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#tool_image_open_action_is_accessible_and_sets_the_lightbox_target"
+              ]
             },
             {
               "agent_identity": {
@@ -16265,5 +16267,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T23:30:03Z"
+  "updated_at": "2026-11-19T23:51:09Z"
 }

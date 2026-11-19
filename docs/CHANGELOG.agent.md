@@ -3114,3 +3114,25 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** Payload serialization is deferred until disclosure; 20,000-character rendering cap.
 - **risks:** Separate persisted tool-view preference, live Gateway, installed Windows behavior, and source-paired acceptance remain open.
 - **follow_up:** Continue with PAR-0044 generated tool-image rendering and enlarge behavior.
+
+- **id:** hermes-par0044-tool-image-preview-and-enlarge
+- **timestamp:** 2026-11-19T23:49:00Z
+- **what:** PAR-0044 now recognizes tool image candidates and renders local/authenticated-remote previews with an accessible resizable enlarge window. Progress overlays and UCM capability projections now record the feature as partial.
+- **why:** Let people inspect images produced or referenced by Hermes tools directly in chat.
+- **components:** Hermes Native transcript renderer, file preview store, authenticated Gateway image preview, implementation progress, UCM package, completion overview, architecture and backlog docs.
+- **type:** native feature implementation and partial progress evidence.
+- **validation:** PASS two focused `tool_image_*` tests; PASS `cargo check -p hermes-native --locked --features agent-automation`; implementation and chat/tool progress generation pass. Full suite, task/package validators and publication remain pending.
+- **performance:** Remote previews retain their existing 512×384 decode bounds; local image decoding remains on the existing preview worker and limits.
+- **risks:** Data URLs, full-resolution remote enlargement, zoom/pan and retry remain unsupported. Live Gateway, installed Windows and source-paired acceptance remain open.
+- **follow_up:** Run full validation, bind EV-0050 to the behavior commit, publish to main, then continue with the next dependency-ready feature.
+
+- **id:** hermes-par0044-validation-addendum
+- **timestamp:** 2026-11-19T23:53:00Z
+- **what:** Completed the full PAR-0044 validation after the initial implementation record: all 433 library, 15 automation-protocol, and 3 launcher tests passed; workspace check, formatting, progress generation, task validation, package validation, and diff checks passed.
+- **why:** Close the implementation validation step and record the corrected package-validator location.
+- **components:** Hermes Native test/build suite, Doofus task ledger, UCM package validator.
+- **type:** validation addendum.
+- **validation:** PASS `cargo test -p hermes-native --features agent-automation --locked`; PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS `cargo fmt --all -- --check`; PASS both progress generators; PASS `python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py`; PASS task validator at revision 343 and `git diff --check`.
+- **performance:** No benchmark change; local/remote preview limits remain unchanged.
+- **risks:** Live Gateway, installed Windows, remote full-resolution, data URL, zoom/pan, and source-paired behavior remain unverified or incomplete.
+- **follow_up:** Create EV-0050 for the behavior commit, publish on main and verify exact remote SHA equality.

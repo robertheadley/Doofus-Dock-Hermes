@@ -747,6 +747,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "native evidence is headless; real MCP notifications, interrupted-turn parity, installed Windows rendering, and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0044": {
+        "state": "partial",
+        "level": "headless_tool_image_preview_and_enlarge_action",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback-model/index.ts#toolImageUrl",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/chat/zoomable-image.tsx#ZoomableImage",
+            "apps/hermes-native/src/app.rs#tool_image_reference",
+            "apps/hermes-native/src/app.rs#tool_image_open_action_is_accessible_and_sets_the_lightbox_target",
+            "apps/hermes-native/src/app.rs#tool_image_reference_follows_result_then_arguments_and_filters_non_images",
+            "apps/hermes-native/src/files.rs#show_image_thumbnail",
+            "apps/hermes-native/src/gateway.rs#load_remote_artifact_image_preview",
+            "apps/hermes-native/docs/PLAN.md#Revision 264",
+        ],
+        "gaps": [
+            "remote enlarge currently uses the bounded 512x384 preview instead of a full-resolution source image; data:image URLs are not decoded into native previews",
+            "zoom and pan gestures, image load retry, live Gateway behavior, installed Windows interaction, and source-paired acceptance remain open",
+        ],
+    },
     "PAR-0057": {
         "state": "partial",
         "level": "headless_older_transcript_page_and_gateway_scope_tests",

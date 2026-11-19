@@ -1341,6 +1341,11 @@ struct ChildWindowReadinessReporter {
     sent: bool,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct ToolImageLightbox {
+    artifact: ArtifactRecord,
+}
+
 pub struct HermesNativeApp {
     workspace: Workspace,
     narrow_viewport: bool,
@@ -1498,6 +1503,7 @@ pub struct HermesNativeApp {
     pending_artifact_image_previews: BTreeMap<String, String>,
     artifact_image_previews: BTreeMap<String, Result<FilePreviewContent, String>>,
     artifact_image_preview_order: VecDeque<String>,
+    tool_image_lightbox: Option<ToolImageLightbox>,
     artifacts_filter: ArtifactFilter,
     artifacts_query: String,
     artifacts_image_page: usize,
@@ -3845,6 +3851,7 @@ fn render_message() -> &'static str {
             pending_artifact_image_previews: BTreeMap::new(),
             artifact_image_previews: BTreeMap::new(),
             artifact_image_preview_order: VecDeque::new(),
+            tool_image_lightbox: None,
             artifacts_filter: ArtifactFilter::All,
             artifacts_query: String::new(),
             artifacts_image_page: 1,
@@ -6616,13 +6623,34 @@ fn render_message() -> &'static str {
                         self.pending_submissions.contains_key(&key)
                     });
             let mut retry_failed_submission = None;
+            let active_profile = self.active_session_profile.clone();
+            let tool_images = messages
+                .iter()
+                .enumerate()
+                .filter_map(|(index, message)| {
+                    (message.get("type").and_then(|value| value.as_str()) == Some("tool_call"))
+                        .then(|| {
+                            tool_image_artifact(
+                                message,
+                                index,
+                                session_id,
+                                active_profile.as_deref(),
+                            )
+                        })
+                        .flatten()
+                        .map(|artifact| (index, artifact))
+                })
+                .collect::<BTreeMap<_, _>>();
             let markdown_cache = &mut self.markdown_cache;
+            let mut open_tool_image = None;
+            let mut request_tool_image_previews = Vec::new();
             egui::ScrollArea::vertical()
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
                     ui.set_max_width(ui.available_width().min(860.0));
                     for (index, message) in messages.into_iter().enumerate() {
                         let (speaker, body) = transcript_message(&message);
+                        let tool_image = tool_images.get(&index);
                         let matched = search_matches.contains(&index);
                         let selected_match = find_target == Some(index) && matched;
                         let frame = if matched {
@@ -6642,6 +6670,38 @@ fn render_message() -> &'static str {
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
                             render_transcript_markdown(ui, markdown_cache, &body);
+                            if let Some(artifact) = tool_image {
+                                let remote = self
+                                    .gateway_endpoint
+                                    .as_ref()
+                                    .is_some_and(|endpoint| endpoint.remote_auth.is_some());
+                                ui.group(|ui| {
+                                    if remote {
+                                        self.file_previews.show_remote_image_thumbnail(
+                                            ui,
+                                            &artifact.id,
+                                            self.artifact_image_previews.get(&artifact.id),
+                                            egui::vec2(320.0, 220.0),
+                                        );
+                                        if ui.is_rect_visible(ui.min_rect()) {
+                                            request_tool_image_previews.push(artifact.clone());
+                                        }
+                                    } else {
+                                        self.file_previews.show_image_thumbnail(
+                                            ui,
+                                            &tool_image_local_path(&artifact.value),
+                                            egui::vec2(320.0, 220.0),
+                                        );
+                                    }
+                                    if ui
+                                        .button("Open image")
+                                        .accessible_name("Open tool image")
+                                        .clicked()
+                                    {
+                                        open_tool_image = Some(artifact.clone());
+                                    }
+                                });
+                            }
                             if technical_tool_payloads
                                 && message.get("type").and_then(|value| value.as_str())
                                     == Some("tool_call")
@@ -6742,6 +6802,48 @@ fn render_message() -> &'static str {
                         ui.add_space(8.0);
                     }
                 });
+            for artifact in request_tool_image_previews {
+                self.request_remote_artifact_image_preview(&artifact);
+            }
+            if let Some(artifact) = open_tool_image {
+                self.tool_image_lightbox = Some(ToolImageLightbox { artifact });
+            }
+            if let Some(lightbox) = self.tool_image_lightbox.clone() {
+                let remote = self
+                    .gateway_endpoint
+                    .as_ref()
+                    .is_some_and(|endpoint| endpoint.remote_auth.is_some());
+                if remote {
+                    self.request_remote_artifact_image_preview(&lightbox.artifact);
+                }
+                let mut visible = true;
+                egui::Window::new(format!("Image · {}", lightbox.artifact.label))
+                    .open(&mut visible)
+                    .resizable(true)
+                    .collapsible(false)
+                    .default_size(egui::vec2(820.0, 620.0))
+                    .show(ui.ctx(), |ui| {
+                        if remote {
+                            let max_size = ui.available_size();
+                            self.file_previews.show_remote_image_thumbnail(
+                                ui,
+                                &lightbox.artifact.id,
+                                self.artifact_image_previews.get(&lightbox.artifact.id),
+                                max_size,
+                            );
+                        } else {
+                            let max_size = ui.available_size();
+                            self.file_previews.show_image_thumbnail(
+                                ui,
+                                &tool_image_local_path(&lightbox.artifact.value),
+                                max_size,
+                            );
+                        }
+                    });
+                if !visible {
+                    self.tool_image_lightbox = None;
+                }
+            }
             if let Some(submission_id) = retry_failed_submission {
                 self.retry_failed_submission(&submission_id);
             }
@@ -27376,6 +27478,110 @@ fn tool_payload_present(message: &serde_json::Value) -> bool {
         .any(|key| message.get(*key).is_some_and(|value| !value.is_null()))
 }
 
+fn tool_image_reference(message: &serde_json::Value) -> Option<String> {
+    fn field(value: &serde_json::Value, names: &[&str]) -> Option<String> {
+        let value = value.as_object()?;
+        names.iter().find_map(|name| {
+            value
+                .get(*name)
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        })
+    }
+
+    let result = message.get("result").or_else(|| message.get("result_text"));
+    let args = message.get("args").or_else(|| message.get("args_text"));
+    let result_fields = ["image_url", "url", "path", "image_path"];
+    let args_fields = ["image_url", "url", "path"];
+    let candidate = result
+        .and_then(|value| {
+            field(value, &result_fields).or_else(|| {
+                value
+                    .as_str()
+                    .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+                    .and_then(|value| field(&value, &result_fields))
+            })
+        })
+        .or_else(|| field(message, &result_fields))
+        .or_else(|| {
+            args.and_then(|value| {
+                field(value, &args_fields).or_else(|| {
+                    value
+                        .as_str()
+                        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+                        .and_then(|value| field(&value, &args_fields))
+                })
+            })
+        })?;
+
+    if candidate
+        .get(..11)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:image/"))
+    {
+        return None;
+    }
+    let path = candidate.split(['?', '#']).next().unwrap_or(&candidate);
+    let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "bmp" | "gif" | "jpeg" | "jpg" | "png" | "svg" | "webp"
+    )
+    .then_some(candidate)
+}
+
+fn tool_image_artifact(
+    message: &serde_json::Value,
+    row_index: usize,
+    session_id: &str,
+    profile: Option<&str>,
+) -> Option<ArtifactRecord> {
+    let value = tool_image_reference(message)?;
+    let tool_id = message
+        .get("tool_call_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("tool");
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    use std::hash::{Hash, Hasher};
+    profile.hash(&mut hasher);
+    session_id.hash(&mut hasher);
+    tool_id.hash(&mut hasher);
+    row_index.hash(&mut hasher);
+    value.hash(&mut hasher);
+    let label = value
+        .rsplit(['/', '\\'])
+        .next()
+        .filter(|name| !name.is_empty())
+        .unwrap_or("Tool image")
+        .chars()
+        .take(96)
+        .collect::<String>();
+    Some(ArtifactRecord {
+        id: format!("tool-image-{:016x}", hasher.finish()),
+        kind: ArtifactKind::Image,
+        href: value.clone(),
+        value,
+        label,
+        session_id: session_id.to_owned(),
+        profile: profile.map(str::to_owned),
+        session_title: "Tool output".into(),
+        timestamp_ms: 0,
+    })
+}
+
+fn tool_image_local_path(value: &str) -> std::path::PathBuf {
+    if value
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("file:"))
+        && let Ok(url) = url::Url::parse(value)
+        && let Ok(path) = url.to_file_path()
+    {
+        return path;
+    }
+    std::path::PathBuf::from(value)
+}
+
 fn tool_payload_trace(message: &serde_json::Value) -> Option<String> {
     let args = message
         .get("args")
@@ -40426,6 +40632,81 @@ mod tests {
         let rendered = tool_payload_trace(&large).expect("arguments produce a payload");
         assert!(rendered.chars().count() < 20_100);
         assert!(rendered.ends_with("more characters truncated."));
+    }
+
+    #[test]
+    fn tool_image_reference_follows_result_then_arguments_and_filters_non_images() {
+        assert_eq!(
+            tool_image_reference(&json!({
+                "type":"tool_call",
+                "image_path":"C:/work/render.png"
+            }))
+            .as_deref(),
+            Some("C:/work/render.png")
+        );
+        assert_eq!(
+            tool_image_reference(&json!({
+                "result":{"image_url":"https://example.test/render.webp?size=large"},
+                "args":{"path":"C:/work/input.png"}
+            }))
+            .as_deref(),
+            Some("https://example.test/render.webp?size=large")
+        );
+        assert_eq!(
+            tool_image_reference(&json!({
+                "result_text":"{\"path\":\"C:/work/render.svg\"}"
+            }))
+            .as_deref(),
+            Some("C:/work/render.svg")
+        );
+        assert_eq!(
+            tool_image_reference(&json!({
+                "result":{"path":"C:/work/readme.txt"}
+            })),
+            None
+        );
+        assert_eq!(
+            tool_image_reference(&json!({
+                "result":{"image_url":"data:image/png;base64,AA=="}
+            })),
+            None
+        );
+    }
+
+    #[test]
+    fn tool_image_open_action_is_accessible_and_sets_the_lightbox_target() {
+        let (mut app, profile_dir) = isolated_app();
+        let image_path = profile_dir.join("tool-image.png");
+        image::RgbaImage::from_pixel(16, 16, image::Rgba([40, 120, 220, 255]))
+            .save(&image_path)
+            .expect("write image fixture");
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![json!({
+            "type":"tool_call",
+            "tool_call_id":"image-call",
+            "name":"vision_analyze",
+            "status":"complete",
+            "image_path":image_path.to_string_lossy()
+        })];
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1800.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness.query_by_label("Open tool image").is_some(),
+            "tool image enlargement control must be accessible"
+        );
+        harness.get_by_label("Open tool image").click_accesskit();
+        harness.run();
+        drop(harness);
+        assert!(
+            app.tool_image_lightbox.is_some(),
+            "activating the tool image action opens its enlarged view"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

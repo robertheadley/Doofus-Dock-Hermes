@@ -1065,7 +1065,7 @@ capabilities:
   name: Render tool-generated images with enlarge action
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can render tool-generated images with enlarge action.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1077,9 +1077,9 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
 - id: ui-render-inline-diffs-with-status
   name: Render inline diffs with status
   area: chat-transcript

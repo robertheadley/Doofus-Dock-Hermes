@@ -458,9 +458,11 @@ impl FilePreviewStore {
         }) = preview
         else {
             ui.centered_and_justified(|ui| {
-                ui.label(
-                    egui::RichText::new("Image preview unavailable").color(egui::Color32::GRAY),
-                );
+                let message = match preview {
+                    Err(error) => format!("Image preview unavailable: {error}"),
+                    Ok(_) => "Image preview unavailable: unsupported content".into(),
+                };
+                ui.label(egui::RichText::new(message).color(egui::Color32::GRAY));
             });
             return false;
         };
@@ -516,9 +518,12 @@ impl FilePreviewStore {
         })) = self.contents.get(&key)
         else {
             ui.centered_and_justified(|ui| {
-                ui.label(
-                    egui::RichText::new("Image preview unavailable").color(egui::Color32::GRAY),
-                );
+                let message = match self.contents.get(&key) {
+                    Some(Err(error)) => format!("Image preview unavailable: {error}"),
+                    Some(Ok(_)) => "Image preview unavailable: unsupported content".into(),
+                    None => "Image preview unavailable".into(),
+                };
+                ui.label(egui::RichText::new(message).color(egui::Color32::GRAY));
             });
             return false;
         };

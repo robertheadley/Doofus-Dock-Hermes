@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 257 (implementation in progress).
+- **Working revision:** 264 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1579,3 +1579,9 @@ Validation: PASS full locked feature suite (428 library, 15 automation protocol,
 PAR-0042 now exposes the full raw Arguments and Result payload in an accessible, collapsed-by-default “Tool payload” disclosure in Advanced interface mode. JSON objects and persisted JSON strings are pretty-printed; plain scalar text is preserved; rendered payload is capped at 20,000 characters. Simple mode keeps the raw technical payload hidden while retaining the normal tool row. The native UI automation test opens the disclosure through an AccessKit action and confirms both sections become available; formatter tests cover JSON, plain text, missing payload, and truncation. Implementation coverage is now 63/499 (6 implemented, 57 partial, 436 unknown); scoped chat/tool evidence is 31/173 (1 implemented, 30 partial, 142 unknown). These are evidence coverage counts, not a completion percentage.
 
 Validation: PASS focused payload tests; full locked feature suite, workspace/all-target check, `cargo fmt --check`, task validator, both progress generators, UCM package validator, and diff check recorded after this revision's implementation. The pinned source retains an independent persisted product/technical tool-view preference, while native currently maps visibility to its Simple/Advanced interface mode; that preference difference remains open. Live Gateway, installed Windows interaction, and source-paired acceptance remain unverified.
+
+### Revision 264 — Tool image preview and enlarge action (2026-11-19)
+
+PAR-0044 now recognizes image candidates on tool transcript rows, renders local image previews through the bounded asynchronous file preview store, and renders remote previews through the existing authenticated Gateway reader scoped to the originating profile and session. An accessible “Open tool image” action opens a resizable image window. Focused headless tests cover result/argument candidate precedence, image filtering, and opening the accessible enlarge action. The capability remains partial: remote images use the existing 512×384 preview, data URLs and zoom/pan are not supported, retry behavior is absent, and live Gateway, installed Windows, and source-paired acceptance remain open.
+
+Validation: PASS focused PAR-0044 tests and `cargo check -p hermes-native --locked --features agent-automation`; full-suite and package/task/progress validation are recorded in the execution log. Evidence review counts are generated from the fixed source overlay and are not a completion percentage.
