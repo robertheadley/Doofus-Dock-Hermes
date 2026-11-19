@@ -2526,3 +2526,19 @@ Publication addendum (2026-11-19T16:47:12Z): Commit `b349bf96378e250c8ec10f2dae6
 
 
 Validation addendum (2026-11-19T17:01:09Z): PASS complete Hermes Native feature suite (384 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` with existing dead-code warnings; PASS task protocol tests (18/18); PASS PAR-0511 task update and schema validation at revision 200; PASS scoped progress generator (1 implemented, 9 partial, 163 unknown; 10/173 mapped evidence); PASS UCM package validator (565 target behaviors; optional PyYAML parse skipped); PASS rustfmt and diff check. Automatic Gateway reconnect, live replay behavior, Windows acceptance and source-paired visuals remain open.
+
+
+### UCM replay-gap evidence — 2026-11-19T17:02:14Z
+
+- **id:** hermes-par-0511-ucm-replay-gap-20261119
+- **timestamp:** 2026-11-19T17:02:14Z
+- **what:** Added EV-0024 and EV-0025 for active-route and mounted-tile replay-gap recovery; declared the corresponding verification scenarios and kept the live reconnect scenario open.
+- **why:** Preserve accurate partial status for the new pinned chat recovery behavior.
+- **components:** Universal Capability Map replay-gap capability.
+- **type:** Evidence tracking.
+- **validation:** UCM package validator pending; schema keeps the capability partial.
+- **performance:** No runtime behavior changed.
+- **risks:** Unit coverage does not establish automatic or live Gateway reconnection.
+- **follow_up:** Add live reconnect evidence only after the reconnect actor exists and can be exercised.
+
+Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b1028494743ad0d6aa8e5d8` to `origin/main`; fresh fetch confirmed exact local/remote SHA equality and a clean worktree.

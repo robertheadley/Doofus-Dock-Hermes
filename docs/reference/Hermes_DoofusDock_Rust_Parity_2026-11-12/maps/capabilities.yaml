@@ -9880,7 +9880,7 @@ capabilities:
   name: Replay session transcript after disconnect
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can replay session transcript after disconnect.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -9893,8 +9893,19 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: active-route-replay-gap
+      description: A replay gap for the active route requests an authoritative resume while preserving the visible transcript and unsent draft.
+    - id: mounted-tile-replay-gap
+      description: A replay gap for an open session tile requests one owner-scoped authoritative resume and preserves its cached transcript and draft.
+    - id: live-reconnect
+      description: A real Gateway disconnect and reconnect replays missed transcript events and resolves the authoritative snapshot without duplication.
+  evidence:
+  - EV-0024
+  - EV-0025
 - id: ui-deduplicate-streamed-event-ids
   name: Deduplicate streamed event IDs
   area: protocol-reliability
