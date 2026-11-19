@@ -1008,7 +1008,7 @@ capabilities:
   name: Render inline tool invocation rows
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can render inline tool invocation rows.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions

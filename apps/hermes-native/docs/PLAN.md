@@ -1494,3 +1494,8 @@ UCM evidence: EV-0033 is bound to implementation/test commit `bc3555f62308ced1c8
 ### Revision 247 — Older transcript pagination evidence (2026-11-19T19:39Z)
 
 PAR-0057 is now mapped partial from the current native implementation. Hermes Native exposes an accessible “Show earlier messages” action, requests older offset pages under the active profile, validates the returned profile/order/offset receipt, fences owner/request identity, and prepends pages with boundary-overlap deduplication. Focused pagination tests pass (5). The pinned Desktop implementation instead reveals an older prompt using an around-row history window, predecessor lookup, cancellation/latest-request fencing, and a contiguity check that replaces the displayed window when a long turn separates pages. Native does not yet implement that anchored flow. Live Gateway, physical Windows interaction, and source-paired acceptance remain open.
+
+
+### Revision 248 — Inline tool invocation evidence (2026-11-19T19:46Z)
+
+PAR-0041 is mapped partial. Hermes Native reduces `tool.start`/`tool.complete` into generation-scoped tool transcript rows; the focused headless UI test verifies reused tool IDs produce two accessible completed cards. The pinned Desktop groups consecutive calls under a summarized `ToolRun` disclosure, keeps a live ticker while running, persists run disclosure state, and has specialized tool fallback renderers. Native still renders individual cards, so run grouping/ticker/disclosure and specialized rendering are open. Live Gateway, Windows, and source-paired acceptance remain pending.

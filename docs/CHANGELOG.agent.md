@@ -2777,3 +2777,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 Validation addendum (2026-11-19T19:42Z): PASS focused pagination filter (5 tests); PASS progress generators (50 reviewed; 6 implemented, 44 partial, 449 unknown; chat/tool 18 mapped with 1 implemented, 17 partial, 155 unknown); PASS UCM validator (565 behaviors/inventory/pending tests, 14 source and 18 implementation receipts); PASS task validation and `git diff --check`. The first package validation caught malformed CSV column alignment from an unquoted comma; the PAR-0057 row was reconstructed through the schema-aware CSV writer, and the rerun passed. Optional YAML validation skipped because PyYAML is unavailable. EV-0034 will be bound to the implementation/documentation commit after commit creation.
 
 UCM evidence addendum (2026-11-19T19:44Z): EV-0034 records the five focused pagination tests and is bound to implementation/documentation commit `b3d3e7189df7fd76eac058bf27ca0f2453f4d61c`; capability and crosswalk remain partial.
+
+
+## PAR-0041 inline tool card evidence
+
+- **id:** hermes-par-0041-tool-row-evidence-20261119
+- **timestamp:** 2026-11-19T19:47:00Z
+- **what:** Mapped existing generation-scoped accessible tool cards as partial and documented pinned run-group behavior gaps.
+- **why:** Capture working tool event rendering without overstating run grouping parity.
+- **components:** Gateway event reducer, accessible transcript tool cards, progress overlay, UCM crosswalk.
+- **type:** evidence mapping and documentation
+- **validation:** PASS focused generation-scoped tool-card UI test; PASS progress generators, UCM package validator and task-state validator.
+- **performance:** No runtime change.
+- **risks:** Live, Windows and source-paired behavior are unverified; run summary/ticker/disclosure remain absent.
+- **follow_up:** Implement pinned run grouping and live disclosure, then validate against live Gateway and fixed-source UI behavior.

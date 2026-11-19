@@ -526,6 +526,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "physical Windows clipboard behavior and source-paired visuals/acceptance remain unverified",
         ],
     },
+    "PAR-0041": {
+        "state": "partial",
+        "level": "headless_generation_scoped_accessible_tool_cards",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback.tsx#ToolRunHeader",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback.tsx#ToolRun",
+            "apps/hermes-native/src/app.rs#tool_start_and_complete_render_generation_scoped_transcript_cards",
+            "apps/hermes-native/src/app.rs#upsert_tool_row",
+            "apps/hermes-native/docs/PLAN.md#Revision 248",
+        ],
+        "gaps": [
+            "native renders each tool call as an individual transcript card instead of grouping consecutive calls into the pinned summary/disclosure run",
+            "pinned live ticker, persisted run disclosure, approval-aware collapse, and specialized tool fallback rendering are not matched",
+            "live Gateway, installed Windows behavior, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0057": {
         "state": "partial",
         "level": "headless_older_transcript_page_and_gateway_scope_tests",

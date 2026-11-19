@@ -245,3 +245,8 @@ Native find searches the currently loaded transcript's message body and speaker 
 ## Older transcript history
 
 Current pagination requests profile-scoped offset pages, fences the response to its session/profile/request tuple, and prepends with boundary deduplication. The pinned Desktop flow reveals a prior prompt using an around-row page and predecessor lookup; a noncontiguous page replaces the current history window. That anchored navigation is not implemented yet.
+
+
+## Tool invocation transcript projection
+
+Gateway `tool.start` and `tool.complete` events are projected into accessible transcript cards keyed by session, tool ID, and execution generation. Reused tool IDs in a later generation remain separate. The pinned Desktop additionally groups consecutive invocations into run summaries with live ticking and persisted disclosure; the native UI currently renders individual cards.

@@ -317,3 +317,5 @@ PAR-0062/0063 composer attachments (2026-11-19):
 - PAR-0058 transcript find is now mapped partial: native case-insensitive search, count, keyboard stepping, Escape and whole-card highlight cover loaded transcript rows. Search across the full rendered chat view, per-substring highlight, other panes, physical Windows and fixed-source acceptance remain open.
 
 - PAR-0057 remains partial: implement pinned around-row history reveal, predecessor-prompt lookup, cancellation/latest-request fencing, and noncontiguous older-page replacement. Then verify Gateway behavior, Windows interaction, and source-paired acceptance.
+
+- PAR-0041 remains partial: group consecutive native tool rows into pinned-style run summaries, add live activity ticker and persisted disclosure behavior, and expand specialized tool renderers. Then validate live Gateway and source-paired Windows behavior.
