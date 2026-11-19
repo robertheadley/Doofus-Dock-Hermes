@@ -1431,3 +1431,12 @@ Validation work is in progress; the focused PAR-0064 test passes.
 Validation addendum (2026-11-19T18:11:00Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (395 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS task continuity tests (18/18); PASS scoped generator (173 rows; 1 implemented, 12 partial, 160 unknown; 13 mapped); PASS rustfmt, Python compilation and diff check. UCM evidence and package validation follow. Live Gateway, retry/edit UI parity and source-paired acceptance remain open.
 
 UCM evidence addendum (2026-11-19T18:13:00Z): Added EV-0028 for both-order failed-turn event merging, bound to code commit `98cfb4a3235451ce274f2e9bb8bbdd2a982ec9bd`. PAR-0064 remains partial because pinned code-specific Retry/Edit behavior and live/source-paired acceptance are not implemented. Package validation follows.
+
+
+### Revision 241 — Retry retryable failed turns with original identity (2026-11-19T18:24Z)
+
+Error rows now offer an accessible “Retry same message” action when the Gateway marks the failure retryable or no structured retryability field is supplied. The retry reuses the original submission ID, exact prompt text, session/profile owner, and staged image metadata; it does not append a second optimistic user row. The action is disabled while the composer contains a new draft or a message is pending. Explicitly non-retryable failures do not dispatch. PAR-0064 remains partial because source-specific Edit/model/auth/new-session actions and the full error action taxonomy are not implemented.
+
+Headless UI and Gateway-command tests verify the visible action dispatches exactly one command with the original ID, text and attachment metadata; the transcript retains one user row. Negative tests verify non-retryable errors and occupied composers do not send.
+
+Validation addendum (2026-11-19T18:28Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (397 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS Doofus task continuity (18/18); PASS UCM package validator (565 target behaviors/inventory/pending tests; 14 source and 13 implementation receipts); PASS Python compilation, rustfmt and diff check. Optional UCM YAML parse skipped because PyYAML is absent. Same-ID retry remains partial pending code-specific alternate actions and live/source-paired acceptance.

@@ -958,6 +958,7 @@ struct PendingPrompt {
     admission_id: Option<String>,
     execution_generation: Option<u64>,
     resolving_unknown: bool,
+    retrying_failed_turn: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -6246,6 +6247,17 @@ fn render_message() -> &'static str {
             if scroll_target.is_some_and(|index| index < messages.len()) {
                 self.find_in_page_scroll_pending = false;
             }
+            let retry_pending =
+                self.active_runtime_session_id
+                    .as_deref()
+                    .is_some_and(|runtime_id| {
+                        let key = self.session_identity_key(
+                            runtime_id,
+                            self.active_session_profile.as_deref(),
+                        );
+                        self.pending_submissions.contains_key(&key)
+                    });
+            let mut retry_failed_submission = None;
             let markdown_cache = &mut self.markdown_cache;
             egui::ScrollArea::vertical()
                 .max_height((ui.available_height() - 76.0).max(120.0))
@@ -6272,6 +6284,30 @@ fn render_message() -> &'static str {
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
                             render_transcript_markdown(ui, markdown_cache, &body);
+                            if let Some(submission_id) = message
+                                .get("retry_submission_id")
+                                .and_then(|value| value.as_str())
+                                && message
+                                    .get("error_surface")
+                                    .and_then(|surface| surface.get("retryable"))
+                                    .and_then(|value| value.as_bool())
+                                    != Some(false)
+                            {
+                                let retry = ui
+                                    .add_enabled(
+                                        self.gateway_connected
+                                            && !retry_pending
+                                            && self.draft.trim().is_empty()
+                                            && self.composer_attachments.is_empty(),
+                                        egui::Button::new("Retry same message"),
+                                    )
+                                    .accessible_name(
+                                        "Retry failed message with original submission ID",
+                                    );
+                                if retry.clicked() {
+                                    retry_failed_submission = Some(submission_id.to_owned());
+                                }
+                            }
                             if timestamps_enabled
                                 && let Some((started, completed)) = transcript_timestamp(&message)
                             {
@@ -6306,6 +6342,9 @@ fn render_message() -> &'static str {
                         ui.add_space(8.0);
                     }
                 });
+            if let Some(submission_id) = retry_failed_submission {
+                self.retry_failed_submission(&submission_id);
+            }
         }
     }
 
@@ -14352,10 +14391,133 @@ fn render_message() -> &'static str {
                 admission_id: None,
                 execution_generation: None,
                 resolving_unknown: false,
+                retrying_failed_turn: false,
             },
         );
         self.draft.clear();
         self.status = "Sending message to Hermes…".into();
+    }
+
+    fn retry_failed_submission(&mut self, submission_id: &str) {
+        if !self.draft.trim().is_empty() || !self.composer_attachments.is_empty() {
+            self.status =
+                "Send or clear the current draft before retrying the failed message".into();
+            return;
+        }
+        let Some(session_id) = self.active_runtime_session_id.clone() else {
+            return;
+        };
+        let profile = self.active_session_profile.clone();
+        let key = self.session_identity_key(&session_id, profile.as_deref());
+        if self.pending_submissions.contains_key(&key) {
+            self.status = "Wait for the current Hermes message before retrying".into();
+            return;
+        }
+        let Some(message) = self.transcript.iter().find(|message| {
+            message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                && message.get("error").is_some_and(|value| !value.is_null())
+                && message
+                    .get("retry_submission_id")
+                    .and_then(|value| value.as_str())
+                    == Some(submission_id)
+        }) else {
+            return;
+        };
+        if message
+            .get("error_surface")
+            .and_then(|surface| surface.get("retryable"))
+            .and_then(|value| value.as_bool())
+            == Some(false)
+        {
+            self.status = "Hermes marked this failure as not retryable".into();
+            return;
+        }
+        if message
+            .get("retry_session_id")
+            .and_then(|value| value.as_str())
+            != Some(session_id.as_str())
+            || message
+                .get("retry_profile")
+                .and_then(|value| value.as_str())
+                != profile.as_deref()
+        {
+            self.status = "The failed message belongs to another Hermes session or profile".into();
+            return;
+        }
+        let text = message
+            .get("retry_text")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_owned();
+        if text.is_empty() {
+            return;
+        }
+        let attachments = match message.get("retry_attachments") {
+            Some(serde_json::Value::Array(rows)) if rows.len() <= 64 => {
+                let mut attachments = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let Some(path) = row.get("path").and_then(|value| value.as_str()) else {
+                        self.status = "The failed message attachment data is invalid".into();
+                        return;
+                    };
+                    let Some(mime) = row.get("mime").and_then(|value| value.as_str()) else {
+                        self.status = "The failed message attachment data is invalid".into();
+                        return;
+                    };
+                    if path.is_empty() || path.len() > 4096 || mime.len() > 256 {
+                        self.status =
+                            "The failed message attachment data exceeds its bounds".into();
+                        return;
+                    }
+                    attachments.push(GatewayPromptAttachment {
+                        path: path.to_owned(),
+                        mime: mime.to_owned(),
+                    });
+                }
+                attachments
+            }
+            None => Vec::new(),
+            _ => {
+                self.status = "The failed message attachment data exceeds its bounds".into();
+                return;
+            }
+        };
+        let display_text = message
+            .get("retry_display_text")
+            .and_then(|value| value.as_str())
+            .unwrap_or(&text)
+            .to_owned();
+        let Some(gateway) = &self.gateway_discovery else {
+            self.status = "Hermes gateway is unavailable".into();
+            return;
+        };
+        if let Err(error) = gateway.submit_prompt_with_attachments(
+            session_id.clone(),
+            profile.clone(),
+            submission_id.to_owned(),
+            text.clone(),
+            attachments.clone(),
+        ) {
+            self.status = error;
+            return;
+        }
+        self.pending_submissions.insert(
+            key,
+            PendingPrompt {
+                session_id,
+                profile,
+                submission_id: submission_id.to_owned(),
+                text,
+                display_text,
+                attachments,
+                uncertain: false,
+                admission_id: None,
+                execution_generation: None,
+                resolving_unknown: false,
+                retrying_failed_turn: true,
+            },
+        );
+        self.status = "Retrying the same Hermes message".into();
     }
 
     fn handle_timestamps_command(&mut self) -> bool {
@@ -14523,19 +14685,22 @@ fn render_message() -> &'static str {
                 if error.starts_with("Hermes prompt.submit refused:")
                     || error == "Hermes session profile scope is invalid" =>
             {
-                let message = self
-                    .transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
-                    .and_then(|transcript| {
-                        transcript
-                            .iter()
-                            .position(|message| {
-                                message
-                                    .get("submission_id")
-                                    .and_then(|value| value.as_str())
-                                    == Some(submission_id.as_str())
-                            })
-                            .map(|index| transcript.remove(index))
-                    });
+                let message = if pending.retrying_failed_turn {
+                    None
+                } else {
+                    self.transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
+                        .and_then(|transcript| {
+                            transcript
+                                .iter()
+                                .position(|message| {
+                                    message
+                                        .get("submission_id")
+                                        .and_then(|value| value.as_str())
+                                        == Some(submission_id.as_str())
+                                })
+                                .map(|index| transcript.remove(index))
+                        })
+                };
                 if is_active {
                     if message.is_some() {
                         self.draft = pending.display_text.clone();
@@ -15127,6 +15292,7 @@ fn render_message() -> &'static str {
         event_type: &str,
         payload: &serde_json::Value,
         execution_generation: Option<u64>,
+        failed_prompt: Option<&PendingPrompt>,
     ) {
         if !matches!(
             event_type,
@@ -15167,6 +15333,9 @@ fn render_message() -> &'static str {
             payload,
             execution_generation,
         );
+        if let Some(failed_prompt) = failed_prompt {
+            attach_failed_retry_context(&mut view.transcript, failed_prompt);
+        }
         view.transcript_message_count = view.transcript_message_count.max(view.transcript.len());
     }
 
@@ -15180,6 +15349,30 @@ fn render_message() -> &'static str {
             .get("payload")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+        let failed_prompt = if event_type == "error"
+            || event_type == "message.complete"
+                && payload.get("status").and_then(|value| value.as_str()) == Some("error")
+        {
+            let event_profile = event
+                .get("profile")
+                .or_else(|| payload.get("profile"))
+                .and_then(|value| value.as_str());
+            let admission_id = payload.get("admission_id").and_then(|value| value.as_str());
+            let matches = self
+                .pending_submissions
+                .values()
+                .filter(|pending| {
+                    Some(pending.session_id.as_str()) == session_id
+                        && event_profile
+                            .is_none_or(|profile| pending.profile.as_deref() == Some(profile))
+                        && admission_id.is_none_or(|id| pending.admission_id.as_deref() == Some(id))
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            (matches.len() == 1).then(|| matches[0].clone())
+        } else {
+            None
+        };
         if event_type == "session.replay_gap" {
             if let Some(runtime_session_id) = session_id {
                 self.recover_session_replay_gap(
@@ -15326,6 +15519,7 @@ fn render_message() -> &'static str {
                 event_type,
                 &payload,
                 execution_generation,
+                failed_prompt.as_ref(),
             );
             if matches!(event_type, "message.complete" | "error")
                 && let Some(runtime_session_id) = session_id
@@ -15480,19 +15674,25 @@ fn render_message() -> &'static str {
                     self.clarify_prompts.remove(prompt_id);
                 }
             }
-            "tool.start" | "tool.complete" | "message.delta" | "message.complete" => {
+            "tool.start" | "tool.complete" | "message.start" | "message.delta"
+            | "message.complete" => {
                 apply_stream_event_to_transcript(
                     &mut self.transcript,
                     event_type,
                     &payload,
                     execution_generation,
                 );
+                if let Some(failed_prompt) = failed_prompt.as_ref() {
+                    attach_failed_retry_context(&mut self.transcript, failed_prompt);
+                }
                 if event_type == "tool.start" {
                     let name = payload
                         .get("name")
                         .and_then(|value| value.as_str())
                         .unwrap_or("tool");
                     self.status = format!("Running {name}…");
+                } else if event_type == "message.start" {
+                    self.status = "Hermes is thinking…".into();
                 } else if event_type == "message.complete" {
                     self.status = if payload.get("status").and_then(|value| value.as_str())
                         == Some("error")
@@ -15504,7 +15704,6 @@ fn render_message() -> &'static str {
                     .into();
                 }
             }
-            "message.start" => self.status = "Hermes is thinking…".into(),
             "error" => {
                 apply_stream_event_to_transcript(
                     &mut self.transcript,
@@ -15512,6 +15711,9 @@ fn render_message() -> &'static str {
                     &payload,
                     execution_generation,
                 );
+                if let Some(failed_prompt) = failed_prompt.as_ref() {
+                    attach_failed_retry_context(&mut self.transcript, failed_prompt);
+                }
                 self.status = payload
                     .get("message")
                     .and_then(|value| value.as_str())
@@ -24390,6 +24592,26 @@ fn apply_stream_event_to_transcript(
     }
 }
 
+fn attach_failed_retry_context(transcript: &mut [serde_json::Value], pending: &PendingPrompt) {
+    let Some(message) = transcript.iter_mut().rev().find(|message| {
+        message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+            && message.get("error").is_some_and(|value| !value.is_null())
+    }) else {
+        return;
+    };
+    message["retry_submission_id"] = serde_json::Value::String(pending.submission_id.clone());
+    message["retry_session_id"] = serde_json::Value::String(pending.session_id.clone());
+    message["retry_profile"] = pending
+        .profile
+        .as_ref()
+        .map(|profile| serde_json::Value::String(profile.clone()))
+        .unwrap_or(serde_json::Value::Null);
+    message["retry_text"] = serde_json::Value::String(pending.text.clone());
+    message["retry_display_text"] = serde_json::Value::String(pending.display_text.clone());
+    message["retry_attachments"] = serde_json::to_value(&pending.attachments)
+        .unwrap_or_else(|_| serde_json::Value::Array(Vec::new()));
+}
+
 fn unix_now_seconds() -> f64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -26484,6 +26706,7 @@ mod tests {
                     admission_id: None,
                     execution_generation: Some(1),
                     resolving_unknown: false,
+                    retrying_failed_turn: false,
                 },
             );
             assert!(
@@ -32275,6 +32498,7 @@ mod tests {
                 admission_id: None,
                 execution_generation: Some(1),
                 resolving_unknown: false,
+                retrying_failed_turn: false,
             },
         );
         assert!(app.session_pane_is_busy(&panel));
@@ -32395,6 +32619,7 @@ mod tests {
                 admission_id: None,
                 execution_generation: Some(1),
                 resolving_unknown: false,
+                retrying_failed_turn: false,
             },
         );
         app.workspace
@@ -32559,6 +32784,7 @@ mod tests {
                 admission_id: None,
                 execution_generation: None,
                 resolving_unknown: false,
+                retrying_failed_turn: false,
             },
         );
 
@@ -35212,6 +35438,7 @@ mod tests {
                 admission_id: admission_id.map(str::to_owned),
                 execution_generation: None,
                 resolving_unknown: false,
+                retrying_failed_turn: false,
             },
         );
     }
@@ -35350,6 +35577,133 @@ mod tests {
             reverse_order[1]["error_surface"]["code"],
             "agent_init_failed"
         );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn retry_failed_turn_reuses_submission_id_and_keeps_one_user_row() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _) = crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript.push(serde_json::json!({
+            "id":"submission-1","submission_id":"submission-1",
+            "role":"user","content":"hello"
+        }));
+        seed_pending_submission(&mut app, "submission-1", None, false);
+        let pending_key = session_identity_key("runtime-session", Some("work"));
+        app.pending_submissions
+            .get_mut(&pending_key)
+            .unwrap()
+            .attachments
+            .push(GatewayPromptAttachment {
+                path: "attachments/image.png".into(),
+                mime: "image/png".into(),
+            });
+        app.handle_server_event(serde_json::json!({
+            "type":"error","session_id":"runtime-session","profile":"work",
+            "payload":{"message":"Agent initialization failed; retry when ready"}
+        }));
+        assert!(
+            app.pending_submissions.is_empty(),
+            "failure releases the composer"
+        );
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "failure keeps exactly one optimistic user row"
+        );
+        assert_eq!(
+            app.transcript[1]["retry_submission_id"], "submission-1",
+            "failure card retains the original id"
+        );
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3200.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        let retry = harness
+            .query_by_label("Retry failed message with original submission ID")
+            .expect("retryable failed turn exposes an accessible retry action");
+        assert!(!retry.accesskit_node().is_disabled());
+        retry.click();
+        harness.run();
+        drop(harness);
+        assert_eq!(std::rc::Rc::strong_count(&app), 1);
+        let app = std::rc::Rc::try_unwrap(app).ok().unwrap().into_inner();
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap(),
+            crate::gateway::TestGatewayCommand::SubmitPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                submission_id: "submission-1".into(),
+                text: "hello".into(),
+                attachments: vec![GatewayPromptAttachment {
+                    path: "attachments/image.png".into(),
+                    mime: "image/png".into(),
+                }],
+            }
+        );
+        assert!(
+            commands.try_recv().is_err(),
+            "one click sends one retry command"
+        );
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "retry does not append another user row"
+        );
+        assert_eq!(app.transcript[0]["submission_id"], "submission-1");
+        let key = app.session_identity_key("runtime-session", Some("work"));
+        let pending = app.pending_submissions.get(&key).expect("retry is tracked");
+        assert_eq!(pending.submission_id, "submission-1");
+        assert!(pending.retrying_failed_turn);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn retry_failed_turn_blocks_nonretryable_errors_and_preserves_occupied_composer() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _) = crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript.push(serde_json::json!({
+            "role":"assistant","content":"","error":"policy refusal",
+            "retry_submission_id":"submission-1","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_display_text":"hello",
+            "retry_attachments":[],"error_surface":{"retryable":false}
+        }));
+        app.retry_failed_submission("submission-1");
+        assert!(
+            commands.try_recv().is_err(),
+            "nonretryable failure sends no request"
+        );
+        assert!(app.pending_submissions.is_empty());
+
+        app.transcript[0]["error_surface"]["retryable"] = serde_json::Value::Bool(true);
+        app.draft = "keep my new draft".into();
+        app.retry_failed_submission("submission-1");
+        assert!(
+            commands.try_recv().is_err(),
+            "retry does not overwrite a new draft"
+        );
+        assert!(app.pending_submissions.is_empty());
+        assert_eq!(app.draft, "keep my new draft");
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

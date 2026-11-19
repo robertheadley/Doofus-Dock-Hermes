@@ -2624,3 +2624,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime performance claim.
 - **risks:** Retry/Edit actions, full error taxonomy and live source-paired behavior remain open.
 - **follow_up:** Implement error-code-aware retry/edit controls.
+
+
+### PAR-0064 same-ID failed-turn retry — 2026-11-19T18:24:02Z
+
+- **id:** hermes-par-0064-same-id-retry-20261119
+- **timestamp:** 2026-11-19T18:24:02Z
+- **what:** Added accessible retry action for retryable/generic failed turns; dispatches the original submission ID, composed text and image attachment metadata without creating another optimistic user row. Blocks explicitly non-retryable errors, busy sends and occupied composers.
+- **why:** Match Hermes retry idempotency and let users recover from transient failed turns without duplicate user messages.
+- **components:** Hermes Native transcript UI, prompt retry transport, Gateway headless command harness and progress ledger.
+- **type:** feature
+- **validation:** PASS focused headless UI+Gateway command test and guards; PASS full feature suite (397 library + 15 automation protocol + 3 launcher); PASS workspace all-target check; PASS task protocol 18/18; PASS UCM package validator; PASS formatting, Python compilation and diff checks. Existing dead-code warnings remain; optional YAML parse skipped because PyYAML is absent.
+- **performance:** No new background work; retry remains asynchronous through the existing Gateway actor.
+- **risks:** Code-specific Edit/model/auth/new-session alternatives, complete error taxonomy, live Gateway and source-paired behavior remain open.
+- **follow_up:** Bind UCM evidence to the implementation commit, then continue error action parity.

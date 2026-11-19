@@ -2465,7 +2465,13 @@ pub(crate) enum TestGatewayCommand {
         session_id: String,
         profile: Option<String>,
     },
-    SubmitPrompt,
+    SubmitPrompt {
+        session_id: String,
+        profile: Option<String>,
+        submission_id: String,
+        text: String,
+        attachments: Vec<GatewayPromptAttachment>,
+    },
     Other,
 }
 
@@ -2511,7 +2517,19 @@ impl GatewayDiscovery {
                         session_id,
                         profile,
                     },
-                    GatewayCommand::SubmitPrompt { .. } => TestGatewayCommand::SubmitPrompt,
+                    GatewayCommand::SubmitPrompt {
+                        session_id,
+                        profile,
+                        submission_id,
+                        text,
+                        attachments,
+                    } => TestGatewayCommand::SubmitPrompt {
+                        session_id,
+                        profile,
+                        submission_id,
+                        text,
+                        attachments,
+                    },
                     _ => TestGatewayCommand::Other,
                 };
                 if observed_command_sender.send(observed).is_err() {

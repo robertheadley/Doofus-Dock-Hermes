@@ -1,5 +1,5 @@
 {
-  "revision": 23,
+  "revision": 24,
   "schema_version": 1,
   "tasks": [
     {
@@ -2107,12 +2107,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-19T18:11:01Z",
+              "last_updated_at": "2026-11-19T18:28:32Z",
               "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-show-per-turn-failure-and-retry-without-duplication",
               "outputs": [],
               "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "03-chat",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -2127,7 +2128,8 @@
               "title": "PAR-0064 Show per-turn failure and retry without duplication",
               "verification_evidence": [
                 "apps/hermes-native/src/app.rs#failed_turn_events_keep_user_row_merge_in_either_order_and_release_busy_state",
-                "apps/hermes-native/src/app.rs#apply_stream_event_to_transcript"
+                "apps/hermes-native/src/app.rs#apply_stream_event_to_transcript",
+                "apps/hermes-native/docs/PLAN.md#Revision 241"
               ]
             },
             {
@@ -16205,5 +16207,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T18:11:01Z"
+  "updated_at": "2026-11-19T18:28:32Z"
 }
