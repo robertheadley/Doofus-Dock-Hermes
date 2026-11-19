@@ -2460,3 +2460,17 @@ Validation addendum: The targeted UCM report marks named layout preset persisten
 - **follow_up:** Continue in-scope chat/session/Gateway and tool lifecycle work, maintaining the scoped denominator separately from all-desktop source review.
 
 Validation addendum (2026-11-19T15:47:28Z): PASS scoped progress generator (138 unique IDs), Python compilation, `.doofus` schema validation (revision 185 / ledger revision 20 / 439 events), and `git diff --check`. The project plan, README, backlog, architecture and completion overview now state the narrowed chat/tool goal.
+
+
+### Chat/tool scope expanded for skills and plugins — 2026-11-19T15:52:00Z
+
+- **id:** hermes-chat-tool-scope-skills-plugins-20261119
+- **timestamp:** 2026-11-19T15:52:00Z
+- **what:** Expanded the explicit chat/tool scope from 138 to 173 pinned-source requirements, including profile skills, skill/toolset management, MCP integrations, and native desktop plugin permissions, contributions, lifecycle, routing, diagnostics, and provenance.
+- **why:** The user clarified that skills and plugins are part of the desired chat/tool feature set.
+- **components:** Scope selector CSV, generated progress overlay, plan, README, backlog, completion overview, architecture, execution log, and durable task state.
+- **type:** goal scope and progress tracking.
+- **validation:** Generator and schema/build validation pending after this expansion. Previous scope commit `e6c3dfe09fea9b49c690694e62b18bbab25e1bb4` is pushed to `main`; fresh fetch confirmed local and remote SHA equality.
+- **performance:** Scope generation is local and completes in under one second.
+- **risks:** The 173-row boundary includes plugin/MCP capability requirements that support using those tools and extensions in chat; standalone unrelated administration remains excluded.
+- **follow_up:** Continue implementation against the expanded selector and keep live runtime, source acceptance, visuals, and implementation state separate.

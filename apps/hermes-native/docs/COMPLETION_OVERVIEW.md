@@ -4,13 +4,13 @@ Snapshot: 2026-11-18. Target: downloaded Hermes Desktop source snapshot `8783054
 
 ## Current goal scope — 2026-11-19
 
-The user narrowed the goal from whole-desktop replacement to complete chat and tool functionality against the same pinned Hermes snapshot. Pixel matching is not required. Use the separate explicit 138-row [chat/tool scope](status/CHAT_TOOL_SCOPE.csv) and its generated [progress overlay](status/CHAT_TOOL_PROGRESS.csv); keep the original 499-row matrix as the full source inventory.
+The user narrowed the goal from whole-desktop replacement to complete chat, tool, skill, MCP integration, and plugin functionality against the same pinned Hermes snapshot. Feature parity is required; pixel matching is not. Use the separate explicit 173-row [chat/tool scope](status/CHAT_TOOL_SCOPE.csv) and its generated [progress overlay](status/CHAT_TOOL_PROGRESS.csv); keep the original 499-row matrix as the full source inventory.
 
-Current scoped measures: **1 implemented, 8 partial, 129 unknown**; **9/138** requirements have mapped evidence; **0/138** have live-runtime verification, source-paired acceptance, or visual pairs. These measures do not collapse into one completion percentage. Standalone Files, Terminal, Review, Messaging, Scheduled Jobs, broad catalog/quota, maintenance, layout-profile and unrelated administration workflows remain outside this goal unless a scoped chat/tool requirement depends on them. Hermes continues to own runtime/tool loops; DoofusDock provides the UI host. The Doofus Hermes backport follows scoped parity.
+Current scoped measures: **1 implemented, 8 partial, 164 unknown**; **9/173** requirements have mapped evidence; **0/173** have live-runtime verification, source-paired acceptance, or visual pairs. These measures do not collapse into one completion percentage. Standalone Files, Terminal, Review, Messaging, Scheduled Jobs, broad catalog/quota, maintenance, layout-profile and unrelated administration workflows remain outside this goal unless a scoped chat/tool requirement depends on them. Hermes continues to own runtime/tool loops; DoofusDock provides the UI host. The Doofus Hermes backport follows scoped parity.
 
 ## Historical whole-desktop status snapshot (2026-11-18)
 
-The table and workstream details below preserve the earlier whole-desktop view. The active acceptance scope is the 138-row chat/tool scope above.
+The table and workstream details below preserve the earlier whole-desktop view. The active acceptance scope is the 173-row chat/tool scope above.
 
 ## Read the historical status in separate dimensions
 
@@ -53,7 +53,7 @@ Status is conservative: `partial` means a user-visible slice exists and is backe
 
 ## How to make this more exact
 
-1. Use the explicit 138-row chat/tool scope as the active acceptance denominator; preserve the full 499-row matrix as the source inventory.
+1. Use the explicit 173-row chat/tool scope as the active acceptance denominator; preserve the full 499-row matrix as the source inventory.
 2. Review the 457 exact capability-ID correspondences; keep the 42 fixed-scope omissions and 34 supplemental additions explicit. Never match by requirement ID alone or transfer evidence automatically.
 3. Expand the separate implementation overlay from its current 38 evidence-reviewed rows. Keep unreviewed rows `unknown`; record evidence, remaining gaps and dimensions per fixed-scope requirement.
 4. Report counts for each state and each dimension, plus evidence age and unresolved gaps. Keep strict source acceptance separate.

@@ -1,6 +1,6 @@
 # Hermes Native Rust
 
-Current delivery scope is complete, verified support for chat and tool functionality from pinned Hermes Desktop snapshot `8783054ef6cbafd86f10892241436862c1171a66`, tracked separately in `docs/status/CHAT_TOOL_SCOPE.csv` and `docs/status/CHAT_TOOL_PROGRESS.csv`. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory. Doofus Hermes will be backported after this scope is complete.
+Current delivery scope is complete, verified support for chat, tools, skills, MCP integrations, and plugins from pinned Hermes Desktop snapshot `8783054ef6cbafd86f10892241436862c1171a66`, tracked separately in `docs/status/CHAT_TOOL_SCOPE.csv` and `docs/status/CHAT_TOOL_PROGRESS.csv`. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory. Doofus Hermes will be backported after this scope is complete.
 
 Independent native Rust/egui implementation of the stock upstream Hermes Desktop GUI. It uses the Hermes Python gateway as the runtime and DoofusDock for canonical workspace layouts, profiles, docking and presentation.
 

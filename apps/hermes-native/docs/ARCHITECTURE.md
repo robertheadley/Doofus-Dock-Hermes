@@ -2,7 +2,7 @@
 
 ## Current completion boundary
 
-The active user goal is complete, verified support for chat and tool functionality from pinned snapshot `8783054ef6cbafd86f10892241436862c1171a66`, measured against the 138-row scope. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory, not the current acceptance denominator. Hermes owns agent/tool execution; the native app owns chat UI and request/state presentation; DoofusDock provides the UI framework. Doofus Hermes is sequenced after scoped parity.
+The active user goal is complete, verified support for chat, tool, skill, MCP integration, and plugin functionality from pinned snapshot `8783054ef6cbafd86f10892241436862c1171a66`, measured against the 173-row scope. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory, not the current acceptance denominator. Hermes owns agent/tool execution; the native app owns chat UI and request/state presentation; DoofusDock provides the UI framework. Doofus Hermes is sequenced after scoped parity.
 
 ## Messaging route boundary
 

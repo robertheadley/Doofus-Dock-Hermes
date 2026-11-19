@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 234 (implementation in progress).
+- **Working revision:** 235 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -11,7 +11,7 @@
 
 ## Completion and runtime boundary
 
-Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 138-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
+Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 173-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
 
 ## Downloaded parity source snapshot
 
@@ -1366,3 +1366,10 @@ Current scoped evidence is 1 implemented, 8 partial, and 129 unknown; 9/138 have
 Validation addendum (2026-11-19T15:41Z): `build_chat_tool_progress.py` expands every explicit scope selector, rejects duplicate or missing requirement IDs, and atomically writes a 138-row progress overlay from the 499-row source evidence. Direct execution reports 1 implemented, 8 partial, 129 unknown, 9 requirements with mapped evidence, 138 runtime-unverified, 138 source-pair pending and 138 visual-pair absent. Python compilation passes; full task-state and repository checks follow before publication.
 
 Validation addendum (2026-11-19T15:47:28Z): PASS scoped progress generator (138 unique IDs; 1 implemented, 8 partial, 129 unknown); PASS `python -m py_compile`; PASS task-state schema validation (revision 185, ledger revision 20, 439 events); PASS `git diff --check`. No product tests were run because this change only changes goal scope tracking and documentation.
+
+
+### Revision 235 — Include skills, MCP integrations, and plugins in the active goal (2026-11-19T15:52:00Z)
+
+The user explicitly added skills and plugins to the chat/tool target. Expanded the scoped denominator from 138 to 173 pinned-source requirements. The scope now covers skill and toolset profile state, browsing/install/update/configuration, MCP tool integration lifecycle, desktop plugin permissions and contributions, safe plugin lifecycle, scoped data/backend access, notifications, Hermes plugin RPC session events, and plugin diagnostics/provenance. The original 499-row matrix remains the full source inventory; Doofus Hermes backport remains sequenced after scoped parity.
+
+Current scoped evidence after expansion: 1 implemented, 8 partial, 164 unknown; 9/173 have mapped evidence. All 173 remain runtime-unverified and lack source-paired acceptance and visual pairs.
