@@ -1319,3 +1319,17 @@ Parity gate reminder: completion means functional support for every feature and 
 ### Native keybinding settings and dispatch — 2026-11-19
 
 The native Settings overlay now has Workspace and Keybindings sections. The latter loads persisted overrides from the app data directory and exposes only actions with working native handlers: command palette; transcript find, next and previous; session next/previous; close/reopen tab; and left/right sidebar toggles. Existing shortcut paths now resolve the store's current bindings. Recording suppresses application shortcut dispatch, Escape cancels, conflicts remain visible and dispatch uses a deterministic first-match guard to avoid one key event firing multiple colliding actions. Bare-key overrides are ignored while egui requests keyboard input, preserving text entry. Route and shortcut dispatch are exercised headlessly through the actual draw path. Remaining: compare conflict precedence and key normalization against the pinned source, test capture against physical Windows keyboard layouts, exercise every action after rebinding, add persistence migration coverage if schema evolves, and collect source-paired acceptance. No progress-matrix row is promoted by this implementation slice.
+
+
+### Revision 229 — Capability evidence and backport sequencing (2026-11-19T01:58:30Z)
+
+Record the already-published PAR-0017 and PAR-0333/0334 headless evidence as UCM evidence EV-0020 through EV-0022, bound to implementation commit c0e1713bff47dcb4a0bfb137be93cac2bcfa8d06. Named layout preset save/apply/delete covers the declared behavior. Keybindings remain partial: only actions with existing native handlers are exposed, so full pinned-source action coverage remains open. Targeted UCM reports cover all currently implementable scenarios; the global checker still exits nonzero on historical EV-0016/EV-0017 schema errors and the EV-0017 timestamp reconciliation. Those historical records remain unchanged.
+
+The user clarified delivery sequencing: Doofus Hermes will be backported to the new UI after the native UI reaches functional parity with the pinned downloaded Hermes source. Until then, the existing Hermes app/runtime remains in place. Hermes continues to own runtime/tool loops; DoofusDock supplies reusable UI hosting and docking. Visual polish follows feature/settings parity.
+
+
+### Revision 230 — Exact session-owner registry foundation (2026-11-19T02:15:20Z)
+
+Add SessionOwnerRegistry<T> in session_owner.rs as a reusable exact-connection resolver for stored session owners. Registration normalizes stable IDs and rejects duplicates without replacing a live entry. Tagged owners resolve only to the same registered connection and preserve their profile; unknown tagged IDs fail closed even when a legacy path exists. Untagged rows resolve only through one explicitly configured registered legacy connection; removing it clears that designation.
+
+The focused registry tests cover exact lookup, duplicate preservation, unknown-tag refusal, legacy isolation/configuration/removal. Full workspace tests, all-target compile, formatting, task-protocol tests and package validation pass. This is foundation-only: SessionOwnerRegistry has no production caller yet, app session identity still collides on (profile, session_id), and Gateway requests do not route by connection ID. Next: wire registry selection through session rows, caches, Gateway messages/events and mutation/read paths; retain the Hermes actor and HTTP worker loops.\n

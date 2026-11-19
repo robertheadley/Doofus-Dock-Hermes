@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0020",
+  "capability_id": "ui-persist-named-layout-profiles",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "native-layout-preset-persistence",
+  "locator": "../../../../apps/hermes-native/src/layout.rs",
+  "date": "2026-11-19",
+  "commit": "c0e1713bff47dcb4a0bfb137be93cac2bcfa8d06",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native Rust tests; no live Hermes backend was contacted.",
+  "notes": "The persistence/apply/delete test verifies named preset reload, live session tile exclusion/adoption, and closed/resting pane retention. The headless real-egui profile picker test verifies save, selection, and persisted reload. Status remains partial because physical Windows/source acceptance is pending."
+}

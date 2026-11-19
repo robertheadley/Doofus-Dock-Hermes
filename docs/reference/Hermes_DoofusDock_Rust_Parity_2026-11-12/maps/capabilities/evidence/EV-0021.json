@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0021",
+  "capability_id": "ui-customize-keyboard-shortcuts",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "native-keybinding-settings-dispatch",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "c0e1713bff47dcb4a0bfb137be93cac2bcfa8d06",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui UI and shortcut dispatch tests; no live Hermes backend was contacted.",
+  "notes": "The actual Settings route, persisted override dispatch, capture/cancel behavior, supported action editor, and focused-composer text handling are covered by passing tests. Only ten native actions with implemented handlers are exposed; the larger pinned-source action registry remains incomplete, so status is partial."
+}

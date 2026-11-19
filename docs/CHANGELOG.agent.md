@@ -2324,3 +2324,33 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** no runtime impact.
 - **risks:** Historical UCM global errors remain; no real backend or Windows visual proof was added.
 - **follow_up:** Implement source owner routing and pursue live-runtime parity.
+
+
+### Capability evidence and parity/backport sequence — 2026-11-19
+
+- **id:** hermes-ucm-layout-keybinding-evidence-20261119
+- **timestamp:** 2026-11-19T01:58:30Z
+- **what:** Added UCM evidence EV-0020 through EV-0022 for layout preset persistence, native keybinding dispatch and shortcut conflict warnings; recorded source action-registry coverage as still open. Added the user's backport sequencing clarification to the parity docs.
+- **why:** Keep the capability map evidence-backed and align implementation order with the user's plan to backport Doofus Hermes only after native UI functional parity.
+- **components:** Native parity plan/backlog; UCM capability map/evidence; execution and change journals.
+- **type:** evidence and sequencing documentation.
+- **validation:** Targeted UCM reports show the three implementation scenarios covered. Global checker still reports historical EV-0016/17 invalid kind/outcome plus EV-0017 timestamp reconciliation; historical evidence was preserved. Pending post-edit package and task validators.
+- **performance:** no runtime impact.
+- **risks:** No live gateway, physical Windows or source-paired acceptance was added; keybinding action registry remains incomplete.
+- **follow_up:** Publish evidence/docs, then implement exact session connection/profile routing through the existing Hermes Gateway path.
+
+
+### Exact session-owner registry foundation — 2026-11-19T02:15:20Z
+
+- **id:** hermes-session-owner-registry-foundation-20261119
+- **timestamp:** 2026-11-19T02:15:20Z
+- **what:** Added generic stable-ID connection registration, duplicate rejection, exact tagged owner resolution, one explicit legacy route and fail-closed unknown-owner behavior in the session-owner module.
+- **why:** Provide a safe routing primitive before connecting multiple Hermes Gateway instances to session UI state.
+- **components:** Hermes Native session-owner identity and registry.
+- **type:** feature foundation.
+- **validation:** Focused registry tests 10/10; full workspace tests 371 native + 15 automation protocol + 3 launcher; all-target workspace check; rustfmt; diff; continuity tests 18/18; pinned package validator passes. Target UCM reports verify new evidence; global UCM remains red only on historical EV-0016/17 errors and EV-0017 reconciliation.
+- **performance:** no runtime call sites added.
+- **risks:** Registry is not wired into the app or Gateway yet; no multi-connection product behavior is claimed.
+- **follow_up:** Carry the exact owner through endpoint descriptors, session identity caches, Gateway requests and correlated results; add same-ID cross-connection isolation tests.
+
+Validation addendum: The targeted UCM report marks named layout preset persistence verified from the real picker/persistence tests; keybinding settings/conflict capabilities remain partial with the full pinned action registry scenario open. Evidence EV-0020/21/22 is bound to the published implementation commit c0e1713. Backporting Doofus Hermes remains sequenced after full native functional parity.\n

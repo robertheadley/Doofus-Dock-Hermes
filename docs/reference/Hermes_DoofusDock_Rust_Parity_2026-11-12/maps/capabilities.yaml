@@ -546,7 +546,7 @@ capabilities:
   name: Persist named layout profiles
   area: shell-navigation
   claim: In the new native Rust DoofusDock UI, a user can persist named layout profiles.
-  status: not_implemented
+  status: verified
   depends_on:
   - dock-layout-transactions
   - dock-native-egui
@@ -559,8 +559,14 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: verified
+    tests: verified
+  verification:
+    scenarios:
+    - id: native-layout-preset-persistence
+      description: Save a named layout in the actual profile picker, reload it, apply it, and delete it while preserving live session tile semantics.
+  evidence:
+  - EV-0020
 - id: ui-restore-layout-after-restart
   name: Restore layout after restart
   area: shell-navigation
@@ -6554,7 +6560,7 @@ capabilities:
   name: Customize keyboard shortcuts
   area: settings-admin
   claim: In the new native Rust DoofusDock UI, a user can customize keyboard shortcuts.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -6567,13 +6573,21 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: native-keybinding-settings-dispatch
+      description: Customize a supported native action in Settings, persist the override, and dispatch it through the real native shortcut handler without consuming focused composer text.
+    - id: full-pinned-keybinding-action-coverage
+      description: Expose and dispatch the complete keyboard action registry from the pinned Hermes source.
+  evidence:
+  - EV-0021
 - id: ui-detect-shortcut-collisions
   name: Detect shortcut collisions
   area: settings-admin
   claim: In the new native Rust DoofusDock UI, a user can detect shortcut collisions.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -6586,8 +6600,16 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: native-keybinding-conflict-warning
+      description: Detect overlapping supported bindings and show an accessible visible conflict warning in the native keybindings panel.
+    - id: full-pinned-keybinding-action-coverage
+      description: Detect conflicts across the complete keyboard action registry from the pinned Hermes source.
+  evidence:
+  - EV-0022
 - id: ui-switch-ui-language-and-rtl-mode
   name: Switch UI language and RTL mode
   area: settings-admin

@@ -250,3 +250,16 @@ Command Center navigation and framing (2026-11-18T23:45:00Z): wide mode now foll
 - Implemented app-data persistence, Settings navigation, searchable/collapsible keybinding UI, capture/cancel, clear/reset/reset-all, conflict display, and live dispatch for the ten currently supported native action IDs.
 - Headless tests cover the real Settings draw route, persisted override dispatch, Escape capture cancellation, existing palette/find flows, and the panel's search/capture/conflict/text-entry behavior.
 - Remains partial: physical Windows keyboard-layout behavior, every rebound action's runtime interaction, pinned-source conflict precedence/normalization comparison, and source-paired acceptance are unverified. No formal progress row was promoted.
+
+
+### Backport sequencing — user clarification (2026-11-19)
+
+- [ ] After the native Hermes UI reaches verified functional parity with the pinned downloaded source, backport Doofus Hermes to the new UI.
+- [ ] Until that gate, keep the installed Hermes/runtime path intact; do not make backporting a prerequisite for native feature parity.
+- [ ] Hermes remains authoritative for runtime and tool loops; DoofusDock provides UI hosting/docking. Visual polish is sequenced after feature/settings parity.
+
+
+PAR-0510 owner-route progress (2026-11-19T02:15:20Z):
+- [x] Add a tested exact-owner registry primitive with explicit single legacy routing and fail-closed unknown tagged connections.
+- [ ] Wire stable connection descriptors into persisted workspace settings without storing secrets there.
+- [ ] Route actual session rows, state keys, Gateway commands/results and mutations using (connectionId, profile, sessionId); test same-ID isolation and zero dispatch for unknown owners.\n

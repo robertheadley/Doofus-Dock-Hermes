@@ -4,7 +4,10 @@
 //! discovery, credential lookup, dialing, or network dispatch. Callers must
 //! resolve a tagged connection through a registry before sending a request.
 
-use std::{collections::HashSet, fmt};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt,
+};
 
 const DEFAULT_PROFILE: &str = "default";
 const MAX_OWNER_COMPONENT_BYTES: usize = 256;
@@ -111,6 +114,133 @@ impl SessionOwnerIdentity {
     }
 }
 
+/// Registry for resolving session owners to their configured connection state.
+///
+/// Tagged identities resolve only by their exact validated connection ID. An
+/// untagged legacy identity resolves only when one legacy connection has been
+/// explicitly configured with [`configure_legacy_connection`](Self::configure_legacy_connection).
+/// A missing or removed tagged owner never falls back to the legacy entry.
+#[derive(Debug)]
+pub struct SessionOwnerRegistry<T> {
+    connections: BTreeMap<String, T>,
+    legacy_connection_id: Option<String>,
+}
+
+impl<T> Default for SessionOwnerRegistry<T> {
+    fn default() -> Self {
+        Self {
+            connections: BTreeMap::new(),
+            legacy_connection_id: None,
+        }
+    }
+}
+
+impl<T> SessionOwnerRegistry<T> {
+    /// Registers a connection under its normalized stable ID.
+    ///
+    /// Registering the same normalized ID twice is rejected rather than
+    /// replacing a possibly live connection silently.
+    pub fn register(
+        &mut self,
+        connection_id: &str,
+        connection: T,
+    ) -> Result<(), SessionOwnerError> {
+        let connection_id = normalize_component(connection_id, OwnerComponent::ConnectionId)?;
+        if self.connections.contains_key(&connection_id) {
+            return Err(SessionOwnerError::DuplicateConnectionId(connection_id));
+        }
+        self.connections.insert(connection_id, connection);
+        Ok(())
+    }
+
+    /// Removes a connection. Removing the explicitly configured legacy
+    /// connection also clears that legacy designation.
+    pub fn remove(&mut self, connection_id: &str) -> Result<Option<T>, SessionOwnerError> {
+        let connection_id = normalize_component(connection_id, OwnerComponent::ConnectionId)?;
+        let removed = self.connections.remove(&connection_id);
+        if self.legacy_connection_id.as_deref() == Some(connection_id.as_str()) {
+            self.legacy_connection_id = None;
+        }
+        Ok(removed)
+    }
+
+    /// Marks one already registered connection as the sole legacy route.
+    ///
+    /// Repeating the same configuration is idempotent. A different second
+    /// legacy connection is rejected so untagged rows cannot become ambiguous.
+    pub fn configure_legacy_connection(
+        &mut self,
+        connection_id: &str,
+    ) -> Result<(), SessionOwnerError> {
+        let connection_id = normalize_component(connection_id, OwnerComponent::ConnectionId)?;
+        if !self.connections.contains_key(&connection_id) {
+            return Err(SessionOwnerError::LegacyConnectionNotRegistered(
+                connection_id,
+            ));
+        }
+        match self.legacy_connection_id.as_deref() {
+            None => self.legacy_connection_id = Some(connection_id),
+            Some(current) if current == connection_id => {}
+            Some(current) => {
+                return Err(SessionOwnerError::LegacyConnectionAlreadyConfigured(
+                    current.to_owned(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Resolves a tagged owner exactly, or an untagged owner through the
+    /// explicitly configured single legacy connection.
+    pub fn resolve<'a>(
+        &'a self,
+        owner: &'a SessionOwnerIdentity,
+    ) -> Result<ResolvedSessionOwner<'a, T>, SessionOwnerError> {
+        let (connection_id, route) = match owner.connection_id() {
+            Some(connection_id) => (connection_id, SessionOwnerRouteKind::Exact),
+            None => (
+                self.legacy_connection_id
+                    .as_deref()
+                    .ok_or(SessionOwnerError::LegacyConnectionNotConfigured)?,
+                SessionOwnerRouteKind::Legacy,
+            ),
+        };
+        let connection = self
+            .connections
+            .get(connection_id)
+            .ok_or_else(|| SessionOwnerError::UnregisteredConnectionId(connection_id.to_owned()))?;
+        Ok(ResolvedSessionOwner {
+            connection_id,
+            profile: owner.profile(),
+            connection,
+            route,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionOwnerRouteKind {
+    Exact,
+    Legacy,
+}
+
+/// Borrowed result of resolving a session owner through a registry.
+#[derive(Debug)]
+pub struct ResolvedSessionOwner<'a, T> {
+    pub connection_id: &'a str,
+    pub profile: &'a str,
+    pub connection: &'a T,
+    route: SessionOwnerRouteKind,
+}
+
+impl<T> ResolvedSessionOwner<'_, T> {
+    /// Whether the row had an exact connection tag or used the configured
+    /// legacy route for an untagged row.
+    pub fn is_legacy_route(&self) -> bool {
+        self.route == SessionOwnerRouteKind::Legacy
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SessionRouteDecision<'a> {
     /// The exact owner is known and registered; dispatch must use this pair.
@@ -128,6 +258,10 @@ pub enum SessionOwnerError {
     InvalidProfile,
     InvalidSessionId,
     UnregisteredConnectionId(String),
+    DuplicateConnectionId(String),
+    LegacyConnectionNotConfigured,
+    LegacyConnectionNotRegistered(String),
+    LegacyConnectionAlreadyConfigured(String),
 }
 
 impl fmt::Display for SessionOwnerError {
@@ -141,6 +275,21 @@ impl fmt::Display for SessionOwnerError {
             Self::UnregisteredConnectionId(connection_id) => write!(
                 formatter,
                 "session owner connection is not registered: {connection_id}"
+            ),
+            Self::DuplicateConnectionId(connection_id) => write!(
+                formatter,
+                "session owner connection is already registered: {connection_id}"
+            ),
+            Self::LegacyConnectionNotConfigured => {
+                formatter.write_str("no legacy session owner connection is configured")
+            }
+            Self::LegacyConnectionNotRegistered(connection_id) => write!(
+                formatter,
+                "legacy session owner connection is not registered: {connection_id}"
+            ),
+            Self::LegacyConnectionAlreadyConfigured(connection_id) => write!(
+                formatter,
+                "a different legacy session owner connection is already configured: {connection_id}"
             ),
         }
     }
@@ -173,7 +322,9 @@ fn normalize_component(
 
 #[cfg(test)]
 mod tests {
-    use super::{SessionOwnerError, SessionOwnerIdentity, SessionRouteDecision};
+    use super::{
+        SessionOwnerError, SessionOwnerIdentity, SessionOwnerRegistry, SessionRouteDecision,
+    };
     use std::collections::HashSet;
 
     #[test]
@@ -272,6 +423,94 @@ mod tests {
         assert_ne!(
             first.session_identity_key("session").unwrap(),
             second.session_identity_key("session").unwrap()
+        );
+    }
+
+    #[test]
+    fn registry_resolves_tagged_owner_to_exact_registered_connection() {
+        let mut registry = SessionOwnerRegistry::default();
+        registry.register("remote-a", "connection A").unwrap();
+        registry.register("remote-b", "connection B").unwrap();
+        let owner = SessionOwnerIdentity::new(Some(" remote-b "), Some(" worker ")).unwrap();
+
+        let resolved = registry.resolve(&owner).unwrap();
+        assert_eq!(resolved.connection_id, "remote-b");
+        assert_eq!(resolved.profile, "worker");
+        assert_eq!(*resolved.connection, "connection B");
+        assert!(!resolved.is_legacy_route());
+    }
+
+    #[test]
+    fn registry_rejects_duplicate_normalized_connection_registration() {
+        let mut registry = SessionOwnerRegistry::default();
+        registry.register(" remote-a ", "first").unwrap();
+
+        assert_eq!(
+            registry.register("remote-a", "replacement"),
+            Err(SessionOwnerError::DuplicateConnectionId(
+                "remote-a".to_owned()
+            ))
+        );
+        assert_eq!(
+            *registry
+                .resolve(&SessionOwnerIdentity::new(Some("remote-a"), None).unwrap())
+                .unwrap()
+                .connection,
+            "first"
+        );
+    }
+
+    #[test]
+    fn registry_fails_closed_for_unknown_tagged_owner() {
+        let mut registry = SessionOwnerRegistry::default();
+        registry.register("remote-a", "connection A").unwrap();
+        registry.configure_legacy_connection("remote-a").unwrap();
+        let unknown = SessionOwnerIdentity::new(Some("remote-missing"), Some("worker"))
+            .expect("valid but unregistered owner");
+
+        assert_eq!(
+            registry.resolve(&unknown).unwrap_err(),
+            SessionOwnerError::UnregisteredConnectionId("remote-missing".to_owned())
+        );
+    }
+
+    #[test]
+    fn legacy_resolution_requires_one_explicitly_configured_registered_connection() {
+        let legacy_owner = SessionOwnerIdentity::new(None, Some("worker")).unwrap();
+        let mut registry = SessionOwnerRegistry::default();
+        registry.register("remote-a", "connection A").unwrap();
+        registry.register("remote-b", "connection B").unwrap();
+
+        assert_eq!(
+            registry.resolve(&legacy_owner).unwrap_err(),
+            SessionOwnerError::LegacyConnectionNotConfigured
+        );
+        assert_eq!(
+            registry.configure_legacy_connection("remote-missing"),
+            Err(SessionOwnerError::LegacyConnectionNotRegistered(
+                "remote-missing".to_owned()
+            ))
+        );
+
+        registry.configure_legacy_connection(" remote-a ").unwrap();
+        registry.configure_legacy_connection("remote-a").unwrap();
+        assert_eq!(
+            registry.configure_legacy_connection("remote-b"),
+            Err(SessionOwnerError::LegacyConnectionAlreadyConfigured(
+                "remote-a".to_owned()
+            ))
+        );
+
+        let resolved = registry.resolve(&legacy_owner).unwrap();
+        assert_eq!(resolved.connection_id, "remote-a");
+        assert_eq!(resolved.profile, "worker");
+        assert_eq!(*resolved.connection, "connection A");
+        assert!(resolved.is_legacy_route());
+
+        registry.remove("remote-a").unwrap();
+        assert_eq!(
+            registry.resolve(&legacy_owner).unwrap_err(),
+            SessionOwnerError::LegacyConnectionNotConfigured
         );
     }
 }

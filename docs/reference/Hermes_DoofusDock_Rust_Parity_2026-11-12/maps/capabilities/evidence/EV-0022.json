@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0022",
+  "capability_id": "ui-detect-shortcut-collisions",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "native-keybinding-conflict-warning",
+  "locator": "../../../../apps/hermes-native/src/keybindings_ui.rs",
+  "date": "2026-11-19",
+  "commit": "c0e1713bff47dcb4a0bfb137be93cac2bcfa8d06",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native keybinding model and egui panel tests; no live Hermes backend was contacted.",
+  "notes": "Tests verify deterministic collision detection and an accessible visible warning in the keybinding panel. Comparison with the full pinned-source action registry and Windows input behavior remains open, so status is partial."
+}
