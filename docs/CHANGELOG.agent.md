@@ -2282,3 +2282,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** no runtime impact.
 - **risks:** Global UCM report continues to show historical EV-0016/17 schema errors and reconciliation warning; no live gateway evidence was added.
 - **follow_up:** Validate the live in-flight reattach and owner-routing/recovery cases when a safe test gateway is available.
+
+
+### Hermes loopback reattach stream and retry coverage — 2026-11-19T00:59:38Z
+
+- **id:** hermes-par-0510-loopback-stream-retry-20261119
+- **timestamp:** 2026-11-19T00:59:38Z
+- **what:** Added a `gateway_actor` WebSocket fixture that handles a refused resume, a successful retry, in-flight stream events around a returned snapshot, and completion ordering; updated progress/docs to preserve the partial status and exact remaining owner/live gaps.
+- **why:** Prove native transport behavior while a resume is pending and verify recovery without contacting a user backend.
+- **components:** `apps/hermes-native/src/gateway.rs`, progress generator/CSV, parity plan, source audit, backlog, completion overview, README.
+- **type:** gateway protocol integration test and evidence update.
+- **validation:** Focused loopback regression passes; full feature suite 345 library + 15 protocol + 3 launcher passes; locked workspace/all-target check passes with existing dead-code warnings; continuity 18/18, pinned package validator, progress generator, rustfmt and diff checks pass.
+- **performance:** test-only code and documentation; no runtime performance change.
+- **risks:** This uses a local fixture rather than a real Hermes backend. Native session rows still lack the pinned source's exact `(connectionId, profile)` owner route; Windows and source-paired evidence remain open.
+- **follow_up:** Implement and validate exact session owner routing, then exercise production reconnect/in-flight behavior and source/target Windows parity.

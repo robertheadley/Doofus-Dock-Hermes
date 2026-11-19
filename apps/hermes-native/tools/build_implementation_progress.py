@@ -625,7 +625,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0510": {
         "state": "partial",
-        "level": "headless_active_session_reselect_and_resume_fencing",
+        "level": "headless_active_reselect_and_loopback_inflight_resume_recovery",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/contrib/wiring.tsx#openStoredSession",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-route-resume.ts#dispatchRouteResume",
@@ -633,10 +633,11 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#explicit_session_resume_skips_rows_with_archive_or_delete_in_flight",
             "apps/hermes-native/src/app.rs#session_resume_errors_are_correlated_and_render_on_the_owning_tile",
             "apps/hermes-native/src/gateway.rs#fn resume_session",
-            "apps/hermes-native/docs/PLAN.md#Revision 227",
+            "apps/hermes-native/src/gateway.rs#session_resume_streams_inflight_events_and_recovers_after_refusal",
+            "apps/hermes-native/docs/PLAN.md#Revision 228",
         ],
         "gaps": [
-            "real Hermes gateway/in-flight-turn reattachment and failure behavior not exercised",
+            "real Hermes gateway/in-flight-turn reattachment and production reconnect behavior not exercised; loopback WebSocket verifies stream forwarding and retry after refusal",
             "native row identity preserves profile but not the source connection-plus-profile owner route",
             "Windows installed-app and source-paired visual evidence pending",
             "formal source acceptance remains pending",

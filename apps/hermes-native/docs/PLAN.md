@@ -1293,4 +1293,11 @@ A real-row headless regression verifies one resume command for an active row, ow
 This is headless implementation evidence, not live reattachment proof. A real Hermes gateway/in-flight turn, Windows installed UI, multi-connection owner routing, and source-paired visual evidence remain open; PAR-0510 is not formally accepted.
 
 
+### Revision 228 — Loopback in-flight resume stream and refusal recovery (2026-11-19T00:58:36Z)
+
+Add a local WebSocket actor fixture for the active-session reattach contract. The fixture refuses the first profile-scoped `session.resume`, accepts the retry, emits `message.start` and `message.delta` while the snapshot RPC is pending, returns the resumed transcript, and then emits `message.complete`. Assert event ordering, stored/runtime session identity, profile, transcript count and refusal correlation. This validates the native gateway protocol path against an isolated loopback server; it does not claim a real Hermes backend or installed-UI result.
+
+The fixture was initially blocked because its test WebSocket had no read timeout, so `gateway_actor` could wait in `socket.read()` before observing the queued retry. Configuring the same bounded read timeout used in the production actor exposed and fixed the fixture setup; the focused test now passes. Keep the capability partial: native session rows still lack the pinned source's `(connectionId, profile)` owner route, and production live in-flight/reconnect, Windows, and source-paired proof remain open.
+
+
 UCM evidence addendum (2026-11-19T00:40:50Z): `ui-reattach-to-in-flight-turn-without-duplicating-submit` is now recorded as `partial` in the supplemental UCM map with EV-0018 bound to implementation commit 82426709e09654d34e47493913b2bc360be39a26. The headless trigger scenario is covered; live in-flight, recovery, and full connection-owner scenarios remain open. The UCM checker reports the target capability as partial. Its global run remains red on historical EV-0016/17 schema errors and the separate EV-0017 timestamp evidence reconciliation; those prior records were left intact.

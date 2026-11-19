@@ -16990,6 +16990,156 @@ mod tests {
     }
 
     #[test]
+    fn session_resume_streams_inflight_events_and_recovers_after_refusal() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+
+            let first: serde_json::Value = match socket.read().expect("read first resume") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse first resume"),
+                other => panic!("expected first resume request, got {other:?}"),
+            };
+            assert_eq!(first["method"], "session.resume");
+            assert_eq!(first["params"]["session_id"], "stored-live-1");
+            assert_eq!(first["params"]["profile"], "work");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0", "id":first["id"],
+                        "error":{"code":-32000,"message":"temporarily unavailable","data":{"reason":"temporarily_unavailable"}}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("refuse first resume");
+
+            let retry: serde_json::Value = match socket.read().expect("read resume retry") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse resume retry"),
+                other => panic!("expected resume retry, got {other:?}"),
+            };
+            assert_eq!(retry["method"], "session.resume");
+            assert_eq!(retry["params"]["session_id"], "stored-live-1");
+            assert_eq!(retry["params"]["profile"], "work");
+            let retry_id = retry["id"].as_u64().expect("JSON-RPC retry id");
+
+            for (kind, payload) in [
+                ("message.start", json!({"turn_id":"turn-live-1"})),
+                ("message.delta", json!({"text":"Resumed response"})),
+            ] {
+                socket
+                    .send(Message::Text(
+                        json!({
+                            "jsonrpc":"2.0", "method":"event",
+                            "params":{"type":kind,"session_id":"runtime-live-1","payload":payload}
+                        })
+                        .to_string()
+                        .into(),
+                    ))
+                    .expect("send in-flight event while resume is pending");
+            }
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0", "id":retry_id,
+                        "result":{
+                            "session_id":"runtime-live-1", "stored_session_id":"stored-live-1",
+                            "message_count":2,
+                            "messages":[{"role":"assistant","content":"Resumed response"}]
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("return resumed transcript snapshot");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0", "method":"event",
+                        "params":{"type":"message.complete","session_id":"runtime-live-1","payload":{"turn_id":"turn-live-1"}}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send in-flight completion after resume snapshot");
+            socket.close(None).expect("close fixture socket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::ResumeSession {
+                request_id: "resume-first".into(),
+                session_id: "stored-live-1".into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue first resume");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("resume refusal"),
+            GatewayEvent::SessionResumed {
+                request_id, session_id, profile, result: Err(error)
+            } if request_id == "resume-first"
+                && session_id == "stored-live-1"
+                && profile.as_deref() == Some("work")
+                && error.contains("temporarily_unavailable")
+        ));
+
+        command_tx
+            .send(GatewayCommand::ResumeSession {
+                request_id: "resume-retry".into(),
+                session_id: "stored-live-1".into(),
+                profile: Some("work".into()),
+            })
+            .expect("queue retry after refusal");
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            seen.push(
+                event_rx
+                    .recv_timeout(Duration::from_secs(3))
+                    .expect("retry stream or resume event"),
+            );
+        }
+        assert!(matches!(
+            &seen[0],
+            GatewayEvent::ServerEvent(event) if event["type"] == "message.start"
+                && event["session_id"] == "runtime-live-1"
+        ));
+        assert!(matches!(
+            &seen[1],
+            GatewayEvent::ServerEvent(event) if event["type"] == "message.delta"
+                && event["payload"]["text"] == "Resumed response"
+        ));
+        assert!(matches!(
+            &seen[2],
+            GatewayEvent::SessionResumed {
+                request_id, session_id, profile,
+                result: Ok(transcript)
+            } if request_id == "resume-retry"
+                && session_id == "stored-live-1"
+                && profile.as_deref() == Some("work")
+                && transcript.runtime_session_id == "runtime-live-1"
+                && transcript.message_count == 2
+        ));
+        assert!(matches!(
+            &seen[3],
+            GatewayEvent::ServerEvent(event) if event["type"] == "message.complete"
+        ));
+
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
     fn runtime_session_title_uses_profile_and_retains_stored_identity() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
         let address = listener.local_addr().expect("fixture address");
