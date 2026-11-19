@@ -2666,3 +2666,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** Pure formatting on pointer hover; no Gateway traffic or persistent state changes.
 - **risks:** Tool-call nested lifecycle mapping and live/source-paired behavior remain unverified.
 - **follow_up:** Validate, attach exact-SHA UCM evidence and continue chat/tool parity.
+
+
+### PAR-0065 timestamp evidence publication — 2026-11-19T18:44Z
+
+- **id:** hermes-par-0065-timestamp-evidence-20261119
+- **timestamp:** 2026-11-19T18:44:00Z
+- **what:** Added EV-0030 bound to `2db85e2a3b3d853411fac0a57d554a9c14e29e95`, the pinned timestamp hover test scenario and a partial crosswalk note.
+- **why:** Tie the tested timestamp detail to the exact published implementation.
+- **components:** UCM timestamp capability and evidence package.
+- **type:** evidence
+- **validation:** PASS package validator (565 target behaviors, inventory rows and pending tests; 14 source and 15 implementation receipts); pushed implementation `2db85e2a3b3d853411fac0a57d554a9c14e29e95` and fresh-fetch verified local/remote equality. Optional YAML parse skipped because PyYAML is absent.
+- **performance:** No runtime performance claim.
+- **risks:** Nested tool-run lifecycle timestamp and live/source-paired behavior remain open.
+- **follow_up:** Validate, publish and continue chat/tool parity.

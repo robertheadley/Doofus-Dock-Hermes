@@ -1451,3 +1451,5 @@ When transcript timestamps are enabled, hovering the compact local clock now rev
 Headless formatting coverage checks full date, milliseconds, offset-aware output, a start/completion range and invalid input.
 
 Validation addendum (2026-11-19T18:42Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (397 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS task continuity 18/18; PASS UCM package validator (565 target behaviors, 14 source and 14 implementation receipts); PASS rustfmt and diff check. Optional YAML parse skipped because PyYAML is absent. PAR-0065 remains partial for structured tool-run lifecycle mapping and live/source-paired acceptance.
+
+UCM timestamp evidence addendum (2026-11-19T18:44Z): Added EV-0030 bound to `2db85e2a3b3d853411fac0a57d554a9c14e29e95`; capability remains partial for nested tool lifecycle timestamps and live/source-paired acceptance.

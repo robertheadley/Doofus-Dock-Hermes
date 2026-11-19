@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0030",
+  "capability_id": "ui-display-local-timestamps-and-message-role",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "precise-local-timestamp-hover",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "2db85e2a3b3d853411fac0a57d554a9c14e29e95",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native Rust test suite and workspace check; no live Hermes Gateway or installed UI was used.",
+  "notes": "When optional display.timestamps is enabled, the compact local transcript timestamp exposes a hover detail with full local date/time, milliseconds and numeric UTC offset, including start and completion. Epoch conversion avoids large-number fractional millisecond loss. Headless formatting test covers valid ranges and invalid values. Structured nested tool-run lifecycle stamps, live Gateway behavior, installed Windows interaction and source-paired acceptance remain open; PAR-0065 stays partial."
+}

@@ -1496,9 +1496,14 @@ capabilities:
     backend: unknown
     ui: partial
     tests: partial
+  verification:
+    scenarios:
+    - id: precise-local-timestamp-hover
+      description: With timestamps enabled, reveal the full local date, millisecond precision and UTC offset on hover.
   evidence:
   - EV-0016
   - EV-0017
+  - EV-0030
 - id: ui-convert-selected-terminal-text-into-composer-draft
   name: Convert selected terminal text into composer draft
   area: chat-transcript
