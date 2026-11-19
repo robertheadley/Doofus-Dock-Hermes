@@ -3035,3 +3035,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime behavior change.
 - **risks:** Evidence is local/headless only. Live local/remote Gateway, credential persistence, installed Windows interaction and source-paired acceptance remain open; both capabilities remain partial.
 - **follow_up:** Mark PAR-0268 tested with EV-0046, publish the evidence revision to `main`, verify remote SHA, then continue the next functional parity slice.
+
+### PAR-0268 main publication (2026-11-19T22:47Z)
+
+- **id:** hermes-par0268-main-publish-20261119
+- **timestamp:** 2026-11-19T22:47:38Z
+- **what:** Published validated implementation and evidence revisions directly to `main`; fresh fetch confirmed local HEAD equals `origin/main` at `2c8e5150e54ce1b027a0e75ad0fede99e0fd1ae2`.
+- **why:** Keep the user's main-only repository current with tested functional progress and its partial evidence.
+- **components:** MCP catalog install, UCM receipts EV-0046/EV-0047, implementation progress, task ledger.
+- **type:** main publication
+- **validation:** PASS full Rust feature suite 425 library + 15 automation protocol + 3 launcher tests and doc tests; PASS workspace/all-target check, formatting, task/package/progress validators, JSON parsing, and diff checks; PASS exact remote SHA equality.
+- **performance:** No benchmark change.
+- **risks:** The capability is partial and remains unverified against a live Hermes Gateway or installed Windows UI; overall source acceptance remains 0/499.
+- **follow_up:** Select the next high-value chat/tool/skills/plugin behavior gap; keep functional parity ahead of the user's planned visual restyling.
