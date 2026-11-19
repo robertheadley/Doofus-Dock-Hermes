@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0047",
+  "capability_id": "ui-browse-mcp-catalog",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "pinned-desktop-rest-mcp-catalog-prompts-metadata-cache-and-states",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "4e52f5cdec82f4312affbf18f1958cc9ec208a1b",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Pinned Hermes Desktop REST contract inspection, local Hermes Native HTTP fixture, and headless egui AccessKit tests. No live Gateway, remote profile, installed desktop runtime, or physical Windows interaction used.",
+  "notes": "The native catalog now follows the pinned Desktop GET /api/mcp/catalog response and preserves prompts, required flags, install/bootstrap metadata, default tools, post-install guidance, and diagnostics. Gateway tests validate and bound rich catalog metadata; app tests cover profile/connection/authority fencing, accessible catalog states, and five-minute cache expiry. This supersedes EV-0045's earlier bot-oriented mcp.catalog RPC contract while retaining its historical record. Live local/remote Gateway behavior, installed Windows rendering, and pinned-source paired acceptance remain open; capability remains partial. Test locators: apps/hermes-native/src/gateway.rs#mcp_catalog_uses_desktop_rest_contract_and_validates_install_metadata; apps/hermes-native/src/app.rs#mcp_catalog_load_is_profile_fenced_and_renders_accessible_states; apps/hermes-native/src/app.rs#mcp_catalog_cache_expires_after_five_minutes. Full command cargo test -p hermes-native --features agent-automation --locked passed 425 library tests, 15 automation protocol tests, 3 launcher tests, and doc tests; workspace/all-target check, format, task, progress, package, and diff checks passed."
+}

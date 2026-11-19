@@ -5343,6 +5343,9 @@ capabilities:
     backend: partial
     ui: partial
     tests: partial
+  evidence:
+  - EV-0045
+  - EV-0047
 - id: ui-install-approved-mcp-integration
   name: Install approved MCP integration
   area: skills-plugins
@@ -5359,9 +5362,11 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  evidence:
+  - EV-0046
 - id: ui-inspect-linked-plugin-permissions
   name: Inspect linked plugin permissions
   area: skills-plugins

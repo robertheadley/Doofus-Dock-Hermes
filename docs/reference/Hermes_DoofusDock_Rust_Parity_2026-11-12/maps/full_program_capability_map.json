@@ -5090,7 +5090,7 @@
       "source_confidence": "upstream-documented+code-index",
       "target_status": "partial",
       "priority": "P2",
-      "acceptance": "Profile-scoped mcp.catalog returns validated rows; shared search, installed/enabled state, five-minute cache, and accessible loading/error/empty views are implemented. Catalog installation, live Gateway, remote profile, Windows and source-paired acceptance remain open.",
+      "acceptance": "Pinned Desktop GET /api/mcp/catalog response preserves prompts and install metadata; shared search, installed/enabled state, five-minute cache, and accessible loading/error/empty views are implemented. Live Gateway, remote profile, Windows and source-paired acceptance remain open.",
       "test_id": "PAR-0267",
       "backend": "hermes_gateway",
       "risk": "normal"
@@ -5107,9 +5107,9 @@
       "primitives": "searchable-list; toggles; detail-pane; install-log; permission-dialog",
       "dock_support": "layout shell only; domain widgets application-owned",
       "source_confidence": "upstream-documented+code-index",
-      "target_status": "not_implemented",
+      "target_status": "partial",
       "priority": "P2",
-      "acceptance": "With target scope active, a user can install approved MCP integration; side-by-side behavior and failure case are recorded.",
+      "acceptance": "Profile-fenced install form masks required credentials, sends the pinned name/env/enable payload, handles synchronous and background action outcomes, and reports uncertain outcomes after disconnect. Live Gateway/secret persistence, installed Windows, and source-paired acceptance remain open.",
       "test_id": "PAR-0268",
       "backend": "hermes_gateway",
       "risk": "normal"

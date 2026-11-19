@@ -3022,3 +3022,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime benchmark change; background status cadence and ten-minute bound follow the pinned Desktop behavior.
 - **risks:** No real local/remote Gateway, credential persistence, installed Windows UI, or source-paired acceptance was exercised. PAR-0267 and PAR-0268 remain partial.
 - **follow_up:** Add exact UCM receipts, validate evidence references, and publish the tested changes to `main`.
+
+### PAR-0268 UCM evidence receipts (2026-11-19T22:44Z)
+
+- **id:** hermes-par0268-ev0046-ev0047-20261119
+- **timestamp:** 2026-11-19T22:44:53Z
+- **what:** Add EV-0046 for the partial MCP catalog install flow and EV-0047 superseding the old RPC browse evidence with the pinned Desktop REST contract. Update UCM capability dimensions and status, crosswalk, UI inventory, full capability map and generated progress.
+- **why:** Keep the machine-readable implementation status aligned with validated behavior and preserve the historical EV-0045 receipt without claiming live acceptance.
+- **components:** UCM capability package, implementation progress generator and chat/tool progress ledger.
+- **type:** evidence and capability-status update
+- **validation:** PASS package validator (565 behaviors, 565 UI inventory rows, 32 implementation receipts); both EV JSON files and full capability map parse; implementation progress 61/499 reviewed; chat/tool progress 29/173 with mapped evidence; task schema validation passes. Optional PyYAML parse skipped because PyYAML is absent.
+- **performance:** No runtime behavior change.
+- **risks:** Evidence is local/headless only. Live local/remote Gateway, credential persistence, installed Windows interaction and source-paired acceptance remain open; both capabilities remain partial.
+- **follow_up:** Mark PAR-0268 tested with EV-0046, publish the evidence revision to `main`, verify remote SHA, then continue the next functional parity slice.
