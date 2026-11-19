@@ -2889,3 +2889,4 @@ EV-0040 receipt write recovery (2026-11-19T20:34Z): the first atomic-write attem
 - **performance:** One bounded HTTP mutation per user action; existing worker FIFO and response cap apply.
 - **risks:** Pinned response only confirms ok; live Gateway state reconciliation and remote authenticated execution remain unverified.
 - **follow_up:** Implement MCP test/add/catalog operations and verify real Gateway behavior.
+UCM evidence addendum (2026-11-19T20:42Z): EV-0041 binds the PAR-0265 MCP toggle and focused HTTP/app tests to behavior commit caa45df42f235fc26ecd934e550a611d855c2490. The capability remains partial pending live and source-paired acceptance.

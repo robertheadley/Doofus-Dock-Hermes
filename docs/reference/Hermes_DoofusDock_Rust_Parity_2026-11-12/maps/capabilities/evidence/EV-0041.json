@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0041",
+  "capability_id": "ui-toggle-mcp-server",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-mcp-server-enable-disable",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "caa45df42f235fc26ecd934e550a611d855c2490",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust HTTP fixture and profile-scoped app mutation test; no live Gateway, remote authenticated profile, installed UI or physical Windows input used.",
+  "notes": "Focused Gateway test verifies PUT /api/mcp/servers/My%20Server/enabled?profile=home-bot with the ticket header and {enabled:false} payload and accepts {ok:true}. App test verifies optimistic disable, denied-response rollback and successful retry under the same profile, connection instance and authority epoch. Test locators: apps/hermes-native/src/gateway.rs#mcp_server_toggle_uses_pinned_profile_scoped_put_and_receipt and apps/hermes-native/src/app.rs#mcp_server_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial. Remote authenticated execution, live state reconciliation, disconnect-under-write and source-paired Windows acceptance remain open; capability remains partial."
+}
