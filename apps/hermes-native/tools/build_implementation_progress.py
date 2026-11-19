@@ -560,6 +560,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live Gateway, remote authenticated profile, rendered installed UI, Windows packaging and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0265": {
+        "state": "partial",
+        "level": "headless_mcp_server_toggle_http_profile_and_rollback_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/mcp.ts#setMcpServerEnabled",
+            "apps/hermes-native/src/gateway.rs#set_mcp_server_enabled_http",
+            "apps/hermes-native/src/gateway.rs#mcp_server_toggle_uses_pinned_profile_scoped_put_and_receipt",
+            "apps/hermes-native/src/app.rs#set_mcp_server_enabled",
+            "apps/hermes-native/src/app.rs#mcp_server_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial",
+            "apps/hermes-native/docs/PLAN.md#Revision 254",
+        ],
+        "gaps": [
+            "pinned success receipt only returns ok; live Gateway state reconciliation has not been exercised",
+            "remote authenticated profile, disconnect-under-mutation, rendered UI, Windows and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0252": {
         "state": "partial",
         "level": "native_installed_skill_search_fields_tested",

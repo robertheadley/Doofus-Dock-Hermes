@@ -170,7 +170,7 @@ The native chat composer can attach images and files to a session using Hermes G
 
 ## Current scoped evidence
 
-The generated 173-row chat/tool/skills/plugins view currently reports 1 implemented, 22 partial, and 150 unknown. Twenty-three requirements have mapped implementation evidence; live runtime is unverified for all 173, source-paired acceptance is pending for all 173, and visual pairs are absent for all 173. See `docs/status/CHAT_TOOL_PROGRESS.csv`; these are independent evidence dimensions, not a completion percentage.
+The generated 173-row chat/tool/skills/plugins view currently reports 1 implemented, 23 partial, and 149 unknown. Twenty-four requirements have mapped implementation evidence; live runtime is unverified for all 173, source-paired acceptance is pending for all 173, and visual pairs are absent for all 173. See `docs/status/CHAT_TOOL_PROGRESS.csv`; these are independent evidence dimensions, not a completion percentage.
 
 
 Older transcript pagination currently loads profile-scoped offset pages, rejects mismatched page receipts, and merges boundary overlap. The pinned Desktop prompt-anchor/around-window flow and separated-page behavior remain open; see `docs/status/CHAT_TOOL_PROGRESS.csv`.

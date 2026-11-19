@@ -2876,3 +2876,16 @@ UCM evidence addendum (2026-11-19T20:17Z): EV-0039 records the PAR-0254 per-skil
 - **follow_up:** Implement MCP server enable/test mutations and catalog flows as separate reviewable slices.
 UCM evidence addendum (2026-11-19T20:33Z): EV-0040 binds the PAR-0262 MCP server inventory and focused HTTP/UI tests to behavior commit f0836b5ae9d21b33d1b5453a0c9b58b6526b6a8c. The capability remains partial pending mutation flows and live/source-paired acceptance.
 EV-0040 receipt write recovery (2026-11-19T20:34Z): the first atomic-write attempt failed before creating the file because its destination did not yet exist for Resolve-Path. The receipt was then written to a temp file in the verified evidence folder and atomically moved into place; evidence validator confirms it.
+
+### PAR-0265 — Profile-scoped MCP server toggle (2026-11-19T20:40Z)
+
+- **id:** hermes-par0265-mcp-toggle-20261119
+- **timestamp:** 2026-11-19T20:40:10Z
+- **what:** Added accessible per-server enable/disable with the pinned PUT route, optimistic state, bounded receipt handling and denial rollback.
+- **why:** Complete a basic MCP management action in the chat/tool integration scope.
+- **components:** Gateway HTTP worker, typed MCP mutation result, registered UI action, Connectors server rows, task/progress evidence.
+- **type:** feature implementation
+- **validation:** PASS focused Gateway HTTP route/payload/receipt test, app optimistic-denial-retry test, cargo check and formatting.
+- **performance:** One bounded HTTP mutation per user action; existing worker FIFO and response cap apply.
+- **risks:** Pinned response only confirms ok; live Gateway state reconciliation and remote authenticated execution remain unverified.
+- **follow_up:** Implement MCP test/add/catalog operations and verify real Gateway behavior.

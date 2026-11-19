@@ -98,6 +98,10 @@ pub enum RegisteredUiAction {
         name: String,
         enabled: bool,
     },
+    SetMcpServerEnabled {
+        name: String,
+        enabled: bool,
+    },
     SetAgentPluginEnabled {
         key: String,
         enabled: bool,
@@ -489,6 +493,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"refresh_plugin_catalog","permission":"ui_interaction","mutates":false,"schema":{}}
             ,{"type":"set_toolset_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded toolsets, max 128 bytes","enabled":"boolean"}}
             ,{"type":"set_skill_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded skills, max 128 bytes","enabled":"boolean"}}
+            ,{"type":"set_mcp_server_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded MCP servers, max 512 bytes","enabled":"boolean"}}
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
@@ -685,6 +690,15 @@ struct PendingToolsetUpdate {
 
 #[derive(Clone, Debug)]
 struct PendingSkillUpdate {
+    request_id: String,
+    previous_enabled: bool,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMcpServerUpdate {
     request_id: String,
     previous_enabled: bool,
     profile_id: String,
@@ -1335,6 +1349,7 @@ pub struct HermesNativeApp {
     mcp_servers_request_id: Option<String>,
     mcp_servers_pending: bool,
     mcp_servers_error: Option<String>,
+    pending_mcp_server_updates: BTreeMap<String, PendingMcpServerUpdate>,
     agent_plugins: Option<AgentPluginsSnapshot>,
     agent_plugins_profile: Option<String>,
     agent_plugins_request_id: Option<String>,
@@ -3658,6 +3673,7 @@ fn render_message() -> &'static str {
             mcp_servers_request_id: None,
             mcp_servers_pending: false,
             mcp_servers_error: None,
+            pending_mcp_server_updates: BTreeMap::new(),
             agent_plugins: None,
             agent_plugins_profile: None,
             agent_plugins_request_id: None,
@@ -11361,7 +11377,11 @@ fn render_message() -> &'static str {
                             },
                         );
                     } else {
+                        let mut toggle_server = None;
                         for server in mcp_rows {
+                            let update_pending =
+                                self.pending_mcp_server_updates.contains_key(&server.name);
+                            let mut enabled = server.enabled;
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
                                     ui.label(RichText::new(&server.name).strong().color(TEXT));
@@ -11376,6 +11396,18 @@ fn render_message() -> &'static str {
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         ui.label(RichText::new(&server.transport).color(ACCENT));
                                     });
+                                    let toggle =
+                                        ui.add_enabled(
+                                            self.gateway_connected && !update_pending,
+                                            egui::Checkbox::new(&mut enabled, ""),
+                                        )
+                                        .accessible_name(
+                                            format!("Toggle MCP server {}", server.name),
+                                        );
+                                    if toggle.changed() {
+                                        toggle_server =
+                                            Some((server.name.clone(), enabled, server.enabled));
+                                    }
                                 });
                                 if let Some(url) = server.url.as_deref() {
                                     ui.label(RichText::new(url).size(11.0).color(MUTED));
@@ -11402,8 +11434,17 @@ fn render_message() -> &'static str {
                                             .color(MUTED),
                                     );
                                 }
+                                if update_pending {
+                                    ui.label(RichText::new("Saving…").size(11.0).color(MUTED));
+                                }
                             });
                             ui.add_space(4.0);
+                        }
+                        if let Some((name, enabled, _previous_enabled)) = toggle_server {
+                            self.execute_registered_action(
+                                RegisteredUiAction::SetMcpServerEnabled { name, enabled },
+                            )
+                            .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
                         }
                     }
                 }
@@ -16781,6 +16822,10 @@ fn render_message() -> &'static str {
             self.connectors_pending = false;
             self.mcp_servers_request_id = None;
             self.mcp_servers_pending = false;
+            if !self.pending_mcp_server_updates.is_empty() {
+                self.pending_mcp_server_updates.clear();
+                self.mcp_servers = None;
+            }
             self.agent_plugins_request_id = None;
             self.agent_plugins_pending = false;
         }
@@ -16893,6 +16938,10 @@ fn render_message() -> &'static str {
                 self.connectors_pending = false;
                 self.mcp_servers_request_id = None;
                 self.mcp_servers_pending = false;
+                if !self.pending_mcp_server_updates.is_empty() {
+                    self.pending_mcp_server_updates.clear();
+                    self.mcp_servers = None;
+                }
             }
             if tab != CapabilitiesTab::Plugins {
                 self.agent_plugins_request_id = None;
@@ -17123,6 +17172,9 @@ fn render_message() -> &'static str {
             }
             RegisteredUiAction::SetSkillEnabled { name, enabled } => {
                 self.set_skill_enabled(name, enabled)?;
+            }
+            RegisteredUiAction::SetMcpServerEnabled { name, enabled } => {
+                self.set_mcp_server_enabled(name, enabled)?;
             }
             RegisteredUiAction::SetAgentPluginEnabled { key, enabled } => {
                 self.set_agent_plugin_enabled(key, enabled)?;
@@ -18098,6 +18150,63 @@ fn render_message() -> &'static str {
             "{} Skill {name}…",
             if enabled { "Enabling" } else { "Disabling" }
         );
+        Ok(())
+    }
+
+    fn set_mcp_server_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before changing an MCP server".into());
+        }
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err("MCP server name is invalid".into());
+        }
+        let Some(servers) = self.mcp_servers.as_mut() else {
+            return Err("Load the MCP server inventory before changing a server".into());
+        };
+        let Some(server) = servers
+            .servers
+            .iter_mut()
+            .find(|server| server.name == name)
+        else {
+            return Err("MCP server is not in the loaded inventory".into());
+        };
+        if self.pending_mcp_server_updates.contains_key(&name) {
+            return Err("MCP server update is already pending".into());
+        }
+        if server.enabled == enabled {
+            return Ok(());
+        }
+        let previous_enabled = server.enabled;
+        server.enabled = enabled;
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            server.enabled = previous_enabled;
+            return Err("Hermes Gateway endpoint is unavailable".into());
+        };
+        let profile_id = endpoint.profile_id.clone();
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            server.enabled = previous_enabled;
+            return Err("Hermes Gateway reader is unavailable".into());
+        };
+        let request_id = operation_id("mcp-server-enabled");
+        if let Err(error) =
+            gateway.set_mcp_server_enabled(request_id.clone(), name.clone(), enabled)
+        {
+            server.enabled = previous_enabled;
+            return Err(error);
+        }
+        self.pending_mcp_server_updates.insert(
+            name,
+            PendingMcpServerUpdate {
+                request_id,
+                previous_enabled,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            },
+        );
+        self.mcp_servers_error = None;
         Ok(())
     }
 
@@ -23944,10 +24053,6 @@ fn render_message() -> &'static str {
                     }
                     self.capabilities_pending = false;
                     self.capabilities_request_id = None;
-                    self.mcp_servers_pending = false;
-                    self.mcp_servers_request_id = None;
-                    self.mcp_servers = None;
-                    self.mcp_servers_error = None;
                     match result {
                         Ok(CapabilitiesSnapshot { skills, toolsets }) => {
                             self.skills = Some(skills);
@@ -24685,6 +24790,57 @@ fn render_message() -> &'static str {
                         Err(error) => self.mcp_servers_error = Some(error),
                     }
                 }
+                GatewayEvent::McpServerEnabledUpdated {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    enabled,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_mcp_server_updates.get(&name) else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile_id != profile_id
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    let pending = self
+                        .pending_mcp_server_updates
+                        .remove(&name)
+                        .expect("pending MCP server update checked");
+                    match result {
+                        Ok(()) => {
+                            if let Some(server) = self.mcp_servers.as_mut().and_then(|snapshot| {
+                                snapshot.servers.iter_mut().find(|row| row.name == name)
+                            }) {
+                                server.enabled = enabled;
+                            }
+                            self.mcp_servers_error = None;
+                            self.status = format!(
+                                "{} MCP server {name}",
+                                if enabled { "Enabled" } else { "Disabled" }
+                            );
+                        }
+                        Err(error) => {
+                            if let Some(server) = self.mcp_servers.as_mut().and_then(|snapshot| {
+                                snapshot.servers.iter_mut().find(|row| row.name == name)
+                            }) {
+                                server.enabled = pending.previous_enabled;
+                            }
+                            self.mcp_servers_error = Some(error);
+                        }
+                    }
+                }
                 GatewayEvent::Disconnected(error) => {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
@@ -24763,6 +24919,16 @@ fn render_message() -> &'static str {
                     self.command_palette_sessions_request_id = None;
                     self.capabilities_pending = false;
                     self.capabilities_request_id = None;
+                    self.mcp_servers_pending = false;
+                    self.mcp_servers_request_id = None;
+                    self.mcp_servers = None;
+                    self.mcp_servers_error = None;
+                    if !self.pending_mcp_server_updates.is_empty() {
+                        self.pending_mcp_server_updates.clear();
+                        self.mcp_servers_error = Some(
+                            "MCP server update outcome is unknown after Gateway disconnect; refresh the inventory before retrying".into(),
+                        );
+                    }
                     self.agent_plugins_pending = false;
                     self.agent_plugins_request_id = None;
                     self.agent_plugin_auto_update = None;
@@ -37227,6 +37393,86 @@ mod tests {
         assert!(!app.skills.as_ref().unwrap()[0].enabled);
         assert!(app.pending_skill_updates.is_empty());
         assert_eq!(app.status, "Disabled Skill web-research");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_server_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_mcp_server_enabled();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Connectors;
+        app.mcp_servers = Some(McpServersSnapshot {
+            servers: vec![crate::gateway::McpServerSummary {
+                name: "docs".into(),
+                transport: "stdio".into(),
+                command: Some("uvx".into()),
+                args: vec!["mcp-server-docs".into()],
+                url: None,
+                enabled: true,
+                tools: Some(vec!["search".into()]),
+            }],
+        });
+
+        app.set_mcp_server_enabled("docs".into(), false)
+            .expect("queue MCP server toggle");
+        let (request_id, name, enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("profile-scoped writer receives MCP toggle");
+        assert_eq!(name, "docs");
+        assert!(!enabled);
+        assert!(!app.mcp_servers.as_ref().unwrap().servers[0].enabled);
+        assert!(app.pending_mcp_server_updates.contains_key(&name));
+
+        events
+            .send(GatewayEvent::McpServerEnabledUpdated {
+                request_id,
+                name: name.clone(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                enabled,
+                result: Err("permission denied".into()),
+            })
+            .expect("deliver denied MCP toggle result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.mcp_servers.as_ref().unwrap().servers[0].enabled);
+        assert!(!app.pending_mcp_server_updates.contains_key(&name));
+        assert_eq!(app.mcp_servers_error.as_deref(), Some("permission denied"));
+
+        app.set_mcp_server_enabled("docs".into(), false)
+            .expect("retry after MCP server toggle denial");
+        let (request_id, name, enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("retry reaches MCP writer");
+        events
+            .send(GatewayEvent::McpServerEnabledUpdated {
+                request_id,
+                name,
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                enabled,
+                result: Ok(()),
+            })
+            .expect("deliver confirmed MCP toggle result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(!app.mcp_servers.as_ref().unwrap().servers[0].enabled);
+        assert!(app.pending_mcp_server_updates.is_empty());
+        assert_eq!(app.status, "Disabled MCP server docs");
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

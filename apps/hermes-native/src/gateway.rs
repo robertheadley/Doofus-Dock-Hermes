@@ -1468,6 +1468,11 @@ pub struct McpServersSnapshot {
     pub servers: Vec<McpServerSummary>,
 }
 
+#[derive(Deserialize)]
+struct McpServerEnabledResponse {
+    ok: bool,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct AgentPluginServerInfo {
     #[serde(default)]
@@ -1977,6 +1982,15 @@ pub enum GatewayEvent {
         profile_id: String,
         result: Result<McpServersSnapshot, String>,
     },
+    McpServerEnabledUpdated {
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        enabled: bool,
+        result: Result<(), String>,
+    },
     AgentPluginsLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2323,6 +2337,11 @@ enum GatewayHttpCommand {
     },
     LoadMcpServers {
         request_id: String,
+    },
+    SetMcpServerEnabled {
+        request_id: String,
+        name: String,
+        enabled: bool,
     },
     LoadMessagingPlatforms {
         request_id: String,
@@ -3030,6 +3049,55 @@ impl GatewayDiscovery {
         thread::spawn(move || {
             while let Ok(command) = http_receiver.recv() {
                 if let GatewayHttpCommand::SetSkillEnabled {
+                    request_id,
+                    name,
+                    enabled,
+                } = command
+                    && request_sender.send((request_id, name, enabled)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_mcp_server_enabled() -> (
+        Self,
+        Receiver<(String, String, bool)>,
+        mpsc::Sender<GatewayEvent>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::SetMcpServerEnabled {
                     request_id,
                     name,
                     enabled,
@@ -4122,6 +4190,21 @@ impl GatewayDiscovery {
         self.http_sender
             .send(GatewayHttpCommand::LoadMcpServers { request_id })
             .map_err(|_| "Hermes MCP server reader has closed".to_owned())
+    }
+
+    pub fn set_mcp_server_enabled(
+        &self,
+        request_id: String,
+        name: String,
+        enabled: bool,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::SetMcpServerEnabled {
+                request_id,
+                name,
+                enabled,
+            })
+            .map_err(|_| "Hermes MCP server writer has closed".to_owned())
     }
 
     pub fn load_agent_plugins(
@@ -7681,6 +7764,19 @@ fn gateway_http_actor(
                 profile_id: endpoint.profile_id.clone(),
                 result: load_mcp_servers_http(&endpoint),
             },
+            GatewayHttpCommand::SetMcpServerEnabled {
+                request_id,
+                name,
+                enabled,
+            } => GatewayEvent::McpServerEnabledUpdated {
+                request_id,
+                name: name.clone(),
+                profile_id: endpoint.profile_id.clone(),
+                instance_id: endpoint.instance_id.clone(),
+                authority_epoch: endpoint.authority_epoch,
+                enabled,
+                result: set_mcp_server_enabled_http(&endpoint, &name, enabled),
+            },
             GatewayHttpCommand::LoadMessagingPlatforms {
                 request_id,
                 profile,
@@ -10863,6 +10959,78 @@ fn validate_mcp_servers(snapshot: McpServersSnapshot) -> Result<McpServersSnapsh
         return Err("Hermes returned an invalid MCP server inventory".into());
     }
     Ok(snapshot)
+}
+
+fn set_mcp_server_enabled_http(
+    endpoint: &GatewayEndpoint,
+    name: &str,
+    enabled: bool,
+) -> Result<(), String> {
+    if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+        return Err("Hermes MCP server name is invalid".into());
+    }
+    let url = format!(
+        "{}/api/mcp/servers/{}/enabled{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        encode_query_component(name),
+        session_profile_suffix(&endpoint.profile_id)
+    );
+    let response: McpServerEnabledResponse = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_mutation(
+            endpoint,
+            "PUT",
+            &url,
+            serde_json::json!({"enabled":enabled}),
+        )?
+    } else {
+        request_mcp_server_enabled(
+            &endpoint.api_origin,
+            &mint_windows_ticket(endpoint, "native-http", None)?,
+            &url,
+            enabled,
+        )?
+    };
+    if !response.ok {
+        return Err("Hermes did not confirm the requested MCP server state".into());
+    }
+    Ok(())
+}
+
+fn request_mcp_server_enabled(
+    api_origin: &str,
+    ticket: &str,
+    url: &str,
+    enabled: bool,
+) -> Result<McpServerEnabledResponse, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) || !api_url_is_within_origin(api_origin, url) {
+        return Err("Hermes MCP server updates require the verified loopback API origin".into());
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .proxy(None)
+        .timeout_global(Some(Duration::from_secs(8)))
+        .max_redirects(0)
+        .build()
+        .into();
+    let response = agent
+        .put(url)
+        .header("X-Hermes-Gateway-Ticket", ticket)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json")
+        .send(serde_json::json!({"enabled":enabled}).to_string())
+        .map_err(|_| "Hermes MCP server update request failed".to_owned())?;
+    let mut bytes = Vec::new();
+    response
+        .into_body()
+        .into_reader()
+        .take(GATEWAY_HTTP_RESPONSE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Could not read Hermes MCP server update response".to_owned())?;
+    if bytes.len() as u64 > GATEWAY_HTTP_RESPONSE_LIMIT {
+        return Err("Hermes API response exceeded 512 KiB".into());
+    }
+    serde_json::from_slice(&bytes)
+        .map_err(|_| "Hermes returned invalid MCP server update JSON".to_owned())
 }
 
 fn load_display_timestamps_http(
@@ -17332,6 +17500,65 @@ mod tests {
             &["search".to_owned(), "fetch".to_owned()]
         );
         server.join().expect("MCP inventory fixture exits");
+    }
+
+    #[test]
+    fn mcp_server_toggle_uses_pinned_profile_scoped_put_and_receipt() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept MCP toggle request");
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            let (body_start, body_len) = loop {
+                let count = stream.read(&mut buffer).expect("read MCP toggle request");
+                if count == 0 {
+                    panic!("MCP toggle request closed before headers completed");
+                }
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(boundary) = request.windows(4).position(|window| window == b"\r\n\r\n")
+                {
+                    let body_start = boundary + 4;
+                    let headers = String::from_utf8_lossy(&request[..boundary]);
+                    let body_len = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .and_then(|value| value.trim().parse::<usize>().ok())
+                        })
+                        .expect("content-length header");
+                    if request.len() >= body_start + body_len {
+                        break (body_start, body_len);
+                    }
+                }
+            };
+            let request_text = String::from_utf8_lossy(&request);
+            assert!(request_text.starts_with(
+                "PUT /api/mcp/servers/My%20Server/enabled?profile=home-bot HTTP/1.1\r\n"
+            ));
+            assert!(
+                request_text
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-mcp-toggle-ticket\r\n")
+            );
+            let body: serde_json::Value =
+                serde_json::from_slice(&request[body_start..body_start + body_len])
+                    .expect("parse MCP toggle payload");
+            assert_eq!(body, json!({"enabled":false}));
+            let body = json!({"ok":true}).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write MCP toggle response");
+        });
+        let response = request_mcp_server_enabled(
+            &format!("http://{address}"),
+            "fixture-mcp-toggle-ticket",
+            &format!("http://{address}/api/mcp/servers/My%20Server/enabled?profile=home-bot"),
+            false,
+        )
+        .expect("read MCP toggle receipt");
+        assert!(response.ok);
+        server.join().expect("MCP toggle fixture exits");
     }
 
     #[test]

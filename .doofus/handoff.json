@@ -154,6 +154,18 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
       "status": " M"
     },
@@ -179,12 +191,12 @@
   "checkpoint": {
     "command": null,
     "evidence": [
-      "apps/hermes-native/src/gateway.rs#mcp_server_inventory_uses_profile_scoped_ticketed_get",
-      "apps/hermes-native/src/app.rs#connectors_directory_shows_connected_state_and_account_details"
+      "apps/hermes-native/src/gateway.rs#mcp_server_toggle_uses_pinned_profile_scoped_put_and_receipt",
+      "apps/hermes-native/src/app.rs#mcp_server_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial"
     ],
     "state": "tested",
-    "summary": "PAR-0262 MCP server inventory is source-traced and tested: profile-scoped ticketed local GET, bounded typed server data, and AccessKit-visible rows in Connectors. The capability remains partial because mutation/catalog flows and live/remote/rendered acceptance remain open.",
-    "verified_at": "2026-11-19T20:30:48Z"
+    "summary": "PAR-0265 MCP server enable/disable passes focused pinned HTTP contract and profile-fenced optimistic/denial/retry tests. Remains partial pending live/remote Gateway and installed UI acceptance.",
+    "verified_at": "2026-11-19T20:41:46Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -201,6 +213,7 @@
     "hermes-par-0252",
     "hermes-par-0254",
     "hermes-par-0262",
+    "hermes-par-0265",
     "hermes-par-0333",
     "hermes-par-0334",
     "hermes-par-0511",
@@ -208,7 +221,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T21:30:48Z",
+    "lease_expires_at": "2026-11-19T21:41:46Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -624,14 +637,14 @@
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0040.json#EV-0040"
       ],
       "kind": "git_push_main",
-      "note": "Publishing PAR-0262 implementation commit f0836b5ae9d21b33d1b5453a0c9b58b6526b6a8c and UCM EV-0040 to origin/main.",
-      "observed_at": "2026-11-19T20:33:14Z",
+      "note": "Pushed PAR-0262 behavior and EV-0040 to main; fetch confirms origin/main equals b8ff44cbc521d3d250472d1ae5070b2072d60735.",
+      "observed_at": "2026-11-19T20:33:31Z",
       "operation_id": "hermes-par0262-publish-20261119",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -734,11 +747,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0262-push-start-20261119",
+  "last_event_id": "hermes-par0265-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-par0262-push-start-20261119",
+    "request_id": "hermes-par0265-checkpoint-20261119",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -755,7 +768,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit implementation and partial evidence projections to main, bind EV-0040 to the behavior commit, publish and verify, then continue with MCP server mutations or chat rewind based on dependency priority.",
+  "recommended_next_action": "Commit behavior and partial evidence projections, bind EV-0041, push and verify origin/main, then continue high-value scoped chat/MCP gaps.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1009,7 +1022,6 @@
     "hermes-par-0261",
     "hermes-par-0263",
     "hermes-par-0264",
-    "hermes-par-0265",
     "hermes-par-0266",
     "hermes-par-0267",
     "hermes-par-0268",
@@ -1244,7 +1256,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "815bae624f4c86c3779d3571d7ab21c57717cca8ba10df7f75984cb6e70971d6",
+    "change_fingerprint": "cea45706a02fb68506f7b9a8f02c2b0845c023e931a0619e5ad21dcc22d2dafe",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1295,6 +1307,14 @@
         "status": " M"
       },
       {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
         "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
         "status": " M"
       },
@@ -1311,17 +1331,17 @@
         "status": " M"
       }
     ],
-    "head_commit": "a512024deb9760ed7b9ce87827b871e6949a3dcb",
+    "head_commit": "b8ff44cbc521d3d250472d1ae5070b2072d60735",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 297,
+  "revision": 301,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 297,
+  "state_revision": 301,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0262",
-  "task_ledger_revision": 42,
+  "task_id": "hermes-par-0265",
+  "task_ledger_revision": 43,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2382,9 +2402,19 @@
       "command": "cargo test -p hermes-native --features agent-automation connectors_directory_shows_connected_state_and_account_details",
       "result": "PASS 1 passed for each focused MCP inventory test",
       "timestamp": "2026-11-19T20:30:48Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation mcp_server_toggle_uses_pinned_profile_scoped_put_and_receipt",
+      "result": "PASS 1 passed for each focused MCP toggle test",
+      "timestamp": "2026-11-19T20:41:46Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation mcp_server_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial",
+      "result": "PASS 1 passed for each focused MCP toggle test",
+      "timestamp": "2026-11-19T20:41:46Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T20:33:14Z"
+  "updated_at": "2026-11-19T20:41:46Z"
 }

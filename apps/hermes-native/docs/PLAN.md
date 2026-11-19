@@ -1524,3 +1524,8 @@ PAR-0254 is partial. The Skills list now has an accessible per-skill checkbox th
 ### Revision 253 — Profile-scoped MCP server inventory (2026-11-19T20:28Z)
 
 PAR-0262 is partial. The Connectors view now reads the pinned `GET /api/mcp/servers` inventory through the profile-bound HTTP worker. Local requests require the verified loopback origin and a native one-use ticket; remote profiles use the existing authenticated request path. Server rows expose transport, command or URL, enabled state, and the known tool count, and share the Connectors search field. Focused Gateway fixture and headless AccessKit tests pass. Adding, editing, testing, toggling, removing, catalog installation, live Gateway behavior, authenticated remote behavior, packaged Windows and source-paired acceptance remain open.
+
+
+### Revision 254 — Profile-scoped MCP server toggle (2026-11-19T20:40Z)
+
+PAR-0265 is partial. MCP server rows now expose an accessible enable/disable checkbox using the pinned `PUT /api/mcp/servers/{name}/enabled` route and `{enabled}` payload. The action is shared with the native agent UI catalog, updates optimistically, validates the `{ok}` receipt under request/profile/connection-instance/authority-epoch fencing, and restores the old value on denial. Focused Gateway HTTP and app tests pass, including denied-then-retried mutation. Live/remote Gateway state, disconnect during mutation, installed rendering, Windows packaging and source-paired acceptance remain open.
