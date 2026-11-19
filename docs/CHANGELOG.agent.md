@@ -2610,3 +2610,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** Reducer remains in-memory and bounded by existing transcript limits; no benchmark claim.
 - **risks:** Retry/edit controls and code-specific error policy are not implemented; live Gateway and source-paired acceptance remain open.
 - **follow_up:** Validate the full suite, record exact-SHA UCM evidence, then implement safe retry/edit behavior.
+
+
+### UCM evidence for failed-turn transcript behavior — 2026-11-19T18:13:00Z
+
+- **id:** hermes-par-0064-ucm-evidence-20261119
+- **timestamp:** 2026-11-19T18:13:00Z
+- **what:** Added EV-0028 for event-order-independent failed-turn transcript projection and bound it to code commit `98cfb4a3235451ce274f2e9bb8bbdd2a982ec9bd`; marked the UCM capability partial.
+- **why:** Keep evidence tied to the tested behavior and avoid claiming Retry/Edit parity.
+- **components:** UCM capability and evidence package.
+- **type:** evidence
+- **validation:** Package validator passes 565 behaviors, inventory rows and pending tests, 14 source receipts and 13 implementation receipts; optional PyYAML parse skipped because PyYAML is absent.
+- **performance:** No runtime performance claim.
+- **risks:** Retry/Edit actions, full error taxonomy and live source-paired behavior remain open.
+- **follow_up:** Implement error-code-aware retry/edit controls.

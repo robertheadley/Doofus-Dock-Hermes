@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0028",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "failed-turn-error-completion-ordering",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "98cfb4a3235451ce274f2e9bb8bbdd2a982ec9bd",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native Rust test suite and workspace check; no live Hermes Gateway or installed UI was used.",
+  "notes": "The native reducer preserves the optimistic user message, projects one assistant failure row, releases the matching pending turn, retains explicit partial output and structured error_surface, and merges Gateway error/message.complete in either order. Headless coverage verifies both orders and one-card behavior. Code-keyed retry/edit actions, error-code action policy, live Gateway variants, Windows UI and source-paired acceptance remain open."
+}

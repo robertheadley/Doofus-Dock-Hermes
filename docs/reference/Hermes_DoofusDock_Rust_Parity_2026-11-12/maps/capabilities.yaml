@@ -1452,7 +1452,7 @@ capabilities:
   name: Show per-turn failure and retry without duplication
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can show per-turn failure and retry without duplication.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1464,9 +1464,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: failed-turn-error-completion-ordering
+      description: Preserve one visible assistant failure and the optimistic user row when Gateway error and terminal completion events arrive in either order.
+  evidence:
+  - EV-0028
+
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role
   area: chat-transcript

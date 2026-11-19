@@ -1429,3 +1429,5 @@ Headless coverage exercises error-before-complete and completion-before-error, e
 Validation work is in progress; the focused PAR-0064 test passes.
 
 Validation addendum (2026-11-19T18:11:00Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (395 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS task continuity tests (18/18); PASS scoped generator (173 rows; 1 implemented, 12 partial, 160 unknown; 13 mapped); PASS rustfmt, Python compilation and diff check. UCM evidence and package validation follow. Live Gateway, retry/edit UI parity and source-paired acceptance remain open.
+
+UCM evidence addendum (2026-11-19T18:13:00Z): Added EV-0028 for both-order failed-turn event merging, bound to code commit `98cfb4a3235451ce274f2e9bb8bbdd2a982ec9bd`. PAR-0064 remains partial because pinned code-specific Retry/Edit behavior and live/source-paired acceptance are not implemented. Package validation follows.
