@@ -2814,3 +2814,17 @@ Correction (2026-11-19T19:50Z): EV-0035 implementation commit is `077677f1c8e184
 Validation addendum (2026-11-19T19:53Z): PASS focused `installed_skills_search_matches_name_category_and_description` test; PASS cargo fmt check; PASS progress generators (52 reviewed: 6 implemented, 46 partial, 447 unknown; chat/tool 20 mapped: 1 implemented, 19 partial, 153 unknown); PASS UCM validator (565 inventory/behavior/test entries, 14 source and 20 implementation receipts); PASS task validation and `git diff --check`. The first atomic documentation pass stopped because the YAML row label used a different `area` than the expected patch; no later documentation was written in that attempt. The exact row was then updated and all validators passed. Optional YAML parsing skipped because PyYAML is unavailable.
 
 UCM evidence addendum (2026-11-19T19:55Z): EV-0036 records installed Skills search field coverage and is bound to commit `27a76e5e671139ce10fa635f34a7c93107adcf81`; capability remains partial.
+
+
+## PAR-0252 installed Skills search evidence
+
+- **id:** hermes-par-0252-installed-skills-search-evidence-20261119
+- **timestamp:** 2026-11-19T19:56:00Z
+- **what:** Mapped the native tested Skills query across name, category, and description as partial against the pinned search filter.
+- **why:** Track search independently from list loading and skill lifecycle controls.
+- **components:** Skills filter helper, native unit test, implementation overlay and UCM crosswalk.
+- **type:** evidence mapping and documentation
+- **validation:** PASS focused Skills search test; progress and UCM validation run before publication.
+- **performance:** No material runtime change.
+- **risks:** Usage sort order, rendered interaction, profile switching, live Gateway and source-paired acceptance remain open.
+- **follow_up:** Match pinned usage ordering and add UI interaction/source-paired coverage.

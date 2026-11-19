@@ -1504,3 +1504,8 @@ PAR-0041 is mapped partial. Hermes Native reduces `tool.start`/`tool.complete` i
 ### Revision 249 — Installed Skills listing evidence (2026-11-19T19:51Z)
 
 PAR-0251 is partial. The pinned Desktop Capabilities page loads skills by profile and renders usage-sorted installed-skill rows; its shared search matches name, description, and category. Native renders Gateway `SkillInfo` rows and now has a focused regression proving case-insensitive name/category/description filtering, plus blank-query visibility of the full list. The skill list still lacks dedicated headless rendering coverage and does not establish pinned usage ordering or hub/toggle/detail/update lifecycle parity. Live Gateway, Windows, and source-paired acceptance remain open.
+
+
+### Revision 250 — Installed Skills search evidence (2026-11-19T19:56Z)
+
+PAR-0252 is partial. The pinned `filteredSkills` query and native shared filter both match installed skills across name, category, and description; the focused native test confirms those three fields plus blank-query behavior. Pinned results sort by usage descending and then name; native currently preserves the Gateway-provided order. Rendered search interaction, profile switch, live Gateway, physical Windows, and source-paired acceptance remain open.

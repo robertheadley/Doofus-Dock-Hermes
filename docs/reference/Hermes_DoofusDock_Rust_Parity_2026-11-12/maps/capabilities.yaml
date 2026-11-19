@@ -5043,7 +5043,7 @@ capabilities:
   name: Search installed skills
   area: skills-plugins
   claim: In the new native Rust DoofusDock UI, a user can search installed skills.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions

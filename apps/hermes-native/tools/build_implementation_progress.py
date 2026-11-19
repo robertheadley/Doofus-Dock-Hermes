@@ -526,6 +526,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "physical Windows clipboard behavior and source-paired visuals/acceptance remain unverified",
         ],
     },
+    "PAR-0252": {
+        "state": "partial",
+        "level": "native_installed_skill_search_fields_tested",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/skills/skills-data.ts#filteredSkills",
+            "apps/hermes-native/src/app.rs#filter_installed_skills",
+            "apps/hermes-native/src/app.rs#installed_skills_search_matches_name_category_and_description",
+            "apps/hermes-native/docs/PLAN.md#Revision 250",
+        ],
+        "gaps": [
+            "native matching preserves server list order instead of pinned usage-descending then alphabetical ordering",
+            "skill search UI/hint behavior and rendered results lack dedicated interaction coverage",
+            "profile changes, live Gateway, Windows interaction, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0251": {
         "state": "partial",
         "level": "native_installed_skill_rows_and_search_filter_test",
