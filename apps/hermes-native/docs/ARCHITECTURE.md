@@ -225,3 +225,8 @@ A `session.replay_gap` event requests a fresh `session.resume` snapshot for exac
 ## Composer attachment transport (2026-11-19)
 
 The native composer stages selected image/file bytes through the Hermes Gateway: images use `image.attach_bytes`, other files use `file.attach` with a data URL, and both are bounded at 16 MiB. Requests and receipts carry runtime session and profile identity; file references are prepended to prompt text, while image paths and MIME types are sent in the pinned `prompt.submit.attachments` field. Per-session composer state is cached while switching chats. Prepared image drafts are now journaled atomically and can be restored only into the exact connection/profile/session composer; Restore does not send. The journal is retired only after an admission receipt. Live Gateway validity of staged paths after restart, previews, clipboard/drop input, path-sharing policy, and source-paired behavior remain unverified.
+
+
+## Failed chat turn projection
+
+Gateway `error` events and terminal `message.complete` frames with `status: error` are reduced into one assistant transcript row. The reducer merges either event order, preserves the optimistic user message and any explicitly partial assistant output, retains structured `error_surface`, and releases the matching pending submission. Error events update cached peer-window transcripts. Code-keyed retry/edit actions, live error taxonomy and source-paired acceptance remain open.

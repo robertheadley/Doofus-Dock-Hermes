@@ -1,5 +1,5 @@
 {
-  "revision": 22,
+  "revision": 23,
   "schema_version": 1,
   "tasks": [
     {
@@ -2098,7 +2098,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -2107,11 +2107,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T18:11:01Z",
+              "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-show-per-turn-failure-and-retry-without-duplication",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -2122,10 +2122,13 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0064",
               "title": "PAR-0064 Show per-turn failure and retry without duplication",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#failed_turn_events_keep_user_row_merge_in_either_order_and_release_busy_state",
+                "apps/hermes-native/src/app.rs#apply_stream_event_to_transcript"
+              ]
             },
             {
               "agent_identity": {
@@ -16202,5 +16205,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T17:57:13Z"
+  "updated_at": "2026-11-19T18:11:01Z"
 }

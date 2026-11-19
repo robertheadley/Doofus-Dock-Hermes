@@ -1418,3 +1418,14 @@ Validation addendum (2026-11-19T17:54:06Z): PASS focused PAR-0063 headless test;
 Full validation addendum (2026-11-19T17:56:00Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (394 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (pre-existing dead-code warnings only); PASS Doofus task protocol tests (18/18); PASS UCM package validator (565 target behaviors, 11 implementation receipts; optional PyYAML parse skipped); PASS scoped progress generator (173 rows; 1 implemented, 11 partial, 161 unknown; 12 mapped evidence); PASS rustfmt, Python compilation and `git diff --check`. Live Gateway reference survival, packaged Windows restart, source-paired visuals, and formal acceptance remain unverified.
 
 UCM evidence addendum (2026-11-19T17:59:00Z): Added EV-0027 for the tested no-send image-draft recovery behavior, bound to code commit `981609e38e6d08afad19db09cb707d68ce878b46`. The capability remains partial because staged Gateway reference survival after restart and source-paired acceptance have not been verified. Package validator passes; optional PyYAML schema parse is unavailable in this environment.
+
+
+### Revision 240 — Surface failed turns in the transcript (2026-11-19T18:09Z)
+
+Project pinned `error` events and terminal `message.complete` failures into a single assistant error row. The optimistic user message remains, streamed partial output is retained only when the terminal frame says it is partial, structured `error_surface` is preserved, and matching busy state is released. Error/complete events merge in either order and broadcast to cached peer windows. PAR-0064 is partial: source-specific retry/edit actions and error-code policy remain open.
+
+Headless coverage exercises error-before-complete and completion-before-error, ensures one error card, verifies the user row survives, confirms partial output and structured surface fields, and checks failed-turn busy state is released. Current 173-row status is 1 implemented, 12 partial, 160 unknown; 13 requirements have mapped evidence. Live Gateway and source-paired acceptance remain open for all 173.
+
+Validation work is in progress; the focused PAR-0064 test passes.
+
+Validation addendum (2026-11-19T18:11:00Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (395 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS task continuity tests (18/18); PASS scoped generator (173 rows; 1 implemented, 12 partial, 160 unknown; 13 mapped); PASS rustfmt, Python compilation and diff check. UCM evidence and package validation follow. Live Gateway, retry/edit UI parity and source-paired acceptance remain open.

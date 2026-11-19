@@ -15130,7 +15130,12 @@ fn render_message() -> &'static str {
     ) {
         if !matches!(
             event_type,
-            "tool.start" | "tool.complete" | "message.start" | "message.delta" | "message.complete"
+            "tool.start"
+                | "tool.complete"
+                | "message.start"
+                | "message.delta"
+                | "message.complete"
+                | "error"
         ) {
             return;
         }
@@ -15282,6 +15287,21 @@ fn render_message() -> &'static str {
                 self.pending_submissions.remove(&key);
             }
         }
+        if matches!(event_type, "error")
+            || event_type == "message.complete"
+                && payload.get("status").and_then(|value| value.as_str()) == Some("error")
+        {
+            if let Some(runtime_session_id) = session_id {
+                self.settle_failed_turn(
+                    runtime_session_id,
+                    event
+                        .get("profile")
+                        .or_else(|| payload.get("profile"))
+                        .and_then(|value| value.as_str()),
+                    payload.get("admission_id").and_then(|value| value.as_str()),
+                );
+            }
+        }
         if event_type == "message.complete"
             && session_id.is_some_and(|session_id| {
                 self.session_chat_views.values().any(|view| {
@@ -15307,7 +15327,7 @@ fn render_message() -> &'static str {
                 &payload,
                 execution_generation,
             );
-            if event_type == "message.complete"
+            if matches!(event_type, "message.complete" | "error")
                 && let Some(runtime_session_id) = session_id
             {
                 self.broadcast_local_transcript_changed(
@@ -15474,11 +15494,24 @@ fn render_message() -> &'static str {
                         .unwrap_or("tool");
                     self.status = format!("Running {name}…");
                 } else if event_type == "message.complete" {
-                    self.status = "Hermes response complete".into();
+                    self.status = if payload.get("status").and_then(|value| value.as_str())
+                        == Some("error")
+                    {
+                        "Hermes turn failed"
+                    } else {
+                        "Hermes response complete"
+                    }
+                    .into();
                 }
             }
             "message.start" => self.status = "Hermes is thinking…".into(),
             "error" => {
+                apply_stream_event_to_transcript(
+                    &mut self.transcript,
+                    event_type,
+                    &payload,
+                    execution_generation,
+                );
                 self.status = payload
                     .get("message")
                     .and_then(|value| value.as_str())
@@ -15487,7 +15520,7 @@ fn render_message() -> &'static str {
             }
             _ => {}
         }
-        if event_type == "message.complete"
+        if matches!(event_type, "message.complete" | "error")
             && let Some(runtime_session_id) = session_id
         {
             self.broadcast_local_transcript_changed(
@@ -15497,6 +15530,29 @@ fn render_message() -> &'static str {
                     .or_else(|| payload.get("profile"))
                     .and_then(|value| value.as_str()),
             );
+        }
+    }
+
+    fn settle_failed_turn(
+        &mut self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+        admission_id: Option<&str>,
+    ) {
+        let matches = self
+            .pending_submissions
+            .iter()
+            .filter_map(|(key, pending)| {
+                (pending.session_id == runtime_session_id
+                    && profile.is_none_or(|profile| pending.profile.as_deref() == Some(profile))
+                    && admission_id.is_none_or(|admission_id| {
+                        pending.admission_id.as_deref() == Some(admission_id)
+                    }))
+                .then(|| key.clone())
+            })
+            .collect::<Vec<_>>();
+        if let [key] = matches.as_slice() {
+            self.pending_submissions.remove(key);
         }
     }
 
@@ -24162,6 +24218,15 @@ fn apply_stream_event_to_transcript(
             upsert_tool_row(transcript, event_type, payload, execution_generation);
         }
         "message.start" => {
+            for message in transcript.iter_mut() {
+                if message
+                    .get("error_event_pending")
+                    .and_then(|value| value.as_bool())
+                    == Some(true)
+                {
+                    message["error_event_pending"] = serde_json::Value::Bool(false);
+                }
+            }
             if !transcript.iter().any(|message| {
                 message.get("role").and_then(|value| value.as_str()) == Some("assistant")
                     && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
@@ -24203,6 +24268,62 @@ fn apply_stream_event_to_transcript(
                 .get("text")
                 .or_else(|| payload.get("rendered"))
                 .and_then(|value| value.as_str());
+            if payload.get("status").and_then(|value| value.as_str()) == Some("error") {
+                let error = payload
+                    .get("error")
+                    .and_then(|value| value.as_str())
+                    .filter(|error| !error.trim().is_empty())
+                    .or_else(|| final_text.filter(|text| !text.trim().is_empty()))
+                    .unwrap_or("Hermes reported an error");
+                let streaming = transcript.iter().rposition(|message| {
+                    message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                        && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+                });
+                let pending_error = transcript.iter().rposition(|message| {
+                    message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                        && message
+                            .get("error_event_pending")
+                            .and_then(|value| value.as_bool())
+                            == Some(true)
+                });
+                let index = streaming.or(pending_error);
+                if let Some(message) = index.and_then(|index| transcript.get_mut(index)) {
+                    if payload.get("partial").and_then(|value| value.as_bool()) == Some(true) {
+                        if let Some(text) = final_text {
+                            message["content"] = serde_json::Value::String(text.to_owned());
+                        }
+                    } else {
+                        message["content"] = serde_json::Value::String(String::new());
+                    }
+                    message["streaming"] = serde_json::Value::Bool(false);
+                    message["error"] = serde_json::Value::String(error.to_owned());
+                    if let Some(surface) = payload
+                        .get("error_surface")
+                        .filter(|value| value.is_object())
+                    {
+                        message["error_surface"] = surface.clone();
+                    }
+                    message["error_event_pending"] = serde_json::Value::Bool(true);
+                    message["completedAt"] = serde_json::json!(
+                        payload
+                            .get("timestamp")
+                            .and_then(json_epoch_seconds)
+                            .unwrap_or_else(unix_now_seconds)
+                    );
+                } else {
+                    transcript.push(serde_json::json!({
+                        "role":"assistant",
+                        "content":if payload.get("partial").and_then(|value| value.as_bool()) == Some(true) { final_text.unwrap_or_default() } else { "" },
+                        "streaming":false,
+                        "error":error,
+                        "error_surface":payload.get("error_surface").filter(|value| value.is_object()),
+                        "error_event_pending":true,
+                        "timestamp":payload.get("started_at").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
+                        "completedAt":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
+                    }));
+                }
+                return;
+            }
             if let Some(message) = transcript.iter_mut().rev().find(|message| {
                 message.get("role").and_then(|value| value.as_str()) == Some("assistant")
                     && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
@@ -24211,6 +24332,7 @@ fn apply_stream_event_to_transcript(
                     message["content"] = serde_json::Value::String(text.to_owned());
                 }
                 message["streaming"] = serde_json::Value::Bool(false);
+                message["error_event_pending"] = serde_json::Value::Bool(false);
                 message["completedAt"] = serde_json::json!(
                     payload
                         .get("timestamp")
@@ -24223,6 +24345,44 @@ fn apply_stream_event_to_transcript(
                     "content":text,
                     "timestamp":payload.get("started_at").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
                     "completedAt":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
+                }));
+            }
+        }
+        "error" => {
+            let error = payload
+                .get("message")
+                .and_then(|value| value.as_str())
+                .filter(|message| !message.trim().is_empty())
+                .unwrap_or("Hermes reported an error");
+            let streaming = transcript.iter().rposition(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                    && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            });
+            let pending_error = transcript.iter().rposition(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                    && message
+                        .get("error_event_pending")
+                        .and_then(|value| value.as_bool())
+                        == Some(true)
+            });
+            let completion_already_seen = streaming.is_none() && pending_error.is_some();
+            if let Some(message) = streaming
+                .or(pending_error)
+                .and_then(|index| transcript.get_mut(index))
+            {
+                message["streaming"] = serde_json::Value::Bool(false);
+                message["error"] = serde_json::Value::String(error.to_owned());
+                message["error_event_pending"] = serde_json::Value::Bool(!completion_already_seen);
+                message["completedAt"] = serde_json::json!(unix_now_seconds());
+            } else {
+                transcript.push(serde_json::json!({
+                    "role":"assistant",
+                    "content":"",
+                    "streaming":false,
+                    "error":error,
+                    "error_event_pending":true,
+                    "timestamp":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
+                    "completedAt":unix_now_seconds()
                 }));
             }
         }
@@ -24343,7 +24503,7 @@ fn transcript_message(message: &serde_json::Value) -> (String, String) {
         .and_then(|value| value.as_str())
         .unwrap_or("Hermes");
     let content = message.get("content").unwrap_or(&serde_json::Value::Null);
-    let body = match content {
+    let mut body = match content {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Array(parts) => parts
             .iter()
@@ -24358,7 +24518,23 @@ fn transcript_message(message: &serde_json::Value) -> (String, String) {
             .join("\n"),
         _ => String::new(),
     };
-    (role.to_owned(), body)
+    let error = message
+        .get("error")
+        .and_then(|value| value.as_str())
+        .filter(|error| !error.trim().is_empty());
+    let speaker = if error.is_some() {
+        format!("{role} · Error")
+    } else {
+        role.to_owned()
+    };
+    if let Some(error) = error {
+        body = if body.trim().is_empty() {
+            error.to_owned()
+        } else {
+            format!("{error}\n\nPartial response:\n{body}")
+        };
+    }
+    (speaker, body)
 }
 
 fn transcript_search_matches(messages: &[serde_json::Value], query: &str) -> Vec<usize> {
@@ -35072,6 +35248,110 @@ mod tests {
         assert_eq!(app.status, "Hermes response complete");
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn failed_turn_events_keep_user_row_merge_in_either_order_and_release_busy_state() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript.push(serde_json::json!({
+            "id":"submission-1",
+            "submission_id":"submission-1",
+            "role":"user",
+            "content":"Ask Hermes to help"
+        }));
+        seed_pending_submission(&mut app, "submission-1", Some("admission-1"), false);
+        app.handle_server_event(serde_json::json!({
+            "type":"message.start","session_id":"runtime-session","profile":"work",
+            "payload":{"turn_id":"turn-1"}
+        }));
+        app.handle_server_event(serde_json::json!({
+            "type":"message.delta","session_id":"runtime-session","profile":"work",
+            "payload":{"text":"Partial answer"}
+        }));
+        app.handle_server_event(serde_json::json!({
+            "type":"error","session_id":"runtime-session","profile":"work",
+            "payload":{"message":"Agent initialization timed out; your message was not sent"}
+        }));
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "error event adds one assistant card"
+        );
+        assert_eq!(
+            app.transcript[0]["role"], "user",
+            "optimistic user row survives"
+        );
+        assert_eq!(
+            app.transcript[1]["streaming"], false,
+            "failed turn stops streaming"
+        );
+        assert!(
+            app.pending_submissions.is_empty(),
+            "failed turn releases the busy composer"
+        );
+
+        app.handle_server_event(serde_json::json!({
+            "type":"message.complete","session_id":"runtime-session","profile":"work",
+            "payload":{
+                "admission_id":"admission-1","status":"error","partial":true,
+                "text":"Partial answer","error":"provider initialization timeout",
+                "error_surface":{"code":"agent_init_failed","layer":"runtime","retryable":true}
+            }
+        }));
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "terminal frame merges into the same card"
+        );
+        assert_eq!(app.transcript[1]["content"], "Partial answer");
+        assert_eq!(
+            app.transcript[1]["error"],
+            "provider initialization timeout"
+        );
+        assert_eq!(
+            app.transcript[1]["error_surface"]["code"],
+            "agent_init_failed"
+        );
+        let (speaker, body) = transcript_message(&app.transcript[1]);
+        assert_eq!(speaker, "assistant · Error");
+        assert!(body.contains("provider initialization timeout"));
+        assert!(body.contains("Partial answer"));
+
+        let mut reverse_order = Vec::new();
+        reverse_order.push(serde_json::json!({"role":"user","content":"Ask"}));
+        apply_stream_event_to_transcript(
+            &mut reverse_order,
+            "message.complete",
+            &serde_json::json!({
+                "status":"error","error":"provider failed",
+                "error_surface":{"code":"agent_init_failed","retryable":true}
+            }),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut reverse_order,
+            "error",
+            &serde_json::json!({"message":"Agent could not start; retry once ready"}),
+            None,
+        );
+        assert_eq!(
+            reverse_order.len(),
+            2,
+            "reverse event order still yields one card"
+        );
+        assert_eq!(
+            reverse_order[1]["error"],
+            "Agent could not start; retry once ready"
+        );
+        assert_eq!(
+            reverse_order[1]["error_surface"]["code"],
+            "agent_init_failed"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

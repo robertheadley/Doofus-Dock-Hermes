@@ -2596,3 +2596,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime performance claim.
 - **risks:** Live staged-reference validity and source-paired acceptance remain open.
 - **follow_up:** Continue the next dependency-ready chat/tool requirement.
+
+
+### PAR-0064 failed-turn transcript projection — 2026-11-19T18:09:01Z
+
+- **id:** hermes-par-0064-failed-turn-transcript-20261119
+- **timestamp:** 2026-11-19T18:09:01Z
+- **what:** Projected Gateway error events and terminal failed completion frames into one assistant transcript error row; preserved user/partial output, structured error surface, peer notification, and matching busy-state release.
+- **why:** Avoid a blank/forever-busy chat after Hermes initialization/runtime failures and prevent duplicate cards when Gateway event order varies.
+- **components:** Hermes Native transcript reducer, active/cached session state, 173-row progress overlay.
+- **type:** feature
+- **validation:** Focused headless regression passes for both event orders and transcript rendering; full suite, workspace check, task protocol and package checks pending.
+- **performance:** Reducer remains in-memory and bounded by existing transcript limits; no benchmark claim.
+- **risks:** Retry/edit controls and code-specific error policy are not implemented; live Gateway and source-paired acceptance remain open.
+- **follow_up:** Validate the full suite, record exact-SHA UCM evidence, then implement safe retry/edit behavior.

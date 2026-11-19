@@ -53,6 +53,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only PAR-0064 source contract completed; identified event-order-independent deduplicated assistant error bubble as next slice. No repository edits.",
+      "observed_at": "2026-11-19T18:03:02Z",
+      "pid": null,
+      "process_id": "subagent:par0064-contract",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0069..0094 audit completed; identified broad existing partial support, no session branch/fork command, and mapped owner/reconnect gaps. No edits.",
       "observed_at": "2026-11-19T16:57:56Z",
       "pid": null,
@@ -131,12 +141,6 @@
     },
     {
       "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/src/lib.rs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
       "owner": "codex",
       "path": "docs/CHANGELOG.agent.md",
       "status": " M"
@@ -146,27 +150,21 @@
       "owner": "codex",
       "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "codex",
-      "path": "apps/hermes-native/src/prepared_image_drafts.rs",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation --locked; cargo check --workspace --all-targets --locked; python apps/hermes-native/tools/test_doofus_task.py; python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+    "command": "cargo test -p hermes-native --features agent-automation --locked; cargo check --workspace --all-targets --locked; python apps/hermes-native/tools/test_doofus_task.py",
     "evidence": [
-      "apps/hermes-native/src/app.rs#prepared_image_restore_is_scoped_and_does_not_send",
-      "apps/hermes-native/src/prepared_image_drafts.rs#prepared_image_drafts_round_trip_and_retire_atomically"
+      "apps/hermes-native/src/app.rs#failed_turn_events_keep_user_row_merge_in_either_order_and_release_busy_state"
     ],
     "state": "tested",
-    "summary": "PAR-0063 now has a bounded atomic image-draft journal and explicit exact-owner Restore action. Restore does not send; draft retires only on admission. Focused test and full suite pass. Current base is main/origin 45d2216; worktree edits are limited to PAR-0063 implementation, progress and docs plus task records. Scoped status is 1 implemented, 11 partial, 161 unknown; 12/173 mapped.",
-    "verified_at": "2026-11-19T17:58:29Z"
+    "summary": "PAR-0064 now projects error events and terminal failed message.complete frames into one assistant transcript row in either event order. Preserves the user row, explicit partial output and error_surface, clears matching pending/busy state, and broadcasts cached views. Full suite 395+15+3, workspace check and continuity tests pass. Current main/origin is 1f22358; worktree edits are restricted to PAR-0064 code, evidence and project docs/state.",
+    "verified_at": "2026-11-19T18:11:15Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
     "hermes-par-0063",
+    "hermes-par-0064",
     "hermes-par-0074",
     "hermes-par-0333",
     "hermes-par-0334",
@@ -175,7 +173,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T18:58:29Z",
+    "lease_expires_at": "2026-11-19T19:11:15Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -519,9 +517,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "fe42a896-ba89-420d-b9a4-3272fa83f1da",
+  "last_event_id": "0ed03d87-0ce1-4294-b1a6-8b1da5c63aa8",
   "last_operation": {
-    "request_id": "fe42a896-ba89-420d-b9a4-3272fa83f1da",
+    "request_id": "0ed03d87-0ce1-4294-b1a6-8b1da5c63aa8",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -540,7 +538,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit and push PAR-0063 recovery slice to main; then record exact-SHA UCM partial evidence and continue next chat/tool requirement. Live Gateway staged-path validity after restart remains open.",
+  "recommended_next_action": "Commit and publish PAR-0064 partial failed-turn projection, then record exact-SHA UCM evidence. Continue with code-keyed retry/edit actions and next chat/tool gaps; live Gateway/source-pair gates remain open.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -605,7 +603,6 @@
     "hermes-par-0060",
     "hermes-par-0061",
     "hermes-par-0062",
-    "hermes-par-0064",
     "hermes-par-0065",
     "hermes-par-0066",
     "hermes-par-0067",
@@ -1040,7 +1037,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "0f16f6e45f84177c1c61d9dcadf251a5968b17cac38172c23e4ec13ff13974ad",
+    "change_fingerprint": "162e6a0f3051a8dc04c1dc6b3a03db80652d6d5aa4a8c7889e0682c66419c421",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1083,33 +1080,25 @@
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/src/lib.rs",
-        "status": " M"
-      },
-      {
         "path": "docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
         "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/prepared_image_drafts.rs",
-        "status": "??"
       }
     ],
-    "head_commit": "45d221634958f78662d8db219a9a0a1b579e0b44",
+    "head_commit": "1f22358af7f5077cddd634b83c2efd47a35a8d35",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 213,
+  "revision": 218,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 213,
+  "state_revision": 218,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0063",
-  "task_ledger_revision": 22,
+  "task_id": "hermes-par-0064",
+  "task_ledger_revision": 23,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2064,5 +2053,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T17:58:29Z"
+  "updated_at": "2026-11-19T18:11:15Z"
 }
