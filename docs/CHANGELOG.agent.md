@@ -2492,3 +2492,6 @@ Validation/publication addendum (2026-11-19T15:53:08Z): PASS the 173-row generat
 - **follow_up:** Continue exact-owner routing for remaining session APIs, then add multi-connection lifecycle and live reconnect coverage.
 
 Validation addendum (2026-11-19T16:44:23Z): PASS `cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked` (382 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS `cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check`; PASS task protocol tests (18/18); PASS task schema validation at revision 192; PASS 173-row scoped progress generator (1 implemented, 8 partial, 164 unknown; 9 rows mapped); PASS `git diff --check`. Live Hermes Gateway behavior, installed Windows behavior, source-paired visuals, and formal acceptance remain unverified.
+
+
+Publication addendum (2026-11-19T16:47:12Z): Commit `b349bf96378e250c8ec10f2dae6c9e28da1659b2` was pushed to `origin/main`; a fresh fetch verified exact SHA equality and a clean worktree.
