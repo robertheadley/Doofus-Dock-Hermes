@@ -2310,3 +2310,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** no runtime change.
 - **risks:** Loopback behavior does not prove production Hermes behavior or exact `(connectionId, profile)` routing.
 - **follow_up:** Implement the source owner route and obtain controlled live gateway evidence.
+
+
+### Publish EV-0019 loopback evidence on main — 2026-11-19T01:04:04Z
+
+- **id:** hermes-par-0510-ev0019-publish-20261119
+- **timestamp:** 2026-11-19T01:04:04Z
+- **what:** Published EV-0019, the loopback scenario declaration, and validation notes as `31c5c43` on `main`.
+- **why:** Keep the capability map synchronized with the tested implementation commit.
+- **components:** UCM map/evidence, parity plan, execution log.
+- **type:** evidence publication.
+- **validation:** Targeted UCM report confirms headless and loopback scenarios covered, live/failure scenarios open; package validator passes; fetched `origin/main` equals `31c5c43`.
+- **performance:** no runtime impact.
+- **risks:** Historical UCM global errors remain; no real backend or Windows visual proof was added.
+- **follow_up:** Implement source owner routing and pursue live-runtime parity.
