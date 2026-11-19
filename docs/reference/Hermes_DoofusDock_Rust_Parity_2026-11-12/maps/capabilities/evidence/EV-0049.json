@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0049",
+  "capability_id": "ui-expand-tool-arguments-and-output",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "advanced-mode-accessible-tool-payload-disclosure-and-simple-mode-guard",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "fc53c4dafb7d59fd157ce17b5447f5b0c709edca",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui/AccessKit UI automation and Hermes Native transcript fixtures. No live Gateway, installed desktop runtime, or physical Windows interaction used.",
+  "notes": "PAR-0042 exposes a collapsed-by-default Tool payload disclosure for tool_call transcript rows in Advanced interface mode. AccessKit interaction opens it and reveals both formatted Arguments and Result. Simple mode retains the normal tool row and hides the raw payload. Formatting handles objects, persisted JSON strings, scalar text, null fallback fields, missing payload, and a 20,000-character display limit; serialization is deferred until expansion. Full cargo test -p hermes-native --features agent-automation --locked passed 431 library, 15 automation protocol, 3 launcher tests, and doc tests. Locked workspace/all-target check, rustfmt, implementation/chat-tool progress generators, task validation, and UCM package validation passed. The pinned independent persisted product/technical tool-view preference remains a gap. Live Gateway, installed Windows, and source-paired acceptance remain open; capability status is partial. Test locators: apps/hermes-native/src/app.rs#tool_payload_disclosure_expands_arguments_and_result_accessibly; apps/hermes-native/src/app.rs#technical_tool_payload_is_hidden_in_simple_interface_mode; apps/hermes-native/src/app.rs#tool_payload_trace_formats_json_and_bounds_large_results."
+}

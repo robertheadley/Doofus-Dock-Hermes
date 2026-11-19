@@ -183,6 +183,7 @@
     "hermes-par-0017",
     "hermes-par-0040",
     "hermes-par-0041",
+    "hermes-par-0042",
     "hermes-par-0043",
     "hermes-par-0057",
     "hermes-par-0058",
@@ -550,6 +551,18 @@
       "state": "succeeded"
     },
     {
+      "evidence": [],
+      "kind": "git_push_main",
+      "note": "Publish behavior commit fc53c4d and EV-0049/UCM/task evidence directly to main; fetch and verify exact origin/main equality.",
+      "observed_at": "2026-11-19T23:30:04Z",
+      "operation_id": "hermes-par0042-main-publish-20261119",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
+    },
+    {
       "evidence": [
         "docs/CHANGELOG.agent.md#hermes-par0043-ev0048"
       ],
@@ -776,11 +789,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0042-validated-checkpoint-20261119",
+  "last_event_id": "hermes-par0042-push-start-20261119",
   "last_operation": {
-    "request_id": "hermes-par0042-validated-checkpoint-20261119",
+    "request_id": "hermes-par0042-push-start-20261119",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "external_operation.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -839,7 +852,6 @@
     "hermes-par-0037",
     "hermes-par-0038",
     "hermes-par-0039",
-    "hermes-par-0042",
     "hermes-par-0044",
     "hermes-par-0045",
     "hermes-par-0046",
@@ -1346,13 +1358,13 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 336,
+  "revision": 338,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 336,
+  "state_revision": 338,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0042",
-  "task_ledger_revision": 51,
+  "task_ledger_revision": 52,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2457,5 +2469,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T23:27:33Z"
+  "updated_at": "2026-11-19T23:30:04Z"
 }

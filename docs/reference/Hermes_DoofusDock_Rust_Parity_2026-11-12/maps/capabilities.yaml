@@ -1027,7 +1027,7 @@ capabilities:
   name: Expand tool arguments and output
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can expand tool arguments and output.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1039,9 +1039,9 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
 - id: ui-render-live-tool-progress
   name: Render live tool progress
   area: chat-transcript

@@ -3092,3 +3092,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** Payload serialization is deferred until the disclosure opens; displayed payload is capped at 20,000 characters and nested view height at 180 points.
 - **risks:** Native Advanced mode currently gates payload visibility; the pinned source has a separate persisted product/technical tool-view preference. Live Gateway, installed Windows, and source-paired acceptance remain unverified.
 - **follow_up:** Bind EV-0049 to the implementation commit, mark PAR-0042 tested partial, and publish directly to main.
+
+- **id:** hermes-par0042-ev0049
+- **timestamp:** 2026-11-19T23:30:00Z
+- **what:** Added EV-0049 for the tested partial Arguments/Result disclosure and recorded PAR-0042 as tested in the task ledger.
+- **why:** Bind the feature claim to the exact implementation revision while preserving the separate tool-view setting and runtime/Windows acceptance gaps.
+- **components:** UCM capability map, crosswalk, UI inventory, full map, evidence receipt, Doofus task ledger.
+- **type:** evidence and progress tracking
+- **validation:** PASS UCM package validator (565 target behaviors, 565 inventory rows, 14 source inspection receipts, 34 implementation receipts); JSON receipt parse; task ledger validation at revision 337.
+- **performance:** No benchmark change.
+- **risks:** PyYAML is not installed, so optional YAML parsing was skipped; package validator passes. Live Gateway and installed Windows behavior remain unverified.
+- **follow_up:** Publish behavior and evidence commits on main and verify exact remote SHA equality.
