@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0036",
+  "capability_id": "ui-list-installed-skills",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "installed-skills-case-insensitive-search-fields",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "27a76e5e671139ce10fa635f34a7c93107adcf81",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust unit test and pinned Desktop source review; no live Gateway, installed UI, or physical Windows input used.",
+  "notes": "The focused installed_skills_search_matches_name_category_and_description test passes for a case-insensitive name match, category match, description match, and blank-query full list. The tested filter is used by the Skills capabilities renderer over Gateway SkillInfo rows. The current native list has no dedicated rendered-row test and does not establish the pinned usage ordering or category metadata presentation. Skill toggles, detail/source, hub/install/update flows, profile-switch cache behavior, live Gateway and source-paired acceptance remain separate/open; capability stays partial."
+}
