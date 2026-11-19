@@ -2406,3 +2406,29 @@ Validation addendum: The targeted UCM report marks named layout preset persisten
 - **performance:** no additional background Gateway actor; the app still holds one discovery.
 - **risks:** No UI picker or concurrent per-connection discovery exists; session owner routing remains incomplete.
 - **follow_up:** Expose saved connection management in Settings, then route owner-tagged session data through per-connection Gateway actors.\n
+
+### Selected Gateway startup main publication — 2026-11-19T02:36:40Z
+
+- **id:** hermes-selected-gateway-startup-main-20261119
+- **timestamp:** 2026-11-19T02:36:40Z
+- **what:** Published selected-descriptor startup routing as commit d4c73d7c0afd721b8293d360aca212e22a8dcc9a on main.
+- **why:** Make the saved connection selection control startup while preserving established Hermes auth and execution paths.
+- **components:** Native app startup, workspace descriptors, parity plan/backlog and task ledger.
+- **type:** main publication.
+- **validation:** Fetched origin/main and confirmed exact equality with local HEAD at d4c73d7c0afd721b8293d360aca212e22a8dcc9a.
+- **performance:** no second Gateway actor is created; one selected discovery remains active.
+- **risks:** No user-facing saved-connection picker or session owner routing yet.
+- **follow_up:** Implement the picker/safe-switch flow and exact owner routing across caches, Gateway messages and outcomes.
+
+### PAR-0510 session-owner boundary and Gateway retirement — 2026-11-19T15:23Z
+
+- **id:** hermes-par-0510-owner-boundary-20261119
+- **timestamp:** 2026-11-19T15:23:40Z
+- **what:** Added application-level saved-owner resolution for sidebar session open/window/mutation actions and a consuming GatewayDiscovery shutdown API that drops result receivers before sender channels.
+- **why:** Prevent owner-tagged session rows from dispatching through the currently selected but different Hermes connection, and establish a bounded actor-retirement primitive for future connection switching.
+- **components:** Native app session actions, GatewayDiscovery actor lifecycle, native README/architecture, PAR-0510 plan/backlog.
+- **type:** owner routing and lifecycle foundation.
+- **validation:** PASS focused owner guard (1/1); PASS full suite (378 library + 15 automation protocol + 3 launcher); PASS workspace all-target check; PASS rustfmt check. A prior diff check noted the pending publication changelog's blank EOF; rerun after this append.
+- **performance:** registry resolution scans the small saved descriptor list per session action; shutdown has no wait/join and closes receiver/sender channels synchronously.
+- **risks:** No connection picker or multi-actor route exists yet. An already-sent HTTP mutation or network attach is not canceled by shutdown. Session cache keys and Gateway results still need exact owner tags.
+- **follow_up:** Add connection-aware session cache/request/result ownership and prove same-ID cross-connection isolation before exposing live connection switching.

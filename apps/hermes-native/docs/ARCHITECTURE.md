@@ -36,6 +36,10 @@ For idle inbound `approval` requests, the actor forwards the request ID and para
 
 Session-resume commands carry a generated request ID plus stored session ID and profile. The actor echoes that owner tuple in `SessionResumed`; the UI applies a result only when the same profile-scoped cached view still owns that pending request. Success validates the returned session/profile before hydration; errors latch to that view and expose Retry. Disconnect clears pending ownership, while reconnect allows a fresh resume. Authenticated live recovery, authoritative not-found handling and multiwindow ownership remain open.
 
+## Saved Gateway session owner boundary
+
+Workspace preferences persist secret-free local/remote Gateway descriptors and a selected descriptor ID. Session rows may carry `connection_id`; before the native sidebar opens or mutates such a row, the app resolves it through `SessionOwnerRegistry` and requires the resolved owner to equal the selected descriptor. Untagged legacy rows route through that selected descriptor. Unknown and non-selected tagged owners are refused before dispatch. This is a fail-closed boundary for the current single-`GatewayDiscovery` app, not multi-connection support. `GatewayDiscovery::shutdown` drops its status/event receivers before closing command senders, so queued late events cannot be consumed by the retired UI; its socket actor notices channel closure after the 100 ms read timeout. It does not join/cancel already-running HTTP work or an attach blocked in network setup, and it does not replace the required connection owner on cached state or request/result messages.
+
 Read-only diagnostics have narrower scope than mutating actions. Every mutation validates schema, actor, permission, expected state/layout revision and idempotency key. Asynchronous acceptance is not success; report terminal outcomes. The bridge must not be an arbitrary shell/filesystem proxy or bypass Hermes approval.
 
 ## Security and lifecycle

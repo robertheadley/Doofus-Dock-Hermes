@@ -1,5 +1,5 @@
 {
-  "revision": 19,
+  "revision": 20,
   "schema_version": 1,
   "tasks": [
     {
@@ -14327,8 +14327,8 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-19T02:32:53Z",
-              "lease_id": "464e9f3d-4005-4815-9d5b-2f48f45eb944",
+              "last_updated_at": "2026-11-19T15:26:56Z",
+              "lease_id": "40c3430e-7dfd-417b-9526-1b9d7d9e7df3",
               "objective": "ui-reattach-to-in-flight-turn-without-duplicating-submit",
               "outputs": [],
               "owner": "codex",
@@ -14352,7 +14352,8 @@
                 "apps/hermes-native/docs/PLAN.md#Revision 227",
                 "apps/hermes-native/src/session_owner.rs#registry_fails_closed_for_unknown_tagged_owner",
                 "apps/hermes-native/src/layout.rs#legacy_remote_gateway_preference_migrates_to_selected_connection",
-                "apps/hermes-native/src/layout.rs#selected_gateway_connection_changes_persist_and_local_selection_keeps_remote_saved"
+                "apps/hermes-native/src/layout.rs#selected_gateway_connection_changes_persist_and_local_selection_keeps_remote_saved",
+                "apps/hermes-native/src/app.rs#session_actions_fail_closed_for_non_active_connection_owners"
               ]
             },
             {
@@ -16195,5 +16196,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T02:32:53Z"
+  "updated_at": "2026-11-19T15:26:56Z"
 }

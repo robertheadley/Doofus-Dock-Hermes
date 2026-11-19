@@ -50,6 +50,18 @@
     {
       "change_type": "modified",
       "owner": "codex",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
       "path": "apps/hermes-native/docs/BACKLOG.md",
       "status": " M"
     },
@@ -62,13 +74,19 @@
     {
       "change_type": "modified",
       "owner": "codex",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
       "path": "apps/hermes-native/src/app.rs",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "codex",
-      "path": "apps/hermes-native/src/layout.rs",
+      "path": "apps/hermes-native/src/gateway.rs",
       "status": " M"
     },
     {
@@ -85,13 +103,14 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test --workspace --features agent-automation --locked; cargo check --workspace --all-targets --locked; cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check; git diff --check; python apps/hermes-native/tools/test_doofus_task.py; python apps/hermes-native/tools/build_implementation_progress.py; python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+    "command": null,
     "evidence": [
-      "apps/hermes-native/src/layout.rs#selected_gateway_connection_changes_persist_and_local_selection_keeps_remote_saved"
+      "apps/hermes-native/src/app.rs#session_actions_fail_closed_for_non_active_connection_owners",
+      "apps/hermes-native/src/gateway.rs#gateway_discovery_shutdown_closes_actor_and_rejects_late_events"
     ],
-    "state": "tested",
-    "summary": "Stable descriptors now include persistent selection; app startup honors the selected local or remote descriptor. Full workspace/continuity/package/progress checks pass. The saved-connection picker and multi-connection session/Gateway routing remain open.",
-    "verified_at": "2026-11-19T02:32:54Z"
+    "state": "in_progress",
+    "summary": "Added fail-closed session-owner validation for native session open/window/pin/unread/rename/archive/delete/export actions and a GatewayDiscovery shutdown API; focused and full native tests, workspace check, package validator, task protocol tests and formatting passed.",
+    "verified_at": "2026-11-19T15:27:50Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -102,8 +121,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T03:32:54Z",
-    "lease_id": "464e9f3d-4005-4815-9d5b-2f48f45eb944",
+    "lease_expires_at": "2026-11-19T16:27:50Z",
+    "lease_id": "40c3430e-7dfd-417b-9526-1b9d7d9e7df3",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -262,6 +281,18 @@
       "state": "succeeded"
     },
     {
+      "evidence": [],
+      "kind": "git_commit_push",
+      "note": "Publishing validated owner-boundary and Gateway retirement slice with its progress records to main.",
+      "observed_at": "2026-11-19T15:29:25Z",
+      "operation_id": "hermes-par-0510-owner-boundary-main-publish-20261119",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
+    },
+    {
       "evidence": [
         "apps/hermes-native/docs/PLAN.md#Revision 227"
       ],
@@ -318,16 +349,18 @@
       "state": "succeeded"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "apps/hermes-native/src/app.rs#start_saved_gateway_connection"
+      ],
       "kind": "git_commit_push",
-      "note": "Publishing selected-descriptor startup integration and its validation/docs to main.",
-      "observed_at": "2026-11-19T02:33:03Z",
+      "note": "Published commit d4c73d7c0afd721b8293d360aca212e22a8dcc9a directly to main; fresh fetch verified exact HEAD equality.",
+      "observed_at": "2026-11-19T02:33:15Z",
       "operation_id": "hermes-selected-gateway-main-publish-20261119",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -374,9 +407,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "b12e20d1-d915-4ffc-ae6e-fcfc9166c168",
+  "last_event_id": "69e2adf2-51ae-4dba-95f6-d36854685059",
   "last_operation": {
-    "request_id": "b12e20d1-d915-4ffc-ae6e-fcfc9166c168",
+    "request_id": "69e2adf2-51ae-4dba-95f6-d36854685059",
     "state": "committed",
     "type": "external_operation.state_changed"
   },
@@ -395,7 +428,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Add an accessible saved-Gateway connection picker and safe switching lifecycle. Then instantiate or select the matching existing GatewayDiscovery, stamp exact connection owner onto rows, and propagate connection/profile through chat cache keys and request/result mutation correlation. Unknown tagged owners must send zero commands.",
+  "recommended_next_action": "Continue exact connection routing through session identity keys, Gateway requests/results and caches; add saved-connection picker only after lifecycle and result owner fencing are integrated.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -897,7 +930,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "1474334857bef1ff88c659ecf86ae82b2ef1058f8289ff98328f87329cc74876",
+    "change_fingerprint": "205ed21ac8ad95849d54dab6264811468250dde4950094406b1f769f45e5178b",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -912,6 +945,14 @@
         "status": " M"
       },
       {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
         "path": "apps/hermes-native/docs/BACKLOG.md",
         "status": " M"
       },
@@ -920,11 +961,15 @@
         "status": " M"
       },
       {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
         "path": "apps/hermes-native/src/app.rs",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/src/layout.rs",
+        "path": "apps/hermes-native/src/gateway.rs",
         "status": " M"
       },
       {
@@ -936,17 +981,17 @@
         "status": " M"
       }
     ],
-    "head_commit": "93e0d52f39fd64da1d64fae73040ce609a988ec4",
+    "head_commit": "d4c73d7c0afd721b8293d360aca212e22a8dcc9a",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 175,
+  "revision": 181,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 175,
+  "state_revision": 181,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0510",
-  "task_ledger_revision": 19,
+  "task_ledger_revision": 20,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -1842,9 +1887,14 @@
       "command": "workspace validation selected gateway descriptor startup",
       "result": "PASS: 376 native + 15 automation protocol + 3 launcher; all-target workspace check; format/diff; continuity 18/18; progress 41/499 reviewed, formal acceptance 0/499; package 565 behaviors and 7 implementation receipts.",
       "timestamp": "2026-11-19T02:32:54Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked",
+      "result": "PASS: 378 library + 15 automation protocol + 3 launcher; focused owner boundary 1/1; Gateway shutdown regression passed.",
+      "timestamp": "2026-11-19T15:27:50Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T02:33:03Z"
+  "updated_at": "2026-11-19T15:29:25Z"
 }

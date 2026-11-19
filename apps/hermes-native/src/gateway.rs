@@ -3041,6 +3041,41 @@ impl GatewayDiscovery {
         self.event_receiver.try_recv().ok()
     }
 
+    /// Retire this connection and stop accepting its results in the current UI.
+    ///
+    /// Dropping the event receiver first makes every late event send fail. Dropping
+    /// the command senders then disconnects the Gateway actor and the worker
+    /// channels; the socket actor observes command disconnection after its bounded
+    /// read timeout. This does not join in-flight HTTP requests or an attach still
+    /// blocked in network setup, so callers must still fence results by connection
+    /// identity when more than one connection can be active.
+    pub fn shutdown(self) {
+        let Self {
+            status_receiver,
+            event_receiver,
+            command_sender,
+            plugin_update_all_sender,
+            http_sender,
+            project_tree_sender,
+            cron_trigger_sender,
+            artifact_sender,
+            artifact_download_sender,
+            artifact_image_sender,
+        } = self;
+
+        drop((status_receiver, event_receiver));
+        drop((
+            command_sender,
+            plugin_update_all_sender,
+            http_sender,
+            project_tree_sender,
+            cron_trigger_sender,
+            artifact_sender,
+            artifact_download_sender,
+            artifact_image_sender,
+        ));
+    }
+
     pub fn resume_session(
         &self,
         request_id: String,
@@ -11378,6 +11413,62 @@ fn is_bare_loopback_origin(origin: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gateway_discovery_shutdown_closes_actor_and_rejects_late_events() {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = mpsc::channel();
+        let (actor_stopped_sender, actor_stopped_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || {
+            while command_receiver.recv().is_ok() {}
+            actor_stopped_sender
+                .send(())
+                .expect("report actor shutdown");
+        });
+        let late_event_sender = event_sender.clone();
+
+        let (plugin_update_all_sender, plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, artifact_image_receiver) = mpsc::channel();
+        drop((
+            plugin_update_all_receiver,
+            http_receiver,
+            project_tree_receiver,
+            cron_trigger_receiver,
+            artifact_receiver,
+            artifact_download_receiver,
+            artifact_image_receiver,
+        ));
+
+        let discovery = GatewayDiscovery {
+            status_receiver,
+            event_receiver,
+            command_sender,
+            plugin_update_all_sender,
+            http_sender,
+            project_tree_sender,
+            cron_trigger_sender,
+            artifact_sender,
+            artifact_download_sender,
+            artifact_image_sender,
+        };
+        discovery.shutdown();
+
+        actor_stopped_receiver
+            .recv_timeout(Duration::from_millis(250))
+            .expect("actor should observe its closed command channel");
+        actor.join().expect("actor thread should terminate");
+        assert!(
+            late_event_sender
+                .send(GatewayEvent::Disconnected("late event".into()))
+                .is_err()
+        );
+    }
 
     #[test]
     fn remote_gateway_auth_debug_redacts_both_credential_kinds() {

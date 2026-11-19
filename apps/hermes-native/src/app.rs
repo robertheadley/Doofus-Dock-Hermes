@@ -12288,7 +12288,36 @@ fn render_message() -> &'static str {
             .or_else(|| self.active_session_profile.clone())
     }
 
+    fn require_active_session_owner(&self, session: &SessionSummary) -> Result<(), String> {
+        let mut owners = crate::session_owner::SessionOwnerRegistry::default();
+        for connection in self.workspace.gateway_connections() {
+            owners
+                .register(&connection.connection_id, connection.connection_id.as_str())
+                .map_err(|error| format!("Hermes connection registry is invalid: {error}"))?;
+        }
+        let selected_connection = self.workspace.selected_gateway_connection_id();
+        owners
+            .configure_legacy_connection(selected_connection)
+            .map_err(|error| format!("Hermes selected connection is invalid: {error}"))?;
+        let owner = session
+            .owner_identity()
+            .map_err(|error| format!("Session owner is invalid: {error}"))?;
+        let resolved = owners
+            .resolve(&owner)
+            .map_err(|error| format!("Session owner cannot be routed: {error}"))?;
+        if resolved.connection_id != selected_connection {
+            return Err(
+                "Session belongs to a different saved Hermes connection; switch to that connection before acting on it.".into(),
+            );
+        }
+        if !self.gateway_connected || self.gateway_discovery.is_none() {
+            return Err("Hermes gateway is unavailable for this session".into());
+        }
+        Ok(())
+    }
+
     fn open_sidebar_session_in_place(&mut self, session: SessionSummary) -> Result<(), String> {
+        self.require_active_session_owner(&session)?;
         let profile = self.resolved_sidebar_session_profile(&session);
         let target = (session.id.clone(), profile.clone());
         let already_open_in_tile = self
@@ -12311,6 +12340,7 @@ fn render_message() -> &'static str {
     }
 
     fn open_sidebar_session_in_tab(&mut self, session: SessionSummary) -> Result<(), String> {
+        self.require_active_session_owner(&session)?;
         let profile = self.resolved_sidebar_session_profile(&session);
         if self.route == AppRoute::Session(session.id.clone())
             && self.active_session_profile == profile
@@ -12333,6 +12363,7 @@ fn render_message() -> &'static str {
     }
 
     fn queue_sidebar_session_window(&mut self, session: &SessionSummary) -> Result<(), String> {
+        self.require_active_session_owner(session)?;
         if session.id.is_empty()
             || session.id.len() > 512
             || session.id.chars().any(char::is_control)
@@ -12359,6 +12390,10 @@ fn render_message() -> &'static str {
     }
 
     fn start_session_pin_update(&mut self, session: SessionSummary, pinned: bool) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
         let session_id = session.id.clone();
         let action_key = session_identity_key(&session.id, session.profile.as_deref());
         if self.pending_session_pins.contains_key(&action_key) {
@@ -12383,6 +12418,10 @@ fn render_message() -> &'static str {
     }
 
     fn start_session_unread_update(&mut self, session: SessionSummary, unread: bool) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
         let session_id = session.id.clone();
         let action_key = session_identity_key(&session.id, session.profile.as_deref());
         if self.pending_session_unreads.contains_key(&action_key) {
@@ -12411,6 +12450,10 @@ fn render_message() -> &'static str {
     }
 
     fn start_session_rename_update(&mut self, session: SessionSummary) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
         let title = self.rename_draft.trim().to_owned();
         if title == session.title.trim() {
             self.rename_session = None;
@@ -12461,6 +12504,10 @@ fn render_message() -> &'static str {
     }
 
     fn retry_uncertain_session_rename(&mut self, session: SessionSummary) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
         let action_key = session_identity_key(&session.id, session.profile.as_deref());
         if !self.uncertain_session_renames.contains(&action_key) {
             return;
@@ -12492,6 +12539,10 @@ fn render_message() -> &'static str {
     }
 
     fn start_session_archive_update(&mut self, session: SessionSummary, archived: bool) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
         let session_id = session.id.clone();
         let action_key = session_identity_key(&session.id, session.profile.as_deref());
         if self.pending_session_archives.contains_key(&action_key) {
@@ -12520,6 +12571,10 @@ fn render_message() -> &'static str {
     }
 
     fn start_session_delete(&mut self, session: SessionSummary) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
         let session_id = session.id.clone();
         let action_key = session_identity_key(&session.id, session.profile.as_deref());
         if self.pending_session_deletes.contains_key(&action_key) {
@@ -12541,6 +12596,10 @@ fn render_message() -> &'static str {
     }
 
     fn start_session_export(&mut self, session: SessionSummary) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
         let session_id = session.id.clone();
         let action_key = session_identity_key(&session.id, session.profile.as_deref());
         if self.pending_session_exports.contains_key(&action_key) {
@@ -32423,6 +32482,64 @@ mod tests {
             remote_auth: None,
         });
         requests
+    }
+
+    #[test]
+    fn session_actions_fail_closed_for_non_active_connection_owners() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, _refreshes) = GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connected = true;
+        app.workspace
+            .save_remote_gateway_url("https://other.example.net/hermes")
+            .expect("save second connection for owner check");
+        let other_connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let local_connection_id = app
+            .workspace
+            .gateway_connections()
+            .iter()
+            .find(|connection| connection.kind == crate::layout::GatewayConnectionKind::Local)
+            .expect("workspace has its local Gateway descriptor")
+            .connection_id
+            .clone();
+        app.workspace
+            .select_gateway_connection(&local_connection_id)
+            .expect("restore local active connection");
+
+        let mut session = SessionSummary {
+            id: "duplicate-session-id".into(),
+            connection_id: Some(other_connection_id),
+            lineage_root_id: None,
+            cwd: None,
+            profile: Some("work".into()),
+            title: "Other connection session".into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "Hermes".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        app.start_session_pin_update(session.clone(), true);
+        assert!(app.status.contains("different saved Hermes connection"));
+        assert!(
+            commands.try_recv().is_err(),
+            "no command reaches the active Gateway"
+        );
+
+        session.connection_id = Some("unregistered-connection".into());
+        session.id = "unknown-owner-session".into();
+        app.start_session_pin_update(session, true);
+        assert!(app.status.contains("Session owner cannot be routed"));
+        assert!(
+            commands.try_recv().is_err(),
+            "unknown tagged owners send zero commands"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     fn install_active_status_gateway(

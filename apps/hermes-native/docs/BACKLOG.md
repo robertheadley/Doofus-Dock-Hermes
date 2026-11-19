@@ -274,3 +274,9 @@ PAR-0510 selected Gateway startup progress (2026-11-19T02:34:30Z):
 - [x] Persist a local/remote selection atomically and reject unknown descriptor IDs.
 - [ ] Add the saved-connection picker and lifecycle management for multiple GatewayDiscovery actors.
 - [ ] Route session state and every Gateway request/result/mutation by exact connection/profile and add same-ID isolation tests.\n
+
+PAR-0510 owner enforcement follow-up (2026-11-19T15:23Z):
+- [x] Resolve session row owners against registered saved connection descriptors and refuse unknown or non-selected tagged owners before session actions send a Gateway command.
+- [x] Add explicit GatewayDiscovery shutdown that retires event delivery and closes command/worker channels; document the in-flight HTTP and network-attach limits.
+- [ ] Integrate a saved-connection picker and multi-connection discovery with generation/owner fencing.
+- [ ] Key session views and pending operations by connection, profile and session; carry owner through requests/results and prove same-ID isolation.
