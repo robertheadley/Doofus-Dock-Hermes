@@ -2944,3 +2944,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime behavior change.
 - **risks:** Live config/credential cleanup, MCP worker shutdown/restart and packaged UI remain unverified.
 - **follow_up:** Continue pinned-source chat/tool feature coverage, prioritizing end-to-end user value.
+
+### PAR-0267 — MCP catalog browse contract selected (2026-11-19T21:35:19Z)
+
+- **id:** hermes-par0267-contract-audit-20261119
+- **timestamp:** 2026-11-19T21:35:19Z
+- **what:** Selected the next accepted chat/tool parity slice and checkpointed the pinned `mcp.catalog` read contract: profile-scoped catalog rows expose status, description, required environment key names and transport.
+- **why:** Continue connector feature coverage so the user can reach visual customization sooner.
+- **components:** Doofus task ledger, Hermes native Gateway and Connectors view plan.
+- **type:** task selection and source-contract audit
+- **validation:** Task state schema validated at revision 313; pinned source and Desktop usage inspected; a second read-only agent audit matched the contract. No implementation tests run for this slice yet.
+- **performance:** No runtime changes.
+- **risks:** Native catalog UI, profile fencing, failure states and live Gateway behavior remain unimplemented/unverified. Catalog installation is a separate task.
+- **follow_up:** Implement typed `mcp.catalog` browsing and focused tests.
