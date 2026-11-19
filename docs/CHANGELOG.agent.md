@@ -2393,3 +2393,16 @@ Validation addendum: The targeted UCM report marks named layout preset persisten
 - **performance:** no runtime connection behavior changed.
 - **risks:** Descriptor metadata is not yet consumed by Gateway startup or session routing.
 - **follow_up:** Wire selected descriptor and exact owner identity into app session state and Gateway clients.\n
+
+### Selected Gateway startup — 2026-11-19T02:34:30Z
+
+- **id:** hermes-selected-gateway-startup-20261119
+- **timestamp:** 2026-11-19T02:34:30Z
+- **what:** Make startup attach to the selected stable Gateway descriptor; add persisted local/remote selection API with unknown-ID rejection and preserve the remote URL compatibility pointer.
+- **why:** Make the new descriptor selection state drive actual Gateway startup while retaining the existing Hermes discovery and secure credential path.
+- **components:** Hermes Native workspace preferences and app Gateway startup.
+- **type:** routing foundation.
+- **validation:** Full workspace tests pass (376 native + 15 automation protocol + 3 launcher); all-target workspace check passes with existing dead-code warnings; rustfmt and diff checks pass. Layout tests cover remote/local persistence and unknown-ID refusal.
+- **performance:** no additional background Gateway actor; the app still holds one discovery.
+- **risks:** No UI picker or concurrent per-connection discovery exists; session owner routing remains incomplete.
+- **follow_up:** Expose saved connection management in Settings, then route owner-tagged session data through per-connection Gateway actors.\n

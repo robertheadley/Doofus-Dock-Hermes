@@ -268,3 +268,9 @@ PAR-0510 persisted owner metadata progress (2026-11-19T02:25:50Z):
 - [x] Persist stable local/remote connection descriptors and selected ID; migrate legacy last_remote_gateway_url deterministically; keep secrets out of settings.
 - [ ] Use the selected descriptor for Gateway discovery and connection management; preserve all saved descriptors through Settings UI.
 - [ ] Carry exact connection/profile identity through sessions, caches, Gateway commands/events and mutations; unknown tagged owners fail closed.\n
+
+PAR-0510 selected Gateway startup progress (2026-11-19T02:34:30Z):
+- [x] Startup honors the selected persisted descriptor; remote auth stays in the existing protected token/OAuth store.
+- [x] Persist a local/remote selection atomically and reject unknown descriptor IDs.
+- [ ] Add the saved-connection picker and lifecycle management for multiple GatewayDiscovery actors.
+- [ ] Route session state and every Gateway request/result/mutation by exact connection/profile and add same-ID isolation tests.\n

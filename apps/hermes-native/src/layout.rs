@@ -977,6 +977,34 @@ impl Workspace {
         &self.preferences.selected_gateway_connection_id
     }
 
+    pub fn selected_gateway_connection(&self) -> Option<&GatewayConnectionDescriptor> {
+        self.preferences
+            .gateway_connections
+            .iter()
+            .find(|connection| {
+                connection.connection_id == self.preferences.selected_gateway_connection_id
+            })
+    }
+
+    pub fn select_gateway_connection(&mut self, connection_id: &str) -> Result<(), String> {
+        let descriptor = self
+            .preferences
+            .gateway_connections
+            .iter()
+            .find(|connection| connection.connection_id == connection_id)
+            .cloned()
+            .ok_or_else(|| "The selected Hermes Gateway connection is unavailable.".to_owned())?;
+        let mut next = self.preferences.clone();
+        next.selected_gateway_connection_id = descriptor.connection_id;
+        if let Some(endpoint_url) = descriptor.endpoint_url {
+            next.last_remote_gateway_url = Some(endpoint_url);
+        }
+        write_preferences_atomic(&self.preferences_path, &next)?;
+        self.preferences = next;
+        self.persistence_error = None;
+        Ok(())
+    }
+
     pub fn save_remote_gateway_url(&mut self, url: &str) -> Result<(), String> {
         let normalized = crate::remote_probe::normalize_remote_base_url(url)?;
         let mut next = self.preferences.clone();
@@ -4066,6 +4094,59 @@ mod tests {
             reloaded.selected_gateway_connection_id(),
             staging.connection_id
         );
+        drop(reloaded);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn selected_gateway_connection_changes_persist_and_local_selection_keeps_remote_saved() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-select-gateway-connection-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .save_remote_gateway_url("https://gateway.example.net/hermes")
+            .unwrap();
+        let remote_id = workspace.selected_gateway_connection_id().to_owned();
+        assert_eq!(
+            workspace
+                .selected_gateway_connection()
+                .unwrap()
+                .connection_id,
+            remote_id
+        );
+        assert!(workspace.select_gateway_connection("missing").is_err());
+        assert_eq!(workspace.selected_gateway_connection_id(), remote_id);
+        workspace
+            .select_gateway_connection(LOCAL_GATEWAY_CONNECTION_ID)
+            .unwrap();
+
+        assert_eq!(
+            workspace.selected_gateway_connection_id(),
+            LOCAL_GATEWAY_CONNECTION_ID
+        );
+        assert_eq!(
+            workspace.selected_gateway_connection().unwrap().kind,
+            GatewayConnectionKind::Local
+        );
+        assert_eq!(
+            workspace.last_remote_gateway_url(),
+            Some("https://gateway.example.net/hermes")
+        );
+        drop(workspace);
+
+        let mut reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.selected_gateway_connection_id(),
+            LOCAL_GATEWAY_CONNECTION_ID
+        );
+        reloaded.select_gateway_connection(&remote_id).unwrap();
+        assert_eq!(reloaded.selected_gateway_connection_id(), remote_id);
         drop(reloaded);
         std::fs::remove_dir_all(directory).unwrap();
     }

@@ -2275,7 +2275,15 @@ fn start_saved_gateway_connection(
     if !connect_gateway {
         return None;
     }
-    if let Some(url) = workspace.last_remote_gateway_url() {
+    let selected_connection = workspace.selected_gateway_connection();
+    let remote_url = match selected_connection {
+        Some(connection) if connection.kind == crate::layout::GatewayConnectionKind::Remote => {
+            connection.endpoint_url.as_deref()
+        }
+        Some(_) => None,
+        None => workspace.last_remote_gateway_url(),
+    };
+    if let Some(url) = remote_url {
         if let Ok(Some(token)) =
             crate::native_token_store::load_session_token(workspace.data_directory(), url)
         {
