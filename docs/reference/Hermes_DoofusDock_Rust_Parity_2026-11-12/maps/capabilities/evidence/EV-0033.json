@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0033",
+  "capability_id": "ui-search-rendered-transcript-and-highlight-matches",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "loaded-transcript-find-keyboard-and-card-highlight",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "bc3555f62308ced1c87924ffe0f53ac830441cc7",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native headless egui UI tests and exact pinned Desktop find-in-page tests; no live Gateway or installed Windows input used.",
+  "notes": "Native Ctrl+F/Command+F opens transcript search, case-insensitive matching covers loaded message body and speaker, match count and next/previous cycle work, Ctrl/Command+G steps and Escape closes; active match scrolls and highlights the whole message card. Headless test covers open/type/cycle/close and helper verifies case-insensitive row indices. Pinned Desktop walks the foreground rendered chat surface and marks each matched substring; native searches loaded transcript rows and highlights whole cards. Other panes, physical Windows behavior and source-paired acceptance remain open; capability remains partial."
+}

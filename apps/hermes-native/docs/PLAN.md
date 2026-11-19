@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 245 (implementation in progress).
+- **Working revision:** 246 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1480,3 +1480,12 @@ The existing Markdown code-copy action is now tested end to end through the head
 Validation addendum (2026-11-19T19:20Z): PASS focused Markdown clipboard UI test; PASS full feature suite (404 library + 15 automation protocol + 3 launcher); PASS scoped progress generators (48 reviewed: 6 implemented, 42 partial, 451 unknown; 173 chat/tool: 1 implemented, 15 partial, 157 unknown). An initial full-suite run caught a slash UI fixture triggering the disconnected-state path; the fixture was corrected to avoid scheduling an RPC when injecting a static suggestion, and the rerun passed. UCM evidence and task-protocol revalidation are pending.
 
 UCM evidence: EV-0032 is bound to implementation commit `bc3555f62308ced1c87924ffe0f53ac830441cc7`. PAR-0040 is marked partial in the capability map and crosswalk; the package validator passes with 17 implementation receipts. Optional YAML parsing is unavailable because PyYAML is not installed.
+
+
+### Revision 246 — Map transcript find behavior and scope (2026-11-19T19:25Z)
+
+The pinned view.findInPage contract and existing native headless test now have explicit partial evidence. Native search opens with the platform find shortcut, matches case-insensitively across loaded message content and speaker labels, reports counts, cycles matches, closes on Escape and scrolls/highlights the matching message card. This is not full source parity: upstream walks the currently rendered chat view and wraps each matching substring, while native searches loaded transcript rows and highlights the whole card. Other panes/views, physical Windows and source-paired acceptance remain open.
+
+Validation addendum (2026-11-19T19:25Z): PASS scoped progress generators (49 reviewed: 6 implemented, 43 partial, 450 unknown; 173 chat/tool: 1 implemented, 16 partial, 156 unknown); PASS UCM package validator (565 behaviors, 14 source and 18 implementation receipts; optional YAML parse skipped because PyYAML is unavailable); PASS Doofus task state validation. The referenced native behavior test passed in the latest full suite (404 library + 15 automation protocol + 3 launcher). Live and source-paired acceptance remain pending.
+
+UCM evidence: EV-0033 is bound to implementation/test commit `bc3555f62308ced1c87924ffe0f53ac830441cc7`. The capability and crosswalk are marked partial; fixed-source acceptance is still pending.

@@ -2746,3 +2746,16 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime change.
 - **risks:** URL directive normalization and physical/source-paired clipboard acceptance remain unverified.
 - **follow_up:** Normalize valid URL directives and test them, then retain live and source-paired acceptance gates.
+
+## PAR-0058 transcript-find evidence
+
+- **id:** hermes-par-0058-find-in-page-evidence-20261119
+- **timestamp:** 2026-11-19T19:25:00Z
+- **what:** Added a partial progress seed and EV-0033 for the existing native transcript-find slice; updated the capability map, crosswalk, plan, architecture, README and backlog with the loaded-row/whole-card limit.
+- **why:** Replace an unknown status with evidence-backed partial coverage while preserving unimplemented source and live acceptance requirements.
+- **components:** Native find bar, transcript search/highlight, 499-row progress overlay, UCM evidence.
+- **type:** evidence mapping and documentation
+- **validation:** PASS progress generators (49 reviewed: 6 implemented, 43 partial, 450 unknown; chat/tool 1 implemented, 16 partial, 156 unknown); PASS UCM validator (565 items, 14 source and 18 implementation receipts); PASS Doofus task state validation; referenced native test passed in the 404+15+3 feature suite.
+- **performance:** No runtime change.
+- **risks:** Current-view substring highlighting across transcript Markdown and physical/source-paired behavior remain open; PyYAML schema parse was skipped because it is unavailable.
+- **follow_up:** Continue partial parity work and keep source acceptance pending until rendered-surface behavior is covered.

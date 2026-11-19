@@ -236,3 +236,7 @@ Transcript timestamps use the selected profile `display.timestamps` preference p
 ## Slash completion
 
 The composer recognizes only leading, single-line slash input. A 60 ms debounce sends a bare slash to `commands.catalog` and typed queries to `complete.slash`, scoped to the active session or profile. Responses are fenced by request and owner identity, then filtered through the pinned Desktop command registry and interface mode. Accessible suggestion buttons insert the selected command into the draft without submitting it. Arrow navigation, directive chips, mid-message triggers, result caching/invalidation and special local session/skin commands remain unimplemented; live Gateway and source-paired behavior are unverified.
+
+## Transcript find
+
+Native find searches the currently loaded transcript's message body and speaker fields case-insensitively, cycles through matching rows, and scrolls/highlights the matching card. It does not yet walk all text in the rendered chat surface or highlight individual substring ranges as the pinned Desktop renderer does; other panes, live behavior and source-paired acceptance are unverified.

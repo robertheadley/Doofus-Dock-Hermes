@@ -526,6 +526,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "physical Windows clipboard behavior and source-paired visuals/acceptance remain unverified",
         ],
     },
+    "PAR-0058": {
+        "state": "partial",
+        "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/lib/find-in-page-scope.test.ts#wraps every (case-insensitive) match in a <mark> and counts them",
+            ".staging/hermes-pinned-878305/apps/desktop/src/lib/find-in-page-scope.test.ts#advances the active mark on findNext and walks back on findPrevious",
+            "apps/hermes-native/src/app.rs#transcript_find_opens_searches_cycles_highlights_and_closes_from_keyboard",
+            "apps/hermes-native/src/app.rs#fn transcript_search_matches",
+            "apps/hermes-native/docs/PLAN.md#Implement the pinned Desktop `view.findInPage` interaction",
+        ],
+        "gaps": [
+            "native search is limited to loaded transcript rows and highlights matching message cards rather than each rendered substring",
+            "other rendered chat panes/views are not searched",
+            "live Gateway, installed Windows keyboard behavior, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0062": {
         "state": "partial",
         "level": "headless_gateway_payload_and_composer_tests",
