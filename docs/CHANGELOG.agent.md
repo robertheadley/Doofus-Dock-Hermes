@@ -2720,3 +2720,16 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime change.
 - **risks:** Evidence is local/headless only; it does not demonstrate authenticated Gateway or installed Windows behavior.
 - **follow_up:** Bind future evidence to exact implementation commits and preserve partial status until all acceptance gates pass.
+
+## PAR-0040 fenced-code clipboard verification
+
+- **id:** hermes-par-0040-code-copy-payload-20261119
+- **timestamp:** 2026-11-19T19:20:00Z
+- **what:** Extended the headless Markdown UI regression to activate the accessible Copy control and verify an exact full fenced-code payload is emitted to the egui clipboard output.
+- **why:** The previous fixture proved only that a button existed; this verifies its actual clipboard behavior.
+- **components:** Markdown transcript renderer, vendored egui_commonmark copy button, progress evidence generator.
+- **type:** test and partial evidence
+- **validation:** PASS focused clipboard test; PASS full Hermes Native suite (404 library + 15 automation protocol + 3 launcher); PASS progress generators (48 reviewed: 6 implemented, 42 partial, 451 unknown; chat/tool 1 implemented, 15 partial, 157 unknown).
+- **performance:** No runtime behavior change.
+- **risks:** Pinned Hermes also unwraps valid `@url:` directives before copying; native still copies that encoded syntax. Live Windows clipboard and source-paired acceptance remain open. PAR-0068 directive-hover actions remain deferred because the native composer lacks a rich chip model.
+- **follow_up:** Add URL directive normalization or keep PAR-0040 partial; choose next dependency-ready chat/tool behavior.

@@ -513,6 +513,19 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["full source command set", "settings and new-window context", "physical keyboard behavior", "source-paired visuals and acceptance"],
     },
+    "PAR-0040": {
+        "state": "partial",
+        "level": "headless_accessible_code_copy_and_clipboard_payload",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/chat/shiki-highlighter.tsx#copyableCodeText",
+            "apps/hermes-native/src/app.rs#markdown_fixture_renders_table_and_code_copy_action_accessibly",
+            "apps/hermes-native/vendor/egui_commonmark_backend/src/elements.rs#Copy code",
+        ],
+        "gaps": [
+            "native copy does not unwrap valid @url directive references into literal URLs like the pinned Desktop source",
+            "physical Windows clipboard behavior and source-paired visuals/acceptance remain unverified",
+        ],
+    },
     "PAR-0062": {
         "state": "partial",
         "level": "headless_gateway_payload_and_composer_tests",

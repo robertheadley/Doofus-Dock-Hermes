@@ -29259,6 +29259,7 @@ mod tests {
             meta: "Review the working tree".into(),
             group: "Commands".into(),
         }];
+        app.slash_completion_due = None;
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
@@ -29309,7 +29310,7 @@ mod tests {
     fn markdown_fixture_renders_table_and_code_copy_action_accessibly() {
         let (mut app, profile) = isolated_app();
         app.load_markdown_fixture_for_automation();
-        let harness = egui_kittest::Harness::builder()
+        let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1440.0, 4000.0))
             .build_ui(|ui| app.draw(ui));
 
@@ -29317,6 +29318,16 @@ mod tests {
             .query_by_label("Copy")
             .expect("fenced code exposes a copy control");
         assert_eq!(format!("{:?}", copy.accesskit_node().role()), "Button");
+        copy.click();
+        harness.step();
+        let expected_code = "fn render_message() -> &'static str {\n    \"Hello, Hermes\"\n}";
+        assert!(
+            harness.output().platform_output.commands.iter().any(
+                |command| matches!(command, egui::OutputCommand::CopyText(text) if text == expected_code)
+            ),
+            "Copy must emit the complete fenced-code payload to the system clipboard; got {:?}",
+            harness.output().platform_output.commands
+        );
         assert!(
             harness
                 .query_all_by(|node| node.value().as_deref() == Some("Native rendering"))

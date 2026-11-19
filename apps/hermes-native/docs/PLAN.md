@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 244 (implementation in progress).
+- **Working revision:** 245 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1471,3 +1471,10 @@ Focused evidence: 7 slash tests pass, including exact catalog/query RPC selectio
 Validation addendum (2026-11-19T19:08Z): PASS workspace all-target check (existing dead-code warnings); PASS Doofus task protocol 18/18; PASS UCM package validator (565 behaviors, 14 source and 16 implementation receipts; PyYAML unavailable so YAML parser skipped); PASS progress generators (47 reviewed: 6 implemented, 41 partial, 452 unknown; 173 chat/tool: 1 implemented, 14 partial, 158 unknown); PASS rustfmt, Python compilation and diff check. Live Gateway, installed Windows UI and fixed-source paired acceptance remain unverified.
 
 UCM evidence: EV-0031 is bound to implementation commit `de719b6f8f6bf9c3cba4ba04e6202df11d5d6e20`. The capability and crosswalk are marked partial; source acceptance remains pending.
+
+
+### Revision 245 — Verify the fenced-code copy payload (2026-11-19T19:20Z)
+
+The existing Markdown code-copy action is now tested end to end through the headless native UI: activating the accessible Copy button must emit the entire fenced-code body as an egui clipboard command. The behavior is partial because pinned Hermes additionally unwraps valid `@url:` references when copying code; the current native renderer preserves that reference syntax. PAR-0068's pinned source audit found a rich contenteditable chip-hover interaction with a 500 ms pointer grace period and explicit selection-preservation behavior, while native composer remains plain `TextEdit` and has no directive preview router. Defer PAR-0068 until the composer has a safe directive-token interaction model.
+
+Validation addendum (2026-11-19T19:20Z): PASS focused Markdown clipboard UI test; PASS full feature suite (404 library + 15 automation protocol + 3 launcher); PASS scoped progress generators (48 reviewed: 6 implemented, 42 partial, 451 unknown; 173 chat/tool: 1 implemented, 15 partial, 157 unknown). An initial full-suite run caught a slash UI fixture triggering the disconnected-state path; the fixture was corrected to avoid scheduling an RPC when injecting a static suggestion, and the rerun passed. UCM evidence and task-protocol revalidation are pending.

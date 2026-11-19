@@ -90,7 +90,7 @@ JetBrains Mono is the primary application UI typeface; its Medium face is used f
 
 ## Transcript Markdown
 
-The transcript delegates CommonMark/GFM parsing and code syntax highlighting to egui_commonmark 0.26 with syntect. Cache state lives on the native app instance. The vendored egui_commonmark backend keeps its upstream package license and changes only the fenced-code copy affordance: a sized, accessible Copy/Copied button replaces a bundled-font-incompatible emoji. A feature-gated automation fixture covers emphasis, links, block quotes, ordered/unordered lists, GFM tables, code highlighting, and the copy control. Streamdown tail repair, rich math/media/artifacts, transcript directives, and source-paired screenshot parity remain open.
+The transcript delegates CommonMark/GFM parsing and code syntax highlighting to egui_commonmark 0.26 with syntect. Cache state lives on the native app instance. The vendored egui_commonmark backend keeps its upstream package license and changes only the fenced-code copy affordance: a sized, accessible Copy/Copied button replaces a bundled-font-incompatible emoji. A feature-gated automation fixture covers emphasis, links, block quotes, ordered/unordered lists, GFM tables, code highlighting, the accessible copy control, and the exact clipboard command for a simple fenced block. PAR-0040 remains partial because pinned Hermes unwraps valid `@url:` directives during copying while native code currently preserves the directive text; Windows clipboard and source-paired acceptance remain open. Streamdown tail repair, rich math/media/artifacts, transcript directives, and source-paired screenshot parity remain open.
 
 
 ### Background prompt ownership

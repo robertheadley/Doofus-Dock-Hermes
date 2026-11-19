@@ -1,5 +1,5 @@
 {
-  "revision": 30,
+  "revision": 31,
   "schema_version": 1,
   "tasks": [
     {
@@ -1327,7 +1327,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1336,11 +1336,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T19:26:16Z",
+              "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-render-code-copy-action",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -1351,10 +1351,14 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0040",
               "title": "PAR-0040 Render code copy action",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#markdown_fixture_renders_table_and_code_copy_action_accessibly",
+                "apps/hermes-native/vendor/egui_commonmark_backend/src/elements.rs#Copy code",
+                "apps/hermes-native/docs/PLAN.md#Revision 245"
+              ]
             },
             {
               "agent_identity": {
@@ -16221,5 +16225,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T19:12:53Z"
+  "updated_at": "2026-11-19T19:26:16Z"
 }
