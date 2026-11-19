@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0034",
+  "capability_id": "ui-paginate-older-transcript-history",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "older-transcript-offset-page-accessibility-profile-fence-and-overlap",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "b3d3e7189df7fd76eac058bf27ca0f2453f4d61c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native headless Rust tests and pinned-source comparison; no live Gateway or installed Windows UI was used.",
+  "notes": "Focused older_transcript filter passes five tests: accessible earlier-page control; offset page profile and latest-order receipt validation; mismatched-profile rejection; backend-order rejection; and boundary-overlap deduplication. Native loads offset-based older pages. Pinned Desktop uses an around-row request anchored to the previous prompt, fences the latest request despite ineffective cancellation, and checks page contiguity when a long turn separates the page from the anchor. Native prompt-predecessor navigation and around-window replacement are not implemented; live Gateway behavior, physical Windows interaction, and source-paired acceptance remain open. Capability is partial."
+}
