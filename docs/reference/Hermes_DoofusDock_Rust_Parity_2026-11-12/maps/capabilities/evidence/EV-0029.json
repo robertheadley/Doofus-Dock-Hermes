@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0029",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "same-id-failed-turn-retry",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "c8d6d4a4988f7f54854e6cfe60b5707eaccaaa9c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native Rust tests and workspace check; no live Hermes Gateway or installed UI was used.",
+  "notes": "The accessible retry action reuses the original submission ID, exact composed text, session/profile scope and image attachment metadata without creating a duplicate optimistic user row. Headless tests inspect the exact Gateway command and verify explicit non-retryable and occupied-composer guards. Full code-specific Edit/model/auth/new-session alternatives, complete error taxonomy, live Gateway behavior, installed Windows UI and source-paired acceptance remain open; capability stays partial."
+}

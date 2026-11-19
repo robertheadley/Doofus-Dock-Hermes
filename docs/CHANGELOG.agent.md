@@ -2638,3 +2638,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No new background work; retry remains asynchronous through the existing Gateway actor.
 - **risks:** Code-specific Edit/model/auth/new-session alternatives, complete error taxonomy, live Gateway and source-paired behavior remain open.
 - **follow_up:** Bind UCM evidence to the implementation commit, then continue error action parity.
+
+
+### PAR-0064 retry evidence publication — 2026-11-19T18:30Z
+
+- **id:** hermes-par-0064-retry-evidence-20261119
+- **timestamp:** 2026-11-19T18:30:00Z
+- **what:** Added UCM EV-0029 bound to `c8d6d4ad57d03574b59d34b3c32d57e359c6c78e`; recorded same-ID retry scenario and retained partial status.
+- **why:** Make retry behavior traceable to the exact published implementation while preserving the remaining parity gaps.
+- **components:** UCM capability map, evidence package, crosswalk and PAR-0064 plan record.
+- **type:** evidence
+- **validation:** PASS package validator: 565 target behaviors, 565 UI inventory items, 565 pending tests, 14 source inspection receipts and 14 implementation receipts; fetched `origin/main` matches retry implementation commit. Optional YAML parse skipped because PyYAML is absent.
+- **performance:** No runtime performance claim.
+- **risks:** Edit/model/auth/new-session alternatives, full error policy and live/source pairing remain open.
+- **follow_up:** Continue the next chat and tool capability slice.

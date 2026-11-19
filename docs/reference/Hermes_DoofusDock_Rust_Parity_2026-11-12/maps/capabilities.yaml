@@ -1471,8 +1471,11 @@ capabilities:
     scenarios:
     - id: failed-turn-error-completion-ordering
       description: Preserve one visible assistant failure and the optimistic user row when Gateway error and terminal completion events arrive in either order.
+    - id: same-id-failed-turn-retry
+      description: Retry a retryable failed turn through an accessible control using the original submission ID, text, owner scope and attachment metadata without duplicating the user row.
   evidence:
   - EV-0028
+  - EV-0029
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role
