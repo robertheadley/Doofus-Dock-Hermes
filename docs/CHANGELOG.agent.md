@@ -2680,3 +2680,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime performance claim.
 - **risks:** Nested tool-run lifecycle timestamp and live/source-paired behavior remain open.
 - **follow_up:** Validate, publish and continue chat/tool parity.
+
+
+### PAR-0066/0067 dependency audit — 2026-11-19T18:48:00Z
+
+- **id:** hermes-par-0066-0067-source-audit-20261119
+- **timestamp:** 2026-11-19T18:48:00Z
+- **what:** Marked terminal-selection-to-draft blocked by the missing native terminal pane and selected Gateway-backed slash completion as the next independent chat item.
+- **why:** Keep progress states tied to observed user-facing functionality and explicit prerequisites.
+- **components:** Hermes Native terminal panel, composer, task ledger and parity plan.
+- **type:** planning
+- **validation:** Pinned source checkout hash verified; task protocol state validation passed.
+- **performance:** No runtime changes.
+- **risks:** Terminal implementation remains a substantial prerequisite for terminal-derived chat context.
+- **follow_up:** Implement accessible slash completion using the active session/profile Gateway owner.

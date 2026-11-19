@@ -1453,3 +1453,10 @@ Headless formatting coverage checks full date, milliseconds, offset-aware output
 Validation addendum (2026-11-19T18:42Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (397 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS task continuity 18/18; PASS UCM package validator (565 target behaviors, 14 source and 14 implementation receipts); PASS rustfmt and diff check. Optional YAML parse skipped because PyYAML is absent. PAR-0065 remains partial for structured tool-run lifecycle mapping and live/source-paired acceptance.
 
 UCM timestamp evidence addendum (2026-11-19T18:44Z): Added EV-0030 bound to `2db85e2a3b3d853411fac0a57d554a9c14e29e95`; capability remains partial for nested tool lifecycle timestamps and live/source-paired acceptance.
+
+
+### Revision 243 — Terminal selection and slash completion dependency audit (2026-11-19T18:48Z)
+
+Pinned source `use-terminal-session.ts` adds trimmed selected terminal text to the chat draft via its selection callback and clears the selection without submitting a prompt. Hermes Native currently renders the Terminal panel as an offline placeholder, so PAR-0066 cannot be implemented until the terminal surface exists; it remains blocked and must not be reported as complete. The native composer also has no slash-completion implementation, while pinned source uses Gateway-backed `commands.catalog` and `complete.slash`; PAR-0067 is the next independent chat slice.
+
+Source comparison used the exact local Hermes checkout at `8783054ef6cbafd86f10892241436862c1171a66`.
