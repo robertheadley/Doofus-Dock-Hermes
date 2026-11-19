@@ -2476,3 +2476,19 @@ Validation addendum (2026-11-19T15:47:28Z): PASS scoped progress generator (138 
 - **follow_up:** Continue implementation against the expanded selector and keep live runtime, source acceptance, visuals, and implementation state separate.
 
 Validation/publication addendum (2026-11-19T15:53:08Z): PASS the 173-row generator, Python compilation, `.doofus` state validation and `git diff --check`. Pushed scope commit `79635cad1b6152e690b088e1c06aa0791c0c7c93` to `main`; a fresh fetch confirmed exact SHA equality. The first operation-receipt call had an invalid locator and made no state change; the retry with a validated file locator succeeded.
+
+
+### Connection-owned Hermes session resume — 2026-11-19T16:41:18Z
+
+- **id:** hermes-par-0510-connection-owned-resume-20261119
+- **timestamp:** 2026-11-19T16:41:18Z
+- **what:** Added connection identity to session-pane and view ownership, preserved it through close/restore, attributed resume events to their Gateway discovery actor, and fenced resume and peer transcript results by owner. Recorded four focused implementation tests against PAR-0510.
+- **why:** Avoid cross-connection state collisions when separate Hermes Gateways expose the same profile and session IDs.
+- **components:** Native app session routing, Gateway discovery events, DoofusDock session pane metadata, scoped progress evidence and project docs.
+- **type:** Functional implementation and progress evidence.
+- **validation:** Focused and complete native test suite passed in the preceding continuation; workspace check, rustfmt, task validator and progress generator are being rerun for this recorded slice. PAR-0510 remains partial; no live Gateway, Windows installed-app, source-paired visual, or formal acceptance is claimed.
+- **performance:** No benchmark scenario changed; no live Gateway was started.
+- **risks:** Saved-connection picker/concurrent discovery and owner routing through all other session operations are still missing.
+- **follow_up:** Continue exact-owner routing for remaining session APIs, then add multi-connection lifecycle and live reconnect coverage.
+
+Validation addendum (2026-11-19T16:44:23Z): PASS `cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked` (382 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS `cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check`; PASS task protocol tests (18/18); PASS task schema validation at revision 192; PASS 173-row scoped progress generator (1 implemented, 8 partial, 164 unknown; 9 rows mapped); PASS `git diff --check`. Live Hermes Gateway behavior, installed Windows behavior, source-paired visuals, and formal acceptance remain unverified.

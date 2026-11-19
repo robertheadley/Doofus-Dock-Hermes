@@ -1375,3 +1375,12 @@ The user explicitly added skills and plugins to the chat/tool target. Expanded t
 Current scoped evidence after expansion: 1 implemented, 8 partial, 164 unknown; 9/173 have mapped evidence. All 173 remain runtime-unverified and lack source-paired acceptance and visual pairs.
 
 Validation/publication addendum (2026-11-19T15:53:08Z): PASS generator (173 unique scope rows; 1 implemented, 8 partial, 164 unknown; 9 with mapped evidence); PASS Python compilation; PASS task schema validation; PASS `git diff --check`. Scope commit `79635cad1b6152e690b088e1c06aa0791c0c7c93` pushed to `origin/main`; fetched `HEAD` and `origin/main` matched exactly before recording this receipt. No product tests were run because this slice changes scope tracking and documentation.
+
+
+### Revision 236 — Connection-owned active session resume views (2026-11-19T16:41:18Z)
+
+Carry the stable selected Gateway connection ID through session-pane identity and persistence, app session-view/cache keys, active-session resume completion fencing, and peer transcript refresh ownership. `SessionResumed` events are attributed by the owning `GatewayDiscovery` actor. Identical profile/session IDs on two connections now map to distinct pane identities; closing/restoring a pane preserves its connection owner. Sidebar reselect resolves and opens under the exact selected connection, while ambiguous or mismatched legacy panes fail closed.
+
+Evidence is recorded on PAR-0510 as partial. Focused tests cover exact pane owner isolation and persistence, sidebar resume routing, Gateway event attribution, and request/result fencing. This slice does not add a saved-connection picker or concurrent discovery actors, and it does not route every session mutation by connection ID. Live Gateway and installed Windows behavior remain unverified; source-paired visual proof and formal acceptance are pending.
+
+Validation addendum (2026-11-19T16:44:23Z): PASS `cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked` (382 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS `cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check`; PASS task protocol tests (18/18); PASS task schema validation at revision 192; PASS 173-row scoped progress generator (1 implemented, 8 partial, 164 unknown; 9 rows mapped); PASS `git diff --check`. Live Hermes Gateway behavior, installed Windows behavior, source-paired visuals, and formal acceptance remain unverified.

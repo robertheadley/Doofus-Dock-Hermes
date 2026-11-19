@@ -1619,6 +1619,7 @@ pub enum GatewayEvent {
         request_id: String,
         session_id: String,
         profile: Option<String>,
+        connection_id: Option<String>,
         result: Result<SessionTranscript, String>,
     },
     OlderTranscriptLoaded {
@@ -2416,6 +2417,7 @@ type GatewaySocket = tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<
 pub struct GatewayDiscovery {
     status_receiver: Receiver<Result<ConnectedGateway, String>>,
     event_receiver: Receiver<GatewayEvent>,
+    connection_id: Option<String>,
     command_sender: mpsc::Sender<GatewayCommand>,
     plugin_update_all_sender: mpsc::Sender<AgentPluginUpdateAllCommand>,
     http_sender: mpsc::Sender<GatewayHttpCommand>,
@@ -2503,6 +2505,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2515,6 +2518,35 @@ impl GatewayDiscovery {
             observed_command_receiver,
             refresh_receiver,
         )
+    }
+
+    #[cfg(test)]
+    fn for_test_event_poll(connection_id: Option<&str>) -> (Self, mpsc::Sender<GatewayEvent>) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, _http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+
+        let discovery = Self {
+            status_receiver,
+            event_receiver,
+            connection_id: connection_id.map(str::to_owned),
+            command_sender,
+            plugin_update_all_sender,
+            http_sender,
+            project_tree_sender,
+            cron_trigger_sender,
+            artifact_sender,
+            artifact_download_sender,
+            artifact_image_sender,
+        };
+        (discovery, event_sender)
     }
 
     #[cfg(test)]
@@ -2543,6 +2575,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2585,6 +2618,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2630,6 +2664,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2675,6 +2710,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2716,6 +2752,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2758,6 +2795,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2787,6 +2825,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2832,6 +2871,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -2879,6 +2919,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
+                connection_id: None,
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -3019,6 +3060,7 @@ impl GatewayDiscovery {
         Self {
             status_receiver,
             event_receiver,
+            connection_id: None,
             command_sender,
             plugin_update_all_sender,
             http_sender,
@@ -3037,8 +3079,25 @@ impl GatewayDiscovery {
         }
     }
 
+    /// Associates events from this discovery with the stable configured connection.
+    ///
+    /// Legacy callers may leave the ID unset; in that case polled events preserve
+    /// `None` and continue to use the existing profile-scoped behavior.
+    pub fn with_connection_id(mut self, connection_id: impl Into<String>) -> Self {
+        self.connection_id = Some(connection_id.into());
+        self
+    }
+
+    pub fn connection_id(&self) -> Option<&str> {
+        self.connection_id.as_deref()
+    }
+
     pub fn poll_event(&self) -> Option<GatewayEvent> {
-        self.event_receiver.try_recv().ok()
+        let mut event = self.event_receiver.try_recv().ok()?;
+        if let GatewayEvent::SessionResumed { connection_id, .. } = &mut event {
+            *connection_id = self.connection_id.clone();
+        }
+        Some(event)
     }
 
     /// Retire this connection and stop accepting its results in the current UI.
@@ -3053,6 +3112,7 @@ impl GatewayDiscovery {
         let Self {
             status_receiver,
             event_receiver,
+            connection_id: _,
             command_sender,
             plugin_update_all_sender,
             http_sender,
@@ -5524,6 +5584,7 @@ fn gateway_actor(
                         request_id,
                         session_id,
                         profile: event_profile,
+                        connection_id: None,
                         result,
                     })
                     .is_err()
@@ -11448,6 +11509,7 @@ mod tests {
         let discovery = GatewayDiscovery {
             status_receiver,
             event_receiver,
+            connection_id: None,
             command_sender,
             plugin_update_all_sender,
             http_sender,
@@ -11468,6 +11530,61 @@ mod tests {
                 .send(GatewayEvent::Disconnected("late event".into()))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn poll_event_attaches_stable_connection_id_to_session_resume() {
+        let (legacy, legacy_events) = GatewayDiscovery::for_test_event_poll(None);
+        assert_eq!(legacy.connection_id(), None);
+        legacy_events
+            .send(GatewayEvent::SessionResumed {
+                request_id: "legacy-resume".into(),
+                session_id: "stored-session".into(),
+                profile: Some("work".into()),
+                connection_id: None,
+                result: Err("offline".into()),
+            })
+            .expect("queue legacy resume result");
+        assert!(matches!(
+            legacy.poll_event(),
+            Some(GatewayEvent::SessionResumed {
+                request_id,
+                session_id,
+                profile: Some(profile),
+                connection_id: None,
+                result: Err(error),
+            }) if request_id == "legacy-resume"
+                && session_id == "stored-session"
+                && profile == "work"
+                && error == "offline"
+        ));
+
+        let (discovery, events) = GatewayDiscovery::for_test_event_poll(None);
+        let discovery = discovery.with_connection_id("saved-remote-a");
+        assert_eq!(discovery.connection_id(), Some("saved-remote-a"));
+        events
+            .send(GatewayEvent::SessionResumed {
+                request_id: "owned-resume".into(),
+                session_id: "stored-session".into(),
+                profile: Some("work".into()),
+                connection_id: None,
+                result: Err("offline".into()),
+            })
+            .expect("queue owned resume result");
+        assert!(matches!(
+            discovery.poll_event(),
+            Some(GatewayEvent::SessionResumed {
+                request_id,
+                session_id,
+                profile: Some(profile),
+                connection_id: Some(connection_id),
+                result: Err(error),
+            }) if request_id == "owned-resume"
+                && session_id == "stored-session"
+                && profile == "work"
+                && connection_id == "saved-remote-a"
+                && error == "offline"
+        ));
     }
 
     #[test]
@@ -17213,7 +17330,7 @@ mod tests {
         assert!(matches!(
             event_rx.recv_timeout(Duration::from_secs(3)).expect("resume refusal"),
             GatewayEvent::SessionResumed {
-                request_id, session_id, profile, result: Err(error)
+                request_id, session_id, profile, result: Err(error), ..
             } if request_id == "resume-first"
                 && session_id == "stored-live-1"
                 && profile.as_deref() == Some("work")
@@ -17249,7 +17366,7 @@ mod tests {
             &seen[2],
             GatewayEvent::SessionResumed {
                 request_id, session_id, profile,
-                result: Ok(transcript)
+                result: Ok(transcript), ..
             } if request_id == "resume-retry"
                 && session_id == "stored-live-1"
                 && profile.as_deref() == Some("work")

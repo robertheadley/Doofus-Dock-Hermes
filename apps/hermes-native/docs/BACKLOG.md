@@ -286,3 +286,11 @@ PAR-0510 owner enforcement follow-up (2026-11-19T15:23Z):
 - [x] Add explicit GatewayDiscovery shutdown that retires event delivery and closes command/worker channels; document the in-flight HTTP and network-attach limits.
 - [ ] Integrate a saved-connection picker and multi-connection discovery with generation/owner fencing.
 - [ ] Key session views and pending operations by connection, profile and session; carry owner through requests/results and prove same-ID isolation.
+
+
+PAR-0510 connection-owned resume progress (2026-11-19T16:41:18Z):
+- [x] Scope session pane IDs, persisted metadata, close/restore and view cache identity by stable Gateway connection plus profile/session.
+- [x] Attribute `SessionResumed` to its discovery connection and fence resume results and peer transcript refresh by that owner.
+- [x] Add same-profile/same-session cross-connection pane isolation and persistence regression coverage.
+- [ ] Add the saved-connection picker and concurrent discovery actor lifecycle/generation fencing.
+- [ ] Carry exact owner routing through every remaining session request, result and mutation; validate with live Gateway reconnect behavior and Windows/source-paired evidence.

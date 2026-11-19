@@ -202,6 +202,7 @@ fn layout_command(kind: &str, revision: u64) -> CommandId {
 #[derive(Clone, Debug)]
 struct ClosedSessionPane {
     panel: PanelId,
+    connection_id: Option<String>,
     session_id: String,
     profile: Option<String>,
 }
@@ -209,6 +210,7 @@ struct ClosedSessionPane {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RestoredSessionPane {
     pub panel: PanelId,
+    pub connection_id: Option<String>,
     pub session_id: String,
     pub profile: Option<String>,
 }
@@ -421,12 +423,30 @@ impl Workspace {
         stored_session_id: &str,
         title: &str,
     ) -> Result<PanelId, String> {
-        validate_session_pane_identity(profile_id, stored_session_id, title)?;
+        self.open_session_pane_for_owner(None, profile_id, stored_session_id, title)
+    }
+
+    /// Open a session pane with its exact configured Gateway owner. Connection
+    /// identity is persisted in the descriptor metadata and included in the
+    /// stable panel ID, so same-profile/session IDs from distinct gateways do
+    /// not alias one Dock pane.
+    pub fn open_session_pane_for_owner(
+        &mut self,
+        connection_id: Option<&str>,
+        profile_id: Option<&str>,
+        stored_session_id: &str,
+        title: &str,
+    ) -> Result<PanelId, String> {
+        validate_session_pane_identity(connection_id, profile_id, stored_session_id, title)?;
         self.normalize_nested_workspace_session_tabs()?;
-        let panel = session_pane_id(profile_id, stored_session_id);
+        let panel = session_pane_id_for_owner(connection_id, profile_id, stored_session_id);
         let observed = self.dock.snapshot();
         if let Some(descriptor) = observed.document.descriptor(&panel) {
             let expected_profile = profile_id.unwrap_or_default();
+            let descriptor_connection_id = descriptor
+                .metadata
+                .get("hermes.session.connection_id")
+                .map(String::as_str);
             if descriptor
                 .metadata
                 .get("hermes.session.id")
@@ -437,6 +457,7 @@ impl Workspace {
                     .get("hermes.session.profile")
                     .map(String::as_str)
                     != Some(expected_profile)
+                || descriptor_connection_id != connection_id
             {
                 return Err("Session pane ID collision failed identity validation".into());
             }
@@ -491,6 +512,11 @@ impl Workspace {
             "hermes.session.profile".into(),
             profile_id.unwrap_or_default().into(),
         );
+        if let Some(connection_id) = connection_id {
+            descriptor
+                .metadata
+                .insert("hermes.session.connection_id".into(), connection_id.into());
+        }
         self.dock
             .transact(
                 observed.revision,
@@ -584,6 +610,11 @@ impl Workspace {
             .get("hermes.session.id")
             .cloned()
             .ok_or_else(|| "Session pane is missing its stored session ID".to_owned())?;
+        let connection_id = descriptor
+            .metadata
+            .get("hermes.session.connection_id")
+            .cloned()
+            .filter(|connection_id| !connection_id.is_empty());
         let profile = descriptor
             .metadata
             .get("hermes.session.profile")
@@ -601,10 +632,11 @@ impl Workspace {
                 }],
             )
             .map_err(|error| error.to_string())?;
-        let scope = profile.clone().unwrap_or_default();
+        let scope = session_pane_owner_scope(connection_id.as_deref(), profile.as_deref());
         let closed = self.closed_session_panes.entry(scope).or_default();
         closed.push_back(ClosedSessionPane {
             panel: panel.clone(),
+            connection_id,
             session_id,
             profile,
         });
@@ -767,11 +799,20 @@ impl Workspace {
         profile: Option<&str>,
         current_session_id: Option<&str>,
     ) -> Result<Option<RestoredSessionPane>, String> {
-        let scope = profile.unwrap_or_default();
+        self.restore_last_closed_session_pane_for_owner(None, profile, current_session_id)
+    }
+
+    pub fn restore_last_closed_session_pane_for_owner(
+        &mut self,
+        connection_id: Option<&str>,
+        profile: Option<&str>,
+        current_session_id: Option<&str>,
+    ) -> Result<Option<RestoredSessionPane>, String> {
+        let scope = session_pane_owner_scope(connection_id, profile);
         loop {
             let closed = self
                 .closed_session_panes
-                .get_mut(scope)
+                .get_mut(&scope)
                 .and_then(VecDeque::pop_back);
             let Some(closed) = closed else {
                 return Ok(None);
@@ -784,16 +825,23 @@ impl Workspace {
                 || descriptor.metadata.get("hermes.session.id") != Some(&closed.session_id)
                 || descriptor
                     .metadata
+                    .get("hermes.session.connection_id")
+                    .map(String::as_str)
+                    != closed.connection_id.as_deref()
+                || descriptor
+                    .metadata
                     .get("hermes.session.profile")
                     .map(String::as_str)
                     != Some(closed.profile.as_deref().unwrap_or_default())
                 || !document.closed_panels.contains(&closed.panel)
                 || (closed.session_id == current_session_id.unwrap_or_default()
-                    && closed.profile.as_deref().unwrap_or_default() == scope)
+                    && closed.profile.as_deref().unwrap_or_default() == profile.unwrap_or_default()
+                    && closed.connection_id.as_deref() == connection_id)
             {
                 continue;
             }
-            let panel = self.open_session_pane(
+            let panel = self.open_session_pane_for_owner(
+                closed.connection_id.as_deref(),
                 closed.profile.as_deref(),
                 &closed.session_id,
                 &descriptor.title_key,
@@ -801,6 +849,7 @@ impl Workspace {
             self.select_panel(&panel)?;
             return Ok(Some(RestoredSessionPane {
                 panel,
+                connection_id: closed.connection_id,
                 session_id: closed.session_id,
                 profile: closed.profile,
             }));
@@ -846,6 +895,15 @@ impl Workspace {
     /// Returns the stored identity for each session pane that is open in the
     /// current Dock tree. Closed or profile-hidden descriptors are excluded.
     pub fn open_session_pane_identities(&self) -> Vec<(String, Option<String>)> {
+        self.open_session_pane_owner_identities()
+            .into_iter()
+            .map(|(_, session_id, profile)| (session_id, profile))
+            .collect()
+    }
+
+    pub fn open_session_pane_owner_identities(
+        &self,
+    ) -> Vec<(Option<String>, String, Option<String>)> {
         let document = self.dock.snapshot().document;
         document
             .panels
@@ -862,7 +920,12 @@ impl Workspace {
                     .get("hermes.session.profile")
                     .filter(|profile| !profile.is_empty())
                     .cloned();
-                Some((session_id, profile))
+                let connection_id = descriptor
+                    .metadata
+                    .get("hermes.session.connection_id")
+                    .filter(|connection_id| !connection_id.is_empty())
+                    .cloned();
+                Some((connection_id, session_id, profile))
             })
             .collect()
     }
@@ -2212,10 +2275,16 @@ fn apply_profile_to_service_with_reopen(
 }
 
 fn validate_session_pane_identity(
+    connection_id: Option<&str>,
     profile: Option<&str>,
     stored_session_id: &str,
     title: &str,
 ) -> Result<(), String> {
+    if connection_id.is_some_and(|value| {
+        value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
+    }) {
+        return Err("Session Gateway connection ID is invalid".into());
+    }
     if stored_session_id.is_empty()
         || stored_session_id.len() > 512
         || stored_session_id.chars().any(char::is_control)
@@ -2242,20 +2311,49 @@ fn bounded_session_title(title: &str) -> String {
     }
 }
 
+#[cfg(test)]
 fn session_pane_id(profile: Option<&str>, stored_session_id: &str) -> PanelId {
+    session_pane_id_for_owner(None, profile, stored_session_id)
+}
+
+fn session_pane_id_for_owner(
+    connection_id: Option<&str>,
+    profile: Option<&str>,
+    stored_session_id: &str,
+) -> PanelId {
     // Fixed FNV-1a over explicit separators provides a stable, bounded panel ID.
-    // Full identities remain in descriptor metadata and are checked on lookup.
+    // The legacy identity keeps its original hash for persisted-layout stability.
+    let mut identity = Vec::with_capacity(
+        connection_id.map_or(0, str::len)
+            + profile.map_or(0, str::len)
+            + stored_session_id.len()
+            + 2,
+    );
+    if let Some(connection_id) = connection_id {
+        identity.extend_from_slice(connection_id.as_bytes());
+        identity.push(0);
+    }
+    identity.extend_from_slice(profile.unwrap_or_default().as_bytes());
+    identity.push(0);
+    identity.extend_from_slice(stored_session_id.as_bytes());
     let mut hash = 0xcbf29ce484222325_u64;
-    for byte in profile
-        .unwrap_or_default()
-        .bytes()
-        .chain([0])
-        .chain(stored_session_id.bytes())
-    {
+    for byte in identity {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
     PanelId::from(format!("session-tile:{hash:016x}"))
+}
+
+fn session_pane_owner_scope(connection_id: Option<&str>, profile: Option<&str>) -> String {
+    let connection_id = connection_id.unwrap_or_default();
+    let profile = profile.unwrap_or_default();
+    format!(
+        "{}:{}|{}:{}",
+        connection_id.len(),
+        connection_id,
+        profile.len(),
+        profile
+    )
 }
 
 fn file_preview_panel_id(path: &str) -> PanelId {
@@ -4957,11 +5055,17 @@ mod tests {
 
     #[test]
     fn session_pane_identity_validation_is_bounded_and_rejects_controls() {
-        assert!(validate_session_pane_identity(None, "", "Session").is_err());
-        assert!(validate_session_pane_identity(None, "bad\nid", "Session").is_err());
-        assert!(validate_session_pane_identity(Some(""), "session", "Session").is_err());
-        assert!(validate_session_pane_identity(Some("work"), "session", "bad\ntitle").is_err());
-        assert!(validate_session_pane_identity(None, &"s".repeat(513), "Session").is_err());
+        assert!(validate_session_pane_identity(None, None, "", "Session").is_err());
+        assert!(validate_session_pane_identity(None, None, "bad\nid", "Session").is_err());
+        assert!(validate_session_pane_identity(Some(""), None, "session", "Session").is_err());
+        assert!(
+            validate_session_pane_identity(None, Some("work"), "session", "bad\ntitle").is_err()
+        );
+        assert!(validate_session_pane_identity(None, None, &"s".repeat(513), "Session").is_err());
+        assert!(
+            validate_session_pane_identity(Some("bad\nconnection"), None, "session", "Session")
+                .is_err()
+        );
         assert_eq!(
             session_pane_id(Some("work"), "same"),
             session_pane_id(Some("work"), "same")
@@ -4972,6 +5076,81 @@ mod tests {
         );
         assert_eq!(bounded_session_title("\n"), "Session");
         assert_eq!(bounded_session_title(&"x".repeat(100)).chars().count(), 72);
+    }
+
+    #[test]
+    fn session_pane_owner_scopes_identical_profile_and_session_across_connections() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-session-owner-pane-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let first = workspace
+            .open_session_pane_for_owner(
+                Some("gateway-a"),
+                Some("work"),
+                "same-session",
+                "Gateway A",
+            )
+            .unwrap();
+        let second = workspace
+            .open_session_pane_for_owner(
+                Some("gateway-b"),
+                Some("work"),
+                "same-session",
+                "Gateway B",
+            )
+            .unwrap();
+        assert_ne!(first, second);
+
+        let document = workspace.dock.snapshot().document;
+        assert_eq!(
+            document.descriptor(&first).unwrap().metadata["hermes.session.connection_id"],
+            "gateway-a"
+        );
+        assert_eq!(
+            document.descriptor(&second).unwrap().metadata["hermes.session.connection_id"],
+            "gateway-b"
+        );
+        assert!(workspace.open_session_pane_owner_identities().contains(&(
+            Some("gateway-a".into()),
+            "same-session".into(),
+            Some("work".into())
+        )));
+        assert!(workspace.open_session_pane_owner_identities().contains(&(
+            Some("gateway-b".into()),
+            "same-session".into(),
+            Some("work".into())
+        )));
+
+        workspace.close_session_pane(&first).unwrap();
+        let restored = workspace
+            .restore_last_closed_session_pane_for_owner(Some("gateway-a"), Some("work"), None)
+            .unwrap()
+            .expect("the closed pane restores under its exact connection owner");
+        assert_eq!(restored.panel, first);
+        assert_eq!(restored.connection_id.as_deref(), Some("gateway-a"));
+
+        workspace.save_layout();
+        drop(workspace);
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        let descriptor = reloaded
+            .dock
+            .snapshot()
+            .document
+            .descriptor(&first)
+            .unwrap()
+            .clone();
+        assert_eq!(
+            descriptor.metadata["hermes.session.connection_id"],
+            "gateway-a"
+        );
+        drop(reloaded);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

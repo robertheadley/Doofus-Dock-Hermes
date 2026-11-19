@@ -919,6 +919,7 @@ struct ProjectSessionLifecycle {
 #[derive(Clone, Debug)]
 struct PendingPeerTranscriptRefresh {
     request_id: String,
+    connection_id: Option<String>,
     stored_session_id: String,
     profile: Option<String>,
     endpoint_profile_id: String,
@@ -1103,6 +1104,7 @@ pub struct HermesNativeApp {
     overlay_return: AppRoute,
     contributed_paths: BTreeSet<String>,
     gateway_discovery: Option<GatewayDiscovery>,
+    gateway_connection_id: Option<String>,
     gateway_endpoint: Option<GatewayEndpoint>,
     sessions: Vec<SessionSummary>,
     project_session_colors: BTreeMap<(String, String), Option<String>>,
@@ -2287,25 +2289,34 @@ fn start_saved_gateway_connection(
         if let Ok(Some(token)) =
             crate::native_token_store::load_session_token(workspace.data_directory(), url)
         {
-            return Some(GatewayDiscovery::start_remote(
-                url.to_owned(),
-                RemoteAuthMode::Token,
-                RemoteGatewayAuth::Token(token),
-            ));
+            return Some(
+                GatewayDiscovery::start_remote(
+                    url.to_owned(),
+                    RemoteAuthMode::Token,
+                    RemoteGatewayAuth::Token(token),
+                )
+                .with_connection_id(workspace.selected_gateway_connection_id().to_owned()),
+            );
         }
         if let Ok(Some(session)) = crate::native_token_store::load(workspace.data_directory(), url)
         {
-            return Some(GatewayDiscovery::start_remote(
-                url.to_owned(),
-                RemoteAuthMode::OAuth,
-                RemoteGatewayAuth::OAuth {
-                    session: std::sync::Arc::new(std::sync::Mutex::new(session)),
-                    credential_store_directory: workspace.data_directory().to_path_buf(),
-                },
-            ));
+            return Some(
+                GatewayDiscovery::start_remote(
+                    url.to_owned(),
+                    RemoteAuthMode::OAuth,
+                    RemoteGatewayAuth::OAuth {
+                        session: std::sync::Arc::new(std::sync::Mutex::new(session)),
+                        credential_store_directory: workspace.data_directory().to_path_buf(),
+                    },
+                )
+                .with_connection_id(workspace.selected_gateway_connection_id().to_owned()),
+            );
         }
     }
-    Some(GatewayDiscovery::start())
+    Some(
+        GatewayDiscovery::start()
+            .with_connection_id(workspace.selected_gateway_connection_id().to_owned()),
+    )
 }
 
 fn current_key_platform() -> KeyPlatform {
@@ -2534,7 +2545,7 @@ fn render_message() -> &'static str {
             archived: false,
         });
         self.session_chat_views.insert(
-            session_identity_key(session_id, Some(profile)),
+            self.session_identity_key(session_id, Some(profile)),
             SessionChatViewState {
                 profile: Some(profile.into()),
                 runtime_session_id: Some("pane-fixture-runtime".into()),
@@ -3300,6 +3311,8 @@ fn render_message() -> &'static str {
             Ok(workspace) => (workspace, None),
             Err(error) => (fallback, Some(error)),
         };
+        let gateway_connection_id =
+            connect_gateway.then(|| workspace.selected_gateway_connection_id().to_owned());
         let gateway_discovery = start_saved_gateway_connection(&workspace, connect_gateway);
         let keybinding_platform = current_key_platform();
         let (keybindings, keybindings_error) = match KeybindingStore::load(
@@ -3373,6 +3386,7 @@ fn render_message() -> &'static str {
             overlay_return: AppRoute::NewChat,
             contributed_paths: BTreeSet::new(),
             gateway_discovery,
+            gateway_connection_id,
             gateway_endpoint: None,
             sessions: Vec::new(),
             project_session_colors: BTreeMap::new(),
@@ -5753,15 +5767,12 @@ fn render_message() -> &'static str {
                 };
                 result.unwrap_or_else(|error| self.status = error);
             }
-            let action_key = session_identity_key(&session.id, session.profile.as_deref());
+            let action_key = self.session_summary_identity_key(&session);
             let pin_pending = self.pending_session_pins.contains_key(&action_key);
             let unread_pending = self.pending_session_unreads.contains_key(&action_key);
-            let archive_pending =
-                self.pending_session_archives
-                    .contains_key(&session_identity_key(
-                        &session.id,
-                        session.profile.as_deref(),
-                    ));
+            let archive_pending = self
+                .pending_session_archives
+                .contains_key(&self.session_summary_identity_key(&session));
             let rename_pending = self.pending_session_renames.contains_key(&action_key);
             let is_pinned = session.pinned || pinned_row;
             let pin_verb = if is_pinned { "Unpin" } else { "Pin" };
@@ -6117,10 +6128,7 @@ fn render_message() -> &'static str {
         self.transcript_find_bar(ui);
         let resume_error = self
             .session_chat_views
-            .get(&session_identity_key(
-                session_id,
-                self.active_session_profile.as_deref(),
-            ))
+            .get(&self.session_identity_key(session_id, self.active_session_profile.as_deref()))
             .and_then(|view| view.resume_error.clone());
         if let Some(error) = resume_error {
             ui.label(RichText::new("Couldn't open this session").color(Color32::LIGHT_RED));
@@ -11616,7 +11624,12 @@ fn render_message() -> &'static str {
                             };
                             match attach_result {
                                 Ok((url, auth_mode, credential)) => {
-                    self.gateway_discovery = Some(GatewayDiscovery::start_remote(url, auth_mode, credential));
+                    let connection_id = self.workspace.selected_gateway_connection_id().to_owned();
+                    self.gateway_discovery = Some(
+                        GatewayDiscovery::start_remote(url, auth_mode, credential)
+                            .with_connection_id(connection_id.clone()),
+                    );
+                    self.gateway_connection_id = Some(connection_id);
                     self.reset_messaging_state();
                                     self.gateway_connected = false;
                                     self.gateway_endpoint = None;
@@ -11726,7 +11739,7 @@ fn render_message() -> &'static str {
     fn composer(&mut self, ui: &mut Ui) {
         let session_id = self.active_runtime_session_id.clone();
         let pending_key = session_id.as_deref().map(|session_id| {
-            session_identity_key(session_id, self.active_session_profile.as_deref())
+            self.session_identity_key(session_id, self.active_session_profile.as_deref())
         });
         let pending = pending_key
             .as_ref()
@@ -11863,7 +11876,7 @@ fn render_message() -> &'static str {
         {
             return;
         }
-        let runtime_key = session_identity_key(&runtime_session_id, profile.as_deref());
+        let runtime_key = self.session_identity_key(&runtime_session_id, profile.as_deref());
         if self.pending_submissions.contains_key(&runtime_key)
             || self
                 .pending_interrupt
@@ -11920,7 +11933,7 @@ fn render_message() -> &'static str {
             .active_transcript_refresh
             .take()
             .expect("matched refresh");
-        let runtime_key = session_identity_key(runtime_session_id, profile.as_deref());
+        let runtime_key = self.session_identity_key(runtime_session_id, profile.as_deref());
         let same_owner = self.route == AppRoute::Session(session_id.to_owned())
             && self.active_session_profile == profile
             && self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
@@ -11975,20 +11988,30 @@ fn render_message() -> &'static str {
             return;
         };
         let endpoint_profile_id = endpoint.profile_id.clone();
-        let mut targets = self
-            .workspace
-            .open_session_pane_identities()
-            .into_iter()
-            .filter(|(stored_id, _)| stored_id == stored_session_id)
-            .collect::<Vec<_>>();
+        let current_connection = Some(self.active_gateway_connection_id().to_owned());
+        let mut targets =
+            self.workspace
+                .open_session_pane_owner_identities()
+                .into_iter()
+                .filter_map(|(connection_id, stored_id, profile)| {
+                    let connection_id = connection_id
+                        .or_else(|| self.untagged_pane_connection_id().map(str::to_owned));
+                    (stored_id == stored_session_id && connection_id == current_connection)
+                        .then_some((connection_id, stored_id, profile))
+                })
+                .collect::<Vec<_>>();
         if let AppRoute::Session(active_id) = &self.route
             && active_id == stored_session_id
         {
-            targets.push((active_id.clone(), self.active_session_profile.clone()));
+            targets.push((
+                current_connection.clone(),
+                active_id.clone(),
+                self.active_session_profile.clone(),
+            ));
         }
 
         let mut scheduled = BTreeSet::new();
-        for (stored_id, profile) in targets {
+        for (connection_id, stored_id, profile) in targets {
             if profile
                 .as_deref()
                 .is_some_and(|profile| profile != endpoint_profile_id)
@@ -12007,7 +12030,11 @@ fn render_message() -> &'static str {
                     self.older_transcript_request.is_some(),
                 )
             } else {
-                let key = session_identity_key(&stored_id, profile.as_deref());
+                let key = self.session_identity_key_for_connection(
+                    connection_id.as_deref(),
+                    &stored_id,
+                    profile.as_deref(),
+                );
                 let Some(view) = self.session_chat_views.get(&key) else {
                     continue;
                 };
@@ -12020,17 +12047,29 @@ fn render_message() -> &'static str {
                     view.older_transcript_request.is_some(),
                 )
             };
-            if !scheduled.insert((profile.clone(), runtime_session_id.clone())) {
+            if !scheduled.insert((
+                connection_id.clone(),
+                profile.clone(),
+                runtime_session_id.clone(),
+            )) {
                 continue;
             }
             if active_match {
                 self.refresh_active_transcript_after_change();
                 continue;
             }
-            let key = session_identity_key(&runtime_session_id, profile.as_deref());
+            let key = self.session_identity_key_for_connection(
+                connection_id.as_deref(),
+                &runtime_session_id,
+                profile.as_deref(),
+            );
             let view = self
                 .session_chat_views
-                .get(&session_identity_key(&stored_id, profile.as_deref()));
+                .get(&self.session_identity_key_for_connection(
+                    connection_id.as_deref(),
+                    &stored_id,
+                    profile.as_deref(),
+                ));
             let Some(view) = view else { continue };
             if older_pending
                 || view.transcript.iter().any(|message| {
@@ -12079,6 +12118,7 @@ fn render_message() -> &'static str {
                 request_id.clone(),
                 PendingPeerTranscriptRefresh {
                     request_id,
+                    connection_id,
                     stored_session_id: stored_id,
                     profile: profile.clone(),
                     endpoint_profile_id: endpoint_profile_id.clone(),
@@ -12103,13 +12143,23 @@ fn render_message() -> &'static str {
             return;
         };
         if pending.request_id != request_id
+            || pending.connection_id.as_deref() != Some(self.active_gateway_connection_id())
             || pending.stored_session_id != session_id
             || pending.profile != profile
             || pending.endpoint_profile_id != endpoint_profile_id
             || pending.runtime_session_id != runtime_session_id
-            || !self.workspace.open_session_pane_identities().iter().any(
-                |(stored_id, pane_profile)| stored_id == session_id && pane_profile == &profile,
-            )
+            || !self
+                .workspace
+                .open_session_pane_owner_identities()
+                .iter()
+                .any(|(pane_connection, stored_id, pane_profile)| {
+                    pane_connection
+                        .as_deref()
+                        .or_else(|| self.untagged_pane_connection_id())
+                        == pending.connection_id.as_deref()
+                        && stored_id == session_id
+                        && pane_profile == &profile
+                })
             || self
                 .gateway_endpoint
                 .as_ref()
@@ -12117,8 +12167,16 @@ fn render_message() -> &'static str {
         {
             return;
         }
-        let key = session_identity_key(session_id, profile.as_deref());
-        let runtime_key = session_identity_key(runtime_session_id, profile.as_deref());
+        let key = self.session_identity_key_for_connection(
+            pending.connection_id.as_deref(),
+            session_id,
+            profile.as_deref(),
+        );
+        let runtime_key = self.session_identity_key_for_connection(
+            pending.connection_id.as_deref(),
+            runtime_session_id,
+            profile.as_deref(),
+        );
         let Some(view) = self.session_chat_views.get_mut(&key) else {
             return;
         };
@@ -12198,7 +12256,12 @@ fn render_message() -> &'static str {
             return;
         }
         if let Some((session_id, profile)) = self.untouched_blank_session.clone() {
-            let key = session_identity_key(&session_id, profile.as_deref());
+            let connection_id = Some(self.active_gateway_connection_id().to_owned());
+            let key = self.session_identity_key_for_connection(
+                connection_id.as_deref(),
+                &session_id,
+                profile.as_deref(),
+            );
             let panel = self.workspace.session_pane_ids().into_iter().find(|panel| {
                 self.workspace
                     .dock
@@ -12209,6 +12272,12 @@ fn render_message() -> &'static str {
                         descriptor.metadata.get("hermes.session.id") == Some(&session_id)
                             && descriptor.metadata.get("hermes.session.profile")
                                 == Some(&profile.clone().unwrap_or_default())
+                            && descriptor
+                                .metadata
+                                .get("hermes.session.connection_id")
+                                .map(String::as_str)
+                                .or(connection_id.as_deref())
+                                == connection_id.as_deref()
                     })
             });
             let document = self.workspace.dock.snapshot().document;
@@ -12230,7 +12299,8 @@ fn render_message() -> &'static str {
                     .any(|session| session.id == session_id && session.profile == profile)
                 && !self.session_pane_is_busy(panel.as_ref().expect("open tile has a panel"));
             if owner_profile == profile && still_untouched {
-                match self.workspace.open_session_pane(
+                match self.workspace.open_session_pane_for_owner(
+                    connection_id.as_deref(),
                     profile.as_deref(),
                     &session_id,
                     "New session",
@@ -12288,7 +12358,7 @@ fn render_message() -> &'static str {
             .or_else(|| self.active_session_profile.clone())
     }
 
-    fn require_active_session_owner(&self, session: &SessionSummary) -> Result<(), String> {
+    fn require_active_session_owner(&self, session: &SessionSummary) -> Result<String, String> {
         let mut owners = crate::session_owner::SessionOwnerRegistry::default();
         for connection in self.workspace.gateway_connections() {
             owners
@@ -12313,23 +12383,30 @@ fn render_message() -> &'static str {
         if !self.gateway_connected || self.gateway_discovery.is_none() {
             return Err("Hermes gateway is unavailable for this session".into());
         }
-        Ok(())
+        Ok(resolved.connection_id.to_owned())
     }
 
     fn open_sidebar_session_in_place(&mut self, session: SessionSummary) -> Result<(), String> {
-        self.require_active_session_owner(&session)?;
+        let connection_id = self.require_active_session_owner(&session)?;
         let profile = self.resolved_sidebar_session_profile(&session);
-        let target = (session.id.clone(), profile.clone());
         let already_open_in_tile = self
             .workspace
-            .open_session_pane_identities()
+            .open_session_pane_owner_identities()
             .into_iter()
-            .any(|identity| identity == target);
+            .any(|(pane_connection, session_id, pane_profile)| {
+                pane_connection.as_deref() == Some(connection_id.as_str())
+                    && session_id == session.id
+                    && pane_profile == profile
+            });
 
         self.save_active_chat_view();
         if already_open_in_tile {
-            self.workspace
-                .open_session_pane(profile.as_deref(), &session.id, &session.title)?;
+            self.workspace.open_session_pane_for_owner(
+                Some(&connection_id),
+                profile.as_deref(),
+                &session.id,
+                &session.title,
+            )?;
         } else {
             self.workspace.select_panel(&PanelId::from(WORKSPACE))?;
         }
@@ -12340,16 +12417,20 @@ fn render_message() -> &'static str {
     }
 
     fn open_sidebar_session_in_tab(&mut self, session: SessionSummary) -> Result<(), String> {
-        self.require_active_session_owner(&session)?;
+        let connection_id = self.require_active_session_owner(&session)?;
         let profile = self.resolved_sidebar_session_profile(&session);
         if self.route == AppRoute::Session(session.id.clone())
             && self.active_session_profile == profile
         {
             if self
                 .workspace
-                .open_session_pane_identities()
+                .open_session_pane_owner_identities()
                 .into_iter()
-                .any(|identity| identity == (session.id.clone(), profile.clone()))
+                .any(|(pane_connection, session_id, pane_profile)| {
+                    pane_connection.as_deref() == Some(connection_id.as_str())
+                        && session_id == session.id
+                        && pane_profile == profile
+                })
             {
                 return Ok(());
             }
@@ -12395,7 +12476,7 @@ fn render_message() -> &'static str {
             return;
         }
         let session_id = session.id.clone();
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         if self.pending_session_pins.contains_key(&action_key) {
             return;
         }
@@ -12423,7 +12504,7 @@ fn render_message() -> &'static str {
             return;
         }
         let session_id = session.id.clone();
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         if self.pending_session_unreads.contains_key(&action_key) {
             return;
         }
@@ -12463,7 +12544,7 @@ fn render_message() -> &'static str {
             self.status = "Session title is invalid".into();
             return;
         }
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         if self.pending_session_renames.contains_key(&action_key) {
             return;
         }
@@ -12508,7 +12589,7 @@ fn render_message() -> &'static str {
             self.status = error;
             return;
         }
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         if !self.uncertain_session_renames.contains(&action_key) {
             return;
         }
@@ -12544,7 +12625,7 @@ fn render_message() -> &'static str {
             return;
         }
         let session_id = session.id.clone();
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         if self.pending_session_archives.contains_key(&action_key) {
             return;
         }
@@ -12576,7 +12657,7 @@ fn render_message() -> &'static str {
             return;
         }
         let session_id = session.id.clone();
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         if self.pending_session_deletes.contains_key(&action_key) {
             return;
         }
@@ -12601,7 +12682,7 @@ fn render_message() -> &'static str {
             return;
         }
         let session_id = session.id.clone();
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         if self.pending_session_exports.contains_key(&action_key) {
             return;
         }
@@ -13769,7 +13850,7 @@ fn render_message() -> &'static str {
             return;
         }
         let profile = self.active_session_profile.clone();
-        let pending_key = session_identity_key(&session_id, profile.as_deref());
+        let pending_key = self.session_identity_key(&session_id, profile.as_deref());
         if self.pending_submissions.contains_key(&pending_key) {
             self.status =
                 "Finish or recover this session's pending message before sending another".into();
@@ -13868,7 +13949,7 @@ fn render_message() -> &'static str {
         let Some(session_id) = self.active_runtime_session_id.as_deref() else {
             return;
         };
-        let key = session_identity_key(session_id, self.active_session_profile.as_deref());
+        let key = self.session_identity_key(session_id, self.active_session_profile.as_deref());
         let Some(pending) = self.pending_submissions.get(&key).cloned() else {
             return;
         };
@@ -14076,10 +14157,7 @@ fn render_message() -> &'static str {
         self.session_chat_views.iter().find_map(|(key, view)| {
             (view.runtime_session_id.as_deref() == Some(runtime_session_id)
                 && view.profile.as_deref() == profile)
-                .then(|| {
-                    key.split_once('\0')
-                        .map(|(_, stored_id)| stored_id.to_owned())
-                })
+                .then(|| session_id_from_owner_identity_key(key).map(str::to_owned))
                 .flatten()
         })
     }
@@ -14098,7 +14176,7 @@ fn render_message() -> &'static str {
             SessionSummary {
                 cwd: None,
                 id: stored_id.into(),
-                connection_id: None,
+                connection_id: self.gateway_connection_id.clone(),
                 lineage_root_id: None,
                 profile: profile.map(str::to_owned),
                 title,
@@ -14120,7 +14198,7 @@ fn render_message() -> &'static str {
         let Some(session_id) = self.active_runtime_session_id.as_deref() else {
             return;
         };
-        let key = session_identity_key(session_id, self.active_session_profile.as_deref());
+        let key = self.session_identity_key(session_id, self.active_session_profile.as_deref());
         let Some(pending) = self.pending_submissions.get(&key) else {
             return;
         };
@@ -14274,10 +14352,9 @@ fn render_message() -> &'static str {
             && profile.is_none_or(|profile| self.active_session_profile.as_deref() == Some(profile))
             && let AppRoute::Session(stored_id) = &self.route
         {
-            owners.insert(session_identity_key(
-                stored_id,
-                self.active_session_profile.as_deref(),
-            ));
+            owners.insert(
+                self.session_identity_key(stored_id, self.active_session_profile.as_deref()),
+            );
         }
         for (key, view) in &self.session_chat_views {
             if view.runtime_session_id.as_deref() == Some(runtime_session_id)
@@ -15206,10 +15283,9 @@ fn render_message() -> &'static str {
         self.session_chat_views.insert(key, view);
         while self.session_chat_views.len() > 32 {
             let active_key = match &self.route {
-                AppRoute::Session(session_id) => Some(session_identity_key(
-                    session_id,
-                    self.active_session_profile.as_deref(),
-                )),
+                AppRoute::Session(session_id) => Some(
+                    self.session_identity_key(session_id, self.active_session_profile.as_deref()),
+                ),
                 _ => None,
             };
             let candidate = self
@@ -15232,7 +15308,7 @@ fn render_message() -> &'static str {
                     let Some(runtime) = view.runtime_session_id.as_deref() else {
                         return true;
                     };
-                    let runtime_key = session_identity_key(runtime, view.profile.as_deref());
+                    let runtime_key = self.session_identity_key(runtime, view.profile.as_deref());
                     !self.pending_submissions.contains_key(&runtime_key)
                         && !self
                             .pending_interrupt
@@ -15258,10 +15334,50 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn session_identity_key(&self, session_id: &str, profile: Option<&str>) -> String {
+        self.session_identity_key_for_connection(
+            self.gateway_connection_id.as_deref(),
+            session_id,
+            profile,
+        )
+    }
+
+    fn session_identity_key_for_connection(
+        &self,
+        connection_id: Option<&str>,
+        session_id: &str,
+        profile: Option<&str>,
+    ) -> String {
+        session_owner_identity_key(session_id, profile, connection_id)
+    }
+
+    fn session_summary_identity_key(&self, session: &SessionSummary) -> String {
+        session_owner_identity_key(
+            &session.id,
+            session.profile.as_deref(),
+            session
+                .connection_id
+                .as_deref()
+                .or(self.gateway_connection_id.as_deref()),
+        )
+    }
+
+    fn active_gateway_connection_id(&self) -> &str {
+        self.gateway_connection_id
+            .as_deref()
+            .unwrap_or_else(|| self.workspace.selected_gateway_connection_id())
+    }
+
+    fn untagged_pane_connection_id(&self) -> Option<&str> {
+        let connections = self.workspace.gateway_connections();
+        (connections.len() == 1).then(|| connections[0].connection_id.as_str())
+    }
+
     fn save_active_chat_view(&mut self) {
         match &self.route {
             AppRoute::Session(session_id) => {
-                let key = session_identity_key(session_id, self.active_session_profile.as_deref());
+                let key =
+                    self.session_identity_key(session_id, self.active_session_profile.as_deref());
                 let previous = self.session_chat_views.get(&key);
                 self.cache_session_chat_view(
                     key,
@@ -15289,7 +15405,7 @@ fn render_message() -> &'static str {
     }
 
     fn request_explicit_session_resume(&mut self, session_id: &str, profile: Option<String>) {
-        let action_key = session_identity_key(session_id, profile.as_deref());
+        let action_key = self.session_identity_key(session_id, profile.as_deref());
         if self.pending_session_archives.contains_key(&action_key)
             || self.pending_session_deletes.contains_key(&action_key)
         {
@@ -15302,7 +15418,7 @@ fn render_message() -> &'static str {
         if !self.gateway_connected {
             return;
         }
-        let key = session_identity_key(session_id, profile.as_deref());
+        let key = self.session_identity_key(session_id, profile.as_deref());
         let mut view = self
             .session_chat_views
             .get(&key)
@@ -15348,7 +15464,7 @@ fn render_message() -> &'static str {
     }
 
     fn retry_session_resume(&mut self, session_id: &str, profile: Option<String>) {
-        let key = session_identity_key(session_id, profile.as_deref());
+        let key = self.session_identity_key(session_id, profile.as_deref());
         let mut view = self
             .session_chat_views
             .get(&key)
@@ -15363,6 +15479,7 @@ fn render_message() -> &'static str {
         self.request_explicit_session_resume(session_id, profile);
     }
 
+    #[cfg(test)]
     fn settle_session_resume(
         &mut self,
         request_id: &str,
@@ -15370,7 +15487,25 @@ fn render_message() -> &'static str {
         profile: Option<String>,
         result: Result<crate::gateway::SessionTranscript, String>,
     ) {
-        let key = session_identity_key(session_id, profile.as_deref());
+        self.settle_session_resume_for_owner(
+            request_id,
+            session_id,
+            profile,
+            self.gateway_connection_id.clone(),
+            result,
+        );
+    }
+
+    fn settle_session_resume_for_owner(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        result: Result<crate::gateway::SessionTranscript, String>,
+    ) {
+        let key =
+            session_owner_identity_key(session_id, profile.as_deref(), connection_id.as_deref());
         let Some(mut view) = self.session_chat_views.get(&key).cloned() else {
             return;
         };
@@ -15445,7 +15580,8 @@ fn render_message() -> &'static str {
         self.route = route.clone();
         match &route {
             AppRoute::Session(session_id) => {
-                let key = session_identity_key(session_id, self.active_session_profile.as_deref());
+                let key =
+                    self.session_identity_key(session_id, self.active_session_profile.as_deref());
                 if let Some(view) = self.session_chat_views.get(&key).cloned() {
                     self.transcript = view.transcript;
                     self.transcript_message_count = view.transcript_message_count;
@@ -15510,14 +15646,29 @@ fn render_message() -> &'static str {
                 .iter()
                 .chain(self.archived_sessions.iter())
                 .filter(|session| session.id == *session_id)
-                .map(|session| session.profile.clone())
+                .map(|session| {
+                    (
+                        session
+                            .connection_id
+                            .clone()
+                            .or_else(|| self.gateway_connection_id.clone()),
+                        session.profile.clone(),
+                    )
+                })
                 .collect::<BTreeSet<_>>();
             if matches.len() > 1 {
                 return Err(
-                    "Session ID matches multiple profiles; use open_session with a profile".into(),
+                    "Session ID matches multiple profiles or Gateway owners; open a session from its row".into(),
                 );
             }
-            self.active_session_profile = matches.into_iter().next().flatten().or_else(|| {
+            let (connection_id, matched_profile) = matches
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| (self.gateway_connection_id.clone(), None));
+            if connection_id.as_deref() != self.gateway_connection_id.as_deref() {
+                return Err("Session belongs to a different saved Hermes connection".into());
+            }
+            self.active_session_profile = matched_profile.or_else(|| {
                 self.gateway_endpoint
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.clone())
@@ -15532,7 +15683,8 @@ fn render_message() -> &'static str {
                 .map(|session| session.title.as_str())
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or(session_id);
-            self.workspace.open_session_pane(
+            self.workspace.open_session_pane_for_owner(
+                connection_id.as_deref(),
                 self.active_session_profile.as_deref(),
                 session_id,
                 title,
@@ -15736,8 +15888,13 @@ fn render_message() -> &'static str {
                     .filter(|title| !title.trim().is_empty())
                     .unwrap_or_else(|| session_id.clone());
                 self.save_active_chat_view();
-                self.workspace
-                    .open_session_pane(profile.as_deref(), &session_id, &title)?;
+                let connection_id = self.gateway_connection_id.clone();
+                self.workspace.open_session_pane_for_owner(
+                    connection_id.as_deref(),
+                    profile.as_deref(),
+                    &session_id,
+                    &title,
+                )?;
                 self.active_session_profile = profile;
                 self.navigate_after_save(AppRoute::Session(session_id));
                 self.status = "Opened session tab".into();
@@ -15826,10 +15983,20 @@ fn render_message() -> &'static str {
                     AppRoute::Session(session_id) => Some(session_id.as_str()),
                     _ => None,
                 };
-                if let Some(restored) = self
-                    .workspace
-                    .restore_last_closed_session_pane(profile.as_deref(), current_session_id)?
-                {
+                if let Some(restored) = self.workspace.restore_last_closed_session_pane_for_owner(
+                    self.gateway_connection_id.as_deref(),
+                    profile.as_deref(),
+                    current_session_id,
+                )? {
+                    if restored
+                        .connection_id
+                        .as_deref()
+                        .is_some_and(|owner| Some(owner) != self.gateway_connection_id.as_deref())
+                    {
+                        self.status =
+                            "Closed tab belongs to a different saved Hermes connection".into();
+                        return Ok(());
+                    }
                     self.active_session_profile = restored.profile.clone();
                     self.navigate_after_save(AppRoute::Session(restored.session_id));
                     self.status = "Restored the last closed session tab".into();
@@ -16696,7 +16863,8 @@ fn render_message() -> &'static str {
             .active_runtime_session_id
             .clone()
             .ok_or_else(|| "There is no active Hermes session to stop".to_owned())?;
-        let pending_key = session_identity_key(&session_id, self.active_session_profile.as_deref());
+        let pending_key =
+            self.session_identity_key(&session_id, self.active_session_profile.as_deref());
         let Some(pending) = self.pending_submissions.get(&pending_key) else {
             return Err("There is no active response to stop".into());
         };
@@ -17643,7 +17811,7 @@ fn render_message() -> &'static str {
         profile: Option<String>,
         result: Result<(), String>,
     ) {
-        let action_key = session_identity_key(&session_id, profile.as_deref());
+        let action_key = self.session_identity_key(&session_id, profile.as_deref());
         if self.pending_session_deletes.get(&action_key) != Some(&request_id) {
             return;
         }
@@ -17699,7 +17867,7 @@ fn render_message() -> &'static str {
         profile: Option<String>,
         result: Result<SessionExportTranscript, String>,
     ) {
-        let action_key = session_identity_key(&session_id, profile.as_deref());
+        let action_key = self.session_identity_key(&session_id, profile.as_deref());
         if self.pending_session_exports.get(&action_key) != Some(&request_id) {
             return;
         }
@@ -18464,8 +18632,7 @@ fn render_message() -> &'static str {
                     .max_height(list_height)
                     .show(ui, |ui| {
                         for session in sessions {
-                            let action_key =
-                                session_identity_key(&session.id, session.profile.as_deref());
+                            let action_key = self.session_summary_identity_key(&session);
                             let row_rect = Rect::from_min_size(
                                 ui.cursor().min,
                                 egui::vec2(ui.available_width(), 42.0),
@@ -19100,7 +19267,7 @@ fn render_message() -> &'static str {
         let Some(session) = self.rename_session.clone() else {
             return;
         };
-        let action_key = session_identity_key(&session.id, session.profile.as_deref());
+        let action_key = self.session_summary_identity_key(&session);
         let pending = self.pending_session_renames.contains_key(&action_key);
         let uncertain = self.uncertain_session_renames.contains(&action_key);
         let mut save = false;
@@ -19156,7 +19323,31 @@ fn render_message() -> &'static str {
         };
         let session_id = session_id.clone();
         let profile = (!profile_value.is_empty()).then(|| profile_value.clone());
-        let key = session_identity_key(&session_id, profile.as_deref());
+        let descriptor_connection = descriptor
+            .metadata
+            .get("hermes.session.connection_id")
+            .filter(|connection_id| !connection_id.is_empty())
+            .map(String::as_str);
+        let connection_id = descriptor_connection.or_else(|| self.untagged_pane_connection_id());
+        let Some(connection_id) = connection_id else {
+            self.empty_panel(
+                ui,
+                "This older session pane has no saved Gateway identity. Open the session from its row to create a connection-specific tab.",
+            );
+            return;
+        };
+        if connection_id != self.active_gateway_connection_id() {
+            self.empty_panel(
+                ui,
+                "This session belongs to another Hermes connection. Switch to that connection to open it.",
+            );
+            return;
+        }
+        let key = self.session_identity_key_for_connection(
+            descriptor_connection.or(self.gateway_connection_id.as_deref()),
+            &session_id,
+            profile.as_deref(),
+        );
 
         self.save_active_chat_view();
         let previous_route = self.route.clone();
@@ -19221,13 +19412,29 @@ fn render_message() -> &'static str {
             return false;
         };
         let profile = (!profile_value.is_empty()).then_some(profile_value.as_str());
-        let key = session_identity_key(session_id, profile);
+        let connection_id = descriptor
+            .metadata
+            .get("hermes.session.connection_id")
+            .filter(|connection_id| !connection_id.is_empty())
+            .map(String::as_str)
+            .or_else(|| self.untagged_pane_connection_id());
+        let Some(connection_id) = connection_id else {
+            return false;
+        };
+        let key_connection = descriptor
+            .metadata
+            .get("hermes.session.connection_id")
+            .filter(|connection_id| !connection_id.is_empty())
+            .map(String::as_str)
+            .or(self.gateway_connection_id.as_deref());
+        let key = self.session_identity_key_for_connection(key_connection, session_id, profile);
         let runtime = self
             .session_chat_views
             .get(&key)
             .and_then(|view| view.runtime_session_id.clone())
             .or_else(|| {
-                (self.route == AppRoute::Session(session_id.clone())
+                (self.gateway_connection_id.as_deref() == Some(connection_id)
+                    && self.route == AppRoute::Session(session_id.clone())
                     && self.active_session_profile.as_deref() == profile)
                     .then(|| self.active_runtime_session_id.clone())
                     .flatten()
@@ -19235,7 +19442,8 @@ fn render_message() -> &'static str {
         let Some(runtime) = runtime else {
             return false;
         };
-        let runtime_key = session_identity_key(&runtime, profile);
+        let runtime_key =
+            self.session_identity_key_for_connection(key_connection, &runtime, profile);
         self.pending_submissions.contains_key(&runtime_key)
             || self
                 .pending_interrupt
@@ -20156,6 +20364,10 @@ fn render_message() -> &'static str {
                         self.session_list_refresh_again = false;
                         self.session_list_limit = 50;
                         self.session_profiles_truncated.clear();
+                        self.gateway_connection_id = self
+                            .gateway_discovery
+                            .as_ref()
+                            .and_then(|gateway| gateway.connection_id().map(str::to_owned));
                         self.gateway_endpoint = Some(connection.endpoint);
                         for view in self.session_chat_views.values_mut() {
                             if view.resume_error.is_some() {
@@ -20245,7 +20457,9 @@ fn render_message() -> &'static str {
                             .gateway_endpoint
                             .as_ref()
                             .map(|endpoint| endpoint.profile_id.clone());
-                        let pane_result = self.workspace.open_session_pane(
+                        let connection_id = Some(self.active_gateway_connection_id().to_owned());
+                        let pane_result = self.workspace.open_session_pane_for_owner(
+                            connection_id.as_deref(),
                             profile.as_deref(),
                             &created.stored_session_id,
                             if text.is_empty() {
@@ -20264,7 +20478,7 @@ fn render_message() -> &'static str {
                                 SessionSummary {
                                     cwd: None,
                                     id: created.stored_session_id.clone(),
-                                    connection_id: None,
+                                    connection_id: connection_id.clone(),
                                     lineage_root_id: None,
                                     profile: profile.clone(),
                                     title: text.chars().take(72).collect(),
@@ -20323,8 +20537,15 @@ fn render_message() -> &'static str {
                     request_id,
                     session_id,
                     profile,
+                    connection_id,
                     result,
-                } => self.settle_session_resume(&request_id, &session_id, profile, result),
+                } => self.settle_session_resume_for_owner(
+                    &request_id,
+                    &session_id,
+                    profile,
+                    connection_id,
+                    result,
+                ),
                 GatewayEvent::OlderTranscriptLoaded {
                     request_id,
                     session_id,
@@ -20333,7 +20554,7 @@ fn render_message() -> &'static str {
                     result,
                 } => {
                     self.save_active_chat_view();
-                    let key = session_identity_key(&session_id, profile.as_deref());
+                    let key = self.session_identity_key(&session_id, profile.as_deref());
                     let Some(view) = self.session_chat_views.get_mut(&key) else {
                         continue;
                     };
@@ -20640,7 +20861,7 @@ fn render_message() -> &'static str {
                     pinned,
                     result,
                 } => {
-                    let action_key = session_identity_key(&session_id, profile.as_deref());
+                    let action_key = self.session_identity_key(&session_id, profile.as_deref());
                     if self.pending_session_pins.get(&action_key) != Some(&request_id) {
                         continue;
                     }
@@ -20687,7 +20908,7 @@ fn render_message() -> &'static str {
                     unread,
                     result,
                 } => {
-                    let action_key = session_identity_key(&session_id, profile.as_deref());
+                    let action_key = self.session_identity_key(&session_id, profile.as_deref());
                     if self.pending_session_unreads.get(&action_key) != Some(&request_id) {
                         continue;
                     }
@@ -20720,7 +20941,7 @@ fn render_message() -> &'static str {
                     archived,
                     result,
                 } => {
-                    let action_key = session_identity_key(&session_id, profile.as_deref());
+                    let action_key = self.session_identity_key(&session_id, profile.as_deref());
                     if self.pending_session_archives.get(&action_key) != Some(&request_id) {
                         continue;
                     }
@@ -20836,7 +21057,7 @@ fn render_message() -> &'static str {
                     profile,
                     result,
                 } => {
-                    let action_key = session_identity_key(&session_id, profile.as_deref());
+                    let action_key = self.session_identity_key(&session_id, profile.as_deref());
                     if self.pending_session_renames.get(&action_key) != Some(&request_id) {
                         continue;
                     }
@@ -24067,9 +24288,10 @@ fn partition_sidebar_sessions(
         for session in &sessions {
             if session.id == *session_id
                 && !session.archived
-                && pinned_identities.insert(session_identity_key(
+                && pinned_identities.insert(session_owner_identity_key(
                     &session.id,
                     session.profile.as_deref(),
+                    session.connection_id.as_deref(),
                 ))
             {
                 pinned.push(session.clone());
@@ -24079,9 +24301,10 @@ fn partition_sidebar_sessions(
     for session in &sessions {
         if session.pinned
             && !session.archived
-            && pinned_identities.insert(session_identity_key(
+            && pinned_identities.insert(session_owner_identity_key(
                 &session.id,
                 session.profile.as_deref(),
+                session.connection_id.as_deref(),
             ))
         {
             pinned.push(session.clone());
@@ -24091,9 +24314,10 @@ fn partition_sidebar_sessions(
     let recent = sessions
         .into_iter()
         .filter(|session| {
-            !pinned_identities.contains(&session_identity_key(
+            !pinned_identities.contains(&session_owner_identity_key(
                 &session.id,
                 session.profile.as_deref(),
+                session.connection_id.as_deref(),
             ))
         })
         .collect();
@@ -24116,7 +24340,47 @@ fn move_session_id(order: &mut Vec<String>, source: &str, target: &str) -> bool 
 }
 
 fn session_identity_key(session_id: &str, profile: Option<&str>) -> String {
-    format!("{}\0{session_id}", profile.unwrap_or("default"))
+    session_owner_identity_key(session_id, profile, None)
+}
+
+fn session_id_from_owner_identity_key(key: &str) -> Option<&str> {
+    let rest = key
+        .strip_prefix("v1|tagged|")
+        .or_else(|| key.strip_prefix("v1|legacy|"))?;
+    let (_, rest) = take_length_prefixed_identity_component(rest)?;
+    let rest = rest.strip_prefix('|')?;
+    let (_, rest) = take_length_prefixed_identity_component(rest)?;
+    let rest = rest.strip_prefix('|')?;
+    let (session_id, rest) = take_length_prefixed_identity_component(rest)?;
+    rest.is_empty().then_some(session_id)
+}
+
+fn take_length_prefixed_identity_component(encoded: &str) -> Option<(&str, &str)> {
+    let (length, content) = encoded.split_once(':')?;
+    let length = length.parse::<usize>().ok()?;
+    Some((content.get(..length)?, content.get(length..)?))
+}
+
+fn session_owner_identity_key(
+    session_id: &str,
+    profile: Option<&str>,
+    connection_id: Option<&str>,
+) -> String {
+    crate::session_owner::SessionOwnerIdentity::new(connection_id, profile)
+        .and_then(|owner| owner.session_identity_key(session_id))
+        .unwrap_or_else(|_| {
+            let connection = connection_id.unwrap_or("legacy");
+            let profile = profile.unwrap_or("default");
+            format!(
+                "invalid|{}:{}|{}:{}|{}:{}",
+                connection.len(),
+                connection,
+                profile.len(),
+                profile,
+                session_id.len(),
+                session_id
+            )
+        })
 }
 
 fn filter_removed_project_sessions(
@@ -28525,6 +28789,7 @@ mod tests {
     #[test]
     fn peer_transcript_refresh_targets_open_profile_scoped_tiles_and_fences_stale_receipts() {
         let (mut app, profile_dir) = isolated_app();
+        app.gateway_connection_id = Some(app.workspace.selected_gateway_connection_id().to_owned());
         let (gateway, requests) = GatewayDiscovery::for_test_transcript_refresh();
         app.gateway_discovery = Some(gateway);
         app.gateway_endpoint = Some(GatewayEndpoint {
@@ -28537,14 +28802,26 @@ mod tests {
             control_home: None,
             remote_auth: None,
         });
+        let connection_id = app.gateway_connection_id.clone().unwrap();
         let matching_pane = app
             .workspace
-            .open_session_pane(Some("profile-a"), "stored-shared", "Work")
+            .open_session_pane_for_owner(
+                Some(&connection_id),
+                Some("profile-a"),
+                "stored-shared",
+                "Work",
+            )
             .expect("open matching profile tile");
         app.workspace
-            .open_session_pane(Some("profile-b"), "stored-shared", "Personal")
+            .open_session_pane_for_owner(
+                Some(&connection_id),
+                Some("profile-b"),
+                "stored-shared",
+                "Personal",
+            )
             .expect("open colliding ID in another profile");
-        let key = session_identity_key("stored-shared", Some("profile-a"));
+        let key =
+            session_owner_identity_key("stored-shared", Some("profile-a"), Some(&connection_id));
         app.session_chat_views.insert(
             key.clone(),
             SessionChatViewState {
@@ -28557,7 +28834,7 @@ mod tests {
             },
         );
         app.session_chat_views.insert(
-            session_identity_key("stored-shared", Some("profile-b")),
+            session_owner_identity_key("stored-shared", Some("profile-b"), Some(&connection_id)),
             SessionChatViewState {
                 profile: Some("profile-b".into()),
                 runtime_session_id: Some("runtime-b".into()),
@@ -29861,6 +30138,7 @@ mod tests {
     #[test]
     fn command_center_sessions_delete_requires_confirmation_and_applies_receipt() {
         let (mut app, profile_dir) = isolated_app();
+        app.gateway_connection_id = Some(app.workspace.selected_gateway_connection_id().to_owned());
         app.route = AppRoute::CommandCenter;
         app.command_center_section = CommandCenterSection::Sessions;
         app.gateway_connected = true;
@@ -29921,7 +30199,14 @@ mod tests {
             .expect("delete action remains available")
             .click();
         harness.run();
-        let action_key = session_identity_key("sess-1", Some("worker"));
+        let action_key = {
+            let app = app.borrow();
+            session_owner_identity_key(
+                "sess-1",
+                Some("worker"),
+                Some(app.workspace.selected_gateway_connection_id()),
+            )
+        };
         app.borrow_mut()
             .pending_session_deletes
             .insert(action_key, "delete-req-1".into());
@@ -30011,7 +30296,14 @@ mod tests {
             .expect("Load more requests a larger backend window");
         assert_eq!(requested_limit, 100);
 
-        let action_key = session_identity_key("sess-1", Some("worker"));
+        let action_key = {
+            let app = app.borrow();
+            session_owner_identity_key(
+                "sess-1",
+                Some("worker"),
+                Some(app.workspace.selected_gateway_connection_id()),
+            )
+        };
         app.borrow_mut()
             .pending_session_exports
             .insert(action_key, "export-req-1".into());
@@ -30939,6 +31231,57 @@ mod tests {
     }
 
     #[test]
+    fn session_resume_result_is_fenced_by_gateway_owner_and_request_id() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connection_id = Some("gateway-a".into());
+        app.route = AppRoute::Session("same-session".into());
+        app.active_session_profile = Some("work".into());
+        let key = session_owner_identity_key("same-session", Some("work"), Some("gateway-a"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                resume_request_id: Some("request-a".into()),
+                transcript: vec![json!({"role":"assistant","content":"gateway-a old"})],
+                ..SessionChatViewState::default()
+            },
+        );
+        let transcript = || crate::gateway::SessionTranscript {
+            session_id: "same-session".into(),
+            profile: Some("work".into()),
+            runtime_session_id: "runtime-a".into(),
+            message_count: 1,
+            messages: vec![json!({"role":"assistant","content":"gateway-a refreshed"})],
+        };
+
+        app.settle_session_resume_for_owner(
+            "request-a",
+            "same-session",
+            Some("work".into()),
+            Some("gateway-b".into()),
+            Ok(transcript()),
+        );
+        assert_eq!(
+            app.session_chat_views[&key].transcript[0]["content"], "gateway-a old",
+            "a same-ID result from another Gateway cannot settle this request"
+        );
+        app.settle_session_resume_for_owner(
+            "request-a",
+            "same-session",
+            Some("work".into()),
+            Some("gateway-a".into()),
+            Ok(transcript()),
+        );
+        assert_eq!(
+            app.session_chat_views[&key].transcript[0]["content"],
+            "gateway-a refreshed"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn session_resume_success_updates_only_the_matching_pending_request() {
         let (mut app, profile_dir) = isolated_app();
         app.route = AppRoute::Session("resume-session".into());
@@ -31233,15 +31576,22 @@ mod tests {
     #[test]
     fn new_session_reuses_the_untouched_blank_tile_for_the_same_profile() {
         let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connection_id = Some(connection_id.clone());
         app.route = AppRoute::Session("current-session".into());
         app.active_session_profile = Some("work".into());
         app.active_runtime_session_id = Some("current-runtime".into());
         app.workspace
-            .open_session_pane(Some("work"), "blank-session", "New session")
+            .open_session_pane_for_owner(
+                Some(&connection_id),
+                Some("work"),
+                "blank-session",
+                "New session",
+            )
             .expect("open untouched blank tile");
         app.untouched_blank_session = Some(("blank-session".into(), Some("work".into())));
         app.session_chat_views.insert(
-            session_identity_key("blank-session", Some("work")),
+            session_owner_identity_key("blank-session", Some("work"), Some(&connection_id)),
             SessionChatViewState {
                 profile: Some("work".into()),
                 runtime_session_id: Some("runtime-blank".into()),
@@ -32471,6 +32821,7 @@ mod tests {
     ) -> std::sync::mpsc::Receiver<(String, usize)> {
         let (gateway, requests) = GatewayDiscovery::for_test_session_refresh();
         app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(app.workspace.selected_gateway_connection_id().to_owned());
         app.gateway_endpoint = Some(GatewayEndpoint {
             profile_id: "profile-a".into(),
             instance_id: "gateway-a".into(),
@@ -32482,6 +32833,62 @@ mod tests {
             remote_auth: None,
         });
         requests
+    }
+
+    #[test]
+    fn opening_sidebar_session_persists_gateway_owner_and_queues_only_resume() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _refreshes) = GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_connected = true;
+        let session = SessionSummary {
+            cwd: None,
+            id: "owner-scoped-session".into(),
+            connection_id: Some(connection_id.clone()),
+            lineage_root_id: None,
+            profile: Some("work".into()),
+            title: "Owner scoped session".into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "Hermes".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+
+        app.open_sidebar_session_in_place(session)
+            .expect("selected connection session opens");
+        assert_eq!(app.route, AppRoute::Session("owner-scoped-session".into()));
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)).expect("resume command"),
+            crate::gateway::TestGatewayCommand::ResumeSession { session_id, profile: Some(profile), .. }
+                if session_id == "owner-scoped-session" && profile == "work"
+        ));
+        app.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: "owner-scoped-session".into(),
+            profile: Some("work".into()),
+        })
+        .expect("session tab opens");
+        assert!(
+            app.workspace
+                .open_session_pane_owner_identities()
+                .contains(&(
+                    Some(connection_id),
+                    "owner-scoped-session".into(),
+                    Some("work".into())
+                ))
+        );
+        assert!(
+            commands.try_recv().is_err(),
+            "opening a row neither submits a prompt nor duplicates an in-flight resume"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
