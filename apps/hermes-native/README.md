@@ -138,3 +138,6 @@ The Command Center System section now displays active-profile gateway health, ve
 
 
 Command Center navigation now follows the pinned wide/compact split: a persistent left rail above 760 logical pixels and a dropdown below it. The section breadcrumb shares its header with Sessions search; the overlay uses near-full viewport framing and a floating close button. Headless synthetic captures are available at `artifacts/agent-ui/command-center-sessions-navigation.png` (1440×900) and `artifacts/agent-ui/command-center-sessions-compact.png` (700×900). The compact capture also exposes a remaining global-toolbar overlap. These captures do not claim live gateway or source-paired proof.
+
+
+Command Center session rows support the pinned keyboard-modifier and middle-click behaviors for in-place resume, opening a tab/window, pinning and archiving. The new-window action targets the clicked session. Headless UI coverage passes; installed Windows behavior, live-gateway proof and formal source acceptance remain in the completion overview.

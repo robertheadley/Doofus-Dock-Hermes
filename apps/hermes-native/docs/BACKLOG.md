@@ -230,3 +230,9 @@ Command Center row presentation continuation (2026-11-18T23:00Z): session rows n
 
 
 Command Center navigation and framing (2026-11-18T23:45:00Z): wide mode now follows the pinned persistent left rail; compact mode uses a section dropdown below 760 logical pixels. Breadcrumb/search placement and near-full viewport framing are implemented and headlessly verified. Remaining: global toolbar responsive layout under a 700px viewport, exact source icon assets/pixel pair, browser-history equivalent, installed Windows runtime and formal source-matrix acceptance.
+
+
+### Session row follow-up — 2026-11-19
+
+- Implemented and headlessly verified pinned precedence for archive, new window, new tab, pin/unpin, plain in-place open and middle-click tab; the new-window route targets the clicked session and leaves the current pane in place.
+- Remaining: match the pinned explicit `requestSessionResume` call when opening an already-active stored session; exercise physical Windows click modifiers and live gateway behavior; collect source-paired visual and formal capability evidence.

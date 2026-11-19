@@ -1271,3 +1271,12 @@ Real-overlay headless tests cover wide and compact section selection, route read
 Evidence: `artifacts/agent-ui/command-center-sessions-navigation.png`, `artifacts/agent-ui/command-center-sessions-compact.png`. Fixed-source review remains 38/499 and formal acceptance remains 0/499.
 
 Validation addendum (2026-11-18T23:45:00Z): PASS full feature suite (340 library + 15 automation protocol + 3 launcher); PASS wide and compact isolated runner inspect/capture; PASS delete-confirmation regression and Maintenance accessible query; workspace check, task continuity, pinned package/progress validators, compileall, rustfmt and diff checks recorded in the execution log. No live UI/gateway was opened.
+
+
+### Revision 226 — Command Center session row gestures (2026-11-19T00:13:00Z)
+
+The pinned session-row resolver applies Alt+Shift archive, Ctrl/Cmd+Shift new window, Ctrl/Cmd new tab, Shift pin/unpin, and an unmodified in-place resume; middle-click independently opens a tab. Native now reads modifier state from the primary pointer-release event, dispatches those actions with profile-aware session routing, opens an already-visible session tile in place without creating a duplicate, and queues a new window for the clicked session without moving the current pane.
+
+A headless test drives the real row widget through each gesture and checks pin/archive state, clicked-session window route/profile, tab identities including middle-click, and plain in-place routing. The pure resolver also has precedence coverage. Validation: full feature suite 342 library + 15 protocol + 3 launcher; locked workspace/all-target check (existing dead-code warnings only); continuity 18/18; pinned package validator 491 pending; fixed-source review 38/499 (6 implemented, 32 partial, 461 unknown), acceptance 0/499; compileall, rustfmt and diff checks pass.
+
+This verifies native headless behavior only. No Windows installed-app, live gateway, source-paired screenshot, or formal requirement acceptance is claimed. Explicit `requestSessionResume` behavior for an already-active stored session remains a follow-up gap.

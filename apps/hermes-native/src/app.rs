@@ -259,6 +259,51 @@ impl CommandCenterSection {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SidebarSessionGesture {
+    ResumeInPlace,
+    OpenInTab,
+    OpenInWindow,
+    TogglePin,
+    Archive,
+}
+
+fn sidebar_session_gesture(modifiers: egui::Modifiers) -> SidebarSessionGesture {
+    if modifiers.alt && modifiers.shift {
+        return SidebarSessionGesture::Archive;
+    }
+    let primary_modifier = modifiers.command || modifiers.ctrl || modifiers.mac_cmd;
+    if primary_modifier && modifiers.shift {
+        return SidebarSessionGesture::OpenInWindow;
+    }
+    if primary_modifier {
+        return SidebarSessionGesture::OpenInTab;
+    }
+    if modifiers.shift {
+        return SidebarSessionGesture::TogglePin;
+    }
+    SidebarSessionGesture::ResumeInPlace
+}
+
+fn sidebar_row_click_modifiers(ui: &Ui, rect: Rect) -> egui::Modifiers {
+    ui.input(|input| {
+        input
+            .events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers,
+                } if rect.contains(*pos) => Some(*modifiers),
+                _ => None,
+            })
+            .unwrap_or(input.modifiers)
+    })
+}
+
 #[derive(Clone, Debug)]
 struct PendingCommandCenterSystem {
     request_id: String,
@@ -5563,12 +5608,39 @@ fn render_message() -> &'static str {
                 }
                 recent_row_rects.push((session.id.clone(), row.rect));
             }
-            if row.clicked() {
-                self.execute_registered_action(RegisteredUiAction::OpenSession {
-                    session_id: session.id.clone(),
-                    profile: session.profile.clone(),
-                })
-                .unwrap_or_else(|error| self.status = error);
+            let row_gesture = if row.middle_clicked() {
+                Some(SidebarSessionGesture::OpenInTab)
+            } else if row.clicked() {
+                Some(sidebar_session_gesture(sidebar_row_click_modifiers(
+                    ui, row.rect,
+                )))
+            } else {
+                None
+            };
+            if let Some(gesture) = row_gesture {
+                let result = match gesture {
+                    SidebarSessionGesture::ResumeInPlace => {
+                        self.open_sidebar_session_in_place(session.clone())
+                    }
+                    SidebarSessionGesture::OpenInTab => {
+                        self.open_sidebar_session_in_tab(session.clone())
+                    }
+                    SidebarSessionGesture::OpenInWindow => {
+                        self.queue_sidebar_session_window(&session)
+                    }
+                    SidebarSessionGesture::TogglePin => {
+                        self.start_session_pin_update(
+                            session.clone(),
+                            !(session.pinned || pinned_row),
+                        );
+                        Ok(())
+                    }
+                    SidebarSessionGesture::Archive => {
+                        self.start_session_archive_update(session.clone(), !session.archived);
+                        Ok(())
+                    }
+                };
+                result.unwrap_or_else(|error| self.status = error);
             }
             let action_key = session_identity_key(&session.id, session.profile.as_deref());
             let pin_pending = self.pending_session_pins.contains_key(&action_key);
@@ -12091,6 +12163,88 @@ fn render_message() -> &'static str {
         }
         self.pending_create = Some((request_id, text));
         self.status = "Creating Hermes session…".into();
+    }
+
+    fn resolved_sidebar_session_profile(&self, session: &SessionSummary) -> Option<String> {
+        session
+            .profile
+            .clone()
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.clone())
+            })
+            .or_else(|| self.active_session_profile.clone())
+    }
+
+    fn open_sidebar_session_in_place(&mut self, session: SessionSummary) -> Result<(), String> {
+        let profile = self.resolved_sidebar_session_profile(&session);
+        let target = (session.id.clone(), profile.clone());
+        let already_open_in_tile = self
+            .workspace
+            .open_session_pane_identities()
+            .into_iter()
+            .any(|identity| identity == target);
+
+        self.save_active_chat_view();
+        if already_open_in_tile {
+            self.workspace
+                .open_session_pane(profile.as_deref(), &session.id, &session.title)?;
+        } else {
+            self.workspace.select_panel(&PanelId::from(WORKSPACE))?;
+        }
+        self.active_session_profile = profile;
+        self.navigate_after_save(AppRoute::Session(session.id));
+        self.status = "Opened session".into();
+        Ok(())
+    }
+
+    fn open_sidebar_session_in_tab(&mut self, session: SessionSummary) -> Result<(), String> {
+        let profile = self.resolved_sidebar_session_profile(&session);
+        if self.route == AppRoute::Session(session.id.clone())
+            && self.active_session_profile == profile
+        {
+            if self
+                .workspace
+                .open_session_pane_identities()
+                .into_iter()
+                .any(|identity| identity == (session.id.clone(), profile.clone()))
+            {
+                return Ok(());
+            }
+            self.workspace.select_panel(&PanelId::from(WORKSPACE))?;
+            return Ok(());
+        }
+        self.execute_registered_action(RegisteredUiAction::OpenSession {
+            session_id: session.id,
+            profile,
+        })
+    }
+
+    fn queue_sidebar_session_window(&mut self, session: &SessionSummary) -> Result<(), String> {
+        if session.id.is_empty()
+            || session.id.len() > 512
+            || session.id.chars().any(char::is_control)
+        {
+            return Err("Session ID is invalid".into());
+        }
+        if self.native_window_launch_count() >= 16 {
+            return Err("Hermes already has 16 pending or starting new windows".into());
+        }
+        let id = (u64::from(std::process::id()) << 32) | self.next_native_window_id;
+        self.next_native_window_id = self
+            .next_native_window_id
+            .checked_add(1)
+            .ok_or_else(|| "Hermes window ID space is exhausted".to_owned())?;
+        self.pending_native_window_launches
+            .push_back(NativeWindowLaunchRequest {
+                id,
+                route: AppRoute::Session(session.id.clone()).path(),
+                profile: self.resolved_sidebar_session_profile(session),
+                move_session_panel: None,
+            });
+        self.status = format!("Opening session in Hermes window {id}");
+        Ok(())
     }
 
     fn start_session_pin_update(&mut self, session: SessionSummary, pinned: bool) {
@@ -30911,6 +31065,160 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn sidebar_session_gesture_precedence_matches_the_pinned_resolver() {
+        let resolve = sidebar_session_gesture;
+        assert_eq!(
+            resolve(egui::Modifiers::NONE),
+            SidebarSessionGesture::ResumeInPlace
+        );
+        assert_eq!(
+            resolve(egui::Modifiers::SHIFT),
+            SidebarSessionGesture::TogglePin
+        );
+        assert_eq!(
+            resolve(egui::Modifiers::CTRL),
+            SidebarSessionGesture::OpenInTab
+        );
+        assert_eq!(
+            resolve(egui::Modifiers::CTRL | egui::Modifiers::SHIFT),
+            SidebarSessionGesture::OpenInWindow
+        );
+        assert_eq!(
+            resolve(egui::Modifiers::ALT | egui::Modifiers::SHIFT),
+            SidebarSessionGesture::Archive
+        );
+        assert_eq!(
+            resolve(egui::Modifiers::ALT),
+            SidebarSessionGesture::ResumeInPlace
+        );
+        assert_eq!(
+            resolve(egui::Modifiers::ALT | egui::Modifiers::CTRL | egui::Modifiers::SHIFT),
+            SidebarSessionGesture::Archive,
+            "Alt+Shift archive outranks all overlapping gestures"
+        );
+    }
+
+    #[test]
+    fn sidebar_session_row_gestures_dispatch_profile_scoped_actions() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "sidebar-gesture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32148".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, _refresh_receiver) =
+            crate::gateway::GatewayDiscovery::for_test_session_refresh();
+        app.gateway_discovery = Some(gateway);
+        let row = |id: &str, title: &str, started_at| SessionSummary {
+            cwd: None,
+            id: id.into(),
+            lineage_root_id: None,
+            profile: Some("worker".into()),
+            title: title.into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "desktop".into(),
+            started_at,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        app.sessions = vec![
+            row("gesture-session", "Gesture target", 300.0),
+            row("middle-session", "Middle target", 200.0),
+            row("plain-session", "Plain target", 100.0),
+        ];
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        macro_rules! gesture_row {
+            ($name:expr) => {
+                harness
+                    .query_all_by(|node| node.label().as_deref() == Some($name))
+                    .next()
+                    .unwrap_or_else(|| panic!("session row {:?} should be accessible", $name))
+            };
+        }
+        gesture_row!("Gesture target, session gesture-session")
+            .click_modifiers(egui::Modifiers::SHIFT);
+        harness.run();
+        assert!(
+            app.borrow()
+                .pending_session_pins
+                .contains_key(&session_identity_key("gesture-session", Some("worker")))
+        );
+
+        gesture_row!("Gesture target, session gesture-session")
+            .click_modifiers(egui::Modifiers::ALT | egui::Modifiers::SHIFT);
+        harness.run();
+        assert!(
+            app.borrow()
+                .pending_session_archives
+                .contains_key(&session_identity_key("gesture-session", Some("worker")))
+        );
+
+        gesture_row!("Gesture target, session gesture-session")
+            .click_modifiers(egui::Modifiers::CTRL | egui::Modifiers::SHIFT);
+        harness.run();
+        let window = app
+            .borrow()
+            .pending_native_window_launches
+            .back()
+            .cloned()
+            .expect("modifier click queues a new window for the clicked session");
+        assert_eq!(window.route, "/gesture-session");
+        assert_eq!(window.profile.as_deref(), Some("worker"));
+        assert!(window.move_session_panel.is_none());
+
+        gesture_row!("Gesture target, session gesture-session")
+            .click_modifiers(egui::Modifiers::CTRL);
+        harness.run();
+        assert!(
+            app.borrow()
+                .workspace
+                .open_session_pane_identities()
+                .contains(&("gesture-session".into(), Some("worker".into())))
+        );
+
+        gesture_row!("Middle target, session middle-session")
+            .click_button(egui::PointerButton::Middle);
+        harness.run();
+        assert!(
+            app.borrow()
+                .workspace
+                .open_session_pane_identities()
+                .contains(&("middle-session".into(), Some("worker".into())))
+        );
+
+        gesture_row!("Plain target, session plain-session").click();
+        harness.run();
+        assert_eq!(
+            app.borrow().route,
+            AppRoute::Session("plain-session".into())
+        );
+        assert!(
+            !app.borrow()
+                .workspace
+                .open_session_pane_identities()
+                .contains(&("plain-session".into(), Some("worker".into())))
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

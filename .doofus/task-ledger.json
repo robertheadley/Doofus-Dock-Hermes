@@ -1,5 +1,5 @@
 {
-  "revision": 10,
+  "revision": 12,
   "schema_version": 1,
   "tasks": [
     {
@@ -2412,8 +2412,8 @@
             },
             {
               "agent_identity": {
-                "model": null,
-                "provider": null
+                "model": "gpt-6.2-astra",
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -2422,12 +2422,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T00:14:27Z",
+              "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
               "objective": "ui-pin-or-unpin-sessions",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "02-gateway",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -2435,12 +2436,18 @@
                 "source_pair_state": "pending",
                 "visual_pair_state": "not_paired"
               },
-              "size_units": null,
+              "size_units": 1.0,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0074",
               "title": "PAR-0074 Pin or unpin sessions",
-              "verification_evidence": []
+              "verification_evidence": [
+                ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/sidebar/session-row-gesture.ts#resolveSessionRowClick",
+                ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/sidebar/session-row.tsx#openSession",
+                "apps/hermes-native/src/app.rs#sessions_content",
+                "apps/hermes-native/src/app.rs#sidebar_session_row_gestures_dispatch_profile_scoped_actions",
+                "apps/hermes-native/docs/PLAN.md#Revision 226"
+              ]
             },
             {
               "agent_identity": {
@@ -16174,5 +16181,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-18T23:47:52Z"
+  "updated_at": "2026-11-19T00:14:27Z"
 }

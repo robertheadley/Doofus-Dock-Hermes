@@ -170,3 +170,10 @@ Validation passes: 339 library tests, 15 automation protocol tests, 3 launcher t
 Implemented: wide left-rail section navigation, compact dropdown, breadcrumb with Sessions search, replace-style section route readback, near-fullscreen overlay and floating close control. Headless wide/compact captures and interaction tests pass.
 
 Partial/unverified: narrow global toolbar still overlaps behind the modal; icons are approximations; captures are synthetic and target-only. No pinned-source screenshot pair, installed Windows UI/live gateway proof, browser-history behavior or formal matrix acceptance. Project-level fixed-source review is still 38/499 (7.6%); accepted is still 0/499.
+
+
+### Session row gestures (2026-11-19)
+
+Status: **implemented and headlessly tested; runtime acceptance remains open.** The native sidebar now follows pinned modifier precedence for archive, new window, new tab, pin/unpin, plain in-place opening and middle-click tab. A real-row UI harness verifies each path, including that a new window uses the clicked session and does not move the existing pane.
+
+Evidence: full feature suite 342 library + 15 protocol + 3 launcher; locked workspace check; task continuity 18/18; pinned package consistency check (491 requirements still pending); fixed-source review 38/499 and formal acceptance 0/499. The installed Windows UI, live gateway, and source-paired visual state were not exercised. The explicit resume request for an already-active stored session remains open.

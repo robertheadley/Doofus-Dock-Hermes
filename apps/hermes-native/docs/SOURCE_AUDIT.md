@@ -259,3 +259,8 @@ Pinned source: `apps/desktop/src/app/overlays/overlay-split-layout.tsx`, `apps/d
 The full suite found two regressions in the first implementation: a duplicate Maintenance label and a session Delete hit target extending beyond the clipped content region. The page title now comes from the breadcrumb, and the session row reserves width for its actions. Regression tests for Maintenance content and session deletion pass.
 
 Evidence is headless and target-only. Source-paired pixels, installed Windows UI, live gateway behavior, history semantics and formal acceptance remain unverified. Review remains 38/499; formal acceptance remains 0/499.
+
+
+### Session row modifier gestures — 2026-11-19
+
+Pinned source: `.staging/hermes-pinned-878305/apps/desktop/src/app/chat/sidebar/session-row-gesture.ts` resolves Alt+Shift to archive, Ctrl/Cmd+Shift to window, Ctrl/Cmd to tab, Shift to pin, and no modifier to resume; `session-row.tsx` also maps middle-click to a new tab. `open-session.ts` uses in-place routing for ordinary clicks and profile-aware tab/window intent for modified clicks. Native now implements these precedence and routing outcomes and covers them with the real session-row headless harness. The pinned open-session path also calls `requestSessionResume`; native currently routes/focuses the session but does not yet prove that same explicit resume request for an already-active stored session. Runtime and source-paired visual evidence remain absent.

@@ -2212,3 +2212,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No benchmark requested; session actions remain bounded by the existing page contract.
 - risks: 700px global toolbar still overlaps behind the overlay; vector icon artwork is approximate; captures are synthetic target-only; formal acceptance remains 0/499.
 - follow_up: Fix narrow global toolbar and continue pinned Command Center source review on `main` only.
+
+
+### Hermes Command Center session row gestures — 2026-11-19T00:13:00Z
+
+- **id:** hermes-session-row-gestures-20261119
+- **timestamp:** 2026-11-19T00:13:00Z
+- **what:** Implemented pinned Alt+Shift archive, Ctrl/Cmd+Shift new window, Ctrl/Cmd new tab, Shift pin/unpin, plain in-place open and middle-click tab behavior on the real native session row.
+- **why:** Close a source-confirmed interaction gap discovered while verifying whether prior parity slices were already published to `main`.
+- **components:** `apps/hermes-native/src/app.rs`, native session-row routing and gesture tests, parity plan/audit/backlog/completion/readme.
+- **type:** parity implementation and headless validation.
+- **validation:** 342 library + 15 protocol + 3 launcher tests pass; workspace check passes with only existing dead-code warnings; task continuity 18/18; pinned package validator reports 491 pending; review 38/499 and acceptance 0/499; compileall, rustfmt, diff checks pass.
+- **performance:** no performance change measured or expected.
+- **risks:** physical Windows modifier behavior, live gateway behavior and source-paired visuals remain unverified; the explicit active-session resume request is still open.
+- **follow_up:** verify active-session `requestSessionResume` parity, then continue runtime and source-paired acceptance.
