@@ -3081,3 +3081,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0043 remains partial pending live Gateway, installed Windows rendering, interrupted-turn parity and source-paired acceptance.
 - **follow_up:** Continue with pinned PAR-0042 tool argument/output disclosure behavior.
+
+- **id:** hermes-par0042-tool-payload-disclosure
+- **timestamp:** 2026-11-19T23:28:00Z
+- **what:** Added an accessible, collapsed-by-default Tool payload disclosure to tool transcript rows in Advanced mode, showing pretty-printed Arguments and Result with a 20,000-character display bound. Simple mode continues to show the normal tool row without raw payload.
+- **why:** Give users and UI agents a way to inspect exact tool inputs and outputs while keeping ordinary chat readable.
+- **components:** Native transcript renderer and tool payload formatter, Advanced/Simple mode behavior, implementation progress and current completion overview.
+- **type:** functional parity
+- **validation:** PASS focused disclosure/formatter tests; full locked feature suite (431 library + 15 automation protocol + 3 launcher tests + doc tests); workspace/all-target check, rustfmt, implementation/chat-tool progress generators, Doofus task validator, UCM package validator (565 target behaviors, 565 UI items, 33 implementation receipts), and diff check.
+- **performance:** Payload serialization is deferred until the disclosure opens; displayed payload is capped at 20,000 characters and nested view height at 180 points.
+- **risks:** Native Advanced mode currently gates payload visibility; the pinned source has a separate persisted product/technical tool-view preference. Live Gateway, installed Windows, and source-paired acceptance remain unverified.
+- **follow_up:** Bind EV-0049 to the implementation commit, mark PAR-0042 tested partial, and publish directly to main.

@@ -709,6 +709,26 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live Gateway, installed Windows behavior, and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0042": {
+        "state": "partial",
+        "level": "headless_advanced_mode_accessible_tool_payload_disclosure",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback.tsx#ToolPayloadDisclosure",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback.tsx#technicalTrace",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback-model/format.ts#MAX_TOOL_RENDER_CHARS",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback.test.ts#indents object payloads and persisted JSON strings",
+            "apps/hermes-native/src/app.rs#tool_payload_trace",
+            "apps/hermes-native/src/app.rs#pretty_tool_payload_value",
+            "apps/hermes-native/src/app.rs#tool_payload_disclosure_expands_arguments_and_result_accessibly",
+            "apps/hermes-native/src/app.rs#technical_tool_payload_is_hidden_in_simple_interface_mode",
+            "apps/hermes-native/src/app.rs#tool_payload_trace_formats_json_and_bounds_large_results",
+            "apps/hermes-native/docs/PLAN.md#Revision 263",
+        ],
+        "gaps": [
+            "native advanced mode provides the disclosure but does not yet expose the pinned independent persisted technical/product tool-view preference",
+            "live Gateway payload behavior, installed Windows interaction, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0043": {
         "state": "partial",
         "level": "headless_session_profile_scoped_tool_progress_rows_and_cleanup",

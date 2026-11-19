@@ -6595,6 +6595,8 @@ fn render_message() -> &'static str {
             let messages = self.transcript.clone();
             let search_matches = transcript_search_matches(&messages, &self.find_in_page_query);
             let timestamps_enabled = self.timestamps_enabled;
+            let technical_tool_payloads =
+                self.workspace.preferences.mode == InterfaceMode::Advanced;
             let find_target = self.find_in_page_target;
             let scroll_target = self
                 .find_in_page_scroll_pending
@@ -6640,6 +6642,46 @@ fn render_message() -> &'static str {
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
                             render_transcript_markdown(ui, markdown_cache, &body);
+                            if technical_tool_payloads
+                                && message.get("type").and_then(|value| value.as_str())
+                                    == Some("tool_call")
+                                && tool_payload_present(&message)
+                            {
+                                let tool_id = message
+                                    .get("tool_call_id")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("tool");
+                                let generation = message
+                                    .get("execution_generation")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .unwrap_or_default();
+                                egui::CollapsingHeader::new("Tool payload")
+                                    .id_salt((
+                                        "tool-payload",
+                                        session_id,
+                                        index,
+                                        tool_id,
+                                        generation,
+                                    ))
+                                    .default_open(false)
+                                    .show(ui, |ui| {
+                                        if let Some(payload) = tool_payload_trace(&message) {
+                                            egui::ScrollArea::vertical().max_height(180.0).show(
+                                                ui,
+                                                |ui| {
+                                                    ui.add(
+                                                        egui::Label::new(
+                                                            RichText::new(payload)
+                                                                .monospace()
+                                                                .size(11.0),
+                                                        )
+                                                        .wrap(),
+                                                    );
+                                                },
+                                            );
+                                        }
+                                    });
+                            }
                             if let Some(submission_id) = message
                                 .get("retry_submission_id")
                                 .and_then(|value| value.as_str())
@@ -27328,6 +27370,61 @@ fn bounded_transcript_value(value: &serde_json::Value, max_chars: usize) -> Stri
     }
 }
 
+fn tool_payload_present(message: &serde_json::Value) -> bool {
+    ["args", "args_text", "result", "result_text"]
+        .iter()
+        .any(|key| message.get(*key).is_some_and(|value| !value.is_null()))
+}
+
+fn tool_payload_trace(message: &serde_json::Value) -> Option<String> {
+    let args = message
+        .get("args")
+        .filter(|value| !value.is_null())
+        .or_else(|| message.get("args_text").filter(|value| !value.is_null()));
+    let result = message
+        .get("result")
+        .filter(|value| !value.is_null())
+        .or_else(|| message.get("result_text").filter(|value| !value.is_null()));
+    let mut sections = Vec::with_capacity(2);
+    if let Some(args) = args {
+        sections.push(format!("Arguments:\n{}", pretty_tool_payload_value(args)));
+    }
+    if let Some(result) = result {
+        sections.push(format!("Result:\n{}", pretty_tool_payload_value(result)));
+    }
+    if sections.is_empty() {
+        return None;
+    }
+    let trace = sections.join("\n\n");
+    const MAX_TOOL_PAYLOAD_CHARS: usize = 20_000;
+    let char_count = trace.chars().count();
+    if char_count <= MAX_TOOL_PAYLOAD_CHARS {
+        return Some(trace);
+    }
+    let omitted = char_count - MAX_TOOL_PAYLOAD_CHARS;
+    let prefix = trace
+        .chars()
+        .take(MAX_TOOL_PAYLOAD_CHARS)
+        .collect::<String>();
+    Some(format!(
+        "{prefix}\n\n… {omitted} more characters truncated."
+    ))
+}
+
+fn pretty_tool_payload_value(value: &serde_json::Value) -> String {
+    if let Some(raw) = value.as_str() {
+        let trimmed = raw.trim();
+        if (trimmed.starts_with('{') || trimmed.starts_with('['))
+            && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(raw)
+            && (parsed.is_object() || parsed.is_array())
+        {
+            return serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| raw.to_owned());
+        }
+        return raw.to_owned();
+    }
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+}
+
 fn upsert_tool_row(
     transcript: &mut Vec<serde_json::Value>,
     event_type: &str,
@@ -40187,6 +40284,148 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn tool_payload_disclosure_expands_arguments_and_result_accessibly() {
+        let (mut app, profile_dir) = isolated_app();
+        app.workspace.preferences.mode = InterfaceMode::Advanced;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.handle_server_event(json!({
+            "type":"tool.start",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "execution_generation":12,
+            "payload":{
+                "tool_id":"call_payload",
+                "name":"terminal",
+                "args":{"command":"git status"}
+            }
+        }));
+        app.handle_server_event(json!({
+            "type":"tool.complete",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "execution_generation":12,
+            "payload":{
+                "tool_id":"call_payload",
+                "name":"terminal",
+                "result":{"stdout":"working tree clean"}
+            }
+        }));
+
+        assert_eq!(
+            tool_payload_trace(&app.transcript[0]).as_deref(),
+            Some(
+                "Arguments:\n{\n  \"command\": \"git status\"\n}\n\nResult:\n{\n  \"stdout\": \"working tree clean\"\n}"
+            )
+        );
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1800.0))
+            .build_ui(|ui| app.draw(ui));
+        let labels_before = harness
+            .query_all_by(|_| true)
+            .filter_map(|node| node.accesskit_node().label())
+            .collect::<Vec<_>>();
+        assert!(
+            harness.query_by_label("Tool payload").is_some(),
+            "collapsed payload disclosure should be accessible: {labels_before:?}"
+        );
+        assert!(
+            !labels_before
+                .iter()
+                .any(|label| label.contains("Arguments:")),
+            "payload body must remain collapsed by default: {labels_before:?}"
+        );
+        harness.get_by_label("Tool payload").click_accesskit();
+        harness.run();
+        let visible_text = harness
+            .query_all_by(|_| true)
+            .flat_map(|node| [node.accesskit_node().label(), node.accesskit_node().value()])
+            .flatten()
+            .collect::<Vec<_>>();
+        assert!(
+            visible_text
+                .iter()
+                .any(|label| label.contains("Arguments:")),
+            "expanded payload should expose arguments: {visible_text:?}"
+        );
+        assert!(
+            visible_text.iter().any(|text| text.contains("Result:")),
+            "expanded payload should expose result: {visible_text:?}"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn technical_tool_payload_is_hidden_in_simple_interface_mode() {
+        let (mut app, profile_dir) = isolated_app();
+        app.workspace.preferences.mode = InterfaceMode::Simple;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.handle_server_event(json!({
+            "type":"tool.start",
+            "session_id":"runtime-session",
+            "execution_generation":13,
+            "payload":{
+                "tool_id":"call_simple",
+                "name":"terminal",
+                "args":{"command":"git status"}
+            }
+        }));
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1800.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness.query_by_label("Tool payload").is_none(),
+            "simple mode keeps raw tool payload hidden"
+        );
+        assert!(
+            harness.query_by_label("terminal · running").is_some(),
+            "simple mode still renders the normal tool row"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn tool_payload_trace_formats_json_and_bounds_large_results() {
+        let payload = json!({
+            "type":"tool_call",
+            "args_text":"{\"path\":\"C:/work\"}",
+            "result_text":"done"
+        });
+        assert_eq!(
+            tool_payload_trace(&payload).as_deref(),
+            Some("Arguments:\n{\n  \"path\": \"C:/work\"\n}\n\nResult:\ndone")
+        );
+        let null_primary_payload = json!({
+            "type":"tool_call",
+            "args":null,
+            "args_text":"fallback args",
+            "result":null,
+            "result_text":"fallback result"
+        });
+        assert_eq!(
+            tool_payload_trace(&null_primary_payload).as_deref(),
+            Some("Arguments:\nfallback args\n\nResult:\nfallback result")
+        );
+        assert_eq!(tool_payload_trace(&json!({"type":"tool_call"})), None);
+
+        let large = json!({
+            "type":"tool_call",
+            "args":"x".repeat(20_100)
+        });
+        let rendered = tool_payload_trace(&large).expect("arguments produce a payload");
+        assert!(rendered.chars().count() < 20_100);
+        assert!(rendered.ends_with("more characters truncated."));
     }
 
     #[test]
