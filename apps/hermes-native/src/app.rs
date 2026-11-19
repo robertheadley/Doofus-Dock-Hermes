@@ -110,6 +110,15 @@ pub enum RegisteredUiAction {
         config: serde_json::Value,
         bearer_token: Option<String>,
     },
+    RequestMcpServerRemoval {
+        name: String,
+    },
+    ConfirmMcpServerRemoval {
+        name: String,
+    },
+    CancelMcpServerRemoval {
+        name: String,
+    },
     SetAgentPluginEnabled {
         key: String,
         enabled: bool,
@@ -504,6 +513,9 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"set_mcp_server_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded MCP servers, max 512 bytes","enabled":"boolean"}}
             ,{"type":"test_mcp_server","permission":"ui_interaction","mutates":false,"schema":{"name":"one of the loaded MCP servers, max 512 bytes"}}
             ,{"type":"add_mcp_server","permission":"ui_interaction","mutates":true,"schema":{"name":"new MCP server name, max 512 bytes","config":"HTTP or stdio MCP server configuration object","bearer_token":"optional secret; passed only to Hermes secret storage and never displayed back"}}
+            ,{"type":"request_mcp_server_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded MCP servers; opens a confirmation dialog"}}
+            ,{"type":"confirm_mcp_server_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"the MCP server currently shown in the confirmation dialog"}}
+            ,{"type":"cancel_mcp_server_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"the MCP server currently shown in the confirmation dialog"}}
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
@@ -727,6 +739,22 @@ struct PendingMcpServerTest {
 #[derive(Clone, Debug)]
 struct PendingMcpServerAdd {
     request_id: String,
+    name: String,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMcpServerRemoval {
+    request_id: String,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct McpServerRemovalConfirmation {
     name: String,
     profile_id: String,
     instance_id: String,
@@ -1512,6 +1540,8 @@ pub struct HermesNativeApp {
     mcp_server_add_draft: McpServerAddDraft,
     mcp_server_add_error: Option<String>,
     pending_mcp_server_add: Option<PendingMcpServerAdd>,
+    mcp_server_removal_confirmation: Option<McpServerRemovalConfirmation>,
+    pending_mcp_server_removals: BTreeMap<String, PendingMcpServerRemoval>,
     agent_plugins: Option<AgentPluginsSnapshot>,
     agent_plugins_profile: Option<String>,
     agent_plugins_request_id: Option<String>,
@@ -3842,6 +3872,8 @@ fn render_message() -> &'static str {
             mcp_server_add_draft: McpServerAddDraft::default(),
             mcp_server_add_error: None,
             pending_mcp_server_add: None,
+            mcp_server_removal_confirmation: None,
+            pending_mcp_server_removals: BTreeMap::new(),
             agent_plugins: None,
             agent_plugins_profile: None,
             agent_plugins_request_id: None,
@@ -11680,11 +11712,14 @@ fn render_message() -> &'static str {
                     } else {
                         let mut toggle_server = None;
                         let mut test_server = None;
+                        let mut remove_server = None;
                         for server in mcp_rows {
                             let update_pending =
                                 self.pending_mcp_server_updates.contains_key(&server.name);
                             let test_pending =
                                 self.pending_mcp_server_tests.contains_key(&server.name);
+                            let remove_pending =
+                                self.pending_mcp_server_removals.contains_key(&server.name);
                             let mut enabled = server.enabled;
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
@@ -11725,6 +11760,23 @@ fn render_message() -> &'static str {
                                         .clicked()
                                     {
                                         test_server = Some(server.name.clone());
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.gateway_connected && !remove_pending,
+                                            egui::Button::new(if remove_pending {
+                                                "Removing…"
+                                            } else {
+                                                "Remove"
+                                            }),
+                                        )
+                                        .accessible_name(format!(
+                                            "Remove MCP server {}",
+                                            server.name
+                                        ))
+                                        .clicked()
+                                    {
+                                        remove_server = Some(server.name.clone());
                                     }
                                 });
                                 if let Some(url) = server.url.as_deref() {
@@ -11833,6 +11885,12 @@ fn render_message() -> &'static str {
                             self.execute_registered_action(RegisteredUiAction::TestMcpServer {
                                 name,
                             })
+                            .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
+                        }
+                        if let Some(name) = remove_server {
+                            self.execute_registered_action(
+                                RegisteredUiAction::RequestMcpServerRemoval { name },
+                            )
                             .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
                         }
                     }
@@ -17585,6 +17643,21 @@ fn render_message() -> &'static str {
             } => {
                 self.add_mcp_server(name, config, bearer_token)?;
             }
+            RegisteredUiAction::RequestMcpServerRemoval { name } => {
+                self.request_mcp_server_removal(name)?;
+            }
+            RegisteredUiAction::ConfirmMcpServerRemoval { name } => {
+                self.confirm_mcp_server_removal(name)?;
+            }
+            RegisteredUiAction::CancelMcpServerRemoval { name } => {
+                if self
+                    .mcp_server_removal_confirmation
+                    .as_ref()
+                    .is_some_and(|confirmation| confirmation.name == name)
+                {
+                    self.mcp_server_removal_confirmation = None;
+                }
+            }
             RegisteredUiAction::SetAgentPluginEnabled { key, enabled } => {
                 self.set_agent_plugin_enabled(key, enabled)?;
             }
@@ -18722,6 +18795,125 @@ fn render_message() -> &'static str {
         self.mcp_server_add_error = None;
         self.status = "Adding MCP server…".into();
         Ok(())
+    }
+
+    fn request_mcp_server_removal(&mut self, name: String) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before removing an MCP server".into());
+        }
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err("MCP server name is invalid".into());
+        }
+        let Some(server) = self
+            .mcp_servers
+            .as_ref()
+            .and_then(|snapshot| snapshot.servers.iter().find(|server| server.name == name))
+        else {
+            return Err("MCP server is not in the loaded profile inventory".into());
+        };
+        if self.pending_mcp_server_removals.contains_key(&name) {
+            return Err("MCP server removal is already in progress".into());
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return Err("Hermes Gateway endpoint is unavailable".into());
+        };
+        let _ = server;
+        self.mcp_server_removal_confirmation = Some(McpServerRemovalConfirmation {
+            name,
+            profile_id: endpoint.profile_id.clone(),
+            instance_id: endpoint.instance_id.clone(),
+            authority_epoch: endpoint.authority_epoch,
+        });
+        Ok(())
+    }
+
+    fn confirm_mcp_server_removal(&mut self, name: String) -> Result<(), String> {
+        let Some(confirmation) = self.mcp_server_removal_confirmation.clone() else {
+            return Err("MCP server removal confirmation is not open".into());
+        };
+        if confirmation.name != name {
+            return Err("MCP server removal confirmation is stale".into());
+        }
+        if !self.gateway_connected {
+            self.mcp_server_removal_confirmation = None;
+            return Err("Connect to Hermes before removing an MCP server".into());
+        }
+        if self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+            endpoint.profile_id != confirmation.profile_id
+                || endpoint.instance_id != confirmation.instance_id
+                || endpoint.authority_epoch != confirmation.authority_epoch
+        }) {
+            self.mcp_server_removal_confirmation = None;
+            return Err("Hermes profile changed; reopen the MCP removal confirmation".into());
+        }
+        if !self
+            .mcp_servers
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.servers.iter().any(|server| server.name == name))
+        {
+            self.mcp_server_removal_confirmation = None;
+            return Err("MCP server is no longer in the loaded profile inventory".into());
+        }
+        if self.pending_mcp_server_removals.contains_key(&name) {
+            return Err("MCP server removal is already in progress".into());
+        }
+        let request_id = operation_id("mcp-server-remove");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway writer is unavailable".to_owned())?;
+        gateway.remove_mcp_server(
+            request_id.clone(),
+            name.clone(),
+            confirmation.profile_id.clone(),
+            confirmation.instance_id.clone(),
+            confirmation.authority_epoch,
+        )?;
+        self.pending_mcp_server_removals.insert(
+            name,
+            PendingMcpServerRemoval {
+                request_id,
+                profile_id: confirmation.profile_id,
+                instance_id: confirmation.instance_id,
+                authority_epoch: confirmation.authority_epoch,
+            },
+        );
+        self.mcp_server_removal_confirmation = None;
+        self.status = "Removing MCP server…".into();
+        Ok(())
+    }
+
+    fn show_mcp_server_removal_dialog(&mut self, ctx: &egui::Context) {
+        let Some(confirmation) = self.mcp_server_removal_confirmation.clone() else {
+            return;
+        };
+        let name = confirmation.name;
+        let mut confirm = false;
+        let mut cancel = false;
+        egui::Window::new("Remove MCP server?")
+            .id(Id::NULL.with(("mcp-server-remove", &name)))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!("Remove {name} from the selected Hermes profile?"));
+                ui.label("Hermes will remove this server configuration and its stored credential.");
+                ui.horizontal(|ui| {
+                    confirm = ui
+                        .button("Remove")
+                        .accessible_name(format!("Confirm MCP server removal: {name}"))
+                        .clicked();
+                    cancel = ui
+                        .button("Cancel")
+                        .accessible_name("Cancel MCP server removal")
+                        .clicked();
+                });
+            });
+        if confirm {
+            self.confirm_mcp_server_removal(name)
+                .unwrap_or_else(|error| self.status = error);
+        } else if cancel {
+            self.mcp_server_removal_confirmation = None;
+        }
     }
 
     fn stop_generation(&mut self) -> Result<(), String> {
@@ -25438,6 +25630,44 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::McpServerRemoved {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_mcp_server_removals.get(&name) else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile_id != profile_id
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    self.pending_mcp_server_removals.remove(&name);
+                    match result {
+                        Ok(()) => {
+                            if let Some(snapshot) = self.mcp_servers.as_mut() {
+                                snapshot.servers.retain(|server| server.name != name);
+                            }
+                            self.mcp_server_test_results.remove(&name);
+                            self.status = format!("Removed MCP server {name}");
+                        }
+                        Err(error) => {
+                            self.mcp_servers_error = Some(error.clone());
+                            self.status = format!("Could not remove MCP server {name}: {error}");
+                        }
+                    }
+                }
                 GatewayEvent::Disconnected(error) => {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
@@ -25528,6 +25758,8 @@ fn render_message() -> &'static str {
                     }
                     self.pending_mcp_server_tests.clear();
                     self.pending_mcp_server_add = None;
+                    self.pending_mcp_server_removals.clear();
+                    self.mcp_server_removal_confirmation = None;
                     self.mcp_server_test_results.clear();
                     self.agent_plugins_pending = false;
                     self.agent_plugins_request_id = None;
@@ -38248,6 +38480,117 @@ mod tests {
     }
 
     #[test]
+    fn mcp_server_removal_requires_current_confirmation_and_fences_receipt() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_mcp_server_remove();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.mcp_servers = Some(McpServersSnapshot {
+            servers: vec![crate::gateway::McpServerSummary {
+                name: "docs".into(),
+                transport: "stdio".into(),
+                command: Some("uvx".into()),
+                args: vec!["mcp-server-docs".into()],
+                url: None,
+                enabled: true,
+                tools: None,
+            }],
+        });
+
+        app.execute_registered_action(RegisteredUiAction::RequestMcpServerRemoval {
+            name: "docs".into(),
+        })
+        .expect("open MCP removal confirmation");
+        assert!(app.mcp_server_removal_confirmation.is_some());
+        app.load_connectors_fixture_for_automation();
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Connectors;
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_by_label("Confirm MCP server removal: docs")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Cancel MCP server removal")
+                .is_some()
+        );
+        drop(harness);
+        assert!(
+            requests.try_recv().is_err(),
+            "request must wait for confirmation"
+        );
+        app.gateway_endpoint.as_mut().unwrap().profile_id = "other-profile".into();
+        assert!(
+            app.confirm_mcp_server_removal("docs".into())
+                .expect_err("stale profile confirmation must fail")
+                .contains("profile changed")
+        );
+        app.gateway_endpoint.as_mut().unwrap().profile_id = "home-bot".into();
+
+        app.execute_registered_action(RegisteredUiAction::RequestMcpServerRemoval {
+            name: "docs".into(),
+        })
+        .expect("reopen current profile confirmation");
+        app.execute_registered_action(RegisteredUiAction::ConfirmMcpServerRemoval {
+            name: "docs".into(),
+        })
+        .expect("confirm MCP removal");
+        let (request_id, name, profile, instance, epoch) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("confirmed MCP removal reaches Gateway");
+        assert_eq!(name, "docs");
+        assert_eq!(profile, "home-bot");
+        assert_eq!(instance, "gateway-home-bot");
+        assert_eq!(epoch, 12);
+        assert!(app.pending_mcp_server_removals.contains_key("docs"));
+
+        events
+            .send(GatewayEvent::McpServerRemoved {
+                request_id: request_id.clone(),
+                name: name.clone(),
+                profile_id: "stale-profile".into(),
+                instance_id: "stale-gateway".into(),
+                authority_epoch: epoch,
+                result: Ok(()),
+            })
+            .expect("send stale remove result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_mcp_server_removals.contains_key("docs"));
+        assert_eq!(app.mcp_servers.as_ref().unwrap().servers.len(), 1);
+
+        events
+            .send(GatewayEvent::McpServerRemoved {
+                request_id,
+                name,
+                profile_id: profile,
+                instance_id: instance,
+                authority_epoch: epoch,
+                result: Ok(()),
+            })
+            .expect("send current remove result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_mcp_server_removals.is_empty());
+        assert!(app.mcp_servers.as_ref().unwrap().servers.is_empty());
+        assert_eq!(app.status, "Removed MCP server docs");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn mcp_server_add_form_builds_stdio_and_http_payloads_without_plaintext_bearer_config() {
         let draft = McpServerAddDraft {
             name: "local-docs".into(),
@@ -39312,6 +39655,7 @@ impl HermesNativeApp {
         self.show_catalog_plugin_install_dialog(&ctx);
         self.show_agent_plugin_update_dialog(&ctx);
         self.show_agent_plugin_removal_dialog(&ctx);
+        self.show_mcp_server_removal_dialog(&ctx);
         self.show_rename_dialog(&ctx);
         self.show_session_close_dialog(&ctx);
         self.show_recent_session_switcher(&ctx);

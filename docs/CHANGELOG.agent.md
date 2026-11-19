@@ -2918,3 +2918,16 @@ UCM evidence addendum (2026-11-19T20:53Z): EV-0042 binds the PAR-0264 manual MCP
 - **risks:** Live secret-store behavior, OAuth handoff, server startup and installed Windows behavior remain unverified. Bearer token is masked in the form and sent separately from MCP config.
 - **follow_up:** Implement pinned MCP import/paste and passthrough environment rows; continue remove/catalog operations and verify against a running Gateway.
 UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP add, safe bearer secret transport and focused RPC/app/accessibility tests to behavior commit e72ab8590eeaf95b21ea537ba514d9622d9e2fbf. The capability remains partial pending import/passthrough, live secret/OAuth/runtime and source-paired acceptance.
+
+### PAR-0266 — Confirmed MCP server removal (2026-11-19T21:20Z)
+
+- **id:** hermes-par0266-mcp-remove-20261119
+- **timestamp:** 2026-11-19T21:20:00Z
+- **what:** Added explicit removal confirmation, profile/connection/epoch-bound `mcp.servers.remove` RPC, strict `{ok, removed}` receipt handling, and inventory cleanup on confirmed success.
+- **why:** Complete another core MCP lifecycle action needed to manage Hermes tool integrations.
+- **components:** Registered agent actions, Connectors server rows, confirmation dialog, Gateway actor/event, MCP inventory state and UCM progress.
+- **type:** feature implementation
+- **validation:** PASS Gateway RPC/profile/receipt test, app confirmation and stale-profile/result-fencing test with headless confirmation controls, cargo check and formatting.
+- **performance:** One foreground RPC after user confirmation; duplicate pending removals are blocked.
+- **risks:** Live config/credential cleanup, worker shutdown/restart and packaged Windows behavior remain unverified.
+- **follow_up:** Continue MCP catalog/install and other scoped chat/tool gaps, then verify live Gateway behavior.

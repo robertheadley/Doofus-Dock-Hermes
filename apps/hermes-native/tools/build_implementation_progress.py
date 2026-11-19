@@ -610,6 +610,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live profile-secret storage, OAuth authorization, server startup, Windows interaction and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0266": {
+        "state": "partial",
+        "level": "headless_confirmed_mcp_remove_rpc_profile_and_stale_receipt_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/shared/src/gateway-contract.generated.ts#McpServersRemoveResult",
+            "apps/hermes-native/src/gateway.rs#parse_mcp_server_remove_result",
+            "apps/hermes-native/src/gateway.rs#mcp_server_remove_uses_profile_scoped_rpc_and_requires_removed_receipt",
+            "apps/hermes-native/src/app.rs#request_mcp_server_removal",
+            "apps/hermes-native/src/app.rs#mcp_server_removal_requires_current_confirmation_and_fences_receipt",
+            "apps/hermes-native/docs/PLAN.md#Revision 257",
+        ],
+        "gaps": [
+            "live Gateway, profile credential cleanup, actual MCP worker shutdown and restart behavior are not verified",
+            "installed Windows interaction and pinned-source paired acceptance remain open",
+        ],
+    },
     "PAR-0252": {
         "state": "partial",
         "level": "native_installed_skill_search_fields_tested",

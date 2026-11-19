@@ -192,8 +192,8 @@
     "command": "task select",
     "evidence": [],
     "state": "unknown",
-    "summary": "Continue with the next MCP management slice after PAR-0264; source contract uses whole-map PUT and requires preserving existing entries.",
-    "verified_at": "2026-11-19T20:59:53Z"
+    "summary": "PAR-0263 add flow is tested and published; continue MCP lifecycle with removal plus explicit confirmation.",
+    "verified_at": "2026-11-19T21:19:44Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -760,11 +760,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0263-tested-20261119",
+  "last_event_id": "hermes-par0266-select-20261119",
   "last_operation": {
-    "request_id": "hermes-par0263-tested-20261119",
+    "request_id": "hermes-par0266-select-20261119",
     "state": "committed",
-    "type": "task.state_updated"
+    "type": "task.selected"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -781,7 +781,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned add-server draft/form validation and PUT /api/mcp/servers replacement semantics; implement a safe profile-scoped add flow with existing-entry preservation and focused tests.",
+  "recommended_next_action": "Inspect pinned MCP removal RPC/config semantics and removal confirmation behavior; implement profile-fenced remove with confirmation, rollback-visible failure and focused Gateway/app tests.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1346,12 +1346,12 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 307,
+  "revision": 308,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 307,
+  "state_revision": 308,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0263",
+  "task_id": "hermes-par-0266",
   "task_ledger_revision": 45,
   "tests_executed": [
     {
@@ -2427,5 +2427,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T21:18:02Z"
+  "updated_at": "2026-11-19T21:19:44Z"
 }
