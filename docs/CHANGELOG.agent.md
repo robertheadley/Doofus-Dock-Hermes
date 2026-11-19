@@ -2652,3 +2652,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime performance claim.
 - **risks:** Edit/model/auth/new-session alternatives, full error policy and live/source pairing remain open.
 - **follow_up:** Continue the next chat and tool capability slice.
+
+
+### PAR-0065 precise local timestamp details — 2026-11-19T18:38:00Z
+
+- **id:** hermes-par-0065-precise-local-timestamp-20261119
+- **timestamp:** 2026-11-19T18:38:00Z
+- **what:** Added hover details with full local date, milliseconds and numeric UTC offset; split epoch seconds/fraction before conversion; marked PAR-0065 partial with pinned/native evidence.
+- **why:** Match the pinned timestamp control precise date-time affordance and avoid losing a millisecond to floating-point conversion.
+- **components:** Hermes Native transcript timestamp rendering, accessibility tooltip, chat/tool progress ledger.
+- **type:** feature
+- **validation:** PASS focused timestamp formatting test; PASS full feature suite (397 library + 15 automation protocol + 3 launcher); PASS all-target workspace check; PASS task continuity 18/18; PASS UCM package validator; PASS rustfmt and diff check. Existing dead-code warnings remain; optional YAML parse skipped because PyYAML is absent.
+- **performance:** Pure formatting on pointer hover; no Gateway traffic or persistent state changes.
+- **risks:** Tool-call nested lifecycle mapping and live/source-paired behavior remain unverified.
+- **follow_up:** Validate, attach exact-SHA UCM evidence and continue chat/tool parity.

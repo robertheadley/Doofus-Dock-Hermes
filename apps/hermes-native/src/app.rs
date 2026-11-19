@@ -6313,6 +6313,7 @@ fn render_message() -> &'static str {
                             {
                                 let stamp = format_timeline_range(started, completed);
                                 if !stamp.is_empty() {
+                                    let tooltip = format_timeline_tooltip(started, completed);
                                     ui.horizontal(|ui| {
                                         ui.with_layout(
                                             egui::Layout::right_to_left(egui::Align::Center),
@@ -6322,7 +6323,8 @@ fn render_message() -> &'static str {
                                                         .size(10.0)
                                                         .color(MUTED)
                                                         .monospace(),
-                                                );
+                                                )
+                                                .on_hover_text(tooltip);
                                             },
                                         );
                                     });
@@ -24670,9 +24672,10 @@ fn format_timeline_range(start: f64, end: Option<f64>) -> String {
             "[hour]:[minute]:[second].[subsecond digits:3]",
         )
         .ok()?;
-        let instant =
-            OffsetDateTime::from_unix_timestamp_nanos((seconds * 1_000_000_000.0).round() as i128)
-                .ok()?;
+        let whole_seconds = seconds.floor() as i128;
+        let fractional_millis = ((seconds - seconds.floor()) * 1_000.0).round() as i128;
+        let nanos = whole_seconds * 1_000_000_000 + fractional_millis * 1_000_000;
+        let instant = OffsetDateTime::from_unix_timestamp_nanos(nanos).ok()?;
         let local_offset = UtcOffset::local_offset_at(instant).unwrap_or(UtcOffset::UTC);
         instant.to_offset(local_offset).format(&format).ok()
     }
@@ -24681,6 +24684,34 @@ fn format_timeline_range(start: f64, end: Option<f64>) -> String {
         return String::new();
     };
     let Some(end) = end.and_then(format_one) else {
+        return start;
+    };
+    format!("{start} → {end}")
+}
+
+fn format_timeline_tooltip(start: f64, end: Option<f64>) -> String {
+    use time::{OffsetDateTime, UtcOffset};
+
+    fn format_precise_local(seconds: f64) -> Option<String> {
+        if !seconds.is_finite() || seconds <= 0.0 {
+            return None;
+        }
+        let format = time::format_description::parse_borrowed::<3>(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3] [offset_hour sign:mandatory]:[offset_minute]",
+        )
+        .ok()?;
+        let whole_seconds = seconds.floor() as i128;
+        let fractional_millis = ((seconds - seconds.floor()) * 1_000.0).round() as i128;
+        let nanos = whole_seconds * 1_000_000_000 + fractional_millis * 1_000_000;
+        let instant = OffsetDateTime::from_unix_timestamp_nanos(nanos).ok()?;
+        let local_offset = UtcOffset::local_offset_at(instant).unwrap_or(UtcOffset::UTC);
+        instant.to_offset(local_offset).format(&format).ok()
+    }
+
+    let Some(start) = format_precise_local(start) else {
+        return String::new();
+    };
+    let Some(end) = end.and_then(format_precise_local) else {
         return start;
     };
     format!("{start} → {end}")
@@ -28908,6 +28939,22 @@ mod tests {
             "millisecond precision is retained: {range}"
         );
         assert!(format_timeline_range(f64::NAN, None).is_empty());
+
+        let tooltip = format_timeline_tooltip(1_767_312_000.125, Some(1_767_312_002.75));
+        assert!(
+            tooltip.contains("2026-"),
+            "full local date is exposed: {tooltip}"
+        );
+        assert!(
+            tooltip.contains(".125"),
+            "start milliseconds are exposed: {tooltip}"
+        );
+        assert!(
+            tooltip.contains(".750"),
+            "completion milliseconds are exposed: {tooltip}"
+        );
+        assert!(tooltip.contains(" → "));
+        assert!(format_timeline_tooltip(f64::NAN, None).is_empty());
     }
 
     #[test]

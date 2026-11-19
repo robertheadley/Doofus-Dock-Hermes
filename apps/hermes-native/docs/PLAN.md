@@ -1442,3 +1442,12 @@ Headless UI and Gateway-command tests verify the visible action dispatches exact
 Validation addendum (2026-11-19T18:28Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (397 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS Doofus task continuity (18/18); PASS UCM package validator (565 target behaviors/inventory/pending tests; 14 source and 13 implementation receipts); PASS Python compilation, rustfmt and diff check. Optional UCM YAML parse skipped because PyYAML is absent. Same-ID retry remains partial pending code-specific alternate actions and live/source-paired acceptance.
 
 UCM retry evidence addendum (2026-11-19T18:30Z): Added EV-0029, bound to implementation commit `c8d6d4a4988f7f54854e6cfe60b5707eaccaaa9c`. It records exact submission identity/payload reuse and no duplicate user row while keeping PAR-0064 partial.
+
+
+### Revision 242 — Precise local transcript timestamp details (2026-11-19T18:38Z)
+
+When transcript timestamps are enabled, hovering the compact local clock now reveals the full local date, millisecond precision and numeric UTC offset for both start and completion. Epoch seconds are split into whole seconds and fractional milliseconds before formatting so large modern timestamps do not lose a millisecond to floating-point conversion. Message role labels remain visible. PAR-0065 is partial: native tool-run lifecycle timestamp mapping, live Gateway proof and source-paired Windows acceptance remain open.
+
+Headless formatting coverage checks full date, milliseconds, offset-aware output, a start/completion range and invalid input.
+
+Validation addendum (2026-11-19T18:42Z): PASS `cargo test -p hermes-native --features agent-automation --locked` (397 library + 15 automation protocol + 3 launcher); PASS `cargo check --workspace --all-targets --locked` (existing dead-code warnings only); PASS task continuity 18/18; PASS UCM package validator (565 target behaviors, 14 source and 14 implementation receipts); PASS rustfmt and diff check. Optional YAML parse skipped because PyYAML is absent. PAR-0065 remains partial for structured tool-run lifecycle mapping and live/source-paired acceptance.
