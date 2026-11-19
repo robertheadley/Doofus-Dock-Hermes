@@ -2380,3 +2380,16 @@ Validation addendum: The targeted UCM report marks named layout preset persisten
 - **performance:** no Gateway connection runtime or UI behavior changed yet.
 - **risks:** Descriptors are not consumed by app startup or a connection picker; no multi-connection session routing is claimed.
 - **follow_up:** Drive Gateway discovery from selected descriptors and preserve connection IDs across all session request/result/cache paths.\n
+
+### Gateway descriptor main publication — 2026-11-19T02:29:30Z
+
+- **id:** hermes-gateway-connection-descriptors-main-20261119
+- **timestamp:** 2026-11-19T02:29:30Z
+- **what:** Published stable Gateway descriptors and migration as commit 0c1e27271191e8e5eef2d3d23947af0136507f22 on main.
+- **why:** Keep the shared repo and canonical handoff current with tested owner-routing foundations.
+- **components:** Hermes Native preferences, parity plan/backlog and task ledger.
+- **type:** main publication.
+- **validation:** Fetched origin/main and confirmed exact SHA equality with local HEAD.
+- **performance:** no runtime connection behavior changed.
+- **risks:** Descriptor metadata is not yet consumed by Gateway startup or session routing.
+- **follow_up:** Wire selected descriptor and exact owner identity into app session state and Gateway clients.\n
