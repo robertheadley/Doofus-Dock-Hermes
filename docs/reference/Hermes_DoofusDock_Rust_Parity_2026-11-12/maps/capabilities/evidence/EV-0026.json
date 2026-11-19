@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-attach-image-or-file-to-prompt",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-19",
+  "commit": "3dc32577292e9a9596d1e93cfc772a64d59739da",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native Rust test suite and workspace check; no live Hermes Gateway or installed app was used.",
+  "uid": "EV-0026",
+  "scenario": "chat-composer-gateway-payload",
+  "locator": "../../../../apps/hermes-native/src/gateway.rs",
+  "notes": "The native composer now stages images with image.attach_bytes, files with file.attach data URLs, bounds byte uploads at 16 MiB, and includes image path/MIME metadata in prompt.submit. Tests cover exact payload fields, session/profile scope, size rejection and file-reference composition. Live Gateway accept/refusal/offline behavior, session-recovery reattachment, clipboard/drop, previews, restart-safe interrupted-image restore, native picker interaction and source-paired acceptance remain open."
+}

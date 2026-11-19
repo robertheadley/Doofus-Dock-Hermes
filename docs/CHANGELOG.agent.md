@@ -2555,3 +2555,16 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** File reading and base64 encoding run on the Gateway actor, not in the egui frame; uploads are capped at 16 MiB. No benchmark claimed.
 - **risks:** Restart-safe image draft restore, stale-session reattach, preview/paste/drop, and source path-vs-bytes policy remain incomplete.
 - **follow_up:** Implement explicit no-send prepared image recovery, validate RPC error paths against a local/pinned Gateway, then complete Windows and source-paired acceptance.
+
+### UCM evidence for native composer attachments — 2026-11-19T17:35:00Z
+
+- **id:** hermes-par-0062-ucm-evidence-20261119
+- **timestamp:** 2026-11-19T17:35:00Z
+- **what:** Added EV-0026 for native attachment payload and composer behavior, bound to implementation commit `3dc32577292e9a9596d1e93cfc772a64d59739da`; kept capability status partial.
+- **why:** Keep the capability map synchronized with the tested implementation and its unresolved runtime/source acceptance gates.
+- **components:** UCM capability evidence, Hermes attachment progress overlay.
+- **type:** evidence
+- **validation:** Package validator passes 565 target behaviors, 565 inventory rows, 565 pending tests, 14 source receipts and 10 implementation receipts. PyYAML is absent, so optional UCM YAML parsing was skipped.
+- **performance:** No runtime performance claim; payload size remains capped at 16 MiB.
+- **risks:** Headless payload tests do not prove a live Gateway accepts the upload or that Windows picker behavior matches source.
+- **follow_up:** Implement PAR-0063 restore, then verify live attachment RPC results and source-paired Windows behavior.
