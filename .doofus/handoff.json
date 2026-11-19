@@ -90,28 +90,16 @@
       "owner": "unattributed_preexisting",
       "path": ".doofus/handoff.json",
       "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/src/app.rs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation --locked tool_progress_",
+    "command": "cargo test -p hermes-native --features agent-automation --locked",
     "evidence": [
-      "apps/hermes-native/src/app.rs#tool_progress_annotates_running_rows_and_retires_on_completion_or_turn_end"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0048.json#EV-0048"
     ],
-    "state": "in_progress",
-    "summary": "PAR-0043 now routes tool.progress to running transcript rows, exposes percent/message in accessible tool labels, and clears progress on tool or turn completion/error. Active and background profile-isolation tests pass.",
-    "verified_at": "2026-11-19T22:58:16Z"
+    "state": "tested",
+    "summary": "PAR-0043 is implemented and published as partial. EV-0048 binds behavior commit ed4281c. Full locked suite 428/15/3 and workspace check, formatting, progress and UCM validators pass; 62/499 broad rows and 30/173 chat/tool rows have implementation evidence. Live runtime and formal source acceptance remain pending.",
+    "verified_at": "2026-11-19T23:08:24Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -142,7 +130,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T23:58:16Z",
+    "lease_expires_at": "2026-11-20T00:08:24Z",
     "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
     "model": null,
     "ownership_state": "active",
@@ -484,16 +472,18 @@
       "state": "succeeded"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "docs/CHANGELOG.agent.md#hermes-par0043-ev0048"
+      ],
       "kind": "git_push_main",
-      "note": "Publish validated live tool-progress behavior commit ed4281c and EV-0048/UCM/task evidence directly to main; fresh fetch must confirm exact origin/main SHA equality.",
-      "observed_at": "2026-11-19T23:07:31Z",
+      "note": "Published behavior commit ed4281c and EV-0048 evidence commit 10dc5ab directly to main; fresh fetch confirms exact SHA equality at 10dc5abe5ffa8ed3f8e9f4a3105df1c892c6fa34.",
+      "observed_at": "2026-11-19T23:07:59Z",
       "operation_id": "hermes-par0043-main-publish-20261119",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -708,11 +698,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0043-publish-20261119",
+  "last_event_id": "hermes-par0043-final-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-par0043-publish-20261119",
+    "request_id": "hermes-par0043-final-checkpoint-20261119",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -729,7 +719,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Run full locked Rust suite, check workspace, regenerate progress with current test locators, record EV evidence and publish the functional slice on main.",
+  "recommended_next_action": "Review pinned PAR-0042 tool argument/output disclosure contract and implement the smallest high-value functional slice; validate and publish it on main.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1211,7 +1201,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "34a2c4cb0a973da7092dd2709f3b50ccab9c1a517cc711b959f0bf57a2afcb70",
+    "change_fingerprint": "caa36933148b2b6d16f5e1063d79b9ea02c09d9cd65900a106886b29031010ab",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1220,24 +1210,16 @@
       {
         "path": ".doofus/handoff.json",
         "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/app.rs",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
-        "status": " M"
       }
     ],
-    "head_commit": "a48c34d5d18aa0ff7ef8d17076c0e945ef81be85",
+    "head_commit": "10dc5abe5ffa8ed3f8e9f4a3105df1c892c6fa34",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 331,
+  "revision": 333,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 331,
+  "state_revision": 333,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0043",
   "task_ledger_revision": 51,
@@ -2331,9 +2313,14 @@
       "command": "cargo test -p hermes-native --features agent-automation --locked tool_progress_",
       "result": "PASS 3 tests: running row render/cleanup, batched row fanout and message bound, profile isolation for reused runtime/tool IDs.",
       "timestamp": "2026-11-19T22:58:16Z"
+    },
+    {
+      "command": "428 library + 15 automation protocol + 3 launcher tests + doc tests",
+      "result": "PASS",
+      "timestamp": "2026-11-19T23:08:24Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T23:07:31Z"
+  "updated_at": "2026-11-19T23:08:24Z"
 }

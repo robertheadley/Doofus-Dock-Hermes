@@ -3070,3 +3070,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PyYAML is not installed, so optional YAML parsing was skipped; package validator passed. Live Gateway and installed Windows behavior remain unverified.
 - **follow_up:** Publish both commits on main and verify origin/main equals local HEAD.
+
+- **id:** hermes-par0043-main-publish
+- **timestamp:** 2026-11-19T23:08:00Z
+- **what:** Published PAR-0043 behavior commit `ed4281c07e9a16098b548578467ba9acfb387eae` and EV-0048 evidence commit `10dc5abe5ffa8ed3f8e9f4a3105df1c892c6fa34` directly to `main`; fresh fetch confirmed exact local/remote SHA equality.
+- **why:** Keep the user's main-only repository current and make the tested partial slice reviewable.
+- **components:** Hermes native tool-progress behavior, UCM receipt and maps, task ledger and progress report.
+- **type:** main publication
+- **validation:** PASS exact `HEAD == origin/main` at `10dc5abe5ffa8ed3f8e9f4a3105df1c892c6fa34`; full locked suite, workspace check, formatting, task/package/progress validators passed.
+- **performance:** No benchmark change.
+- **risks:** PAR-0043 remains partial pending live Gateway, installed Windows rendering, interrupted-turn parity and source-paired acceptance.
+- **follow_up:** Continue with pinned PAR-0042 tool argument/output disclosure behavior.
