@@ -2474,3 +2474,5 @@ Validation addendum (2026-11-19T15:47:28Z): PASS scoped progress generator (138 
 - **performance:** Scope generation is local and completes in under one second.
 - **risks:** The 173-row boundary includes plugin/MCP capability requirements that support using those tools and extensions in chat; standalone unrelated administration remains excluded.
 - **follow_up:** Continue implementation against the expanded selector and keep live runtime, source acceptance, visuals, and implementation state separate.
+
+Validation/publication addendum (2026-11-19T15:53:08Z): PASS the 173-row generator, Python compilation, `.doofus` state validation and `git diff --check`. Pushed scope commit `79635cad1b6152e690b088e1c06aa0791c0c7c93` to `main`; a fresh fetch confirmed exact SHA equality. The first operation-receipt call had an invalid locator and made no state change; the retry with a validated file locator succeeded.
