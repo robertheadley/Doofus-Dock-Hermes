@@ -189,14 +189,11 @@
     }
   ],
   "checkpoint": {
-    "command": null,
-    "evidence": [
-      "apps/hermes-native/src/gateway.rs#mcp_server_toggle_uses_pinned_profile_scoped_put_and_receipt",
-      "apps/hermes-native/src/app.rs#mcp_server_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial"
-    ],
-    "state": "tested",
-    "summary": "PAR-0265 MCP server enable/disable passes focused pinned HTTP contract and profile-fenced optimistic/denial/retry tests. Remains partial pending live/remote Gateway and installed UI acceptance.",
-    "verified_at": "2026-11-19T20:41:46Z"
+    "command": "task select",
+    "evidence": [],
+    "state": "unknown",
+    "summary": "Implement pinned MCP connection test for a configured server, returning reported tools or error to the Connectors UI with profile-fenced state.",
+    "verified_at": "2026-11-19T20:43:44Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -651,14 +648,14 @@
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0041.json#EV-0041"
       ],
       "kind": "git_push_main",
-      "note": "Publishing PAR-0265 behavior commit caa45df42f235fc26ecd934e550a611d855c2490 and UCM EV-0041 to origin/main.",
-      "observed_at": "2026-11-19T20:42:32Z",
+      "note": "Pushed PAR-0265 behavior and EV-0041 to main; fetch confirms origin/main equals 266834bc3470e3a64bf0eb3e89f806bdd7281d16.",
+      "observed_at": "2026-11-19T20:42:56Z",
       "operation_id": "hermes-par0265-publish-20261119",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -761,11 +758,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0265-push-start-20261119",
+  "last_event_id": "hermes-par0264-select-20261119b",
   "last_operation": {
-    "request_id": "hermes-par0265-push-start-20261119",
+    "request_id": "hermes-par0264-select-20261119b",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.selected"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -782,7 +779,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit behavior and partial evidence projections, bind EV-0041, push and verify origin/main, then continue high-value scoped chat/MCP gaps.",
+  "recommended_next_action": "Inspect pinned POST /api/mcp/servers/{name}/test response, then add bounded 60-second worker command and UI result state with contract and app tests.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1349,12 +1346,12 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 302,
+  "revision": 304,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 302,
+  "state_revision": 304,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0265",
+  "task_id": "hermes-par-0264",
   "task_ledger_revision": 43,
   "tests_executed": [
     {
@@ -2430,5 +2427,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T20:42:32Z"
+  "updated_at": "2026-11-19T20:43:44Z"
 }

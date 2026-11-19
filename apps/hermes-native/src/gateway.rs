@@ -1468,6 +1468,28 @@ pub struct McpServersSnapshot {
     pub servers: Vec<McpServerSummary>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct McpServerTestTool {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub schema_chars: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct McpServerTestResult {
+    pub ok: bool,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub tools: Vec<McpServerTestTool>,
+    #[serde(default)]
+    pub prompts: Option<usize>,
+    #[serde(default)]
+    pub resources: Option<usize>,
+}
+
 #[derive(Deserialize)]
 struct McpServerEnabledResponse {
     ok: bool,
@@ -1991,6 +2013,14 @@ pub enum GatewayEvent {
         enabled: bool,
         result: Result<(), String>,
     },
+    McpServerTested {
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<McpServerTestResult, String>,
+    },
     AgentPluginsLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2342,6 +2372,10 @@ enum GatewayHttpCommand {
         request_id: String,
         name: String,
         enabled: bool,
+    },
+    TestMcpServer {
+        request_id: String,
+        name: String,
     },
     LoadMessagingPlatforms {
         request_id: String,
@@ -3103,6 +3137,48 @@ impl GatewayDiscovery {
                     enabled,
                 } = command
                     && request_sender.send((request_id, name, enabled)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_mcp_server_test()
+    -> (Self, Receiver<(String, String)>, mpsc::Sender<GatewayEvent>) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::TestMcpServer { request_id, name } = command
+                    && request_sender.send((request_id, name)).is_err()
                 {
                     break;
                 }
@@ -4205,6 +4281,12 @@ impl GatewayDiscovery {
                 enabled,
             })
             .map_err(|_| "Hermes MCP server writer has closed".to_owned())
+    }
+
+    pub fn test_mcp_server(&self, request_id: String, name: String) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::TestMcpServer { request_id, name })
+            .map_err(|_| "Hermes MCP server tester has closed".to_owned())
     }
 
     pub fn load_agent_plugins(
@@ -7691,6 +7773,43 @@ fn gateway_http_actor(
     events: mpsc::Sender<GatewayEvent>,
 ) {
     while let Ok(command) = commands.recv() {
+        if let GatewayHttpCommand::TestMcpServer { request_id, name } = command {
+            let endpoint = endpoint.clone();
+            let events = events.clone();
+            let failed_events = events.clone();
+            let profile_id = endpoint.profile_id.clone();
+            let instance_id = endpoint.instance_id.clone();
+            let authority_epoch = endpoint.authority_epoch;
+            let failed_request_id = request_id.clone();
+            let failed_name = name.clone();
+            let failed_profile_id = profile_id.clone();
+            let failed_instance_id = instance_id.clone();
+            let failed_authority_epoch = authority_epoch;
+            let worker = thread::Builder::new()
+                .name("hermes-mcp-server-test".into())
+                .spawn(move || {
+                    let result = test_mcp_server_http(&endpoint, &name);
+                    let _ = events.send(GatewayEvent::McpServerTested {
+                        request_id,
+                        name,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                        result,
+                    });
+                });
+            if worker.is_err() {
+                let _ = failed_events.send(GatewayEvent::McpServerTested {
+                    request_id: failed_request_id,
+                    name: failed_name,
+                    profile_id: failed_profile_id,
+                    instance_id: failed_instance_id,
+                    authority_epoch: failed_authority_epoch,
+                    result: Err("Could not start the MCP server test worker".into()),
+                });
+            }
+            continue;
+        }
         // Preserve FIFO and never coalesce a write. Search is already debounced
         // by the UI; each accepted mutation must produce its own receipt.
         let event = match command {
@@ -7777,6 +7896,9 @@ fn gateway_http_actor(
                 enabled,
                 result: set_mcp_server_enabled_http(&endpoint, &name, enabled),
             },
+            GatewayHttpCommand::TestMcpServer { .. } => {
+                unreachable!("MCP server tests are dispatched to their bounded UI request worker")
+            }
             GatewayHttpCommand::LoadMessagingPlatforms {
                 request_id,
                 profile,
@@ -11031,6 +11153,131 @@ fn request_mcp_server_enabled(
     }
     serde_json::from_slice(&bytes)
         .map_err(|_| "Hermes returned invalid MCP server update JSON".to_owned())
+}
+
+fn test_mcp_server_http(
+    endpoint: &GatewayEndpoint,
+    name: &str,
+) -> Result<McpServerTestResult, String> {
+    if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+        return Err("Hermes MCP server name is invalid".into());
+    }
+    let url = format!(
+        "{}/api/mcp/servers/{}/test{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        encode_query_component(name),
+        session_profile_suffix(&endpoint.profile_id)
+    );
+    let result = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_post_json_with_timeout(endpoint, &url, Duration::from_secs(60))?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin)
+            || !api_url_is_within_origin(&endpoint.api_origin, &url)
+        {
+            return Err("Hermes MCP tests require the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        request_local_mcp_server_test(&endpoint.api_origin, &ticket, &url)?
+    };
+    validate_mcp_server_test_result(result)
+}
+
+fn request_remote_gateway_post_json_with_timeout<T: DeserializeOwned>(
+    endpoint: &GatewayEndpoint,
+    url: &str,
+    timeout: Duration,
+) -> Result<T, String> {
+    if endpoint.remote_auth.is_none() || !api_url_is_within_origin(&endpoint.api_origin, url) {
+        return Err("Remote Hermes MCP test target is invalid".into());
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(timeout))
+        .max_redirects(0)
+        .build()
+        .into();
+    let auth = remote_http_auth(endpoint)?;
+    let request = match auth {
+        RemoteHttpAuth::SessionToken(token) => agent
+            .post(url)
+            .header("X-Hermes-Session-Token", token.as_str()),
+        RemoteHttpAuth::Bearer(token) => agent
+            .post(url)
+            .header("Authorization", &format!("Bearer {}", token.as_str())),
+    };
+    let response = request
+        .header("Accept", "application/json")
+        .send_empty()
+        .map_err(|_| "Remote Hermes MCP test request failed".to_owned())?;
+    let mut bytes = Vec::new();
+    response
+        .into_body()
+        .into_reader()
+        .take(GATEWAY_HTTP_RESPONSE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Could not read remote Hermes MCP test response".to_owned())?;
+    if bytes.len() as u64 > GATEWAY_HTTP_RESPONSE_LIMIT {
+        return Err("Remote Hermes MCP test response exceeded 512 KiB".into());
+    }
+    serde_json::from_slice(&bytes)
+        .map_err(|_| "Remote Hermes returned invalid MCP test JSON".to_owned())
+}
+
+fn request_local_mcp_server_test(
+    api_origin: &str,
+    ticket: &str,
+    url: &str,
+) -> Result<McpServerTestResult, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) || !api_url_is_within_origin(api_origin, url) {
+        return Err("Hermes MCP tests require the verified loopback API origin".into());
+    }
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .proxy(None)
+        .timeout_global(Some(Duration::from_secs(60)))
+        .max_redirects(0)
+        .build()
+        .into();
+    let response = agent
+        .post(url)
+        .header("X-Hermes-Gateway-Ticket", ticket)
+        .header("Accept", "application/json")
+        .send_empty()
+        .map_err(|_| "Hermes MCP test request failed".to_owned())?;
+    let mut bytes = Vec::new();
+    response
+        .into_body()
+        .into_reader()
+        .take(GATEWAY_HTTP_RESPONSE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Could not read Hermes MCP test response".to_owned())?;
+    if bytes.len() as u64 > GATEWAY_HTTP_RESPONSE_LIMIT {
+        return Err("Hermes MCP test response exceeded 512 KiB".into());
+    }
+    serde_json::from_slice(&bytes).map_err(|_| "Hermes returned invalid MCP test JSON".to_owned())
+}
+
+fn validate_mcp_server_test_result(
+    result: McpServerTestResult,
+) -> Result<McpServerTestResult, String> {
+    if result.tools.len() > 10_000
+        || result.prompts.is_some_and(|count| count > 100_000)
+        || result.resources.is_some_and(|count| count > 100_000)
+        || result
+            .error
+            .as_ref()
+            .is_some_and(|error| error.len() > 32_768)
+        || result.tools.iter().any(|tool| {
+            tool.name.is_empty()
+                || tool.name.len() > 1_024
+                || tool.name.chars().any(char::is_control)
+                || tool.description.len() > 32_768
+                || tool.schema_chars.is_some_and(|size| size > 10_000_000)
+        })
+    {
+        return Err("Hermes returned an invalid or oversized MCP test result".into());
+    }
+    Ok(result)
 }
 
 fn load_display_timestamps_http(
@@ -17559,6 +17806,60 @@ mod tests {
         .expect("read MCP toggle receipt");
         assert!(response.ok);
         server.join().expect("MCP toggle fixture exits");
+    }
+
+    #[test]
+    fn mcp_server_test_uses_pinned_profile_scoped_post_and_returns_tools() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept MCP test request");
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            loop {
+                let count = stream.read(&mut buffer).expect("read MCP test request");
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..count]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let request = String::from_utf8(request).expect("HTTP request is ASCII");
+            assert!(
+                request
+                    .starts_with("POST /api/mcp/servers/docs/test?profile=home-bot HTTP/1.1\r\n")
+            );
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-mcp-test-ticket\r\n")
+            );
+            let body = json!({
+                "ok":true,
+                "tools":[{"name":"search","description":"Search documents","schema_chars":87}],
+                "prompts":2,
+                "resources":1
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write MCP test response");
+        });
+        let result = request_local_mcp_server_test(
+            &format!("http://{address}"),
+            "fixture-mcp-test-ticket",
+            &format!("http://{address}/api/mcp/servers/docs/test?profile=home-bot"),
+        )
+        .expect("read MCP test result");
+        let result = validate_mcp_server_test_result(result).expect("validate MCP tools");
+        assert!(result.ok);
+        assert_eq!(result.tools.len(), 1);
+        assert_eq!(result.tools[0].name, "search");
+        assert_eq!(result.tools[0].schema_chars, Some(87));
+        assert_eq!(result.prompts, Some(2));
+        assert_eq!(result.resources, Some(1));
+        server.join().expect("MCP test fixture exits");
     }
 
     #[test]

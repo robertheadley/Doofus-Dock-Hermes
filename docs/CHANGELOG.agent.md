@@ -2890,3 +2890,16 @@ EV-0040 receipt write recovery (2026-11-19T20:34Z): the first atomic-write attem
 - **risks:** Pinned response only confirms ok; live Gateway state reconciliation and remote authenticated execution remain unverified.
 - **follow_up:** Implement MCP test/add/catalog operations and verify real Gateway behavior.
 UCM evidence addendum (2026-11-19T20:42Z): EV-0041 binds the PAR-0265 MCP toggle and focused HTTP/app tests to behavior commit caa45df42f235fc26ecd934e550a611d855c2490. The capability remains partial pending live and source-paired acceptance.
+
+### PAR-0264 — Profile-scoped MCP connection test (2026-11-19T20:53Z)
+
+- **id:** hermes-par0264-mcp-test-20261119
+- **timestamp:** 2026-11-19T20:53:54Z
+- **what:** Added manual MCP connection test with bounded Gateway requests, typed tool metadata, visible result/error state and stale-profile fencing.
+- **why:** Move chat/tool integration management toward usable feature coverage so visual iteration can begin sooner.
+- **components:** Gateway HTTP worker, MCP test model, Connectors UI, registered action, scoped progress and UCM maps.
+- **type:** feature implementation
+- **validation:** PASS focused MCP HTTP request/result contract test, app result and stale-profile test, cargo check, rustfmt and diff check.
+- **performance:** One bounded background request per server test, maximum four concurrent tests, 60-second request timeout and 512 KiB response cap.
+- **risks:** Automatic probe/cache behavior, live/remote Gateway behavior, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** Continue through MCP add/catalog lifecycle and scoped chat/tool features; keep visual redesign as a separate later stage.

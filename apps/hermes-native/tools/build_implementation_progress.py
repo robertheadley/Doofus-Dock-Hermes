@@ -576,6 +576,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "remote authenticated profile, disconnect-under-mutation, rendered UI, Windows and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0264": {
+        "state": "partial",
+        "level": "headless_mcp_connection_test_profile_fenced_result_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/mcp.ts#testMcpServer",
+            "apps/hermes-native/src/gateway.rs#test_mcp_server_http",
+            "apps/hermes-native/src/gateway.rs#mcp_server_test_uses_pinned_profile_scoped_post_and_returns_tools",
+            "apps/hermes-native/src/app.rs#test_mcp_server",
+            "apps/hermes-native/src/app.rs#mcp_server_test_shows_result_and_ignores_stale_profile_response",
+            "apps/hermes-native/docs/PLAN.md#Revision 255",
+        ],
+        "gaps": [
+            "automatic probe and five-minute cache behavior from the pinned source is not implemented; current slice is the manual connection test",
+            "live/remote Gateway, concurrent profile changes, rendered installed UI, Windows packaging and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0252": {
         "state": "partial",
         "level": "native_installed_skill_search_fields_tested",

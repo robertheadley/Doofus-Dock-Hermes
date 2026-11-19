@@ -13,6 +13,8 @@ The source pin and source tree evidence are recorded in `docs/SOURCE_AUDIT.md`. 
 
 For the distinction between partial engineering progress, local/headless evidence and strict pinned-source acceptance, see [docs/COMPLETION_OVERVIEW.md](docs/COMPLETION_OVERVIEW.md) and its [requirement-level progress ledger](docs/status/IMPLEMENTATION_PROGRESS.csv). The 491-row supplemental inventory validator is not a completion score; the fixed parity gate remains 0/499 accepted until source-paired evidence is reviewed.
 
+The current scoped ledger maps 25/173 chat/tool requirements (1 implemented, 24 partial); all 173 still need live-runtime and source-paired acceptance. Recent progress includes profile-scoped MCP inventory, enable/disable, and manual connection testing. Automatic MCP probing/cache behavior remains open.
+
 The pinned Hermes Bots pane is available as a HideOnly tab beside Sessions. Its first native slice reads and validates the active gateway profile's `profiles.list`, renders the current rows, retains last-good data through transient refresh errors, and exposes those same rows in the headless automation state. It is read-only and partial: cross-gateway agent union, Bot Mode plugin lifecycle, management actions, groups/activity and source-paired acceptance remain open.
 
 For portable checkpoints, provider ownership and manual Codex/Antigravity/Hermes handoff, see [../../docs/AGENT_HANDOFF.md](../../docs/AGENT_HANDOFF.md). Run `python tools/doofus_task.py status`, `validate`, or `progress` from this directory. The checkout has initialized `.doofus/` state; handoff previews do not transfer ownership, and recipient resume records the receipt. No provider API transfer is assumed, and the Hermes Python gateway remains authoritative.

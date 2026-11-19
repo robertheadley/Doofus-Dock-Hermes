@@ -12,8 +12,8 @@ use crate::gateway::{
     CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ComposerAttachmentReceipt,
     ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload, CronDeliveryTarget,
     CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus,
-    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpServersSnapshot,
-    MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformUpdate,
+    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpServerTestResult,
+    McpServersSnapshot, MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformUpdate,
     MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot,
     PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot,
     PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult,
@@ -101,6 +101,9 @@ pub enum RegisteredUiAction {
     SetMcpServerEnabled {
         name: String,
         enabled: bool,
+    },
+    TestMcpServer {
+        name: String,
     },
     SetAgentPluginEnabled {
         key: String,
@@ -494,6 +497,7 @@ pub fn registered_ui_action_catalog() -> serde_json::Value {
             ,{"type":"set_toolset_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded toolsets, max 128 bytes","enabled":"boolean"}}
             ,{"type":"set_skill_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded skills, max 128 bytes","enabled":"boolean"}}
             ,{"type":"set_mcp_server_enabled","permission":"ui_interaction","mutates":true,"schema":{"name":"one of the loaded MCP servers, max 512 bytes","enabled":"boolean"}}
+            ,{"type":"test_mcp_server","permission":"ui_interaction","mutates":false,"schema":{"name":"one of the loaded MCP servers, max 512 bytes"}}
             ,{"type":"set_agent_plugin_enabled","permission":"ui_interaction","mutates":true,"schema":{"key":"canonical key of a loaded manageable plugin, max 512 bytes","enabled":"boolean"}}
             ,{"type":"request_agent_plugin_removal","permission":"ui_interaction","mutates":true,"schema":{"name":"name of a loaded user or git plugin, max 512 bytes; opens confirmation"}}
             ,{"type":"request_catalog_plugin_install","permission":"ui_interaction","mutates":true,"schema":{"name":"loaded curated catalog entry; opens repository inspection and review"}}
@@ -701,6 +705,14 @@ struct PendingSkillUpdate {
 struct PendingMcpServerUpdate {
     request_id: String,
     previous_enabled: bool,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMcpServerTest {
+    request_id: String,
     profile_id: String,
     instance_id: String,
     authority_epoch: u64,
@@ -1350,6 +1362,8 @@ pub struct HermesNativeApp {
     mcp_servers_pending: bool,
     mcp_servers_error: Option<String>,
     pending_mcp_server_updates: BTreeMap<String, PendingMcpServerUpdate>,
+    mcp_server_test_results: BTreeMap<String, McpServerTestResult>,
+    pending_mcp_server_tests: BTreeMap<String, PendingMcpServerTest>,
     agent_plugins: Option<AgentPluginsSnapshot>,
     agent_plugins_profile: Option<String>,
     agent_plugins_request_id: Option<String>,
@@ -3674,6 +3688,8 @@ fn render_message() -> &'static str {
             mcp_servers_pending: false,
             mcp_servers_error: None,
             pending_mcp_server_updates: BTreeMap::new(),
+            mcp_server_test_results: BTreeMap::new(),
+            pending_mcp_server_tests: BTreeMap::new(),
             agent_plugins: None,
             agent_plugins_profile: None,
             agent_plugins_request_id: None,
@@ -11378,9 +11394,12 @@ fn render_message() -> &'static str {
                         );
                     } else {
                         let mut toggle_server = None;
+                        let mut test_server = None;
                         for server in mcp_rows {
                             let update_pending =
                                 self.pending_mcp_server_updates.contains_key(&server.name);
+                            let test_pending =
+                                self.pending_mcp_server_tests.contains_key(&server.name);
                             let mut enabled = server.enabled;
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
@@ -11407,6 +11426,20 @@ fn render_message() -> &'static str {
                                     if toggle.changed() {
                                         toggle_server =
                                             Some((server.name.clone(), enabled, server.enabled));
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.gateway_connected && !test_pending,
+                                            egui::Button::new(if test_pending {
+                                                "Testing…"
+                                            } else {
+                                                "Test connection"
+                                            }),
+                                        )
+                                        .accessible_name(format!("Test MCP server {}", server.name))
+                                        .clicked()
+                                    {
+                                        test_server = Some(server.name.clone());
                                     }
                                 });
                                 if let Some(url) = server.url.as_deref() {
@@ -11437,6 +11470,71 @@ fn render_message() -> &'static str {
                                 if update_pending {
                                     ui.label(RichText::new("Saving…").size(11.0).color(MUTED));
                                 }
+                                if test_pending {
+                                    ui.label(
+                                        RichText::new("Testing connection…")
+                                            .size(11.0)
+                                            .color(MUTED),
+                                    );
+                                } else if let Some(result) =
+                                    self.mcp_server_test_results.get(&server.name)
+                                {
+                                    if result.ok {
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "Connection succeeded · {} tools",
+                                                result.tools.len()
+                                            ))
+                                            .size(11.0)
+                                            .color(ACCENT),
+                                        );
+                                        for tool in result.tools.iter().take(50) {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{}{}",
+                                                    tool.name,
+                                                    if tool.description.is_empty() {
+                                                        String::new()
+                                                    } else {
+                                                        format!(" · {}", tool.description)
+                                                    }
+                                                ))
+                                                .size(10.0)
+                                                .color(MUTED),
+                                            );
+                                        }
+                                        if result.tools.len() > 50 {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{} more tools",
+                                                    result.tools.len() - 50
+                                                ))
+                                                .size(10.0)
+                                                .color(MUTED),
+                                            );
+                                        }
+                                        if result.prompts.is_some() || result.resources.is_some() {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "Prompts · {}   Resources · {}",
+                                                    result.prompts.unwrap_or(0),
+                                                    result.resources.unwrap_or(0)
+                                                ))
+                                                .size(10.0)
+                                                .color(MUTED),
+                                            );
+                                        }
+                                    } else {
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "Connection failed · {}",
+                                                result.error.as_deref().unwrap_or("Unknown error")
+                                            ))
+                                            .size(11.0)
+                                            .color(MUTED),
+                                        );
+                                    }
+                                }
                             });
                             ui.add_space(4.0);
                         }
@@ -11444,6 +11542,12 @@ fn render_message() -> &'static str {
                             self.execute_registered_action(
                                 RegisteredUiAction::SetMcpServerEnabled { name, enabled },
                             )
+                            .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
+                        }
+                        if let Some(name) = test_server {
+                            self.execute_registered_action(RegisteredUiAction::TestMcpServer {
+                                name,
+                            })
                             .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
                         }
                     }
@@ -16826,6 +16930,7 @@ fn render_message() -> &'static str {
                 self.pending_mcp_server_updates.clear();
                 self.mcp_servers = None;
             }
+            self.pending_mcp_server_tests.clear();
             self.agent_plugins_request_id = None;
             self.agent_plugins_pending = false;
         }
@@ -16942,6 +17047,7 @@ fn render_message() -> &'static str {
                     self.pending_mcp_server_updates.clear();
                     self.mcp_servers = None;
                 }
+                self.pending_mcp_server_tests.clear();
             }
             if tab != CapabilitiesTab::Plugins {
                 self.agent_plugins_request_id = None;
@@ -17175,6 +17281,9 @@ fn render_message() -> &'static str {
             }
             RegisteredUiAction::SetMcpServerEnabled { name, enabled } => {
                 self.set_mcp_server_enabled(name, enabled)?;
+            }
+            RegisteredUiAction::TestMcpServer { name } => {
+                self.test_mcp_server(name)?;
             }
             RegisteredUiAction::SetAgentPluginEnabled { key, enabled } => {
                 self.set_agent_plugin_enabled(key, enabled)?;
@@ -18207,6 +18316,49 @@ fn render_message() -> &'static str {
             },
         );
         self.mcp_servers_error = None;
+        Ok(())
+    }
+
+    fn test_mcp_server(&mut self, name: String) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before testing an MCP server".into());
+        }
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err("MCP server name is invalid".into());
+        }
+        if self.pending_mcp_server_tests.contains_key(&name) {
+            return Err("MCP server test is already running".into());
+        }
+        if self.pending_mcp_server_tests.len() >= 4 {
+            return Err("Four MCP server tests are already running".into());
+        }
+        let Some(servers) = &self.mcp_servers else {
+            return Err("Load the MCP server inventory before testing a server".into());
+        };
+        if !servers.servers.iter().any(|server| server.name == name) {
+            return Err("MCP server is not in the loaded inventory".into());
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return Err("Hermes Gateway endpoint is unavailable".into());
+        };
+        let profile_id = endpoint.profile_id.clone();
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return Err("Hermes Gateway reader is unavailable".into());
+        };
+        let request_id = operation_id("mcp-server-test");
+        gateway.test_mcp_server(request_id.clone(), name.clone())?;
+        self.mcp_server_test_results.remove(&name);
+        self.pending_mcp_server_tests.insert(
+            name,
+            PendingMcpServerTest {
+                request_id,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            },
+        );
         Ok(())
     }
 
@@ -24841,6 +24993,47 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::McpServerTested {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_mcp_server_tests.get(&name) else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.profile_id != profile_id
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    self.pending_mcp_server_tests.remove(&name);
+                    let result = result.unwrap_or_else(|error| McpServerTestResult {
+                        ok: false,
+                        error: Some(error),
+                        tools: Vec::new(),
+                        prompts: None,
+                        resources: None,
+                    });
+                    self.status = if result.ok {
+                        format!("MCP server {name} connected · {} tools", result.tools.len())
+                    } else {
+                        format!(
+                            "MCP server {name} test failed · {}",
+                            result.error.as_deref().unwrap_or("Unknown error")
+                        )
+                    };
+                    self.mcp_server_test_results.insert(name, result);
+                }
                 GatewayEvent::Disconnected(error) => {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
@@ -24929,6 +25122,8 @@ fn render_message() -> &'static str {
                             "MCP server update outcome is unknown after Gateway disconnect; refresh the inventory before retrying".into(),
                         );
                     }
+                    self.pending_mcp_server_tests.clear();
+                    self.mcp_server_test_results.clear();
                     self.agent_plugins_pending = false;
                     self.agent_plugins_request_id = None;
                     self.agent_plugin_auto_update = None;
@@ -37473,6 +37668,90 @@ mod tests {
         assert!(!app.mcp_servers.as_ref().unwrap().servers[0].enabled);
         assert!(app.pending_mcp_server_updates.is_empty());
         assert_eq!(app.status, "Disabled MCP server docs");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_server_test_shows_result_and_ignores_stale_profile_response() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_mcp_server_test();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.mcp_servers = Some(McpServersSnapshot {
+            servers: vec![crate::gateway::McpServerSummary {
+                name: "docs".into(),
+                transport: "stdio".into(),
+                command: Some("uvx".into()),
+                args: vec!["mcp-server-docs".into()],
+                url: None,
+                enabled: true,
+                tools: None,
+            }],
+        });
+
+        app.test_mcp_server("docs".into())
+            .expect("queue MCP connection test");
+        let (request_id, name) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("MCP test worker receives request");
+        assert_eq!(name, "docs");
+        assert!(app.pending_mcp_server_tests.contains_key("docs"));
+
+        events
+            .send(GatewayEvent::McpServerTested {
+                request_id: request_id.clone(),
+                name: name.clone(),
+                profile_id: "other-profile".into(),
+                instance_id: "gateway-other".into(),
+                authority_epoch: 12,
+                result: Ok(McpServerTestResult {
+                    ok: true,
+                    error: None,
+                    tools: Vec::new(),
+                    prompts: None,
+                    resources: None,
+                }),
+            })
+            .expect("deliver stale-profile MCP result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_mcp_server_tests.contains_key("docs"));
+        assert!(!app.mcp_server_test_results.contains_key("docs"));
+
+        events
+            .send(GatewayEvent::McpServerTested {
+                request_id,
+                name: name.clone(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Ok(McpServerTestResult {
+                    ok: true,
+                    error: None,
+                    tools: vec![crate::gateway::McpServerTestTool {
+                        name: "search".into(),
+                        description: "Search documents".into(),
+                        schema_chars: Some(87),
+                    }],
+                    prompts: Some(2),
+                    resources: Some(1),
+                }),
+            })
+            .expect("deliver current MCP result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(!app.pending_mcp_server_tests.contains_key("docs"));
+        assert_eq!(app.mcp_server_test_results["docs"].tools[0].name, "search");
+        assert_eq!(app.status, "MCP server docs connected · 1 tools");
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

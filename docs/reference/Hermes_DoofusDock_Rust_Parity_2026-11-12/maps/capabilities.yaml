@@ -5271,7 +5271,7 @@ capabilities:
   name: Test MCP connection
   area: skills-plugins
   claim: In the new native Rust DoofusDock UI, a user can test MCP connection.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -5283,9 +5283,9 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
 - id: ui-toggle-mcp-server
   name: Toggle MCP server
   area: skills-plugins
