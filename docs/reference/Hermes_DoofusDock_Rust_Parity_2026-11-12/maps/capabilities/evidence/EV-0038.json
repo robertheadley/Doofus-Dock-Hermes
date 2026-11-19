@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0038",
+  "capability_id": "ui-search-installed-skills",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "skills-search-fields-and-usage-name-ordering",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "073befedd710bfd619d9007e615f1181ad5f1460",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust unit test and pinned Desktop source review; no live Gateway, installed UI or physical Windows input used.",
+  "notes": "The focused Skills test passes for case-insensitive name/category/description matching, blank-query visibility, usage-descending order, and ascending lowercase-name tie-breaks. Native sorting now matches pinned ordering for ordinary English names. Locale-sensitive tie order may differ from JavaScript localeCompare; rendered search interactions, profile changes, live Gateway, Windows and source-paired acceptance remain open. Capability remains partial."
+}

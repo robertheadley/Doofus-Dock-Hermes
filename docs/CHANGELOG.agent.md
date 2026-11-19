@@ -2844,3 +2844,5 @@ UCM evidence addendum (2026-11-19T19:58Z): EV-0037 records the Skills search fie
 - **performance:** Sorting adds O(n log n) work after the existing O(n) filter.
 - **risks:** Lowercase ordinal tie-breaking can differ from locale-aware Desktop ordering for non-English names.
 - **follow_up:** Add rendered search interaction and locale-aware ordering acceptance.
+
+UCM evidence addendum (2026-11-19T20:00Z): EV-0038 records Skills search filtering and usage/name ordering, bound to behavior commit `073befedd710bfd619d9007e615f1181ad5f1460`; capability remains partial.
