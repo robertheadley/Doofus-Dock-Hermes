@@ -2226,3 +2226,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** no performance change measured or expected.
 - **risks:** physical Windows modifier behavior, live gateway behavior and source-paired visuals remain unverified; the explicit active-session resume request is still open.
 - **follow_up:** verify active-session `requestSessionResume` parity, then continue runtime and source-paired acceptance.
+
+
+### Hermes active session reselect reattach — 2026-11-19T00:32:25Z
+
+- **id:** hermes-active-session-reattach-20261119
+- **timestamp:** 2026-11-19T00:32:25Z
+- **what:** Added explicit profile-scoped session resume on plain sidebar row reselect, including the currently active session; replaces stale request ownership, keeps draft/runtime/transcript visible while pending, and rejects reselect during archive/delete mutations.
+- **why:** Match pinned `openStoredSession` plus route-resume behavior and close the warm-session no-op in native.
+- **components:** `apps/hermes-native/src/app.rs`, test-only gateway command observation in `gateway.rs`, progress generator and overlay, parity plan/source audit/backlog/completion/readme.
+- **type:** parity implementation and headless protocol validation.
+- **validation:** Full feature suite 344 library + 15 protocol + 3 launcher; workspace/all-target check passes with existing dead-code warnings only; task continuity 18/18; pinned package validator 491 pending; review 39/499 (6 implemented, 33 partial, 460 unknown) / acceptance 0/499; Python compileall, rustfmt and diff checks pass.
+- **performance:** no performance change measured or expected.
+- **risks:** No live gateway/in-flight turn or Windows UI was exercised; native owner routing has profile identity but not source connection identity.
+- **follow_up:** Exercise live in-flight reattach and failure/reconnect cases, then collect same-environment source/target evidence for PAR-0510.

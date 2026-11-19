@@ -1280,3 +1280,14 @@ The pinned session-row resolver applies Alt+Shift archive, Ctrl/Cmd+Shift new wi
 A headless test drives the real row widget through each gesture and checks pin/archive state, clicked-session window route/profile, tab identities including middle-click, and plain in-place routing. The pure resolver also has precedence coverage. Validation: full feature suite 342 library + 15 protocol + 3 launcher; locked workspace/all-target check (existing dead-code warnings only); continuity 18/18; pinned package validator 491 pending; fixed-source review 38/499 (6 implemented, 32 partial, 461 unknown), acceptance 0/499; compileall, rustfmt and diff checks pass.
 
 This verifies native headless behavior only. No Windows installed-app, live gateway, source-paired screenshot, or formal requirement acceptance is claimed. Explicit `requestSessionResume` behavior for an already-active stored session remains a follow-up gap.
+
+
+### Revision 227 — Explicit reattach on stored-session reselect (2026-11-19T00:32:25Z)
+
+Pinned `apps/desktop/src/app/contrib/wiring.tsx#openStoredSession` queues `requestSessionResume` before `openSession` for every stored-session row click. `app/session/hooks/use-route-resume.ts` treats the explicit sequence as a reason to bypass the warm `alreadyActive` check, then runs `resumeSession`; the pinned regression covers an already-active selected session. Native previously skipped this call when `runtime_session_id` was cached.
+
+Native sidebar in-place reselect now forces the profile-scoped `session.resume` RPC even when the session is already active or has another resume request pending. It preserves the visible runtime, transcript and unsent draft while the new request is pending, replaces the correlated request ID so older results are ignored, and applies the returned transcript/runtime only for the current request. Retry uses the same force path. Pending archive/delete mutations suppress the request, following the pinned removal guard. This path sends no prompt.
+
+A real-row headless regression verifies one resume command for an active row, owner profile, no prompt or duplicate command, preserved draft/transcript, stale-response fencing, and successful refreshed snapshot. A second regression covers pending archive/delete suppression; existing resume error handling covers a denied response. Validation: full suite 344 library + 15 protocol + 3 launcher; locked workspace/all-target check (existing dead-code warnings only); continuity 18/18; pinned package validator 491 pending; review 39/499 (6 implemented, 33 partial, 460 unknown), formal acceptance 0/499; compileall, rustfmt and diff checks pass.
+
+This is headless implementation evidence, not live reattachment proof. A real Hermes gateway/in-flight turn, Windows installed UI, multi-connection owner routing, and source-paired visual evidence remain open; PAR-0510 is not formally accepted.

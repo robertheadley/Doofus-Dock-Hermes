@@ -141,3 +141,6 @@ Command Center navigation now follows the pinned wide/compact split: a persisten
 
 
 Command Center session rows support the pinned keyboard-modifier and middle-click behaviors for in-place resume, opening a tab/window, pinning and archiving. The new-window action targets the clicked session. Headless UI coverage passes; installed Windows behavior, live-gateway proof and formal source acceptance remain in the completion overview.
+
+
+Clicking a stored session row explicitly reattaches through the profile-scoped Hermes `session.resume` RPC, even when that session is already active. The native UI preserves the current draft while the snapshot refreshes and rejects stale resume responses. Headless row coverage passes; live in-flight gateway and Windows parity remain open.

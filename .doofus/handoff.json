@@ -30,24 +30,97 @@
       "owner": "unattributed_preexisting",
       "path": ".doofus/handoff.json",
       "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/SOURCE_AUDIT.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
     }
   ],
   "checkpoint": {
-    "command": "git fetch origin main; compare HEAD with origin/main",
+    "command": "cargo test -p hermes-native --features agent-automation --locked --quiet; cargo check --workspace --all-targets --locked; task/package/progress/format validators",
     "evidence": [
-      "apps/hermes-native/docs/PLAN.md#Revision 226"
+      "apps/hermes-native/docs/PLAN.md#Revision 227"
     ],
     "state": "tested",
-    "summary": "PAR-0074 session-row gesture slice is validated and published to main as 35c642208f77dc6323b962ac1aa77a5c74a1a7fa; origin/main matches. Full native/workspace/continuity/package/progress/format validation passes. Project acceptance remains 0/499.",
-    "verified_at": "2026-11-19T00:16:03Z"
+    "summary": "PAR-0510 active-session reselect now forces a profile-scoped session.resume, preserves draft/runtime/transcript while pending, fences stale responses, and suppresses resumes during archive/delete. Real-row tests prove one resume and no prompt. Full checks pass; progress is 39/499 reviewed (6 implemented, 33 partial, 460 unknown), acceptance 0/499. Live runtime and Windows evidence remain open.",
+    "verified_at": "2026-11-19T00:38:08Z"
   },
   "completed_subtasks": [
     "hermes-par-0074",
+    "hermes-par-0510",
     "hermes-cross-provider-handoff"
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T01:16:03Z",
+    "lease_expires_at": "2026-11-19T01:38:08Z",
     "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
     "model": null,
     "ownership_state": "active",
@@ -107,6 +180,20 @@
       "operation": "headless_rust_validation",
       "state": "not_running_at_bootstrap",
       "verified_at": "2026-11-17T01:04:31Z"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/docs/PLAN.md#Revision 227"
+      ],
+      "kind": "hermes_native_validation",
+      "note": "PASS full suite 344 library + 15 protocol + 3 launcher; locked workspace/all-target check with existing warnings only; continuity 18/18; package 491 pending; fixed review 38/499, acceptance 0/499; compileall/fmt/diff pass. Live backend/Windows validation not claimed.",
+      "observed_at": "2026-11-19T00:33:42Z",
+      "operation_id": "hermes-active-session-validation-20261119",
+      "owner": {
+        "model": "gpt-6.2-astra",
+        "provider": "codex"
+      },
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -223,9 +310,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-session-row-published-checkpoint-20261119",
+  "last_event_id": "hermes-par-0510-headless-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-session-row-published-checkpoint-20261119",
+    "request_id": "hermes-par-0510-headless-checkpoint-20261119",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -244,7 +331,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Verify pinned requestSessionResume behavior for clicks on an already-active stored session; add a source-backed headless regression and continue runtime/source-paired acceptance review.",
+  "recommended_next_action": "Publish the tested source/docs/progress slice on main, then append a partial UCM evidence record against the implementation commit. Next, pursue actual in-flight gateway reattach and source-paired Windows/runtime evidence without changing the pinned source.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -690,7 +777,6 @@
     "hermes-par-0507",
     "hermes-par-0508",
     "hermes-par-0509",
-    "hermes-par-0510",
     "hermes-par-0511",
     "hermes-par-0512",
     "hermes-par-0513",
@@ -749,7 +835,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "00863f0027051b45f62fe5ee460460f68a0a384e0506de2dce8ffe735415f3b0",
+    "change_fingerprint": "c023b3e963e7d729f63c7fe4062cca21249d4e179be064543e375f5cc67056f9",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -758,19 +844,67 @@
       {
         "path": ".doofus/handoff.json",
         "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/SOURCE_AUDIT.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
       }
     ],
-    "head_commit": "35c642208f77dc6323b962ac1aa77a5c74a1a7fa",
+    "head_commit": "b53d49cc970f386b51979d18d26634112b39a6df",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 143,
+  "revision": 148,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 143,
+  "state_revision": 148,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0074",
-  "task_ledger_revision": 12,
+  "task_id": "hermes-par-0510",
+  "task_ledger_revision": 13,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -1616,9 +1750,19 @@
       "command": "cargo test -p hermes-native --features agent-automation --locked --quiet; cargo check --workspace --all-targets --locked",
       "result": "PASS 342 library + 15 protocol + 3 launcher; workspace check passes with existing dead-code warnings; origin/main equals published HEAD 35c6422.",
       "timestamp": "2026-11-19T00:16:03Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS valid state; clean worktree; actual main/origin HEAD b53d49cc970f386b51979d18d26634112b39a6df; existing Codex lease is active and retained.",
+      "timestamp": "2026-11-19T00:18:22Z"
+    },
+    {
+      "command": "reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit; explicit_session_resume_skips_rows_with_archive_or_delete_in_flight",
+      "result": "PASS full suite 344 library + 15 protocol + 3 launcher; workspace check existing warnings only; continuity 18/18; package 491 pending; review 39/499, acceptance 0/499; compileall/fmt/diff pass.",
+      "timestamp": "2026-11-19T00:38:08Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T00:16:03Z"
+  "updated_at": "2026-11-19T00:38:08Z"
 }

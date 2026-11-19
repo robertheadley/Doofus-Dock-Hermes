@@ -236,3 +236,9 @@ Command Center navigation and framing (2026-11-18T23:45:00Z): wide mode now foll
 
 - Implemented and headlessly verified pinned precedence for archive, new window, new tab, pin/unpin, plain in-place open and middle-click tab; the new-window route targets the clicked session and leaves the current pane in place.
 - Remaining: match the pinned explicit `requestSessionResume` call when opening an already-active stored session; exercise physical Windows click modifiers and live gateway behavior; collect source-paired visual and formal capability evidence.
+
+
+### PAR-0510 — Reattach to an in-flight turn without duplicating submit
+
+- Implemented: an explicit click on an already-active stored-session row now queues a fresh, profile-scoped `session.resume` request. It replaces request ownership without clearing the live transcript/runtime/draft. The active request's snapshot refresh is correlated; stale completions cannot overwrite it; archive/delete in-flight rows do not resume. Headless tests verify the actual row click, one resume and no prompt submit.
+- Still open: prove the reattach against a live Hermes gateway during an in-flight turn, cover the real denied/offline/reconnect paths and connection-owner routing, capture source/target Windows behavior, and record the required source-paired evidence. Formal acceptance stays pending.

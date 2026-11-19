@@ -2410,6 +2410,19 @@ pub struct GatewayDiscovery {
     artifact_image_sender: mpsc::Sender<ArtifactImagePreviewRequest>,
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TestGatewayCommand {
+    ResumeSession {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+    },
+    SubmitPrompt,
+    Other,
+}
+
 struct CronTriggerCommand {
     request_id: String,
     profile: Option<String>,
@@ -2422,6 +2435,72 @@ struct AgentPluginUpdateAllCommand {
 }
 
 impl GatewayDiscovery {
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn for_test_session_resume() -> (
+        Self,
+        Receiver<TestGatewayCommand>,
+        Receiver<(String, usize)>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (_event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (observed_command_sender, observed_command_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = command_receiver.recv() {
+                let observed = match command {
+                    GatewayCommand::ResumeSession {
+                        request_id,
+                        session_id,
+                        profile,
+                    } => TestGatewayCommand::ResumeSession {
+                        request_id,
+                        session_id,
+                        profile,
+                    },
+                    GatewayCommand::SubmitPrompt { .. } => TestGatewayCommand::SubmitPrompt,
+                    _ => TestGatewayCommand::Other,
+                };
+                if observed_command_sender.send(observed).is_err() {
+                    break;
+                }
+            }
+        });
+        let (refresh_sender, refresh_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::RefreshSessions { request_id, limit } = command
+                    && refresh_sender.send((request_id, limit)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            observed_command_receiver,
+            refresh_receiver,
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test_session_refresh() -> (Self, Receiver<(String, usize)>) {
         let (_status_sender, status_receiver) = mpsc::channel();

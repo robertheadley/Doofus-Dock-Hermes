@@ -177,3 +177,10 @@ Partial/unverified: narrow global toolbar still overlaps behind the modal; icons
 Status: **implemented and headlessly tested; runtime acceptance remains open.** The native sidebar now follows pinned modifier precedence for archive, new window, new tab, pin/unpin, plain in-place opening and middle-click tab. A real-row UI harness verifies each path, including that a new window uses the clicked session and does not move the existing pane.
 
 Evidence: full feature suite 342 library + 15 protocol + 3 launcher; locked workspace check; task continuity 18/18; pinned package consistency check (491 requirements still pending); fixed-source review 38/499 and formal acceptance 0/499. The installed Windows UI, live gateway, and source-paired visual state were not exercised. The explicit resume request for an already-active stored session remains open.
+
+
+### Active session reselect / reattach (2026-11-19)
+
+Status: **partial; headless behavior passes, runtime reattachment is unverified.** A plain session-row click always queues a profile-scoped `session.resume`, including when the row is already the active chat. The request ID supersedes older pending work; the UI retains the current draft/runtime/transcript while it waits, stale responses are ignored, and the path does not submit a prompt. Pending archive/delete requests suppress resume.
+
+Evidence: real-row egui regression plus stale-result/snapshot assertions; full suite 344 library + 15 protocol + 3 launcher; workspace check; continuity 18/18. Project review is 39/499 (6 implemented, 33 partial, 460 unknown), source acceptance 0/499, and the package validator has 491 requirements pending. No live gateway, actual in-flight turn, Windows app, or source-paired screenshot was used. Profile-only identity still does not preserve the source's connection-plus-profile owner route.

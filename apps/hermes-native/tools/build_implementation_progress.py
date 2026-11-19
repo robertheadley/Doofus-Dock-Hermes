@@ -623,6 +623,25 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["run-row navigation into its session", "live authenticated gateway", "source-paired behavior and visuals"],
     },
+    "PAR-0510": {
+        "state": "partial",
+        "level": "headless_active_session_reselect_and_resume_fencing",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/contrib/wiring.tsx#openStoredSession",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-route-resume.ts#dispatchRouteResume",
+            "apps/hermes-native/src/app.rs#reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit",
+            "apps/hermes-native/src/app.rs#explicit_session_resume_skips_rows_with_archive_or_delete_in_flight",
+            "apps/hermes-native/src/app.rs#session_resume_errors_are_correlated_and_render_on_the_owning_tile",
+            "apps/hermes-native/src/gateway.rs#fn resume_session",
+            "apps/hermes-native/docs/PLAN.md#Revision 227",
+        ],
+        "gaps": [
+            "real Hermes gateway/in-flight-turn reattachment and failure behavior not exercised",
+            "native row identity preserves profile but not the source connection-plus-profile owner route",
+            "Windows installed-app and source-paired visual evidence pending",
+            "formal source acceptance remains pending",
+        ],
+    },
 }
 
 FIELDS = [

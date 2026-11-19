@@ -12194,7 +12194,7 @@ fn render_message() -> &'static str {
             self.workspace.select_panel(&PanelId::from(WORKSPACE))?;
         }
         self.active_session_profile = profile;
-        self.navigate_after_save(AppRoute::Session(session.id));
+        self.navigate_after_save_with_resume(AppRoute::Session(session.id), true);
         self.status = "Opened session".into();
         Ok(())
     }
@@ -15114,6 +15114,20 @@ fn render_message() -> &'static str {
     }
 
     fn ensure_session_resume(&mut self, session_id: &str, profile: Option<String>) {
+        self.queue_session_resume(session_id, profile, false);
+    }
+
+    fn request_explicit_session_resume(&mut self, session_id: &str, profile: Option<String>) {
+        let action_key = session_identity_key(session_id, profile.as_deref());
+        if self.pending_session_archives.contains_key(&action_key)
+            || self.pending_session_deletes.contains_key(&action_key)
+        {
+            return;
+        }
+        self.queue_session_resume(session_id, profile, true);
+    }
+
+    fn queue_session_resume(&mut self, session_id: &str, profile: Option<String>, force: bool) {
         if !self.gateway_connected {
             return;
         }
@@ -15126,11 +15140,19 @@ fn render_message() -> &'static str {
                 profile: profile.clone(),
                 ..SessionChatViewState::default()
             });
-        if view.runtime_session_id.is_some()
-            || view.resume_request_id.is_some()
-            || view.resume_error.is_some()
+        if !force
+            && (view.runtime_session_id.is_some()
+                || view.resume_request_id.is_some()
+                || view.resume_error.is_some())
         {
             return;
+        }
+        if force {
+            // An explicit sidebar reselect is a reattach request even when a
+            // warm runtime is cached. Replacing this request ID makes any
+            // earlier in-flight snapshot stale without dropping the visible
+            // transcript, runtime binding, or draft while the RPC is pending.
+            view.resume_error = None;
         }
         let request_id = operation_id("resume");
         match self
@@ -15142,6 +15164,7 @@ fn render_message() -> &'static str {
             }) {
             Ok(()) => view.resume_request_id = Some(request_id),
             Err(error) => {
+                view.resume_request_id = None;
                 view.resume_error = Some(error.clone());
                 if self.route == AppRoute::Session(session_id.to_owned())
                     && self.active_session_profile == profile
@@ -15166,7 +15189,7 @@ fn render_message() -> &'static str {
         view.resume_request_id = None;
         view.resume_error = None;
         self.cache_session_chat_view(key, view);
-        self.ensure_session_resume(session_id, profile);
+        self.request_explicit_session_resume(session_id, profile);
     }
 
     fn settle_session_resume(
@@ -15236,6 +15259,10 @@ fn render_message() -> &'static str {
     }
 
     fn navigate_after_save(&mut self, route: AppRoute) {
+        self.navigate_after_save_with_resume(route, false);
+    }
+
+    fn navigate_after_save_with_resume(&mut self, route: AppRoute, explicit_resume: bool) {
         let route = AppRoute::parse(&route.path(), &self.contributed_paths);
         if route.is_overlay() && !self.route.is_overlay() {
             self.overlay_return = self.route.clone();
@@ -15265,7 +15292,12 @@ fn render_message() -> &'static str {
                     self.active_runtime_session_id = None;
                     self.draft.clear();
                 }
-                if self.active_runtime_session_id.is_none() {
+                if explicit_resume {
+                    self.request_explicit_session_resume(
+                        session_id,
+                        self.active_session_profile.clone(),
+                    );
+                } else if self.active_runtime_session_id.is_none() {
                     self.ensure_session_resume(session_id, self.active_session_profile.clone());
                 }
             }
@@ -31217,6 +31249,171 @@ mod tests {
         );
 
         drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "worker".into(),
+            instance_id: "active-reselect-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32148".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, commands, _refresh_receiver) =
+            crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.route = AppRoute::Session("active-session".into());
+        app.active_session_profile = Some("worker".into());
+        app.active_runtime_session_id = Some("runtime-active-session".into());
+        app.transcript = vec![serde_json::json!({"role":"assistant","content":"Still visible"})];
+        app.draft = "Keep this unsent draft".into();
+        app.sessions.push(SessionSummary {
+            cwd: None,
+            id: "active-session".into(),
+            lineage_root_id: None,
+            profile: Some("worker".into()),
+            title: "Already active".into(),
+            preview: "Continue this conversation".into(),
+            message_count: 1,
+            source: "desktop".into(),
+            started_at: 100.0,
+            last_active: Some(200.0),
+            pinned: false,
+            unread: false,
+            archived: false,
+        });
+        let key = session_identity_key("active-session", Some("worker"));
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("worker".into()),
+                runtime_session_id: Some("runtime-active-session".into()),
+                resume_request_id: Some("older-pending-resume".into()),
+                transcript: vec![serde_json::json!({"role":"assistant","content":"Still visible"})],
+                draft: "Keep this unsent draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        // Ignore any status command caused by initial rendering; the explicit
+        // row click below must produce a single resume and no prompt submit.
+        while commands.try_recv().is_ok() {}
+        let row = harness
+            .query_all_by(|node| {
+                node.label().as_deref().is_some_and(|label| {
+                    label.starts_with("Already active, session active-session")
+                })
+            })
+            .next()
+            .expect("active stored session remains accessible in the sidebar");
+        row.click();
+        harness.run();
+
+        let command = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("explicit reselect queues a session resume");
+        let (request_id, resumed_session_id, profile) = match command {
+            crate::gateway::TestGatewayCommand::ResumeSession {
+                request_id,
+                session_id,
+                profile,
+            } => (request_id, session_id, profile),
+            _ => panic!("explicit reselect must only queue a session resume"),
+        };
+        assert_eq!(resumed_session_id, "active-session");
+        assert_eq!(profile.as_deref(), Some("worker"));
+        assert_ne!(request_id, "older-pending-resume");
+        assert!(
+            commands.try_recv().is_err(),
+            "no prompt or duplicate RPC is queued"
+        );
+        assert_eq!(
+            app.borrow().active_runtime_session_id.as_deref(),
+            Some("runtime-active-session")
+        );
+        assert_eq!(app.borrow().draft, "Keep this unsent draft");
+        assert_eq!(
+            app.borrow().session_chat_views[&key]
+                .resume_request_id
+                .as_deref(),
+            Some(request_id.as_str())
+        );
+
+        app.borrow_mut().settle_session_resume(
+            "older-pending-resume",
+            "active-session",
+            Some("worker".into()),
+            Err("stale resume failure".into()),
+        );
+        assert_eq!(
+            app.borrow().session_chat_views[&key]
+                .resume_request_id
+                .as_deref(),
+            Some(request_id.as_str()),
+            "an older response cannot supersede the explicit reattach"
+        );
+        assert!(app.borrow().session_chat_views[&key].resume_error.is_none());
+
+        app.borrow_mut().settle_session_resume(
+            &request_id,
+            "active-session",
+            Some("worker".into()),
+            Ok(crate::gateway::SessionTranscript {
+                session_id: "active-session".into(),
+                profile: Some("worker".into()),
+                runtime_session_id: "runtime-reattached".into(),
+                message_count: 2,
+                messages: vec![
+                    serde_json::json!({"role":"assistant","content":"Refreshed snapshot"}),
+                ],
+            }),
+        );
+        assert_eq!(
+            app.borrow().session_chat_views[&key]
+                .runtime_session_id
+                .as_deref(),
+            Some("runtime-reattached")
+        );
+        assert_eq!(app.borrow().draft, "Keep this unsent draft");
+        assert_eq!(app.borrow().transcript[0]["content"], "Refreshed snapshot");
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn explicit_session_resume_skips_rows_with_archive_or_delete_in_flight() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        let (gateway, commands, _refresh_receiver) =
+            crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        let archived_key = session_identity_key("archiving-session", Some("worker"));
+        let deleted_key = session_identity_key("deleting-session", Some("worker"));
+        app.pending_session_archives
+            .insert(archived_key, "archive-pending".into());
+        app.pending_session_deletes
+            .insert(deleted_key, "delete-pending".into());
+
+        app.request_explicit_session_resume("archiving-session", Some("worker".into()));
+        app.request_explicit_session_resume("deleting-session", Some("worker".into()));
+        assert!(commands.try_recv().is_err());
+
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
