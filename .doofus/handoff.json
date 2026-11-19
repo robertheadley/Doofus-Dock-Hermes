@@ -3,6 +3,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Bounded source-contract audit was interrupted after pinned use-prompt-actions and upload path inspection; native attachment implementation not started. Exact upload methods and path-vs-bytes policy were partially confirmed directly.",
+      "observed_at": "2026-11-19T17:07:00Z",
+      "pid": null,
+      "process_id": "subagent:attachment-contract-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0033..0068 audit completed; identified existing stream/markdown/search/history evidence and image/file attachments as a major code gap. No edits.",
       "observed_at": "2026-11-19T16:57:55Z",
       "pid": null,
@@ -64,79 +74,16 @@
     {
       "change_type": "modified",
       "owner": "codex",
-      "path": ".doofus/task-ledger.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/src/app.rs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
       "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
     }
   ],
   "checkpoint": {
-    "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked",
-    "evidence": [
-      "apps/hermes-native/src/app.rs#replay_gap_resumes_active_session_and_preserves_transcript_and_draft",
-      "apps/hermes-native/src/app.rs#replay_gap_resumes_only_the_exact_open_session_pane_owner"
-    ],
-    "state": "tested",
-    "summary": "PAR-0511 now handles session.replay_gap by resolving exactly one active or open session view under the selected connection/profile, requesting an authoritative resume, preserving transcript/draft, and coalescing repeats. Two focused tests and the full suite pass; progress row is partial. Automatic reconnect and live Gateway behavior remain open.",
-    "verified_at": "2026-11-19T17:01:45Z"
+    "command": null,
+    "evidence": [],
+    "state": "in_progress",
+    "summary": "Published PAR-0510 connection-owned resume and PAR-0511 replay-gap recovery; scoped status is 1 implemented, 9 partial, 163 unknown, 10/173 mapped; all 173 still lack live runtime and source-paired/visual evidence. Selected PAR-0062 attachment transport as next P0 chat gap after a partial pinned-source contract audit.",
+    "verified_at": "2026-11-19T17:07:52Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -148,7 +95,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T18:01:45Z",
+    "lease_expires_at": "2026-11-19T18:07:52Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -492,11 +439,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par-0511-publish-record-20261119",
+  "last_event_id": "hermes-par-0062-start-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-par-0511-publish-record-20261119",
+    "request_id": "hermes-par-0062-start-checkpoint-20261119",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -506,14 +453,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "02-gateway",
+  "phase": "03-chat",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Publish the PAR-0511 implementation and updated progress/docs to main, then tackle the audited missing P0 chat attachment flow or session branch behavior.",
+  "recommended_next_action": "Finish contract review for attachment byte/path transport, security and interrupted-draft restore; implement and validate PAR-0062/0063 with the Hermes Gateway.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1014,7 +961,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "76be88ed3b0cf70b3809a26c3c1b3692da17b4003d5f1a4d437d0d981e0ba831",
+    "change_fingerprint": "74e0c8745f0deb5e342b6193eefb5b94cb9258867c3e19ad2a0fa30e1bd6ef06",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1025,60 +972,20 @@
         "status": " M"
       },
       {
-        "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/README.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/app.rs",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
         "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       }
     ],
-    "head_commit": "3f94c0774f840736cb2c9c7b6fc833cf86505dbd",
+    "head_commit": "bcb5552581b806008cd9d63d9991abf2bc1f679d",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 202,
+  "revision": 206,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 202,
+  "state_revision": 206,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0511",
+  "task_id": "hermes-par-0062",
   "task_ledger_revision": 21,
   "tests_executed": [
     {
@@ -2029,5 +1936,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T17:03:18Z"
+  "updated_at": "2026-11-19T17:07:52Z"
 }
