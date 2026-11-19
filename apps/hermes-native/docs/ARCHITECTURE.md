@@ -240,3 +240,8 @@ The composer recognizes only leading, single-line slash input. A 60 ms debounce 
 ## Transcript find
 
 Native find searches the currently loaded transcript's message body and speaker fields case-insensitively, cycles through matching rows, and scrolls/highlights the matching card. It does not yet walk all text in the rendered chat surface or highlight individual substring ranges as the pinned Desktop renderer does; other panes, live behavior and source-paired acceptance are unverified.
+
+
+## Older transcript history
+
+Current pagination requests profile-scoped offset pages, fences the response to its session/profile/request tuple, and prepends with boundary deduplication. The pinned Desktop flow reveals a prior prompt using an around-row page and predecessor lookup; a noncontiguous page replaces the current history window. That anchored navigation is not implemented yet.

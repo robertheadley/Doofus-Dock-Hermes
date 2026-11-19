@@ -1489,3 +1489,8 @@ The pinned view.findInPage contract and existing native headless test now have e
 Validation addendum (2026-11-19T19:25Z): PASS scoped progress generators (49 reviewed: 6 implemented, 43 partial, 450 unknown; 173 chat/tool: 1 implemented, 16 partial, 156 unknown); PASS UCM package validator (565 behaviors, 14 source and 18 implementation receipts; optional YAML parse skipped because PyYAML is unavailable); PASS Doofus task state validation. The referenced native behavior test passed in the latest full suite (404 library + 15 automation protocol + 3 launcher). Live and source-paired acceptance remain pending.
 
 UCM evidence: EV-0033 is bound to implementation/test commit `bc3555f62308ced1c87924ffe0f53ac830441cc7`. The capability and crosswalk are marked partial; fixed-source acceptance is still pending.
+
+
+### Revision 247 — Older transcript pagination evidence (2026-11-19T19:39Z)
+
+PAR-0057 is now mapped partial from the current native implementation. Hermes Native exposes an accessible “Show earlier messages” action, requests older offset pages under the active profile, validates the returned profile/order/offset receipt, fences owner/request identity, and prepends pages with boundary-overlap deduplication. Focused pagination tests pass (5). The pinned Desktop implementation instead reveals an older prompt using an around-row history window, predecessor lookup, cancellation/latest-request fencing, and a contiguity check that replaces the displayed window when a long turn separates pages. Native does not yet implement that anchored flow. Live Gateway, physical Windows interaction, and source-paired acceptance remain open.

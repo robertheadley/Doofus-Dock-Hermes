@@ -315,3 +315,5 @@ PAR-0062/0063 composer attachments (2026-11-19):
 - PAR-0040 now has a headless assertion for the accessible Copy action and full fenced-code clipboard payload. Still open: convert valid `@url:` references to literal URLs, physical Windows clipboard validation and fixed-source acceptance.
 - PAR-0068 source audit found pinned rich-chip hover actions for URL/session references, with a 500 ms transit grace period and mousedown suppression to preserve editor selection. Native composer is plain TextEdit and has no directive preview router; defer until it has a safe token/chip interaction model.
 - PAR-0058 transcript find is now mapped partial: native case-insensitive search, count, keyboard stepping, Escape and whole-card highlight cover loaded transcript rows. Search across the full rendered chat view, per-substring highlight, other panes, physical Windows and fixed-source acceptance remain open.
+
+- PAR-0057 remains partial: implement pinned around-row history reveal, predecessor-prompt lookup, cancellation/latest-request fencing, and noncontiguous older-page replacement. Then verify Gateway behavior, Windows interaction, and source-paired acceptance.

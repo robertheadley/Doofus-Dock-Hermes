@@ -526,6 +526,25 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "physical Windows clipboard behavior and source-paired visuals/acceptance remain unverified",
         ],
     },
+    "PAR-0057": {
+        "state": "partial",
+        "level": "headless_older_transcript_page_and_gateway_scope_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/history-window.ts#fetchHistoryWindow",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/history-window.test.tsx#latest request wins even when the bridge ignores cancellation",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/history-window.test.tsx#shows the older page on its own when a turn longer than the page limit separates it from the anchor",
+            "apps/hermes-native/src/app.rs#older_transcript_history_exposes_an_accessible_control",
+            "apps/hermes-native/src/app.rs#older_transcript_page_prepends_and_deduplicates_boundary_overlap",
+            "apps/hermes-native/src/gateway.rs#older_transcript_page_uses_profile_scope_and_validates_latest_offset",
+            "apps/hermes-native/src/gateway.rs#older_transcript_page_rejects_a_different_profile_receipt",
+            "apps/hermes-native/docs/PLAN.md#Revision 247",
+        ],
+        "gaps": [
+            "native pagination fetches offset-based latest pages and lacks the pinned around-row anchor/predecessor-index flow used to reveal a selected older prompt",
+            "native merge has no around-window contiguity check to show a separated older page on its own",
+            "live Gateway behavior, installed Windows interaction, stale/cancelled request UI coverage, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",

@@ -1312,7 +1312,7 @@ capabilities:
   name: Paginate older transcript history
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can paginate older transcript history.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions

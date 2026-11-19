@@ -2759,3 +2759,19 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime change.
 - **risks:** Current-view substring highlighting across transcript Markdown and physical/source-paired behavior remain open; PyYAML schema parse was skipped because it is unavailable.
 - **follow_up:** Continue partial parity work and keep source acceptance pending until rendered-surface behavior is covered.
+
+## PAR-0057 older transcript pagination evidence
+
+- **id:** hermes-par-0057-pagination-evidence-20261119
+- **timestamp:** 2026-11-19T19:39:24Z
+- **what:** Mapped the existing native offset-page pagination to partial evidence and recorded pinned around-row navigation gaps.
+- **why:** Distinguish working older-page retrieval from the different pinned selected-prompt history-window behavior.
+- **components:** Transcript UI, Gateway page decoding, progress generators and UCM crosswalk.
+- **type:** evidence mapping and documentation
+- **validation:** PASS focused older-transcript filter (5 tests); progress generators and UCM package validation pending.
+- **performance:** No runtime change.
+- **risks:** Live Gateway, stale UI request flow, Windows interaction and fixed-source acceptance remain open.
+- **follow_up:** Implement around-row predecessor navigation and contiguity handling; then validate live and source-paired behavior.
+
+
+Validation addendum (2026-11-19T19:42Z): PASS focused pagination filter (5 tests); PASS progress generators (50 reviewed; 6 implemented, 44 partial, 449 unknown; chat/tool 18 mapped with 1 implemented, 17 partial, 155 unknown); PASS UCM validator (565 behaviors/inventory/pending tests, 14 source and 18 implementation receipts); PASS task validation and `git diff --check`. The first package validation caught malformed CSV column alignment from an unquoted comma; the PAR-0057 row was reconstructed through the schema-aware CSV writer, and the rerun passed. Optional YAML validation skipped because PyYAML is unavailable. EV-0034 will be bound to the implementation/documentation commit after commit creation.

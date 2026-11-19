@@ -1,5 +1,5 @@
 {
-  "revision": 34,
+  "revision": 35,
   "schema_version": 1,
   "tasks": [
     {
@@ -1877,7 +1877,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1886,11 +1886,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T19:42:35Z",
+              "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-paginate-older-transcript-history",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -1901,10 +1901,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0057",
               "title": "PAR-0057 Paginate older transcript history",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#older_transcript_history_exposes_an_accessible_control"
+              ]
             },
             {
               "agent_identity": {
@@ -16232,5 +16234,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T19:33:45Z"
+  "updated_at": "2026-11-19T19:42:35Z"
 }
