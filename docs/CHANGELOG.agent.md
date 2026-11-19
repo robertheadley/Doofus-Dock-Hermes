@@ -3147,3 +3147,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change; preview limits are unchanged.
 - **risks:** Evidence is headless and local; it does not prove live Gateway or Windows acceptance.
 - **follow_up:** Publish EV-0050 and task checkpoint to main, confirm exact remote SHA, then work on skill detail/source.
+
+- **id:** hermes-par0044-main-publish
+- **timestamp:** 2026-11-19T23:56:00Z
+- **what:** Published tool-image behavior commit `f69925d2bd47c01f7f9a0aa9f1135576600e2cfc` and EV-0050 evidence commit `4343e419f4cb7c55c1d69dc96e42b7afa03ceac3` to `main`; fetched remote and verified exact SHA equality.
+- **why:** Keep the user's main-only repository current with tested partial image support and its source/evidence record.
+- **components:** Hermes Native, UCM EV-0050, task handoff/checkpoint.
+- **type:** main publication.
+- **validation:** PASS push, fresh fetch, local `HEAD == origin/main` at `4343e419f4cb7c55c1d69dc96e42b7afa03ceac3`; task checkpoint revision 348 and task validation pass.
+- **performance:** No benchmark change.
+- **risks:** Live Gateway, installed Windows, remote full-resolution, data URL, zoom/pan, and source-paired acceptance remain open.
+- **follow_up:** Continue PAR-0255 skill detail/source workflow; preserve the separate chat/tool and skill/plugin scope evidence dimensions.
