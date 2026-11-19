@@ -2582,3 +2582,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** Store writes are bounded to 4 MiB per entry, 128 entries, and atomic local-file replacement; no benchmark claim.
 - **risks:** Persisted staged Gateway references may expire or be unavailable after restart; live Gateway, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** Run full validation, publish to main, then continue with the next dependency-ready chat/tool capability.
+
+
+### UCM evidence for prepared image draft recovery — 2026-11-19T17:59:00Z
+
+- **id:** hermes-par-0063-ucm-evidence-20261119
+- **timestamp:** 2026-11-19T17:59:00Z
+- **what:** Added EV-0027 for no-send recovery and bound it to code commit `981609e38e6d08afad19db09cb707d68ce878b46`; marked the UCM capability partial with its headless scenario.
+- **why:** Preserve exact-SHA evidence without implying live Gateway or source acceptance.
+- **components:** UCM capability and evidence package.
+- **type:** evidence
+- **validation:** Package validator passes 565 behaviors, inventory rows and pending tests, 14 source receipts and 12 implementation receipts; optional PyYAML parse skipped because PyYAML is absent.
+- **performance:** No runtime performance claim.
+- **risks:** Live staged-reference validity and source-paired acceptance remain open.
+- **follow_up:** Continue the next dependency-ready chat/tool requirement.

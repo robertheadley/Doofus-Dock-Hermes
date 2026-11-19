@@ -1426,7 +1426,7 @@ capabilities:
   name: Restore interrupted image draft without sending
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can restore interrupted image draft without sending.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1438,9 +1438,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: prepared-image-no-send-recovery
+      description: Restore an exact-owner interrupted image draft into an empty composer without making a Gateway request; reject occupied composers.
+  evidence:
+  - EV-0027
+
 - id: ui-show-per-turn-failure-and-retry-without-duplication
   name: Show per-turn failure and retry without duplication
   area: chat-transcript

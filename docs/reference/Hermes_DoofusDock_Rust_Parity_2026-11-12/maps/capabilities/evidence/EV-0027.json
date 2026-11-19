@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0027",
+  "capability_id": "ui-restore-interrupted-image-draft-without-sending",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "prepared-image-no-send-recovery",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "981609e38e6d08afad19db09cb707d68ce878b46",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native Rust test suite and workspace check; no live Hermes Gateway or installed app was used.",
+  "notes": "The native app persists a bounded, versioned prepared-image journal keyed to connection/profile/stored session. The headless regression proves exact-owner visibility, restore into an empty composer without a Gateway dependency/request, and no-op when composer is occupied. Persistence tests cover atomic replacement, reload and retirement. The entry is retired only after matching prompt admission. Live Gateway validity of staged refs after process restart, installed Windows restart behavior, and source-paired acceptance remain open."
+}
