@@ -221,3 +221,7 @@ Session panes persist `hermes.session.connection_id` alongside profile and sessi
 ## Transcript replay-gap recovery (2026-11-19)
 
 A `session.replay_gap` event requests a fresh `session.resume` snapshot for exactly one active or open session view on the selected Gateway connection. The handler preserves the cached transcript and draft while the snapshot is pending, retains profile and connection identity, and coalesces repeated gaps until the matching resume settles. This handler does not create an automatic reconnect loop; live Gateway replay behavior and production reconnect remain unverified.
+
+## Composer attachment transport (2026-11-19)
+
+The native composer stages selected image/file bytes through the Hermes Gateway: images use `image.attach_bytes`, other files use `file.attach` with a data URL, and both are bounded at 16 MiB. Requests and receipts carry runtime session and profile identity; file references are prepended to prompt text, while image paths and MIME types are sent in the pinned `prompt.submit.attachments` field. Per-session composer state is cached while switching chats. Prepared image-draft restore after restart, previews, clipboard/drop input, path-sharing policy, and live Gateway behavior remain unimplemented or unverified.

@@ -1613,6 +1613,18 @@ pub enum PromptSubmitReceipt {
     VoiceStopped,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComposerAttachmentReceipt {
+    pub path: String,
+    pub ref_text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct GatewayPromptAttachment {
+    pub path: String,
+    pub mime: String,
+}
+
 #[derive(Debug)]
 pub enum GatewayEvent {
     SessionResumed {
@@ -1641,6 +1653,13 @@ pub enum GatewayEvent {
         session_id: String,
         submission_id: String,
         result: Result<PromptSubmitReceipt, String>,
+    },
+    ComposerAttachmentAttached {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        path: String,
+        result: Result<ComposerAttachmentReceipt, String>,
     },
     UnknownPromptResolved {
         session_id: String,
@@ -2147,6 +2166,15 @@ enum GatewayCommand {
         profile: Option<String>,
         submission_id: String,
         text: String,
+        attachments: Vec<GatewayPromptAttachment>,
+    },
+    AttachComposerFile {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        path: String,
+        name: String,
+        is_image: bool,
     },
     ResolveUnknownPrompt {
         session_id: String,
@@ -3207,6 +3235,47 @@ impl GatewayDiscovery {
                 profile,
                 submission_id,
                 text,
+                attachments: Vec::new(),
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn submit_prompt_with_attachments(
+        &self,
+        session_id: String,
+        profile: Option<String>,
+        submission_id: String,
+        text: String,
+        attachments: Vec<GatewayPromptAttachment>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::SubmitPrompt {
+                session_id,
+                profile,
+                submission_id,
+                text,
+                attachments,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn attach_composer_file(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        path: String,
+        name: String,
+        is_image: bool,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::AttachComposerFile {
+                request_id,
+                session_id,
+                profile,
+                path,
+                name,
+                is_image,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -5662,10 +5731,14 @@ fn gateway_actor(
                 profile,
                 submission_id,
                 text,
+                attachments,
             }) => {
-                let params = session_profile_params(
-                    serde_json::json!({"session_id":session_id,"submission_id":submission_id,"text":text}),
+                let params = prompt_submit_rpc_params(
+                    &session_id,
                     profile.as_deref(),
+                    &submission_id,
+                    &text,
+                    &attachments,
                 );
                 let result = params
                     .and_then(|params| {
@@ -5683,6 +5756,82 @@ fn gateway_actor(
                     .send(GatewayEvent::PromptSubmitted {
                         session_id,
                         submission_id,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::AttachComposerFile {
+                request_id,
+                session_id,
+                profile,
+                path,
+                name,
+                is_image,
+            }) => {
+                let result = (|| {
+                    let metadata = std::fs::metadata(&path)
+                        .map_err(|error| format!("Could not read attachment {}: {error}", name))?;
+                    if metadata.len() > COMPOSER_UPLOAD_MAX_BYTES {
+                        return Err(format!(
+                            "{} is larger than 16 MiB, the largest file Hermes Desktop can attach",
+                            name
+                        ));
+                    }
+                    let bytes = std::fs::read(&path)
+                        .map_err(|error| format!("Could not read attachment {}: {error}", name))?;
+                    let (method, params) = composer_attachment_rpc_payload(
+                        &session_id,
+                        profile.as_deref(),
+                        &name,
+                        is_image,
+                        &bytes,
+                    )?;
+                    let result =
+                        rpc_with_events(socket, next_request_id, method, params, Some(&events));
+                    next_request_id = next_request_id.saturating_add(1);
+                    let result = result?;
+                    if result.get("attached").and_then(serde_json::Value::as_bool) != Some(true) {
+                        return Err(result
+                            .get("message")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("Hermes refused the attachment")
+                            .to_owned());
+                    }
+                    let attached_path = result
+                        .get("path")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(&path)
+                        .to_owned();
+                    let ref_text = if is_image {
+                        let value = if attached_path.chars().any(char::is_whitespace) {
+                            format!("`{attached_path}`")
+                        } else {
+                            attached_path.clone()
+                        };
+                        format!("@image:{value}")
+                    } else {
+                        result
+                            .get("ref_text")
+                            .and_then(serde_json::Value::as_str)
+                            .ok_or_else(|| {
+                                "Hermes attached the file without a prompt reference".to_owned()
+                            })?
+                            .to_owned()
+                    };
+                    Ok(ComposerAttachmentReceipt {
+                        path: attached_path,
+                        ref_text,
+                    })
+                })();
+                if events
+                    .send(GatewayEvent::ComposerAttachmentAttached {
+                        request_id,
+                        session_id,
+                        profile,
+                        path,
                         result,
                     })
                     .is_err()
@@ -6054,6 +6203,89 @@ fn parse_prompt_submit_receipt(
         status: status.to_owned(),
         execution_generation,
     })
+}
+
+pub fn composer_attachment_mime(name: &str) -> &'static str {
+    match PathBuf::from(name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "pdf" => "application/pdf",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "md" => "text/markdown",
+        "txt" => "text/plain",
+        "html" | "htm" => "text/html",
+        "xml" => "application/xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => "application/octet-stream",
+    }
+}
+
+fn prompt_submit_rpc_params(
+    session_id: &str,
+    profile: Option<&str>,
+    submission_id: &str,
+    text: &str,
+    attachments: &[GatewayPromptAttachment],
+) -> Result<serde_json::Value, String> {
+    let mut payload = serde_json::json!({
+        "session_id": session_id,
+        "submission_id": submission_id,
+        "text": text,
+    });
+    if !attachments.is_empty() {
+        payload["attachments"] = serde_json::to_value(attachments)
+            .map_err(|error| format!("Could not encode prompt attachments: {error}"))?;
+    }
+    session_profile_params(payload, profile)
+}
+
+const COMPOSER_UPLOAD_MAX_BYTES: u64 = 16 * 1024 * 1024;
+
+fn composer_attachment_rpc_payload(
+    session_id: &str,
+    profile: Option<&str>,
+    name: &str,
+    is_image: bool,
+    bytes: &[u8],
+) -> Result<(&'static str, serde_json::Value), String> {
+    use base64::Engine as _;
+
+    if bytes.len() as u64 > COMPOSER_UPLOAD_MAX_BYTES {
+        return Err(format!(
+            "{} is larger than 16 MiB, the largest file Hermes Desktop can attach",
+            name
+        ));
+    }
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    let (method, payload) = if is_image {
+        (
+            "image.attach_bytes",
+            serde_json::json!({
+                "session_id": session_id,
+                "content_base64": encoded,
+                "filename": name,
+            }),
+        )
+    } else {
+        (
+            "file.attach",
+            serde_json::json!({
+                "name": name,
+                "session_id": session_id,
+                "data_url": format!("data:{};base64,{encoded}", composer_attachment_mime(name)),
+            }),
+        )
+    };
+    Ok((method, session_profile_params(payload, profile)?))
 }
 
 fn rename_runtime_session_rpc(
@@ -11476,6 +11708,69 @@ mod tests {
     use super::*;
 
     #[test]
+    fn composer_image_upload_uses_pinned_gateway_bytes_contract() {
+        let (method, params) = composer_attachment_rpc_payload(
+            "runtime-1",
+            Some("profile-1"),
+            "capture.png",
+            true,
+            &[1, 2],
+        )
+        .unwrap();
+
+        assert_eq!(method, "image.attach_bytes");
+        assert_eq!(params["session_id"], "runtime-1");
+        assert_eq!(params["profile"], "profile-1");
+        assert_eq!(params["filename"], "capture.png");
+        assert_eq!(params["content_base64"], "AQI=");
+        assert!(params.get("path").is_none());
+    }
+
+    #[test]
+    fn composer_file_upload_uses_pinned_gateway_data_url_contract() {
+        let (method, params) =
+            composer_attachment_rpc_payload("runtime-2", None, "brief.pdf", false, &[0]).unwrap();
+
+        assert_eq!(method, "file.attach");
+        assert_eq!(params["session_id"], "runtime-2");
+        assert_eq!(params["name"], "brief.pdf");
+        assert_eq!(params["data_url"], "data:application/pdf;base64,AA==");
+        assert!(params.get("path").is_none());
+    }
+
+    #[test]
+    fn composer_attachment_payload_rejects_files_over_source_limit() {
+        let bytes = vec![0; COMPOSER_UPLOAD_MAX_BYTES as usize + 1];
+        let result = composer_attachment_rpc_payload("runtime", None, "large.txt", false, &bytes);
+
+        assert!(result.unwrap_err().contains("larger than 16 MiB"));
+    }
+
+    #[test]
+    fn prompt_submit_includes_source_image_attachment_metadata() {
+        let params = prompt_submit_rpc_params(
+            "runtime-3",
+            Some("profile-3"),
+            "submission-3",
+            "Describe this image",
+            &[GatewayPromptAttachment {
+                path: "attachments/capture.png".into(),
+                mime: "image/png".into(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(params["session_id"], "runtime-3");
+        assert_eq!(params["profile"], "profile-3");
+        assert_eq!(params["submission_id"], "submission-3");
+        assert_eq!(params["text"], "Describe this image");
+        assert_eq!(
+            params["attachments"],
+            serde_json::json!([{"path":"attachments/capture.png","mime":"image/png"}])
+        );
+    }
+
+    #[test]
     fn gateway_discovery_shutdown_closes_actor_and_rejects_late_events() {
         let (_status_sender, status_receiver) = mpsc::channel();
         let (event_sender, event_receiver) = mpsc::channel();
@@ -16319,6 +16614,7 @@ mod tests {
                 profile: Some("fixture-profile".into()),
                 submission_id: "submit-1".into(),
                 text: "hello Hermes".into(),
+                attachments: Vec::new(),
             })
             .expect("queue initial prompt");
         assert!(matches!(
@@ -17163,6 +17459,7 @@ mod tests {
                 profile: None,
                 submission_id: "submission-1".into(),
                 text: "hello Hermes".into(),
+                attachments: Vec::new(),
             })
             .expect("queue prompt");
 

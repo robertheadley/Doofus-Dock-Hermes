@@ -1407,7 +1407,7 @@ capabilities:
   name: Attach image or file to prompt
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can attach image or file to prompt.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1419,9 +1419,9 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
 - id: ui-restore-interrupted-image-draft-without-sending
   name: Restore interrupted image draft without sending
   area: chat-transcript

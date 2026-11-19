@@ -9,15 +9,16 @@ use crate::gateway::{
     CommandCenterMaintenanceOperation, CommandCenterMaintenanceResult,
     CommandCenterMaintenanceSnapshot, CommandCenterMemoryResetTarget, CommandCenterSessionSnapshot,
     CommandCenterSystemAction, CommandCenterSystemActionResult, CommandCenterSystemOperation,
-    CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ConnectorsSnapshot, CronBlueprint,
-    CronBlueprintInstantiatePayload, CronDeliveryTarget, CronJobCreatePayload, CronJobInfo,
-    CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus, GatewayDiscovery, GatewayEndpoint,
-    GatewayEvent, MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformUpdate,
-    MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot,
-    PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot,
-    PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult,
-    SessionSummary, SkillInfo, TelegramOnboardingApplyReceipt, TelegramOnboardingStart,
-    TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
+    CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ComposerAttachmentReceipt,
+    ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload, CronDeliveryTarget,
+    CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus,
+    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, MessagingEnvVarInfo,
+    MessagingPlatformInfo, MessagingPlatformUpdate, MessagingPlatformsSnapshot,
+    ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
+    ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
+    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillInfo,
+    TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
+    project_tree_session_colors,
 };
 use crate::keybindings::{KeyPlatform, KeybindingStore};
 use crate::keybindings_ui::{KeybindingsPanel, key_event_to_combo};
@@ -795,6 +796,18 @@ struct SessionChatViewState {
     older_transcript_request: Option<(String, String, Option<String>, usize)>,
     older_transcript_error: Option<String>,
     draft: String,
+    composer_attachments: Vec<ComposerAttachment>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ComposerAttachment {
+    path: String,
+    name: String,
+    is_image: bool,
+    attached_session_id: Option<String>,
+    ref_text: Option<String>,
+    request_id: Option<String>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -934,6 +947,8 @@ struct PendingPrompt {
     profile: Option<String>,
     submission_id: String,
     text: String,
+    display_text: String,
+    attachments: Vec<GatewayPromptAttachment>,
     uncertain: bool,
     admission_id: Option<String>,
     execution_generation: Option<u64>,
@@ -1356,6 +1371,8 @@ pub struct HermesNativeApp {
     active_runtime_session_id: Option<String>,
     active_session_profile: Option<String>,
     draft: String,
+    composer_attachments: Vec<ComposerAttachment>,
+    pending_composer_paths: Option<Vec<std::path::PathBuf>>,
     pending_create: Option<(String, String)>,
     untouched_blank_session: Option<(String, Option<String>)>,
     pending_submissions: BTreeMap<String, PendingPrompt>,
@@ -3637,6 +3654,8 @@ fn render_message() -> &'static str {
             active_runtime_session_id: None,
             active_session_profile: None,
             draft: String::new(),
+            composer_attachments: Vec::new(),
+            pending_composer_paths: None,
             pending_create: None,
             untouched_blank_session: None,
             pending_submissions: BTreeMap::new(),
@@ -11736,6 +11755,131 @@ fn render_message() -> &'static str {
         });
     }
 
+    fn attach_composer_paths(&mut self, session_id: String, paths: Vec<std::path::PathBuf>) {
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.status = "Hermes gateway is unavailable".into();
+            return;
+        };
+        let profile = self.active_session_profile.clone();
+        for path in paths {
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                self.status = "Could not attach a file with an invalid name".into();
+                continue;
+            };
+            let name = name.to_owned();
+            let extension = path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let is_image = matches!(
+                extension.as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+            );
+            let request_id = operation_id("composer-attachment");
+            let path = path.to_string_lossy().into_owned();
+            let attachment = ComposerAttachment {
+                path: path.clone(),
+                name: name.clone(),
+                is_image,
+                attached_session_id: None,
+                ref_text: None,
+                request_id: Some(request_id.clone()),
+                error: None,
+            };
+            self.composer_attachments.push(attachment);
+            if let Err(error) = gateway.attach_composer_file(
+                request_id.clone(),
+                session_id.clone(),
+                profile.clone(),
+                path,
+                name,
+                is_image,
+            ) {
+                if let Some(attachment) = self.composer_attachments.iter_mut().find(|attachment| {
+                    attachment.request_id.as_deref() == Some(request_id.as_str())
+                }) {
+                    attachment.request_id = None;
+                    attachment.error = Some(error.clone());
+                }
+                self.status = error;
+            }
+        }
+    }
+
+    fn handle_composer_attachment_attached(
+        &mut self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        path: String,
+        result: Result<ComposerAttachmentReceipt, String>,
+    ) {
+        let is_active = self.active_runtime_session_id.as_deref() == Some(session_id.as_str())
+            && self.active_session_profile == profile;
+        if is_active {
+            if let Some(attachment) = self.composer_attachments.iter_mut().find(|attachment| {
+                attachment.path == path
+                    && attachment.request_id.as_deref() == Some(request_id.as_str())
+            }) {
+                attachment.request_id = None;
+                match result {
+                    Ok(receipt) => {
+                        attachment.path = receipt.path;
+                        attachment.ref_text = Some(receipt.ref_text);
+                        attachment.attached_session_id = Some(session_id);
+                        attachment.error = None;
+                        self.status = format!("Attached {}", attachment.name);
+                    }
+                    Err(error) => {
+                        attachment.error = Some(error.clone());
+                        self.status = error;
+                    }
+                }
+                self.save_active_chat_view();
+            }
+            return;
+        }
+        let Some(stored_session_id) =
+            self.stored_session_id_for_runtime(&session_id, profile.as_deref())
+        else {
+            return;
+        };
+        let key = self.session_identity_key(&stored_session_id, profile.as_deref());
+        let Some(view) = self.session_chat_views.get_mut(&key) else {
+            return;
+        };
+        if let Some(attachment) = view.composer_attachments.iter_mut().find(|attachment| {
+            attachment.path == path && attachment.request_id.as_deref() == Some(request_id.as_str())
+        }) {
+            attachment.request_id = None;
+            match result {
+                Ok(receipt) => {
+                    attachment.path = receipt.path;
+                    attachment.ref_text = Some(receipt.ref_text);
+                    attachment.attached_session_id = Some(session_id);
+                    attachment.error = None;
+                }
+                Err(error) => attachment.error = Some(error),
+            }
+        }
+    }
+
+    fn fail_pending_composer_attachments(&mut self, error: &str) {
+        for attachment in &mut self.composer_attachments {
+            if attachment.request_id.take().is_some() {
+                attachment.error = Some(format!("Gateway disconnected: {error}"));
+            }
+        }
+        for view in self.session_chat_views.values_mut() {
+            for attachment in &mut view.composer_attachments {
+                if attachment.request_id.take().is_some() {
+                    attachment.error = Some(format!("Gateway disconnected: {error}"));
+                }
+            }
+        }
+    }
+
     fn composer(&mut self, ui: &mut Ui) {
         let session_id = self.active_runtime_session_id.clone();
         let pending_key = session_id.as_deref().map(|session_id| {
@@ -11747,10 +11891,79 @@ fn render_message() -> &'static str {
             .cloned();
         let waiting_for_this_session = pending.is_some();
         let waiting_for_new_session = session_id.is_none() && self.pending_create.is_some();
+        let attachments_ready = self.composer_attachments.iter().all(|attachment| {
+            attachment.request_id.is_none()
+                && attachment.error.is_none()
+                && attachment.ref_text.is_some()
+                && attachment.attached_session_id.as_deref() == session_id.as_deref()
+        });
         let can_submit =
             self.gateway_connected && !waiting_for_this_session && !waiting_for_new_session;
         let composer_width = (ui.available_width() - 72.0).max(160.0);
         ui.separator();
+        ui.horizontal_wrapped(|ui| {
+            let mut remove_attachment_path = None;
+            let attach = ui
+                .add_enabled(self.gateway_connected, egui::Button::new("Attach file"))
+                .accessible_name("Attach an image or file to this prompt");
+            if attach.clicked() {
+                #[cfg(windows)]
+                if let Some(paths) = rfd::FileDialog::new()
+                    .set_title("Attach to Hermes prompt")
+                    .add_filter(
+                        "Images and files",
+                        &[
+                            "png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf", "txt", "md", "json",
+                            "csv", "html", "htm", "xml",
+                        ],
+                    )
+                    .add_filter("All files", &["*"])
+                    .pick_files()
+                {
+                    if let Some(session_id) = session_id.clone() {
+                        self.attach_composer_paths(session_id, paths);
+                    } else if self.pending_create.is_some() {
+                        self.status = "Wait for the new Hermes session to finish opening".into();
+                    } else {
+                        self.pending_composer_paths = Some(paths);
+                        self.begin_create_session(String::new());
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    self.status = "The native attachment picker is available on Windows".into();
+                }
+            }
+            if session_id.is_none() {
+                attach.on_hover_text("Open a Hermes session before attaching files");
+            }
+            for attachment in &self.composer_attachments {
+                let label = if attachment.request_id.is_some() {
+                    format!("{} · attaching…", attachment.name)
+                } else if let Some(error) = attachment.error.as_deref() {
+                    format!("{} · failed: {error}", attachment.name)
+                } else {
+                    attachment.name.clone()
+                };
+                ui.label(
+                    RichText::new(label)
+                        .size(11.0)
+                        .color(if attachment.error.is_some() {
+                            Color32::LIGHT_RED
+                        } else {
+                            MUTED
+                        }),
+                );
+                if attachment.request_id.is_none() && ui.small_button("Remove").clicked() {
+                    remove_attachment_path = Some(attachment.path.clone());
+                }
+            }
+            if let Some(path) = remove_attachment_path {
+                self.composer_attachments
+                    .retain(|attachment| attachment.path != path);
+                self.save_active_chat_view();
+            }
+        });
         ui.horizontal(|ui| {
             let input = ui
                 .add_enabled(
@@ -11804,7 +12017,9 @@ fn render_message() -> &'static str {
                 }
             } else {
                 let button = ui.add_enabled(
-                    can_submit && !self.draft.trim().is_empty(),
+                    can_submit
+                        && attachments_ready
+                        && (!self.draft.trim().is_empty() || !self.composer_attachments.is_empty()),
                     egui::Button::new("Send"),
                 );
                 if button.clicked() {
@@ -13845,7 +14060,18 @@ fn render_message() -> &'static str {
         if self.handle_timestamps_command() {
             return;
         }
-        let text = self.draft.trim().to_owned();
+        let display_text = self.draft.trim().to_owned();
+        let text = match compose_prompt_with_attachments(
+            &self.composer_attachments,
+            &session_id,
+            &display_text,
+        ) {
+            Ok(text) => text,
+            Err(error) => {
+                self.status = error;
+                return;
+            }
+        };
         if text.is_empty() {
             return;
         }
@@ -13860,12 +14086,22 @@ fn render_message() -> &'static str {
             self.status = "Hermes gateway is unavailable".into();
             return;
         };
+        let attachments = self
+            .composer_attachments
+            .iter()
+            .filter(|attachment| attachment.is_image)
+            .map(|attachment| GatewayPromptAttachment {
+                path: attachment.path.clone(),
+                mime: crate::gateway::composer_attachment_mime(&attachment.name).to_owned(),
+            })
+            .collect::<Vec<_>>();
         let submission_id = operation_id("submit");
-        if let Err(error) = gateway.submit_prompt(
+        if let Err(error) = gateway.submit_prompt_with_attachments(
             session_id.clone(),
             self.active_session_profile.clone(),
             submission_id.clone(),
             text.clone(),
+            attachments.clone(),
         ) {
             self.status = error;
             return;
@@ -13894,6 +14130,8 @@ fn render_message() -> &'static str {
                 profile,
                 submission_id: submission_id.clone(),
                 text,
+                display_text,
+                attachments,
                 uncertain: false,
                 admission_id: None,
                 execution_generation: None,
@@ -13960,11 +14198,12 @@ fn render_message() -> &'static str {
             self.status = "Hermes gateway is unavailable".into();
             return;
         };
-        match gateway.submit_prompt(
+        match gateway.submit_prompt_with_attachments(
             pending.session_id.clone(),
             pending.profile.clone(),
             pending.submission_id.clone(),
             pending.text.clone(),
+            pending.attachments.clone(),
         ) {
             Ok(()) => {
                 if let Some(pending) = self.pending_submissions.get_mut(&key) {
@@ -14029,6 +14268,10 @@ fn render_message() -> &'static str {
                     self.pending_submissions.remove(&key);
                 }
                 if is_active {
+                    if !self.composer_attachments.is_empty() {
+                        self.composer_attachments.clear();
+                        self.save_active_chat_view();
+                    }
                     self.status = match status.as_str() {
                         "queued" => "Message queued in Hermes".into(),
                         "unknown" => "Message admitted; execution outcome needs recovery".into(),
@@ -14074,22 +14317,14 @@ fn render_message() -> &'static str {
                             .map(|index| transcript.remove(index))
                     });
                 if is_active {
-                    if let Some(message) = message {
-                        self.draft = message
-                            .get("content")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()
-                            .to_owned();
+                    if message.is_some() {
+                        self.draft = pending.display_text.clone();
                     }
-                } else if let Some(message) = message {
+                } else if message.is_some() {
                     self.set_cached_draft_for_runtime(
                         &session_id,
                         pending.profile.as_deref(),
-                        message
-                            .get("content")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()
-                            .to_owned(),
+                        pending.display_text.clone(),
                     );
                 }
                 self.pending_submissions.remove(&key);
@@ -15404,6 +15639,7 @@ fn render_message() -> &'static str {
                         older_transcript_request: self.older_transcript_request.clone(),
                         older_transcript_error: self.older_transcript_error.clone(),
                         draft: self.draft.clone(),
+                        composer_attachments: self.composer_attachments.clone(),
                     },
                 );
             }
@@ -15620,6 +15856,7 @@ fn render_message() -> &'static str {
                     self.older_transcript_error = None;
                     self.active_runtime_session_id = view.runtime_session_id;
                     self.draft = view.draft;
+                    self.composer_attachments = view.composer_attachments;
                     self.status =
                         format!("Session open · {} messages", view.transcript_message_count);
                 }
@@ -15676,6 +15913,7 @@ fn render_message() -> &'static str {
                     self.older_transcript_error = view.older_transcript_error;
                     self.active_runtime_session_id = view.runtime_session_id;
                     self.draft = view.draft;
+                    self.composer_attachments = view.composer_attachments;
                 } else {
                     self.transcript.clear();
                     self.transcript_message_count = 0;
@@ -15684,6 +15922,7 @@ fn render_message() -> &'static str {
                     self.older_transcript_error = None;
                     self.active_runtime_session_id = None;
                     self.draft.clear();
+                    self.composer_attachments.clear();
                 }
                 if explicit_resume {
                     self.request_explicit_session_resume(
@@ -15701,6 +15940,7 @@ fn render_message() -> &'static str {
                 self.older_transcript_request = None;
                 self.older_transcript_error = None;
                 self.active_runtime_session_id = None;
+                self.composer_attachments.clear();
                 self.active_session_profile = self
                     .gateway_endpoint
                     .as_ref()
@@ -20602,7 +20842,14 @@ fn render_message() -> &'static str {
                             ));
                         }
                         self.broadcast_local_sessions_changed();
-                        self.draft = text;
+                        if self.pending_composer_paths.is_some() {
+                            self.composer_attachments.clear();
+                        } else {
+                            self.draft = text;
+                        }
+                        if let Some(paths) = self.pending_composer_paths.take() {
+                            self.attach_composer_paths(created.runtime_session_id.clone(), paths);
+                        }
                         if blank_session {
                             self.status = "New Hermes session tab created".into();
                         } else {
@@ -20616,6 +20863,7 @@ fn render_message() -> &'static str {
                     }
                     Err(error) => {
                         self.pending_create = None;
+                        self.pending_composer_paths = None;
                         self.status = error;
                     }
                 },
@@ -20727,6 +20975,15 @@ fn render_message() -> &'static str {
                     submission_id,
                     result,
                 } => self.handle_prompt_submitted(session_id, submission_id, result),
+                GatewayEvent::ComposerAttachmentAttached {
+                    request_id,
+                    session_id,
+                    profile,
+                    path,
+                    result,
+                } => self.handle_composer_attachment_attached(
+                    request_id, session_id, profile, path, result,
+                ),
                 GatewayEvent::UnknownPromptResolved {
                     session_id,
                     admission_id,
@@ -23381,6 +23638,7 @@ fn render_message() -> &'static str {
                     }
                 }
                 GatewayEvent::Disconnected(error) => {
+                    self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
                     let mut repo_scan_uncertainty = Vec::new();
                     let disconnected_profile = self
@@ -24425,6 +24683,37 @@ fn move_session_id(order: &mut Vec<String>, source: &str, target: &str) -> bool 
     true
 }
 
+fn compose_prompt_with_attachments(
+    attachments: &[ComposerAttachment],
+    session_id: &str,
+    draft: &str,
+) -> Result<String, String> {
+    if attachments.iter().any(|attachment| {
+        attachment.request_id.is_some()
+            || attachment.error.is_some()
+            || attachment.ref_text.is_none()
+            || attachment.attached_session_id.as_deref() != Some(session_id)
+    }) {
+        return Err("Wait for attachments to finish or remove the failed attachment".into());
+    }
+    let refs = attachments
+        .iter()
+        .filter(|attachment| !attachment.is_image)
+        .filter_map(|attachment| attachment.ref_text.as_deref())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let combined = [refs.as_str(), draft.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if combined.is_empty() && attachments.iter().any(|attachment| attachment.is_image) {
+        Ok("What do you see in this image?".into())
+    } else {
+        Ok(combined)
+    }
+}
+
 fn session_identity_key(session_id: &str, profile: Option<&str>) -> String {
     session_owner_identity_key(session_id, profile, None)
 }
@@ -25191,6 +25480,57 @@ mod tests {
     use std::rc::Rc;
 
     #[test]
+    fn prompt_composer_places_gateway_attachment_refs_before_user_text() {
+        let attachment = ComposerAttachment {
+            path: "attachments/brief.pdf".into(),
+            name: "brief.pdf".into(),
+            is_image: false,
+            attached_session_id: Some("runtime-a".into()),
+            ref_text: Some("@file:attachments/brief.pdf".into()),
+            request_id: None,
+            error: None,
+        };
+
+        assert_eq!(
+            compose_prompt_with_attachments(&[attachment], "runtime-a", "Summarize this"),
+            Ok("@file:attachments/brief.pdf\n\nSummarize this".into())
+        );
+    }
+
+    #[test]
+    fn prompt_composer_rejects_unstaged_or_wrong_session_attachments() {
+        let attachment = ComposerAttachment {
+            path: "capture.png".into(),
+            name: "capture.png".into(),
+            is_image: true,
+            attached_session_id: Some("runtime-old".into()),
+            ref_text: Some("@image:capture.png".into()),
+            request_id: None,
+            error: None,
+        };
+
+        assert!(compose_prompt_with_attachments(&[attachment], "runtime-new", "").is_err());
+    }
+
+    #[test]
+    fn image_only_prompt_uses_source_default_text_and_image_ref_stays_in_attachment_metadata() {
+        let attachment = ComposerAttachment {
+            path: "attachments/capture.png".into(),
+            name: "capture.png".into(),
+            is_image: true,
+            attached_session_id: Some("runtime-image".into()),
+            ref_text: Some("@image:attachments/capture.png".into()),
+            request_id: None,
+            error: None,
+        };
+
+        assert_eq!(
+            compose_prompt_with_attachments(&[attachment], "runtime-image", ""),
+            Ok("What do you see in this image?".into())
+        );
+    }
+
+    #[test]
     fn minimized_dock_tab_group_is_preserved_for_the_restore_rail() {
         let root = Node::tabs_with_minimized(
             "rail-test",
@@ -25722,6 +26062,8 @@ mod tests {
                     profile: Some(profile.into()),
                     submission_id: format!("submission-{session_id}"),
                     text: "active prompt".into(),
+                    display_text: "active prompt".into(),
+                    attachments: Vec::new(),
                     uncertain: false,
                     admission_id: None,
                     execution_generation: Some(1),
@@ -31511,6 +31853,8 @@ mod tests {
                 profile: Some("work".into()),
                 submission_id: "submission-busy".into(),
                 text: "working".into(),
+                display_text: "working".into(),
+                attachments: Vec::new(),
                 uncertain: false,
                 admission_id: None,
                 execution_generation: Some(1),
@@ -31629,6 +31973,8 @@ mod tests {
                 profile: Some("work".into()),
                 submission_id: "submission-busy".into(),
                 text: "working".into(),
+                display_text: "working".into(),
+                attachments: Vec::new(),
                 uncertain: false,
                 admission_id: None,
                 execution_generation: Some(1),
@@ -31791,6 +32137,8 @@ mod tests {
                 profile: Some("work".into()),
                 submission_id: "submission-work".into(),
                 text: "work only".into(),
+                display_text: "work only".into(),
+                attachments: Vec::new(),
                 uncertain: false,
                 admission_id: None,
                 execution_generation: None,
@@ -34378,6 +34726,8 @@ mod tests {
                 profile,
                 submission_id: submission_id.into(),
                 text: "hello".into(),
+                display_text: "hello".into(),
+                attachments: Vec::new(),
                 uncertain,
                 admission_id: admission_id.map(str::to_owned),
                 execution_generation: None,

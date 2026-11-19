@@ -301,3 +301,12 @@ PAR-0511 replay-gap recovery progress (2026-11-19T16:58:47Z):
 - [x] Preserve transcript/draft state, keep connection/profile owner scope, and coalesce duplicate gap events while a resume is pending.
 - [ ] Add automatic WebSocket reconnect and validate replay semantics against a live Hermes Gateway.
 - [ ] Verify ambiguous-owner/offline failure behavior and collect installed-Windows, source-paired, and formal acceptance evidence.
+
+
+PAR-0062/0063 composer attachments (2026-11-19):
+- [x] Add native multi-file picker for an active session and create a blank session before picking on New Chat.
+- [x] Upload image bytes through `image.attach_bytes` and files through `file.attach` data URLs; cap uploads at the pinned 16 MiB browser limit.
+- [x] Bind attachment requests/results to the selected session/profile, preserve per-session composer state while switching, and prepend returned refs to prompt text.
+- [ ] Add restart-safe prepared-image draft journal and explicit Restore action that never sends automatically.
+- [ ] Match pinned path-versus-bytes policy, attachment thumbnails/paste/drop, stale-session reattach and richer retry behavior.
+- [ ] Validate Gateway RPC success/refusal/offline paths against the pinned backend, then collect installed-Windows and source-paired acceptance evidence.

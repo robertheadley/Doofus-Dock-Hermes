@@ -2542,3 +2542,16 @@ Validation addendum (2026-11-19T17:01:09Z): PASS complete Hermes Native feature 
 - **follow_up:** Add live reconnect evidence only after the reconnect actor exists and can be exercised.
 
 Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b1028494743ad0d6aa8e5d8` to `origin/main`; fresh fetch confirmed exact local/remote SHA equality and a clean worktree.
+
+### Native Hermes composer attachments — 2026-11-19T17:26:31Z
+
+- **id:** hermes-par-0062-composer-attachments-20261119
+- **timestamp:** 2026-11-19T17:26:31Z
+- **what:** Added multi-file picker and session/profile-scoped native attachment staging via pinned Hermes image/file RPCs; included staged refs before prompt text and added 16 MiB validation.
+- **why:** PAR-0062 was a P0 chat gap blocking image/file use in the native composer.
+- **components:** Hermes Native composer, Gateway command/event protocol, pinned progress overlay and UCM crosswalk.
+- **type:** feature
+- **validation:** Full hermes-native tests passed: 387 library, 15 automation protocol, 3 launcher; focused tests cover byte/data-URL payloads, size guard, reference ordering and wrong-session refusal. Live Gateway and Windows picker were not exercised.
+- **performance:** File reading and base64 encoding run on the Gateway actor, not in the egui frame; uploads are capped at 16 MiB. No benchmark claimed.
+- **risks:** Restart-safe image draft restore, stale-session reattach, preview/paste/drop, and source path-vs-bytes policy remain incomplete.
+- **follow_up:** Implement explicit no-send prepared image recovery, validate RPC error paths against a local/pinned Gateway, then complete Windows and source-paired acceptance.
