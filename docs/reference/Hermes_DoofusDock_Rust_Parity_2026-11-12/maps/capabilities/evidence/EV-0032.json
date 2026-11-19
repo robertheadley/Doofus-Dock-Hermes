@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0032",
+  "capability_id": "ui-render-code-copy-action",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "accessible-code-copy-emits-full-fenced-payload",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "bc3555f62308ced1c87924ffe0f53ac830441cc7",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native headless egui UI test; no physical Windows clipboard or live installed UI used.",
+  "notes": "The accessible Copy button emits the complete code text from a simple fenced Markdown block as an egui CopyText clipboard command; the headless fixture also confirms code table content remains accessible. PAR-0040 stays partial because native copy does not unwrap valid @url: references into literal URLs as pinned Hermes copyableCodeText does; physical Windows clipboard and source-paired acceptance remain unverified."
+}

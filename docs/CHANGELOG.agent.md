@@ -2733,3 +2733,16 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime behavior change.
 - **risks:** Pinned Hermes also unwraps valid `@url:` directives before copying; native still copies that encoded syntax. Live Windows clipboard and source-paired acceptance remain open. PAR-0068 directive-hover actions remain deferred because the native composer lacks a rich chip model.
 - **follow_up:** Add URL directive normalization or keep PAR-0040 partial; choose next dependency-ready chat/tool behavior.
+
+## UCM receipt for PAR-0040
+
+- **id:** hermes-par-0040-ucm-evidence-20261119
+- **timestamp:** 2026-11-19T19:22:00Z
+- **what:** Added EV-0032 bound to `bc3555f62308ced1c87924ffe0f53ac830441cc7`; marked the code-copy capability and crosswalk partial.
+- **why:** Record exact tested behavior without claiming full clipboard parity.
+- **components:** UCM capability map, evidence receipt and crosswalk.
+- **type:** evidence
+- **validation:** PASS package validator (565 behaviors, 565 inventory items, 565 pending tests, 14 source and 17 implementation receipts); optional YAML parse skipped because PyYAML is unavailable.
+- **performance:** No runtime change.
+- **risks:** URL directive normalization and physical/source-paired clipboard acceptance remain unverified.
+- **follow_up:** Normalize valid URL directives and test them, then retain live and source-paired acceptance gates.
