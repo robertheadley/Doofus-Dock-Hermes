@@ -5,6 +5,7 @@ use doofusdock_core::{
     apply_workspace_profile,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
@@ -29,6 +30,50 @@ pub enum InterfaceMode {
     Advanced,
     Simple,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GatewayConnectionKind {
+    Local,
+    Remote,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GatewayConnectionDescriptor {
+    pub connection_id: String,
+    pub kind: GatewayConnectionKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint_url: Option<String>,
+    pub display_label: String,
+}
+
+impl GatewayConnectionDescriptor {
+    pub fn local() -> Self {
+        Self {
+            connection_id: LOCAL_GATEWAY_CONNECTION_ID.into(),
+            kind: GatewayConnectionKind::Local,
+            endpoint_url: None,
+            display_label: "Local Hermes".into(),
+        }
+    }
+
+    pub fn remote(endpoint_url: &str) -> Result<Self, String> {
+        let endpoint_url = crate::remote_probe::normalize_remote_base_url(endpoint_url)?;
+        let host = url::Url::parse(&endpoint_url)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_owned))
+            .unwrap_or_else(|| endpoint_url.clone());
+        Ok(Self {
+            connection_id: remote_gateway_connection_id(&endpoint_url),
+            kind: GatewayConnectionKind::Remote,
+            endpoint_url: Some(endpoint_url),
+            display_label: format!("Hermes · {host}"),
+        })
+    }
+}
+
+const LOCAL_GATEWAY_CONNECTION_ID: &str = "local";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,6 +105,10 @@ pub struct UiPreferences {
     pub master_detail_width_overrides: BTreeMap<String, f32>,
     #[serde(default)]
     pub last_remote_gateway_url: Option<String>,
+    #[serde(default)]
+    pub gateway_connections: Vec<GatewayConnectionDescriptor>,
+    #[serde(default)]
+    pub selected_gateway_connection_id: String,
     #[serde(default)]
     pub user_layout_presets: BTreeMap<String, UserLayoutPreset>,
 }
@@ -94,6 +143,8 @@ impl Default for UiPreferences {
             session_color_overrides: BTreeMap::new(),
             master_detail_width_overrides: BTreeMap::new(),
             last_remote_gateway_url: None,
+            gateway_connections: vec![GatewayConnectionDescriptor::local()],
+            selected_gateway_connection_id: LOCAL_GATEWAY_CONNECTION_ID.into(),
             user_layout_presets: BTreeMap::new(),
         }
     }
@@ -287,7 +338,17 @@ impl Workspace {
     ) -> Result<Self, String> {
         fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
         let store = LayoutStore::new(directory.join("layouts"), PersistenceLimits::default());
+        let selected_connection_id_was_persisted = fs::read(&preferences_path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .is_some_and(|value| value.get("selected_gateway_connection_id").is_some());
         let mut preferences = read_preferences(&preferences_path).unwrap_or_default();
+        if migrate_gateway_connection_preferences(
+            &mut preferences,
+            selected_connection_id_was_persisted,
+        ) {
+            write_preferences_atomic(&preferences_path, &preferences)?;
+        }
         let dismissed_auto_project_ids_path = directory.join("dismissed-auto-projects.json");
         match read_auto_project_dismissal_state(&dismissed_auto_project_ids_path)? {
             Some(ids) => preferences.dismissed_auto_project_ids = ids,
@@ -908,10 +969,21 @@ impl Workspace {
         self.preferences.last_remote_gateway_url.as_deref()
     }
 
+    pub fn gateway_connections(&self) -> &[GatewayConnectionDescriptor] {
+        &self.preferences.gateway_connections
+    }
+
+    pub fn selected_gateway_connection_id(&self) -> &str {
+        &self.preferences.selected_gateway_connection_id
+    }
+
     pub fn save_remote_gateway_url(&mut self, url: &str) -> Result<(), String> {
         let normalized = crate::remote_probe::normalize_remote_base_url(url)?;
         let mut next = self.preferences.clone();
-        next.last_remote_gateway_url = Some(normalized);
+        next.last_remote_gateway_url = Some(normalized.clone());
+        let descriptor = GatewayConnectionDescriptor::remote(&normalized)?;
+        upsert_gateway_connection(&mut next.gateway_connections, descriptor.clone());
+        next.selected_gateway_connection_id = descriptor.connection_id;
         write_preferences_atomic(&self.preferences_path, &next)?;
         self.preferences = next;
         self.persistence_error = None;
@@ -3261,6 +3333,87 @@ fn write_preferences_atomic(
     })
 }
 
+fn remote_gateway_connection_id(normalized_endpoint: &str) -> String {
+    let digest = Sha256::digest(normalized_endpoint.as_bytes());
+    let suffix = digest[..12]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("remote-{suffix}")
+}
+
+fn upsert_gateway_connection(
+    connections: &mut Vec<GatewayConnectionDescriptor>,
+    descriptor: GatewayConnectionDescriptor,
+) {
+    if let Some(existing) = connections
+        .iter_mut()
+        .find(|existing| existing.connection_id == descriptor.connection_id)
+    {
+        *existing = descriptor;
+    } else {
+        connections.push(descriptor);
+    }
+}
+
+fn migrate_gateway_connection_preferences(
+    preferences: &mut UiPreferences,
+    selected_connection_id_was_persisted: bool,
+) -> bool {
+    let mut changed = false;
+    if !preferences
+        .gateway_connections
+        .iter()
+        .any(|connection| connection.kind == GatewayConnectionKind::Local)
+    {
+        preferences
+            .gateway_connections
+            .insert(0, GatewayConnectionDescriptor::local());
+        changed = true;
+    }
+
+    if let Some(legacy_url) = preferences.last_remote_gateway_url.clone()
+        && let Ok(descriptor) = GatewayConnectionDescriptor::remote(&legacy_url)
+    {
+        if preferences.last_remote_gateway_url.as_deref() != descriptor.endpoint_url.as_deref() {
+            preferences.last_remote_gateway_url = descriptor.endpoint_url.clone();
+            changed = true;
+        }
+        let remote_was_present = preferences
+            .gateway_connections
+            .iter()
+            .any(|connection| connection.connection_id == descriptor.connection_id);
+        if !remote_was_present {
+            preferences.gateway_connections.push(descriptor.clone());
+            changed = true;
+        }
+        if !selected_connection_id_was_persisted
+            || (!remote_was_present
+                && preferences.selected_gateway_connection_id == LOCAL_GATEWAY_CONNECTION_ID)
+        {
+            preferences.selected_gateway_connection_id = descriptor.connection_id;
+            changed = true;
+        }
+    }
+
+    let mut seen = BTreeSet::new();
+    let before = preferences.gateway_connections.len();
+    preferences
+        .gateway_connections
+        .retain(|connection| seen.insert(connection.connection_id.clone()));
+    changed |= preferences.gateway_connections.len() != before;
+
+    if !preferences
+        .gateway_connections
+        .iter()
+        .any(|connection| connection.connection_id == preferences.selected_gateway_connection_id)
+    {
+        preferences.selected_gateway_connection_id = LOCAL_GATEWAY_CONNECTION_ID.into();
+        changed = true;
+    }
+    changed
+}
+
 fn validate_auto_project_id(project_id: &str) -> Result<(), String> {
     if project_id.is_empty() || project_id.len() > 1024 || project_id.chars().any(char::is_control)
     {
@@ -3795,6 +3948,150 @@ mod tests {
             Some("https://example.com/hermes")
         );
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn legacy_remote_gateway_preference_migrates_to_selected_connection() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-legacy-gateway-migration-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("ui-preferences.json"),
+            br#"{"last_remote_gateway_url":" HTTPS://example.org/hermes/ "}"#,
+        )
+        .unwrap();
+
+        let workspace = Workspace::load_from(directory.clone()).unwrap();
+        let remote = workspace
+            .gateway_connections()
+            .iter()
+            .find(|connection| connection.kind == GatewayConnectionKind::Remote)
+            .expect("legacy remote URL is migrated to a connection descriptor");
+        assert_eq!(
+            remote.endpoint_url.as_deref(),
+            Some("https://example.org/hermes")
+        );
+        assert_eq!(
+            workspace.selected_gateway_connection_id(),
+            remote.connection_id
+        );
+        assert!(workspace.gateway_connections().iter().any(|connection| {
+            connection.kind == GatewayConnectionKind::Local
+                && connection.connection_id == LOCAL_GATEWAY_CONNECTION_ID
+        }));
+        let persisted: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(directory.join("ui-preferences.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            persisted["selected_gateway_connection_id"],
+            remote.connection_id
+        );
+        assert_eq!(
+            persisted["gateway_connections"][1]["endpoint_url"],
+            "https://example.org/hermes"
+        );
+        drop(workspace);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn remote_gateway_connection_id_is_stable_across_workspace_reload() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-stable-gateway-id-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .save_remote_gateway_url("https://gateway.example.net/hermes/")
+            .unwrap();
+        let first_id = workspace.selected_gateway_connection_id().to_owned();
+        assert!(first_id.starts_with("remote-"));
+        drop(workspace);
+
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(reloaded.selected_gateway_connection_id(), first_id);
+        assert!(
+            reloaded
+                .gateway_connections()
+                .iter()
+                .any(|connection| connection.connection_id == first_id)
+        );
+        drop(reloaded);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn multiple_gateway_connection_descriptors_persist_independently() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-multiple-gateway-connections-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        let staging =
+            GatewayConnectionDescriptor::remote("https://staging.example.net/hermes").unwrap();
+        let production =
+            GatewayConnectionDescriptor::remote("https://production.example.net/hermes").unwrap();
+        workspace
+            .preferences
+            .gateway_connections
+            .extend([staging.clone(), production.clone()]);
+        workspace.preferences.selected_gateway_connection_id = staging.connection_id.clone();
+        workspace.save_preferences();
+        drop(workspace);
+
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        let ids = reloaded
+            .gateway_connections()
+            .iter()
+            .map(|connection| connection.connection_id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(ids.contains(LOCAL_GATEWAY_CONNECTION_ID));
+        assert!(ids.contains(staging.connection_id.as_str()));
+        assert!(ids.contains(production.connection_id.as_str()));
+        assert_eq!(
+            reloaded.selected_gateway_connection_id(),
+            staging.connection_id
+        );
+        drop(reloaded);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn gateway_connection_descriptor_serializes_only_non_secret_metadata() {
+        let descriptor =
+            GatewayConnectionDescriptor::remote("https://gateway.example.net/hermes").unwrap();
+        let value = serde_json::to_value(&descriptor).unwrap();
+        let object = value.as_object().expect("descriptor is an object");
+        let keys = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
+        assert_eq!(
+            keys,
+            BTreeSet::from(["connection_id", "display_label", "endpoint_url", "kind"])
+        );
+        for secret_key in [
+            "token",
+            "access_token",
+            "refresh_token",
+            "password",
+            "secret",
+        ] {
+            assert!(!object.contains_key(secret_key));
+        }
+        assert_eq!(value["kind"], "remote");
+        assert_eq!(value["endpoint_url"], "https://gateway.example.net/hermes");
     }
 
     #[test]

@@ -2367,3 +2367,16 @@ Validation addendum: The targeted UCM report marks named layout preset persisten
 - **performance:** no runtime performance change.
 - **risks:** The registry remains a foundation; app and Gateway routing are not integrated.
 - **follow_up:** Implement connection descriptors and carry exact ownership through UI and Gateway actions.\n
+
+### Persist Gateway connection metadata — 2026-11-19T02:25:50Z
+
+- **id:** hermes-gateway-connection-descriptors-20261119
+- **timestamp:** 2026-11-19T02:25:50Z
+- **what:** Added local/remote stable Gateway connection descriptors, selected connection metadata, URL-keyed remote IDs, and backward-compatible migration from the legacy saved Gateway URL.
+- **why:** Establish persistent, non-secret connection identity before exact session owner routing is wired into the Hermes Gateway path.
+- **components:** Hermes Native workspace preferences and connection descriptor model.
+- **type:** configuration foundation.
+- **validation:** Full workspace suite 375 native + 15 automation protocol + 3 launcher; workspace all-target check; rustfmt and diff check pass. Four descriptor/migration focused tests are included in the full suite.
+- **performance:** no Gateway connection runtime or UI behavior changed yet.
+- **risks:** Descriptors are not consumed by app startup or a connection picker; no multi-connection session routing is claimed.
+- **follow_up:** Drive Gateway discovery from selected descriptors and preserve connection IDs across all session request/result/cache paths.\n

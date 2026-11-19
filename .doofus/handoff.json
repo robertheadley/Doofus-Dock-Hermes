@@ -9,6 +9,16 @@
       "process_id": "subagent:dock_group_minimize",
       "provider": "codex",
       "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Completed apps/hermes-native/src/layout.rs descriptor/migration slice; agent reports 4 focused tests and formatting/diff checks passed, no other files touched.",
+      "observed_at": "2026-11-19T02:24:51Z",
+      "pid": null,
+      "process_id": "subagent:layout_gateway_connection_descriptor",
+      "provider": "codex",
+      "state": "stopped"
     }
   ],
   "approved_plan_revision": 173,
@@ -52,7 +62,7 @@
     {
       "change_type": "modified",
       "owner": "codex",
-      "path": "apps/hermes-native/src/session_owner.rs",
+      "path": "apps/hermes-native/src/layout.rs",
       "status": " M"
     },
     {
@@ -66,41 +76,18 @@
       "owner": "codex",
       "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0020.json",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0021.json",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0022.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
     "command": "cargo test --workspace --features agent-automation --locked; cargo check --workspace --all-targets --locked; cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check; git diff --check; python apps/hermes-native/tools/test_doofus_task.py; python apps/hermes-native/tools/build_implementation_progress.py; python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
     "evidence": [
-      "apps/hermes-native/src/session_owner.rs#registry_resolves_tagged_owner_to_exact_registered_connection",
-      "apps/hermes-native/src/session_owner.rs#registry_fails_closed_for_unknown_tagged_owner"
+      "apps/hermes-native/src/session_owner.rs#registry_fails_closed_for_unknown_tagged_owner",
+      "apps/hermes-native/src/layout.rs#legacy_remote_gateway_preference_migrates_to_selected_connection",
+      "apps/hermes-native/src/layout.rs#gateway_connection_descriptor_serializes_only_non_secret_metadata"
     ],
     "state": "tested",
-    "summary": "Exact session-owner registry foundation is implemented and tested; user parity/backport sequencing and UCM evidence are recorded. The registry is not wired into app/Gateway yet, so PAR-0510 stays in progress.",
-    "verified_at": "2026-11-19T02:17:22Z"
+    "summary": "Exact owner registry primitives and stable connection metadata/migration now pass tests. User parity/backport sequencing and UCM evidence are recorded. The app/Gateway still do not consume descriptors or route session owners, so PAR-0510 remains in progress.",
+    "verified_at": "2026-11-19T02:27:10Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -111,7 +98,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T03:17:22Z",
+    "lease_expires_at": "2026-11-19T03:27:10Z",
     "lease_id": "464e9f3d-4005-4815-9d5b-2f48f45eb944",
     "model": null,
     "ownership_state": "active",
@@ -185,6 +172,18 @@
         "provider": "codex"
       },
       "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_commit_push",
+      "note": "Publishing validated stable Gateway descriptors/migration, parity documentation and canonical checkpoint to main.",
+      "observed_at": "2026-11-19T02:27:21Z",
+      "operation_id": "hermes-gateway-descriptor-main-publish-20261119",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
     },
     {
       "evidence": [
@@ -357,9 +356,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "164a6929-b868-4364-a802-b32247fbee9f",
+  "last_event_id": "9b73ad2a-5f42-4c69-a6f2-cb9f524effee",
   "last_operation": {
-    "request_id": "164a6929-b868-4364-a802-b32247fbee9f",
+    "request_id": "9b73ad2a-5f42-4c69-a6f2-cb9f524effee",
     "state": "committed",
     "type": "external_operation.state_changed"
   },
@@ -378,7 +377,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Wire persisted stable connection descriptors into Gateway/session owner routing. Preserve Hermes gateway actor and HTTP worker; route all rows, keys, commands/results by exact connection/profile and fail closed for unknown tagged owners. Then add same-session-ID isolation tests.",
+  "recommended_next_action": "Integrate descriptors into startup/settings and use per-connection existing GatewayDiscovery actors. Carry exact owner through SessionSummary, active/cached pane identity, every session command/result/mutation; reject unknown tagged owners. Add same session-ID cross-connection tests and preserve Hermes execution loop.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -880,7 +879,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "5eca8ee775849dbb98c5c7f7201f09502f30156a70a95d8e9fb567adee78c838",
+    "change_fingerprint": "f898e7b915b703027defc9cacc753e19428b4b32f523922832a697cd66567527",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -903,7 +902,7 @@
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/src/session_owner.rs",
+        "path": "apps/hermes-native/src/layout.rs",
         "status": " M"
       },
       {
@@ -913,35 +912,19 @@
       {
         "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0020.json",
-        "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0021.json",
-        "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0022.json",
-        "status": "??"
       }
     ],
-    "head_commit": "c0e1713bff47dcb4a0bfb137be93cac2bcfa8d06",
+    "head_commit": "e503d4b4510e5da71b5be195f421349e9f39cbf2",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 166,
+  "revision": 171,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 166,
+  "state_revision": 171,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0510",
-  "task_ledger_revision": 17,
+  "task_ledger_revision": 18,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -1827,9 +1810,14 @@
       "command": "workspace validation and exact owner registry tests",
       "result": "PASS: 371 native + 15 automation protocol + 3 launcher; workspace check; 18 continuity tests; progress 41/499 reviewed, strict acceptance 0/499; package 565 behaviors/7 implementation receipts; UCM target scenarios checked with historical global EV-0016/17 issues.",
       "timestamp": "2026-11-19T02:17:22Z"
+    },
+    {
+      "command": "workspace validation for owner identity registry and Gateway connection metadata",
+      "result": "PASS: 375 native + 15 automation protocol + 3 launcher; workspace all-target check; format/diff; continuity 18/18; progress 41/499 reviewed, source acceptance 0/499; package 565 behaviors and 7 implementation receipts.",
+      "timestamp": "2026-11-19T02:27:10Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T02:18:54Z"
+  "updated_at": "2026-11-19T02:27:21Z"
 }

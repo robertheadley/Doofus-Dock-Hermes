@@ -263,3 +263,8 @@ PAR-0510 owner-route progress (2026-11-19T02:15:20Z):
 - [x] Add a tested exact-owner registry primitive with explicit single legacy routing and fail-closed unknown tagged connections.
 - [ ] Wire stable connection descriptors into persisted workspace settings without storing secrets there.
 - [ ] Route actual session rows, state keys, Gateway commands/results and mutations using (connectionId, profile, sessionId); test same-ID isolation and zero dispatch for unknown owners.\n
+
+PAR-0510 persisted owner metadata progress (2026-11-19T02:25:50Z):
+- [x] Persist stable local/remote connection descriptors and selected ID; migrate legacy last_remote_gateway_url deterministically; keep secrets out of settings.
+- [ ] Use the selected descriptor for Gateway discovery and connection management; preserve all saved descriptors through Settings UI.
+- [ ] Carry exact connection/profile identity through sessions, caches, Gateway commands/events and mutations; unknown tagged owners fail closed.\n
