@@ -3136,3 +3136,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change; local/remote preview limits remain unchanged.
 - **risks:** Live Gateway, installed Windows, remote full-resolution, data URL, zoom/pan, and source-paired behavior remain unverified or incomplete.
 - **follow_up:** Create EV-0050 for the behavior commit, publish on main and verify exact remote SHA equality.
+
+- **id:** hermes-par0044-ev0050-evidence
+- **timestamp:** 2026-11-19T23:55:00Z
+- **what:** Added EV-0050 for the tested partial image preview/enlarge behavior at commit `f69925d2bd47c01f7f9a0aa9f1135576600e2cfc`, updated the UCM implementation receipt set, and checkpointed PAR-0044 as tested.
+- **why:** Keep the implementation claim bound to its exact code commit and retain honest gaps for remote full resolution, data URLs, zoom/pan, live Gateway, Windows and source-paired acceptance.
+- **components:** EV-0050 receipt, UCM package validator, Doofus task ledger and checkpoint.
+- **type:** partial capability evidence and task continuity.
+- **validation:** PASS receipt JSON parse, UCM package validator (565 target behaviors, 565 UI inventory items, 14 source inspection receipts, 35 implementation receipts), task validator at revision 345. PAR-0255 skill detail/source is selected next.
+- **performance:** No benchmark change; preview limits are unchanged.
+- **risks:** Evidence is headless and local; it does not prove live Gateway or Windows acceptance.
+- **follow_up:** Publish EV-0050 and task checkpoint to main, confirm exact remote SHA, then work on skill detail/source.

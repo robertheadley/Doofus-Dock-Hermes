@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0050",
+  "capability_id": "ui-render-tool-generated-images-with-enlarge-action",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "accessible-tool-image-preview-and-enlarge-action",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "f69925d2bd47c01f7f9a0aa9f1135576600e2cfc",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui/AccessKit UI automation, local image fixture, and Hermes Native transcript fixtures. No live Gateway, installed desktop runtime, or physical Windows interaction used.",
+  "notes": "PAR-0044 renders local tool images through the asynchronous bounded file preview store and remote images through the authenticated profile/session-scoped Gateway preview path. Accessible Open tool image action opens a resizable image window. The candidate picker follows result then arguments and ignores non-image and data:image references. Focused tests: apps/hermes-native/src/app.rs#tool_image_reference_follows_result_then_arguments_and_filters_non_images; apps/hermes-native/src/app.rs#tool_image_open_action_is_accessible_and_sets_the_lightbox_target. Full locked feature suite passed 433 library, 15 automation protocol, 3 launcher tests and doc tests; workspace check, rustfmt, both progress generators, UCM package validation, task validation, and diff check passed. Remote enlarge is limited to the existing 512x384 preview; data URL decoding, zoom/pan and retry are open. Live Gateway, installed Windows, and source-paired acceptance remain open; capability status is partial."
+}

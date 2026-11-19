@@ -78,15 +78,34 @@
     "status": "authorized"
   },
   "blockers": [],
-  "changed_files": [],
+  "changed_files": [
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "doofus/events.jsonl",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0050.json",
+      "status": "??"
+    }
+  ],
   "checkpoint": {
     "command": null,
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0049.json#EV-0049"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0050.json#EV-0050"
     ],
     "state": "in_progress",
-    "summary": "PAR-0042 evidence publication and final audit log are on main; clean worktree and fresh origin/main match e5c71f36b5a84bb07025a6c0de22443475f40dce. Task PAR-0044 is selected next.",
-    "verified_at": "2026-11-19T23:32:11Z"
+    "summary": "PAR-0044 image previews and accessible enlarge window implemented and fully validated; EV-0050 receipt created for implementation commit f69925d2bd47c01f7f9a0aa9f1135576600e2cfc.",
+    "verified_at": "2026-11-19T23:54:44Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -119,7 +138,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T00:32:11Z",
+    "lease_expires_at": "2026-11-20T00:54:44Z",
     "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
     "model": null,
     "ownership_state": "active",
@@ -701,11 +720,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0044-tested-20261119",
+  "last_event_id": "hermes-par0044-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-par0044-tested-20261119",
+    "request_id": "hermes-par0044-checkpoint-20261119",
     "state": "committed",
-    "type": "task.state_updated"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -715,14 +734,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "03-chat",
+  "phase": "07-management",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned PAR-0044 generated image tool output and native artifact preview/enlarge support; implement a functional image enlarge action and validate it.",
+  "recommended_next_action": "Continue with PAR-0255 skill detail/source workflow; inspect pinned API and implement profile-fenced detail content with headless tests.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1202,18 +1221,31 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "04a8769a433b82d3e4e279925e4f623b7149e9c647983124ffef96e269f11abc",
-    "changed_files": [],
-    "head_commit": "e5c71f36b5a84bb07025a6c0de22443475f40dce",
+    "change_fingerprint": "a16be161725e237c173d428bbd3244262e2b4b8f13587aa2c2c01006ff76ed10",
+    "changed_files": [
+      {
+        "path": "doofus/events.jsonl",
+        "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0050.json",
+        "status": "??"
+      }
+    ],
+    "head_commit": "f69925d2bd47c01f7f9a0aa9f1135576600e2cfc",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 343,
+  "revision": 345,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 343,
+  "state_revision": 345,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0044",
+  "task_id": "hermes-par-0255",
   "task_ledger_revision": 53,
   "tests_executed": [
     {
@@ -2315,9 +2347,14 @@
       "command": "431 library + 15 automation protocol + 3 launcher tests + doc tests; cargo check --workspace --all-targets --locked, rustfmt, and git diff checks pass",
       "result": "PASS",
       "timestamp": "2026-11-19T23:27:33Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked; cargo check --workspace --all-targets --locked; cargo fmt --all -- --check; progress generators; UCM package validator; task validate; git diff --check",
+      "result": "PASS: 433 library + 15 automation protocol + 3 launcher tests + doc tests; workspace check with existing warnings; both progress generators; UCM validator 565 behaviors/565 UI items/35 implementation receipts; task validator; diff check.",
+      "timestamp": "2026-11-19T23:54:44Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T23:51:09Z"
+  "updated_at": "2026-11-19T23:54:44Z"
 }
