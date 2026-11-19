@@ -2922,3 +2922,59 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: Export paging is bounded at 200 pages and 32,000,000 JSON characters; System action status polling is capped at 18 intervals (1.2s) and 180 lines.
 - risks: Live gateway, physical Windows and source-paired visual acceptance remain pending.
 - follow_up: Continue next pinned-source parity slices while preserving strict acceptance boundaries.
+
+
+### User layout presets — 2026-11-19T01:23:54Z
+
+- id: hermes-user-layout-presets-20261119
+- timestamp: 2026-11-19T01:23:54Z
+- what: Added persisted save/apply/delete for user-created DoofusDock layout presets and controls in the Advanced Layout profile picker. Saved geometry removes dynamic session tiles and other never-persisted panels while retaining closed/resting panes; apply adopts the currently open session tiles into the Workspace tab group and preserves closed session descriptors.
+- why: Implement the pinned source's user preset save/apply/delete behavior for PAR-0017; the pinned source has no rename feature.
+- components: `apps/hermes-native/src/layout.rs`, `apps/hermes-native/src/app.rs`, preference serialization, focused persistence and egui headless tests, parity plan and README.
+- type: Pinned-source functional parity slice.
+- validation: PASS `layout::tests::user_layout_presets_persist_geometry_and_retain_live_session_and_resting_panes` (1/1). The real-egui test `app::tests::user_layout_preset_picker_saves_and_lists_persisted_preset_headlessly` is added but its rerun is pending: current shared app.rs has missing `connection_id` fields in test-only `SessionSummary` initializers from the concurrent session-owner change. A feature-gated test command was attempted and failed at compilation before the test ran.
+- performance: No performance change measured; each preset is stored in existing UI preferences and uses the existing canonical layout apply transaction.
+- risks: Per-window UI preferences preserve each native window's own custom preset collection; behavior matches the native window layout/preferences isolation. Physical Windows and pinned-source paired acceptance remain open.
+- follow_up: After session-owner test fixtures compile, rerun the egui picker test and feature suite, then refresh fixed-source progress evidence without promoting formal acceptance.
+
+
+### User layout presets validation addendum — 2026-11-19T01:32:36Z
+
+- id: hermes-user-layout-presets-validation-20261119
+- timestamp: 2026-11-19T01:32:36Z
+- what: Completed focused verification after the concurrent test-fixture reconciliation; the earlier validation entry remains as the execution history.
+- why: Confirm persistence and real-egui picker behavior after the owner-routing shared-file edit compiled.
+- components: User preset layout API, Advanced profile-picker controls, preference persistence and focused tests.
+- type: Validation addendum.
+- validation: PASS `layout::tests::user_layout_presets_persist_geometry_and_retain_live_session_and_resting_panes` (1/1); PASS `app::tests::user_layout_preset_picker_saves_and_lists_persisted_preset_headlessly` (1/1); PASS `cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all --check`; PASS `git diff --check`.
+- performance: No performance change measured.
+- risks: No live Hermes gateway, installed Windows UI or source-paired acceptance was run.
+- follow_up: Continue pinned feature/settings parity work; preserve functional coverage as the completion gate and defer presentation polish.
+
+
+### Native keybinding settings and dispatch — 2026-11-19T01:41:35Z
+
+- id: hermes-native-keybindings-settings-20261119
+- timestamp: 2026-11-19T01:41:35Z
+- what: Integrated persisted keybinding overrides into the real Settings route and routed current native shortcuts through the saved bindings. Added Escape cancellation and conflict-aware single-combo dispatch.
+- why: Make the supported native shortcuts configurable and usable without adding controls for actions that lack native handlers.
+- components: `app.rs`, `keybindings.rs`, `keybindings_ui.rs`, README, PLAN, BACKLOG and completion overview.
+- type: Feature implementation.
+- validation: PASS Settings draw route test (1/1); persisted shortcut dispatch test (1/1); keybindings UI tests (5/5); existing command-palette and transcript-find tests (1/1 each). Formatter and broader focused checks pending at entry time.
+- performance: No performance change measured.
+- risks: Physical Windows keyboard behavior, every rebound action, pinned conflict precedence and source-paired acceptance remain unverified. Strict progress acceptance is unchanged.
+- follow_up: Run cargo fmt/check and relevant key-cycle regressions; append a validation record after results.
+
+
+### Native keybinding validation addendum — 2026-11-19T01:45Z
+
+- id: hermes-native-keybindings-validation-20261119
+- timestamp: 2026-11-19T01:45:00Z
+- what: Completed focused verification for Settings, persisted dispatch, text-input safety and existing shortcut behavior.
+- why: Replace the pending validation state in the implementation entry with current results.
+- components: Native app/settings route, shortcut dispatcher, keybinding model and panel.
+- type: Validation addendum.
+- validation: PASS 13 keybinding tests; PASS bare-key focused-composer regression (1/1); PASS command-palette, transcript-find and recent-session cycle regressions (1/1 each); PASS `cargo check --workspace --all-targets --locked`; PASS `cargo fmt --manifest-path apps/hermes-native/Cargo.toml --all -- --check`; PASS `git diff --check` (Git emitted existing LF-to-CRLF notices).
+- performance: No performance change measured.
+- risks: No full feature suite, physical Windows keyboard input, live gateway, installed UI or source-paired acceptance was run. Two pre-existing dead-code warning groups remain in files/layout/gateway.
+- follow_up: Continue implementing remaining pinned features; do not promote matrix acceptance from these local/headless checks.

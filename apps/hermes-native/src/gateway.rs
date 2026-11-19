@@ -91,6 +91,10 @@ struct EnsureReply {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct SessionSummary {
     pub id: String,
+    /// Exact source connection when the host supplied a connection-tagged row.
+    /// `None` is reserved for legacy rows that genuinely lack that owner tag.
+    #[serde(default)]
+    pub connection_id: Option<String>,
     #[serde(default, rename = "_lineage_root_id")]
     pub lineage_root_id: Option<String>,
     #[serde(default)]
@@ -129,6 +133,16 @@ impl SessionSummary {
     pub fn durable_session_id(&self) -> &str {
         self.lineage_root_id.as_deref().unwrap_or(&self.id)
     }
+
+    pub fn owner_identity(
+        &self,
+    ) -> Result<crate::session_owner::SessionOwnerIdentity, crate::session_owner::SessionOwnerError>
+    {
+        crate::session_owner::SessionOwnerIdentity::new(
+            self.connection_id.as_deref(),
+            self.profile.as_deref(),
+        )
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -142,6 +156,8 @@ pub struct SessionSearchResult {
     #[serde(default)]
     pub role: Option<String>,
     pub session_id: String,
+    #[serde(default)]
+    pub connection_id: Option<String>,
     #[serde(default)]
     pub profile: Option<String>,
     #[serde(default)]
@@ -6744,6 +6760,7 @@ fn load_artifact_index_http(endpoint: &GatewayEndpoint) -> Result<ArtifactIndexS
 fn session_summary_from_row(session: SessionListRow) -> SessionSummary {
     SessionSummary {
         id: session.id,
+        connection_id: session.connection_id,
         lineage_root_id: session.lineage_root_id,
         cwd: session.cwd,
         profile: session.profile,
@@ -7738,6 +7755,7 @@ fn request_all_profile_command_palette_sessions(
         .into_iter()
         .map(|session| SessionSummary {
             id: session.id,
+            connection_id: session.connection_id,
             lineage_root_id: session.lineage_root_id,
             cwd: session.cwd,
             profile: session.profile,
@@ -7832,6 +7850,8 @@ struct SessionListPage {
 #[derive(Deserialize)]
 struct SessionListRow {
     id: String,
+    #[serde(default)]
+    connection_id: Option<String>,
     #[serde(default, rename = "_lineage_root_id")]
     lineage_root_id: Option<String>,
     #[serde(default)]
@@ -7862,6 +7882,7 @@ impl SessionListRow {
     fn into_summary(self) -> SessionSummary {
         SessionSummary {
             id: self.id,
+            connection_id: self.connection_id,
             lineage_root_id: self.lineage_root_id,
             cwd: self.cwd,
             profile: self.profile,
@@ -7907,6 +7928,7 @@ fn request_session_list_page(
             .into_iter()
             .map(|session| SessionSummary {
                 id: session.id,
+                connection_id: session.connection_id,
                 lineage_root_id: session.lineage_root_id,
                 cwd: session.cwd,
                 profile: session.profile,
@@ -7945,6 +7967,7 @@ fn request_all_profile_archived_session_page(
             .into_iter()
             .map(|session| SessionSummary {
                 id: session.id,
+                connection_id: session.connection_id,
                 lineage_root_id: session.lineage_root_id,
                 cwd: session.cwd,
                 profile: session.profile,
@@ -11083,6 +11106,7 @@ fn request_remote_session_page(
         .into_iter()
         .map(|session| SessionSummary {
             id: session.id,
+            connection_id: session.connection_id,
             lineage_root_id: session.lineage_root_id,
             cwd: session.cwd,
             profile: session.profile,
@@ -14702,14 +14726,21 @@ mod tests {
     fn session_list_preserves_fractional_started_at_for_sidebar_recency() {
         let session: SessionSummary = serde_json::from_value(json!({
             "id":"session-1",
+            "connection_id":"homelab",
             "_lineage_root_id":"lineage-root-1",
             "title":"Recent session",
             "started_at":1731543892.75
         }))
         .expect("decode current session list row");
         assert_eq!(session.started_at, 1_731_543_892.75);
+        assert_eq!(session.connection_id.as_deref(), Some("homelab"));
         assert_eq!(session.lineage_root_id.as_deref(), Some("lineage-root-1"));
         assert_eq!(session.durable_session_id(), "lineage-root-1");
+        let owner = session
+            .owner_identity()
+            .expect("valid stored-session owner");
+        assert_eq!(owner.connection_id(), Some("homelab"));
+        assert_eq!(owner.profile(), "default");
     }
 
     #[test]
@@ -14722,6 +14753,7 @@ mod tests {
                     SessionSummary {
                         cwd: None,
                         id: "archived-1".into(),
+                        connection_id: None,
                         lineage_root_id: None,
                         profile: Some("alpha".into()),
                         title: "Older conversation".into(),
@@ -14737,6 +14769,7 @@ mod tests {
                     SessionSummary {
                         cwd: None,
                         id: "live-pin".into(),
+                        connection_id: None,
                         lineage_root_id: None,
                         profile: Some("alpha".into()),
                         title: "Pinned live row".into(),
@@ -14755,6 +14788,7 @@ mod tests {
                     SessionSummary {
                         cwd: None,
                         id: "archived-2".into(),
+                        connection_id: None,
                         lineage_root_id: None,
                         profile: Some("beta".into()),
                         title: "Newest archived conversation".into(),
@@ -14770,6 +14804,7 @@ mod tests {
                     SessionSummary {
                         cwd: None,
                         id: "live-pin".into(),
+                        connection_id: None,
                         lineage_root_id: None,
                         profile: Some("alpha".into()),
                         title: "Pinned live row".into(),
@@ -14785,6 +14820,7 @@ mod tests {
                     SessionSummary {
                         cwd: None,
                         id: "archived-1".into(),
+                        connection_id: None,
                         lineage_root_id: None,
                         profile: Some("beta".into()),
                         title: "Same stored ID in another profile".into(),

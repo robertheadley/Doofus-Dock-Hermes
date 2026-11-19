@@ -19,6 +19,8 @@ use crate::gateway::{
     SessionSummary, SkillInfo, TelegramOnboardingApplyReceipt, TelegramOnboardingStart,
     TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
 };
+use crate::keybindings::{KeyPlatform, KeybindingStore};
+use crate::keybindings_ui::{KeybindingsPanel, key_event_to_combo};
 use crate::layout::{
     BOTS, FILES, InterfaceMode, REVIEW, SESSION_COLOR_HUES, SESSIONS, TERMINAL, WORKSPACE,
     Workspace,
@@ -1171,6 +1173,11 @@ pub struct HermesNativeApp {
     repo_scan_completed_policy: Option<(String, RepoScanPolicy)>,
     repo_scan_last_started_at: Option<std::time::Instant>,
     repo_scan_generation: Arc<AtomicU64>,
+    keybindings: Option<KeybindingStore>,
+    keybindings_error: Option<String>,
+    keybindings_panel: KeybindingsPanel,
+    settings_keybindings_active: bool,
+    keybinding_consumed_combos: BTreeSet<String>,
     session_filter: String,
     session_search_changed_at: Option<std::time::Instant>,
     session_search_request_id: Option<String>,
@@ -2293,6 +2300,17 @@ fn start_saved_gateway_connection(
     Some(GatewayDiscovery::start())
 }
 
+fn current_key_platform() -> KeyPlatform {
+    #[cfg(target_os = "macos")]
+    {
+        KeyPlatform::Mac
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        KeyPlatform::Other
+    }
+}
+
 impl HermesNativeApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::from_workspace_result(
@@ -2492,6 +2510,7 @@ fn render_message() -> &'static str {
             .open_session_pane(Some(profile), session_id, "Native session pane")
             .expect("fixture pane identity is valid");
         self.sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: session_id.into(),
             lineage_root_id: None,
@@ -2610,6 +2629,7 @@ fn render_message() -> &'static str {
         self.active_session_profile = Some(profile.into());
         self.active_runtime_session_id = Some("runtime-files-preview-fixture".into());
         self.sessions.push(SessionSummary {
+            connection_id: None,
             cwd: Some(cwd),
             id: session_id.into(),
             lineage_root_id: None,
@@ -2696,6 +2716,7 @@ fn render_message() -> &'static str {
         ]
         .into_iter()
         .map(|(id, title)| SessionSummary {
+            connection_id: None,
             cwd: None,
             id: id.into(),
             lineage_root_id: None,
@@ -2748,6 +2769,7 @@ fn render_message() -> &'static str {
             .map(|(index, title)| {
                 let started_at = now - (index as f64 * 3_600.0);
                 SessionSummary {
+                    connection_id: None,
                     cwd: None,
                     id: format!("command-center-fixture-{:02}", index + 1),
                     lineage_root_id: None,
@@ -2790,6 +2812,7 @@ fn render_message() -> &'static str {
         ]
         .into_iter()
         .map(|(id, title, pinned)| SessionSummary {
+            connection_id: None,
             cwd: None,
             id: id.into(),
             lineage_root_id: None,
@@ -2846,6 +2869,7 @@ fn render_message() -> &'static str {
         ]
         .into_iter()
         .map(|(id, title, timestamp)| SessionSummary {
+            connection_id: None,
             id: id.into(),
             lineage_root_id: match id {
                 "recent-a" => Some("lineage-recent-a".into()),
@@ -3158,6 +3182,7 @@ fn render_message() -> &'static str {
             .iter()
             .enumerate()
             .map(|(index, title)| SessionSummary {
+                connection_id: None,
                 id: format!("artifact-session-{index}"),
                 lineage_root_id: None,
                 cwd: None,
@@ -3268,6 +3293,14 @@ fn render_message() -> &'static str {
             Err(error) => (fallback, Some(error)),
         };
         let gateway_discovery = start_saved_gateway_connection(&workspace, connect_gateway);
+        let keybinding_platform = current_key_platform();
+        let (keybindings, keybindings_error) = match KeybindingStore::load(
+            workspace.data_directory().join("keybindings.json"),
+            keybinding_platform,
+        ) {
+            Ok(store) => (Some(store), None),
+            Err(error) => (None, Some(error)),
+        };
         Self {
             workspace,
             narrow_viewport: false,
@@ -3402,6 +3435,11 @@ fn render_message() -> &'static str {
             repo_scan_completed_policy: None,
             repo_scan_last_started_at: None,
             repo_scan_generation: Arc::new(AtomicU64::new(0)),
+            keybindings,
+            keybindings_error,
+            keybindings_panel: KeybindingsPanel::new(),
+            settings_keybindings_active: false,
+            keybinding_consumed_combos: BTreeSet::new(),
             session_filter: String::new(),
             session_search_changed_at: None,
             session_search_request_id: None,
@@ -3704,27 +3742,92 @@ fn render_message() -> &'static str {
                             .unwrap_or_else(|error| self.status = error);
                         }
                         let active = self.workspace.active_profile().to_owned();
-                        let options = self.workspace.profile_ids();
-                        let title = profile_title(&active);
+                        let options = self
+                            .workspace
+                            .profile_ids()
+                            .into_iter()
+                            .map(|option| {
+                                let title = self.workspace.profile_title(&option);
+                                (option, title)
+                            })
+                            .collect::<Vec<_>>();
+                        let title = self.workspace.profile_title(&active);
                         let mut selected = active.clone();
                         egui::ComboBox::new("layout-profile", "Layout profile")
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                             .selected_text(title)
                             .show_ui(ui, |ui| {
-                                for option in options {
-                                    ui.selectable_value(
+                                let preset_draft_id =
+                                    ui.scope_id().with("layout-preset-name-draft");
+                                let mut preset_name = ui.ctx().data(|data| {
+                                    data.get_temp::<String>(preset_draft_id).unwrap_or_default()
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::TextEdit::singleline(&mut preset_name)
+                                            .hint_text("Save current layout as…")
+                                            .desired_width(150.0),
+                                    )
+                                    .accessible_name("Save current layout as…");
+                                    if ui
+                                        .button("Save")
+                                        .accessible_name("Save user layout")
+                                        .clicked()
+                                    {
+                                        match self.workspace.save_user_layout_preset(&preset_name) {
+                                            Ok(id) => {
+                                                selected = id.clone();
+                                                self.status = format!(
+                                                    "Saved layout: {}",
+                                                    self.workspace.profile_title(&id)
+                                                );
+                                                preset_name.clear();
+                                                ui.close();
+                                            }
+                                            Err(error) => self.status = error,
+                                        }
+                                    }
+                                });
+                                if self.workspace.is_user_profile(&active)
+                                    && ui.button("Delete selected user layout").clicked()
+                                {
+                                    match self.workspace.delete_user_layout_preset(&active) {
+                                        Ok(()) => {
+                                            selected = self.workspace.active_profile().to_owned();
+                                            self.status = "Deleted user layout".into();
+                                            ui.close();
+                                        }
+                                        Err(error) => self.status = error,
+                                    }
+                                }
+                                for (option, title) in options {
+                                    let response = ui.selectable_value(
                                         &mut selected,
                                         option.to_owned(),
-                                        profile_title(option),
+                                        title,
                                     );
+                                    if response.clicked() {
+                                        ui.close();
+                                    }
                                 }
+                                ui.ctx().data_mut(|data| {
+                                    data.insert_temp(preset_draft_id, preset_name)
+                                });
                             });
                         if selected != active {
-                            self.execute_registered_action(
-                                RegisteredUiAction::SelectLayoutProfile {
-                                    profile_id: selected,
-                                },
-                            )
-                            .unwrap_or_else(|error| self.status = error);
+                            if self
+                                .execute_registered_action(
+                                    RegisteredUiAction::SelectLayoutProfile {
+                                        profile_id: selected.clone(),
+                                    },
+                                )
+                                .is_err()
+                            {
+                                self.status = format!(
+                                    "Could not apply {} layout",
+                                    self.workspace.profile_title(&selected)
+                                );
+                            }
                         }
                     });
                 });
@@ -13928,6 +14031,7 @@ fn render_message() -> &'static str {
             SessionSummary {
                 cwd: None,
                 id: stored_id.into(),
+                connection_id: None,
                 lineage_root_id: None,
                 profile: profile.map(str::to_owned),
                 title,
@@ -15607,7 +15711,7 @@ fn render_message() -> &'static str {
             }
             RegisteredUiAction::SelectLayoutProfile { profile_id } => {
                 self.workspace.set_profile(&profile_id)?;
-                self.status = format!("{} layout", profile_title(&profile_id));
+                self.status = format!("{} layout", self.workspace.profile_title(&profile_id));
             }
             RegisteredUiAction::SelectCapabilitiesTab { tab } => {
                 self.navigate_path(&format!("/capabilities?tab={}", tab.as_str()))?;
@@ -17142,6 +17246,51 @@ fn render_message() -> &'static str {
         }
         if let Some(error) = self.repo_scan_config_error.as_deref() {
             ui.colored_label(Color32::LIGHT_RED, error);
+        }
+    }
+
+    fn show_settings(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(!self.settings_keybindings_active, "Workspace")
+                .accessible_name("Workspace settings")
+                .clicked()
+            {
+                self.settings_keybindings_active = false;
+                self.keybindings_panel.cancel_capture();
+            }
+            if ui
+                .selectable_label(self.settings_keybindings_active, "Keybindings")
+                .accessible_name("Keybindings settings")
+                .clicked()
+            {
+                self.settings_keybindings_active = true;
+            }
+        });
+        ui.separator();
+        if self.settings_keybindings_active {
+            if let Some(error) = self.keybindings_error.as_deref() {
+                ui.colored_label(Color32::LIGHT_RED, error);
+                if ui.button("Retry keybindings").clicked() {
+                    match KeybindingStore::load(
+                        self.workspace.data_directory().join("keybindings.json"),
+                        current_key_platform(),
+                    ) {
+                        Ok(store) => {
+                            self.keybindings = Some(store);
+                            self.keybindings_error = None;
+                        }
+                        Err(error) => self.keybindings_error = Some(error),
+                    }
+                }
+                return;
+            }
+            if let Some(store) = self.keybindings.as_mut() {
+                self.keybindings_panel
+                    .show(ui, store, current_key_platform());
+            }
+        } else {
+            self.show_repo_scan_settings(ui);
         }
     }
 
@@ -18862,7 +19011,7 @@ fn render_message() -> &'static str {
                 });
                 ui.separator();
                 match self.route {
-                    AppRoute::Settings => self.show_repo_scan_settings(ui),
+                    AppRoute::Settings => self.show_settings(ui),
                     AppRoute::Cron => self.cron_content(ui),
                     _ => {
                         ui.label(
@@ -19488,7 +19637,7 @@ fn render_message() -> &'static str {
         for profile_id in self.workspace.profile_ids() {
             entries.push(CommandPaletteEntry {
                 group: "Layouts",
-                label: format!("Use {} layout", profile_title(profile_id)),
+                label: format!("Use {} layout", profile_title(&profile_id)),
                 keywords: format!("layout profile {}", profile_id.replace('-', " ")),
                 action: RegisteredUiAction::SelectLayoutProfile {
                     profile_id: profile_id.to_owned(),
@@ -19590,14 +19739,7 @@ fn render_message() -> &'static str {
     }
 
     fn handle_command_palette_shortcuts(&mut self, ctx: &egui::Context) {
-        let (toggle, escape, up, down, enter) = ctx.input_mut(|input| {
-            #[cfg(target_os = "macos")]
-            let modifier = egui::Modifiers::COMMAND;
-            #[cfg(not(target_os = "macos"))]
-            let modifier = egui::Modifiers::CTRL;
-            let toggle = input
-                .consume_shortcut(&egui::KeyboardShortcut::new(modifier, egui::Key::K))
-                || input.consume_shortcut(&egui::KeyboardShortcut::new(modifier, egui::Key::P));
+        let (escape, up, down, enter) = ctx.input_mut(|input| {
             let escape = self.command_palette_open
                 && input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
             let up = self.command_palette_open
@@ -19606,8 +19748,9 @@ fn render_message() -> &'static str {
                 && input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown);
             let enter = self.command_palette_open
                 && input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
-            (toggle, escape, up, down, enter)
+            (escape, up, down, enter)
         });
+        let toggle = self.consume_keybinding(ctx, "nav.commandPalette");
         if toggle {
             if self.command_palette_open {
                 self.close_command_palette();
@@ -20054,6 +20197,7 @@ fn render_message() -> &'static str {
                                 SessionSummary {
                                     cwd: None,
                                     id: created.stored_session_id.clone(),
+                                    connection_id: None,
                                     lineage_root_id: None,
                                     profile: profile.clone(),
                                     title: text.chars().take(72).collect(),
@@ -24177,6 +24321,7 @@ fn session_summary_from_search(result: &SessionSearchResult) -> SessionSummary {
     SessionSummary {
         cwd: None,
         id: result.session_id.clone(),
+        connection_id: result.connection_id.clone(),
         lineage_root_id: result.lineage_root.clone(),
         profile: result.profile.clone(),
         title: result
@@ -24858,6 +25003,64 @@ mod tests {
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn settings_route_switches_between_workspace_and_keybindings() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Settings;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.repo_scan_config = Some(RepoScanPolicy::default());
+        app.repo_scan_config_profile = Some("work".into());
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        assert!(harness.query_by_label("Workspace settings").is_some());
+        harness.get_by_label("Keybindings settings").click();
+        harness.run();
+        assert!(app.borrow().settings_keybindings_active);
+        assert!(harness.query_by_label("Keyboard shortcuts").is_some());
+        assert!(
+            harness
+                .query_by_label("Action nav.commandPalette")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Action view.toggleRightSidebar")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Workspace repository discovery")
+                .is_none()
+        );
+
+        harness.get_by_label("Workspace settings").click();
+        harness.run();
+        assert!(!app.borrow().settings_keybindings_active);
+        assert!(
+            harness
+                .query_by_label("Workspace repository discovery")
+                .is_some()
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
     #[test]
     fn settings_overlay_keeps_repo_discovery_read_only_in_all_profile_scope() {
         let (mut app, profile_dir) = isolated_app();
@@ -25307,6 +25510,7 @@ mod tests {
         app.sessions = ["recent-a", "recent-b", "recent-c"]
             .into_iter()
             .map(|id| SessionSummary {
+                connection_id: None,
                 cwd: None,
                 id: id.into(),
                 lineage_root_id: None,
@@ -25356,6 +25560,7 @@ mod tests {
         app.sessions = ["recent-a", "recent-b", "recent-c"]
             .into_iter()
             .map(|id| SessionSummary {
+                connection_id: None,
                 cwd: None,
                 id: id.into(),
                 lineage_root_id: None,
@@ -25395,6 +25600,7 @@ mod tests {
         app.sessions = ["recent-a", "recent-b", "recent-c"]
             .into_iter()
             .map(|id| SessionSummary {
+                connection_id: None,
                 cwd: None,
                 id: id.into(),
                 lineage_root_id: None,
@@ -25639,6 +25845,7 @@ mod tests {
     #[test]
     fn sidebar_pins_follow_saved_order_and_keep_server_pins_after_local_pins() {
         let session = |id: &str, pinned: bool| SessionSummary {
+            connection_id: None,
             id: id.into(),
             lineage_root_id: None,
             cwd: None,
@@ -26443,6 +26650,7 @@ mod tests {
         assert_eq!(reconciled, ["newer", "b", "a", "older"]);
 
         let summary = |id: &str| SessionSummary {
+            connection_id: None,
             id: id.into(),
             lineage_root_id: None,
             cwd: None,
@@ -26530,6 +26738,7 @@ mod tests {
         };
         let now = at(20, 16, 0);
         let make = |id: &str, timestamp| SessionSummary {
+            connection_id: None,
             id: id.into(),
             lineage_root_id: None,
             cwd: None,
@@ -26575,6 +26784,7 @@ mod tests {
         };
         let now = time::OffsetDateTime::now_utc().unix_timestamp() as f64;
         let make = |id: &str, timestamp| SessionSummary {
+            connection_id: None,
             id: id.into(),
             lineage_root_id: None,
             cwd: None,
@@ -26626,6 +26836,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(index, id)| SessionSummary {
+                connection_id: None,
                 id: id.into(),
                 lineage_root_id: None,
                 cwd: None,
@@ -26807,6 +27018,7 @@ mod tests {
             .open_session_pane(Some("work"), session_id, "Movable session")
             .expect("session pane opens");
         app.sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: session_id.into(),
             lineage_root_id: None,
@@ -26980,6 +27192,7 @@ mod tests {
         });
         app.sessions = vec![
             SessionSummary {
+                connection_id: None,
                 id: "20261115_120000_abcdef".into(),
                 lineage_root_id: None,
                 cwd: None,
@@ -26995,6 +27208,7 @@ mod tests {
                 archived: false,
             },
             SessionSummary {
+                connection_id: None,
                 id: "20261115_120001_abcdef".into(),
                 lineage_root_id: None,
                 cwd: None,
@@ -27011,6 +27225,7 @@ mod tests {
             },
         ];
         app.archived_sessions = vec![SessionSummary {
+            connection_id: None,
             id: "20261115_120002_abcdef".into(),
             lineage_root_id: None,
             cwd: None,
@@ -27027,6 +27242,7 @@ mod tests {
         }];
         app.command_palette_sessions = app.sessions.clone();
         app.command_palette_sessions.push(SessionSummary {
+            connection_id: None,
             id: "20261115_120003_abcdef".into(),
             lineage_root_id: None,
             cwd: None,
@@ -27116,6 +27332,68 @@ mod tests {
         harness.run();
         assert!(app.borrow().command_palette_open);
         harness.key_press(egui::Key::Escape);
+        harness.run();
+        assert!(!app.borrow().command_palette_open);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn persisted_keybinding_override_drives_the_native_shortcut_handler() {
+        let (mut app, profile) = isolated_app();
+        app.keybindings
+            .as_mut()
+            .expect("keybindings load from isolated app data")
+            .set_binding("nav.commandPalette", &["ctrl+alt+q"])
+            .expect("persist override");
+        let binding_path = app.workspace.data_directory().join("keybindings.json");
+        assert!(binding_path.is_file(), "settings persist under app data");
+        app.route = AppRoute::NewChat;
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.key_press_modifiers(
+            egui::Modifiers::CTRL.plus(egui::Modifiers::ALT),
+            egui::Key::Q,
+        );
+        harness.run();
+        assert!(app.borrow().command_palette_open);
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::K);
+        harness.run();
+        assert!(
+            !app.borrow().command_palette_open,
+            "the shipped default no longer dispatches after an override"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn bare_key_override_does_not_steal_focused_composer_text() {
+        let (mut app, profile) = isolated_app();
+        app.keybindings
+            .as_mut()
+            .expect("keybindings load from isolated app data")
+            .set_binding("nav.commandPalette", &["x"])
+            .expect("persist bare-key override");
+        app.gateway_connected = true;
+        app.route = AppRoute::NewChat;
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.get_by_label("Message composer").click();
+        harness.run();
+        harness.key_press(egui::Key::X);
         harness.run();
         assert!(!app.borrow().command_palette_open);
         drop(harness);
@@ -28973,6 +29251,7 @@ mod tests {
         app.navigate_path("/command-center?section=sessions")
             .expect("Command Center route should be recognized");
         let alpha = SessionSummary {
+            connection_id: None,
             id: "recent-alpha".into(),
             lineage_root_id: None,
             cwd: None,
@@ -29529,6 +29808,7 @@ mod tests {
             remote_auth: None,
         });
         let session = SessionSummary {
+            connection_id: None,
             id: "sess-1".into(),
             lineage_root_id: None,
             cwd: None,
@@ -29624,6 +29904,7 @@ mod tests {
         });
         app.session_profiles_truncated.insert("worker".into(), true);
         app.sessions = vec![SessionSummary {
+            connection_id: None,
             id: "sess-1".into(),
             lineage_root_id: None,
             cwd: None,
@@ -30407,6 +30688,7 @@ mod tests {
     #[test]
     fn session_filter_matches_title_preview_and_id_without_case_sensitivity() {
         let session = SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "session-42".into(),
             lineage_root_id: None,
@@ -30440,6 +30722,7 @@ mod tests {
     #[test]
     fn session_merge_keeps_colliding_ids_in_separate_profiles() {
         let make_session = |profile: Option<&str>, title: &str| SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "shared-session-id".into(),
             lineage_root_id: None,
@@ -30470,6 +30753,7 @@ mod tests {
     fn registered_open_session_scopes_colliding_ids_and_path_navigation_rejects_ambiguity() {
         let (mut app, profile_dir) = isolated_app();
         let default_session = SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "shared-id".into(),
             lineage_root_id: None,
@@ -31045,6 +31329,7 @@ mod tests {
     fn session_rows_expose_the_stored_id_in_the_accessible_name() {
         let (mut app, profile) = isolated_app();
         app.sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "sess-42".into(),
             lineage_root_id: None,
@@ -31151,6 +31436,7 @@ mod tests {
             crate::gateway::GatewayDiscovery::for_test_session_refresh();
         app.gateway_discovery = Some(gateway);
         let row = |id: &str, title: &str, started_at| SessionSummary {
+            connection_id: None,
             cwd: None,
             id: id.into(),
             lineage_root_id: None,
@@ -31276,6 +31562,7 @@ mod tests {
         app.transcript = vec![serde_json::json!({"role":"assistant","content":"Still visible"})];
         app.draft = "Keep this unsent draft".into();
         app.sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "active-session".into(),
             lineage_root_id: None,
@@ -31432,6 +31719,7 @@ mod tests {
             remote_auth: None,
         });
         app.sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "sess-waiting".into(),
             lineage_root_id: None,
@@ -31485,6 +31773,7 @@ mod tests {
             remote_auth: None,
         });
         app.archived_sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "old-session-9".into(),
             lineage_root_id: None,
@@ -31550,6 +31839,7 @@ mod tests {
             remote_auth: None,
         });
         app.sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "session-42".into(),
             lineage_root_id: None,
@@ -31595,6 +31885,7 @@ mod tests {
     fn sessions_view_toggle_switches_to_cached_archived_rows() {
         let (mut app, profile) = isolated_app();
         app.archived_sessions.push(SessionSummary {
+            connection_id: None,
             cwd: None,
             id: "saved-session-3".into(),
             lineage_root_id: None,
@@ -31629,6 +31920,7 @@ mod tests {
     fn server_session_search_keeps_rank_and_appends_loaded_only_matches() {
         let loaded = vec![
             SessionSummary {
+                connection_id: None,
                 cwd: None,
                 id: "loaded-hit".into(),
                 lineage_root_id: None,
@@ -31644,6 +31936,7 @@ mod tests {
                 archived: false,
             },
             SessionSummary {
+                connection_id: None,
                 cwd: None,
                 id: "branch-hit".into(),
                 lineage_root_id: None,
@@ -31662,6 +31955,7 @@ mod tests {
         let server = vec![
             SessionSearchResult {
                 session_id: "archived-hit".into(),
+                connection_id: Some("homelab".into()),
                 profile: None,
                 title: Some("Archived match".into()),
                 snippet: "old >>>needle<<< result".into(),
@@ -31674,6 +31968,7 @@ mod tests {
             },
             SessionSearchResult {
                 session_id: "loaded-hit".into(),
+                connection_id: None,
                 profile: None,
                 title: Some("Backend title".into()),
                 snippet: "server snippet".into(),
@@ -31694,6 +31989,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["archived-hit", "loaded-hit", "branch-hit"]
         );
+        assert_eq!(results[0].connection_id.as_deref(), Some("homelab"));
         assert_eq!(results[0].preview, "old needle result");
         assert_eq!(results[0].started_at, 75.0);
         assert_eq!(results[1].title, "Matched loaded session");
@@ -31894,6 +32190,57 @@ mod tests {
             HermesNativeApp::new_for_automation(profile.clone()),
             profile,
         )
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn user_layout_preset_picker_saves_and_lists_persisted_preset_headlessly() {
+        let (app, profile_dir) = isolated_app();
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        harness.get_by_label("Layout profile").click();
+        harness.run();
+        assert!(harness.query_by_label("Save user layout").is_some());
+        harness.get_by_label("Save current layout as…").click();
+        harness
+            .get_by_label("Save current layout as…")
+            .type_text("Headless user deck");
+        harness.run();
+        harness.get_by_label("Save user layout").click();
+        harness.run();
+        assert_eq!(
+            app.borrow().workspace.active_profile(),
+            "user-headless-user-deck",
+            "status after save: {}",
+            app.borrow().status
+        );
+        assert_eq!(
+            app.borrow()
+                .workspace
+                .profile_title("user-headless-user-deck"),
+            "Headless user deck"
+        );
+        assert!(
+            app.borrow()
+                .workspace
+                .profile_ids()
+                .contains(&"user-headless-user-deck".into())
+        );
+        drop(harness);
+        drop(app);
+        let persisted = crate::layout::Workspace::load_isolated(profile_dir.clone())
+            .expect("reload isolated layout preferences");
+        assert_eq!(persisted.active_profile(), "user-headless-user-deck");
+        assert_eq!(
+            persisted.profile_title("user-headless-user-deck"),
+            "Headless user deck"
+        );
+        drop(persisted);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
@@ -34435,6 +34782,7 @@ impl HermesNativeApp {
         self.poll_session_peer_sync(&ctx);
         self.poll_shared_auto_project_dismissals(&ctx, now);
         self.auto_project_undo_toast(&ctx);
+        self.keybinding_consumed_combos.clear();
         self.handle_command_palette_shortcuts(&ctx);
         self.handle_layout_shortcuts(&ctx);
         self.file_previews.begin_frame();
@@ -34450,13 +34798,7 @@ impl HermesNativeApp {
             self.find_in_page_scroll_pending = false;
             self.find_in_page_route = None;
         }
-        let open_find = ctx.input_mut(|input| {
-            #[cfg(target_os = "macos")]
-            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::F);
-            #[cfg(not(target_os = "macos"))]
-            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F);
-            input.consume_shortcut(&shortcut)
-        });
+        let open_find = self.consume_keybinding(&ctx, "view.findInPage");
         if open_find && matches!(self.route, AppRoute::Session(_)) {
             self.find_in_page_open = true;
             self.find_in_page_focus_pending = true;
@@ -34464,26 +34806,8 @@ impl HermesNativeApp {
         }
         if self.find_in_page_open {
             let close_find = ctx.input_mut(|input| input.key_pressed(egui::Key::Escape));
-            let next_find = ctx.input_mut(|input| {
-                #[cfg(target_os = "macos")]
-                let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::G);
-                #[cfg(not(target_os = "macos"))]
-                let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::G);
-                input.consume_shortcut(&shortcut)
-            });
-            let previous_find = ctx.input_mut(|input| {
-                #[cfg(target_os = "macos")]
-                let shortcut = egui::KeyboardShortcut::new(
-                    egui::Modifiers::COMMAND.plus(egui::Modifiers::SHIFT),
-                    egui::Key::G,
-                );
-                #[cfg(not(target_os = "macos"))]
-                let shortcut = egui::KeyboardShortcut::new(
-                    egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
-                    egui::Key::G,
-                );
-                input.consume_shortcut(&shortcut)
-            });
+            let next_find = self.consume_keybinding(&ctx, "view.findNext");
+            let previous_find = self.consume_keybinding(&ctx, "view.findPrevious");
             if close_find {
                 self.find_in_page_open = false;
                 self.find_in_page_query.clear();
@@ -34497,24 +34821,8 @@ impl HermesNativeApp {
                 self.step_transcript_find(-1);
             }
         }
-        let previous_tab = ctx.input_mut(|input| {
-            input.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
-                egui::Key::Tab,
-            )) || input.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::CTRL,
-                egui::Key::PageUp,
-            ))
-        });
-        let next_tab = ctx.input_mut(|input| {
-            input.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::CTRL,
-                egui::Key::Tab,
-            )) || input.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::CTRL,
-                egui::Key::PageDown,
-            ))
-        });
+        let previous_tab = self.consume_keybinding(&ctx, "session.prev");
+        let next_tab = self.consume_keybinding(&ctx, "session.next");
         let switcher_browsing = self
             .recent_session_switcher
             .as_ref()
@@ -34533,31 +34841,12 @@ impl HermesNativeApp {
             }
         }
         self.update_recent_session_switcher(&ctx);
-        let close_active_tab = ctx.input_mut(|input| {
-            input.consume_shortcut(&egui::KeyboardShortcut::new(
-                egui::Modifiers::COMMAND,
-                egui::Key::W,
-            ))
-        });
+        let close_active_tab = self.consume_keybinding(&ctx, "view.closeTab");
         if close_active_tab {
             self.execute_registered_action(RegisteredUiAction::CloseActiveTab)
                 .unwrap_or_else(|error| self.status = error);
         }
-        let restore_closed_tab = ctx.input_mut(|input| {
-            #[cfg(target_os = "macos")]
-            let shortcut = egui::KeyboardShortcut::new(
-                egui::Modifiers::COMMAND
-                    .plus(egui::Modifiers::CTRL)
-                    .plus(egui::Modifiers::SHIFT),
-                egui::Key::T,
-            );
-            #[cfg(not(target_os = "macos"))]
-            let shortcut = egui::KeyboardShortcut::new(
-                egui::Modifiers::CTRL.plus(egui::Modifiers::SHIFT),
-                egui::Key::T,
-            );
-            input.consume_shortcut(&shortcut)
-        });
+        let restore_closed_tab = self.consume_keybinding(&ctx, "view.reopenTab");
         if restore_closed_tab {
             self.execute_registered_action(RegisteredUiAction::RestoreClosedSessionTab)
                 .unwrap_or_else(|error| self.status = error);
@@ -35030,26 +35319,54 @@ impl HermesNativeApp {
     }
 
     fn handle_layout_shortcuts(&mut self, ctx: &egui::Context) {
-        let toggle_sessions = ctx.input_mut(|input| {
-            #[cfg(target_os = "macos")]
-            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::B);
-            #[cfg(not(target_os = "macos"))]
-            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::B);
-            input.consume_shortcut(&shortcut)
-        });
-        let toggle_files = ctx.input_mut(|input| {
-            #[cfg(target_os = "macos")]
-            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::J);
-            #[cfg(not(target_os = "macos"))]
-            let shortcut = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::J);
-            input.consume_shortcut(&shortcut)
-        });
+        let toggle_sessions = self.consume_keybinding(ctx, "view.toggleSidebar");
+        let toggle_files = self.consume_keybinding(ctx, "view.toggleRightSidebar");
         if toggle_sessions {
             self.toggle_positional_side(true);
         }
         if toggle_files {
             self.toggle_positional_side(false);
         }
+    }
+
+    fn consume_keybinding(&mut self, ctx: &egui::Context, action_id: &str) -> bool {
+        if self.keybindings_panel.is_capturing() {
+            return false;
+        }
+        let Some(store) = self.keybindings.as_ref() else {
+            return false;
+        };
+        let Ok(bindings) = store.bindings_for(action_id) else {
+            return false;
+        };
+        let platform = current_key_platform();
+        let wants_keyboard = ctx.egui_wants_keyboard_input();
+        let matched = ctx.input(|input| {
+            input.events.iter().find_map(|event| match event {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                    ..
+                } => {
+                    let combo = key_event_to_combo(*key, *modifiers, platform)?;
+                    let has_modifier = combo.split('+').count() > 1;
+                    (!wants_keyboard || has_modifier)
+                        .then_some((combo, *key, *modifiers))
+                        .filter(|(combo, _, _)| {
+                            bindings.contains(combo)
+                                && !self.keybinding_consumed_combos.contains(combo)
+                        })
+                }
+                _ => None,
+            })
+        });
+        let Some((combo, key, modifiers)) = matched else {
+            return false;
+        };
+        self.keybinding_consumed_combos.insert(combo);
+        ctx.input_mut(|input| input.consume_key(modifiers, key))
     }
 
     #[cfg(feature = "agent-automation")]

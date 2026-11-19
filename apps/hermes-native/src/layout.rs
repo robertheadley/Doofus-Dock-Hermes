@@ -60,6 +60,15 @@ pub struct UiPreferences {
     pub master_detail_width_overrides: BTreeMap<String, f32>,
     #[serde(default)]
     pub last_remote_gateway_url: Option<String>,
+    #[serde(default)]
+    pub user_layout_presets: BTreeMap<String, UserLayoutPreset>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserLayoutPreset {
+    pub name: String,
+    pub document: LayoutDocument,
 }
 
 impl Default for UiPreferences {
@@ -85,6 +94,7 @@ impl Default for UiPreferences {
             session_color_overrides: BTreeMap::new(),
             master_detail_width_overrides: BTreeMap::new(),
             last_remote_gateway_url: None,
+            user_layout_presets: BTreeMap::new(),
         }
     }
 }
@@ -796,11 +806,98 @@ impl Workspace {
             .collect()
     }
 
-    pub fn profile_ids(&self) -> Vec<&'static str> {
-        match self.preferences.mode {
+    pub fn profile_ids(&self) -> Vec<String> {
+        let mut ids = match self.preferences.mode {
             InterfaceMode::Advanced => vec!["default", "basic", "focus", "terminal-deck", "quad"],
             InterfaceMode::Simple => vec!["sidebar-left", "sidebar-right"],
         }
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+        if self.preferences.mode == InterfaceMode::Advanced {
+            ids.extend(self.preferences.user_layout_presets.keys().cloned());
+        }
+        ids
+    }
+
+    pub fn profile_title(&self, id: &str) -> String {
+        self.preferences
+            .user_layout_presets
+            .get(id)
+            .map(|preset| preset.name.clone())
+            .unwrap_or_else(|| builtin_profile_title(id).to_owned())
+    }
+
+    pub fn is_user_profile(&self, id: &str) -> bool {
+        self.preferences.user_layout_presets.contains_key(id)
+    }
+
+    pub fn save_user_layout_preset(&mut self, name: &str) -> Result<String, String> {
+        if self.preferences.mode != InterfaceMode::Advanced {
+            return Err("User layout presets can only be saved in Advanced mode".into());
+        }
+        let name = name.trim();
+        if name.is_empty() || name.len() > 80 || name.chars().any(char::is_control) {
+            return Err("Layout preset name must be 1–80 printable characters".into());
+        }
+        let mut id_slug = name
+            .to_ascii_lowercase()
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+            .collect::<String>();
+        while id_slug.contains("--") {
+            id_slug = id_slug.replace("--", "-");
+        }
+        let id_slug = id_slug.trim_matches('-');
+        let id = if id_slug.is_empty() {
+            format!("user-{:016x}", stable_text_hash(name))
+        } else {
+            format!("user-{id_slug}")
+        };
+        if builtin_profile_ids().contains(&id.as_str()) {
+            return Err("Layout preset name conflicts with a built-in layout".into());
+        }
+        let mut next = self.preferences.clone();
+        let document = strip_preset_live_panels(self.dock.snapshot().document);
+        next.user_layout_presets.insert(
+            id.clone(),
+            UserLayoutPreset {
+                name: name.to_owned(),
+                document,
+            },
+        );
+        next.advanced_profile = id.clone();
+        match write_preferences_atomic(&self.preferences_path, &next) {
+            Ok(()) => {
+                self.preferences = next;
+                self.persistence_error = None;
+                self.save_layout();
+                Ok(id)
+            }
+            Err(error) => {
+                self.persistence_error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    pub fn delete_user_layout_preset(&mut self, id: &str) -> Result<(), String> {
+        if !self.preferences.user_layout_presets.contains_key(id) {
+            return Err(format!("Unknown user layout preset: {id}"));
+        }
+        let was_active = self.active_profile() == id;
+        let mut next = self.preferences.clone();
+        next.user_layout_presets.remove(id);
+        if was_active && next.advanced_profile == id {
+            next.advanced_profile = "default".into();
+        }
+        write_preferences_atomic(&self.preferences_path, &next)?;
+        self.preferences = next;
+        self.persistence_error = None;
+        if was_active {
+            self.apply_active_profile()?;
+        }
+        Ok(())
     }
 
     pub fn active_profile(&self) -> &str {
@@ -822,7 +919,7 @@ impl Workspace {
     }
 
     pub fn set_profile(&mut self, id: &str) -> Result<(), String> {
-        if !self.profile_ids().contains(&id) {
+        if !self.profile_ids().iter().any(|profile_id| profile_id == id) {
             return Err(format!("The {id} layout is unavailable in this mode."));
         }
         match self.preferences.mode {
@@ -1549,9 +1646,62 @@ impl Workspace {
 
     pub fn apply_active_profile(&mut self) -> Result<(), String> {
         let id = self.active_profile().to_owned();
+        if let Some(preset) = self.preferences.user_layout_presets.get(&id).cloned() {
+            self.apply_user_layout_preset(&preset.document)?;
+            return Ok(());
+        }
         let p = profile(&self.profiles, &id)?;
         apply_profile_to_service(&mut self.dock, p, &self.preferences, &self.session_reveals)?;
         self.save_layout();
+        Ok(())
+    }
+
+    fn apply_user_layout_preset(&mut self, saved: &LayoutDocument) -> Result<(), String> {
+        let current = self.dock.snapshot();
+        let mut target = saved.clone();
+        target.id = current.document.id.clone();
+        target.workspace = current.document.workspace.clone();
+        target.revision = current.revision;
+        let sessions = current
+            .document
+            .panels
+            .iter()
+            .filter(|panel| panel.role == "hermes_session_tile")
+            .cloned()
+            .collect::<Vec<_>>();
+        let session_ids = sessions
+            .iter()
+            .map(|panel| panel.id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut panels = target.panels.as_ref().clone();
+        panels.extend(sessions.iter().cloned());
+        target.panels = Arc::new(panels);
+        target
+            .closed_panels
+            .retain(|panel| !session_ids.contains(panel));
+        target.closed_panels.extend(
+            current
+                .document
+                .closed_panels
+                .iter()
+                .filter(|panel| session_ids.contains(panel))
+                .cloned(),
+        );
+        target.closed_panels.sort();
+        target.closed_panels.dedup();
+        let live = sessions
+            .iter()
+            .filter(|panel| !current.document.closed_panels.contains(&panel.id))
+            .cloned()
+            .collect::<Vec<_>>();
+        target.root = adopt_live_sessions(target.root.take(), &live, &current.document)?;
+        self.dock
+            .apply_layout(current.revision, &target)
+            .map_err(|error| error.to_string())?;
+        self.save_layout();
+        if self.persistence_error.is_some() {
+            return Err(self.persistence_error.clone().unwrap_or_default());
+        }
         Ok(())
     }
 
@@ -2064,6 +2214,392 @@ fn persistent_layout(mut document: LayoutDocument) -> LayoutDocument {
         document.maximized_panel = None;
     }
     document
+}
+
+fn builtin_profile_ids() -> [&'static str; 7] {
+    [
+        "default",
+        "basic",
+        "focus",
+        "terminal-deck",
+        "quad",
+        "sidebar-left",
+        "sidebar-right",
+    ]
+}
+
+fn builtin_profile_title(id: &str) -> &'static str {
+    match id {
+        "default" => "Default",
+        "basic" => "Basic",
+        "focus" => "Focus",
+        "terminal-deck" => "Terminal Deck",
+        "quad" => "Quad",
+        "sidebar-left" => "Sidebar Left",
+        "sidebar-right" => "Sidebar Right",
+        _ => "Default",
+    }
+}
+
+fn stable_text_hash(value: &str) -> u64 {
+    value.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+    })
+}
+
+fn strip_preset_live_panels(mut document: LayoutDocument) -> LayoutDocument {
+    let ephemeral = document
+        .panels
+        .iter()
+        .filter(|panel| {
+            panel.role == "hermes_session_tile" || panel.persistence == PersistencePolicy::Never
+        })
+        .map(|panel| panel.id.clone())
+        .collect::<BTreeSet<_>>();
+    if ephemeral.is_empty() {
+        return document;
+    }
+    document.root = document
+        .root
+        .as_deref()
+        .and_then(|root| prune_ephemeral_node(root, &ephemeral));
+    for window in &mut document.floating_windows {
+        if let Some(root) = prune_ephemeral_node(&window.root, &ephemeral) {
+            window.root = root;
+        }
+    }
+    document
+        .floating_windows
+        .retain(|window| !contains_ephemeral(&window.root, &ephemeral));
+    document.panels = Arc::new(
+        document
+            .panels
+            .iter()
+            .filter(|panel| !ephemeral.contains(&panel.id))
+            .cloned()
+            .collect(),
+    );
+    document
+        .closed_panels
+        .retain(|panel| !ephemeral.contains(panel));
+    document
+        .pinned_panels
+        .retain(|panel| !ephemeral.contains(panel));
+    document
+        .auto_hide_panels
+        .retain(|entry| !ephemeral.contains(&entry.panel));
+    if document
+        .maximized_panel
+        .as_ref()
+        .is_some_and(|panel| ephemeral.contains(panel))
+    {
+        document.maximized_panel = None;
+    }
+    document
+}
+
+fn adopt_live_sessions(
+    mut root: Option<Arc<Node>>,
+    sessions: &[PanelDescriptor],
+    previous: &LayoutDocument,
+) -> Result<Option<Arc<Node>>, String> {
+    if sessions.is_empty() {
+        return Ok(root);
+    }
+    let workspace = PanelId::from(WORKSPACE);
+    let active_session = active_panel_in_workspace_tabs(previous)
+        .filter(|panel| sessions.iter().any(|session| session.id == *panel));
+    let mut root_node = root
+        .take()
+        .ok_or_else(|| "Saved layout has no workspace root for open session tabs".to_owned())?;
+    if let Some((tabs, _)) = find_tab_for_panel(Some(&root_node), &workspace) {
+        if !append_session_nodes(&mut root_node, &tabs, sessions, active_session.as_ref()) {
+            return Err("Saved layout workspace tab group could not accept live sessions".into());
+        }
+    } else if find_panel_node(Some(&root_node), WORKSPACE).is_some() {
+        let mut items = vec![Node::panel("workspace-panel", WORKSPACE)];
+        items.extend(sessions.iter().map(|session| session_node(session)));
+        let active = active_session
+            .as_ref()
+            .and_then(|panel| sessions.iter().position(|session| &session.id == panel))
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        let replacement = Node::tabs("workspace-live-session-tabs", items, active);
+        root_node = replace_panel_node(root_node, &workspace, replacement).ok_or_else(|| {
+            "Saved layout workspace pane could not accept live sessions".to_owned()
+        })?;
+    } else {
+        return Err("Saved layout does not contain the Hermes workspace pane".into());
+    }
+    Ok(Some(root_node))
+}
+
+fn session_node(session: &PanelDescriptor) -> Arc<Node> {
+    Node::panel(format!("session-node-{}", session.id.0), session.id.clone())
+}
+
+fn active_panel_in_workspace_tabs(document: &LayoutDocument) -> Option<PanelId> {
+    fn walk(node: &Node, target: &PanelId) -> Option<PanelId> {
+        match &node.kind {
+            NodeKind::Tabs {
+                items,
+                active_index,
+                ..
+            } => {
+                if items
+                    .iter()
+                    .any(|item| matches!(&item.kind, NodeKind::Panel { panel } if panel == target))
+                {
+                    let active = items.get(*active_index)?;
+                    if let NodeKind::Panel { panel } = &active.kind {
+                        return Some(panel.clone());
+                    }
+                }
+                items.iter().find_map(|item| walk(item, target))
+            }
+            NodeKind::DocumentWell { groups, .. }
+            | NodeKind::Split {
+                children: groups, ..
+            }
+            | NodeKind::Extension {
+                children: groups, ..
+            } => groups.iter().find_map(|item| walk(item, target)),
+            NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => None,
+        }
+    }
+    document
+        .root
+        .as_deref()
+        .and_then(|root| walk(root, &PanelId::from(WORKSPACE)))
+}
+
+fn append_session_nodes(
+    root: &mut Arc<Node>,
+    tabs: &NodeId,
+    sessions: &[PanelDescriptor],
+    active_session: Option<&PanelId>,
+) -> bool {
+    if &root.id == tabs {
+        if let NodeKind::Tabs {
+            items,
+            active_index,
+            minimized,
+        } = &root.kind
+        {
+            let mut next = items.clone();
+            let workspace_index = next
+                .iter()
+                .position(
+                    |item| matches!(&item.kind, NodeKind::Panel { panel } if panel.0 == WORKSPACE),
+                )
+                .unwrap_or(0);
+            next.extend(sessions.iter().map(session_node));
+            let selected = active_session
+                .and_then(|panel| sessions.iter().position(|session| &session.id == panel))
+                .map(|index| items.len() + index)
+                .unwrap_or(
+                    (*active_index)
+                        .min(items.len().saturating_sub(1))
+                        .max(workspace_index),
+                );
+            *root = Arc::new(Node {
+                id: root.id.clone(),
+                kind: NodeKind::Tabs {
+                    items: next,
+                    active_index: selected,
+                    minimized: *minimized,
+                },
+            });
+            return true;
+        }
+        return false;
+    }
+    let mut changed = false;
+    let kind = match &root.kind {
+        NodeKind::Tabs {
+            items,
+            active_index,
+            minimized,
+        } => {
+            let mut next = items.clone();
+            for child in &mut next {
+                if append_session_nodes(child, tabs, sessions, active_session) {
+                    changed = true;
+                    break;
+                }
+            }
+            NodeKind::Tabs {
+                items: next,
+                active_index: *active_index,
+                minimized: *minimized,
+            }
+        }
+        NodeKind::Split {
+            orientation,
+            weights,
+            children,
+        } => {
+            let mut next = children.clone();
+            for child in &mut next {
+                if append_session_nodes(child, tabs, sessions, active_session) {
+                    changed = true;
+                    break;
+                }
+            }
+            NodeKind::Split {
+                orientation: *orientation,
+                weights: weights.clone(),
+                children: next,
+            }
+        }
+        NodeKind::DocumentWell {
+            groups,
+            active_group,
+        } => {
+            let mut next = groups.clone();
+            for child in &mut next {
+                if append_session_nodes(child, tabs, sessions, active_session) {
+                    changed = true;
+                    break;
+                }
+            }
+            NodeKind::DocumentWell {
+                groups: next,
+                active_group: *active_group,
+            }
+        }
+        NodeKind::Extension {
+            modality,
+            payload,
+            children,
+        } => {
+            let mut next = children.clone();
+            for child in &mut next {
+                if append_session_nodes(child, tabs, sessions, active_session) {
+                    changed = true;
+                    break;
+                }
+            }
+            NodeKind::Extension {
+                modality: modality.clone(),
+                payload: payload.clone(),
+                children: next,
+            }
+        }
+        NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => return false,
+    };
+    if changed {
+        *root = Arc::new(Node {
+            id: root.id.clone(),
+            kind,
+        });
+    }
+    changed
+}
+
+fn replace_panel_node(
+    root: Arc<Node>,
+    target: &PanelId,
+    replacement: Arc<Node>,
+) -> Option<Arc<Node>> {
+    if matches!(&root.kind, NodeKind::Panel { panel } if panel == target) {
+        return Some(replacement);
+    }
+    fn rewrite(node: &Arc<Node>, target: &PanelId, replacement: &Arc<Node>) -> (Arc<Node>, bool) {
+        if matches!(&node.kind, NodeKind::Panel { panel } if panel == target) {
+            return (replacement.clone(), true);
+        }
+        let (kind, changed) = match &node.kind {
+            NodeKind::Tabs {
+                items,
+                active_index,
+                minimized,
+            } => {
+                let (items, changed) = rewrite_children(items, target, replacement);
+                (
+                    NodeKind::Tabs {
+                        items,
+                        active_index: *active_index,
+                        minimized: *minimized,
+                    },
+                    changed,
+                )
+            }
+            NodeKind::Split {
+                orientation,
+                weights,
+                children,
+            } => {
+                let (children, changed) = rewrite_children(children, target, replacement);
+                (
+                    NodeKind::Split {
+                        orientation: *orientation,
+                        weights: weights.clone(),
+                        children,
+                    },
+                    changed,
+                )
+            }
+            NodeKind::DocumentWell {
+                groups,
+                active_group,
+            } => {
+                let (groups, changed) = rewrite_children(groups, target, replacement);
+                (
+                    NodeKind::DocumentWell {
+                        groups,
+                        active_group: *active_group,
+                    },
+                    changed,
+                )
+            }
+            NodeKind::Extension {
+                modality,
+                payload,
+                children,
+            } => {
+                let (children, changed) = rewrite_children(children, target, replacement);
+                (
+                    NodeKind::Extension {
+                        modality: modality.clone(),
+                        payload: payload.clone(),
+                        children,
+                    },
+                    changed,
+                )
+            }
+            NodeKind::Panel { .. } | NodeKind::Placeholder { .. } => return (node.clone(), false),
+        };
+        if changed {
+            (
+                Arc::new(Node {
+                    id: node.id.clone(),
+                    kind,
+                }),
+                true,
+            )
+        } else {
+            (node.clone(), false)
+        }
+    }
+    fn rewrite_children(
+        children: &[Arc<Node>],
+        target: &PanelId,
+        replacement: &Arc<Node>,
+    ) -> (Vec<Arc<Node>>, bool) {
+        let mut changed_any = false;
+        let children = children
+            .iter()
+            .map(|child| {
+                let (next, changed) = rewrite(child, target, replacement);
+                changed_any |= changed;
+                next
+            })
+            .collect();
+        (children, changed_any)
+    }
+    let (next, changed) = rewrite(&root, target, &replacement);
+    changed.then_some(next)
 }
 
 fn contains_ephemeral(node: &Node, ephemeral: &BTreeSet<PanelId>) -> bool {
@@ -4336,5 +4872,79 @@ mod tests {
         assert!(preferences.file_browser_open);
         assert!(preferences.sessions_sidebar_open);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn user_layout_presets_persist_geometry_and_retain_live_session_and_resting_panes() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-user-layout-preset-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        if workspace.pane_is_open(FILES) {
+            workspace.toggle_pane(FILES).unwrap();
+        }
+        let session = workspace
+            .open_session_pane(Some("work"), "preset-live-session", "Live session")
+            .unwrap();
+        let preset_id = workspace.save_user_layout_preset("My work deck").unwrap();
+        assert_eq!(preset_id, "user-my-work-deck");
+        assert_eq!(workspace.profile_title(&preset_id), "My work deck");
+        let saved = &workspace.preferences.user_layout_presets[&preset_id].document;
+        assert!(
+            saved.descriptor(&session).is_none(),
+            "live session descriptor is excluded from preset geometry"
+        );
+        assert!(!saved.closed_panels.contains(&session));
+        assert!(
+            saved.closed_panels.contains(&PanelId::from(FILES)),
+            "resting pane is retained in saved geometry"
+        );
+
+        workspace.set_profile("focus").unwrap();
+        workspace.set_profile(&preset_id).unwrap();
+        let applied = workspace.dock.snapshot().document;
+        assert!(
+            applied.descriptor(&session).is_some(),
+            "current session descriptor survives preset apply"
+        );
+        assert!(
+            !applied.closed_panels.contains(&session),
+            "open session remains open after preset apply"
+        );
+        assert!(
+            applied.closed_panels.contains(&PanelId::from(FILES)),
+            "saved hidden pane state is restored"
+        );
+        let (session_tabs, _) = find_tab_for_panel(applied.root.as_deref(), &session).unwrap();
+        let (workspace_tabs, _) =
+            find_tab_for_panel(applied.root.as_deref(), &PanelId::from(WORKSPACE)).unwrap();
+        assert_eq!(
+            session_tabs, workspace_tabs,
+            "session tabs are adopted by the workspace group"
+        );
+
+        drop(workspace);
+        let mut reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(reloaded.active_profile(), preset_id);
+        assert_eq!(reloaded.profile_title(&preset_id), "My work deck");
+        let persisted = reloaded.dock.snapshot().document;
+        assert!(persisted.descriptor(&session).is_some());
+        assert!(find_tab_for_panel(persisted.root.as_deref(), &session).is_some());
+        reloaded.delete_user_layout_preset(&preset_id).unwrap();
+        assert_eq!(reloaded.active_profile(), "default");
+        assert!(!reloaded.is_user_profile(&preset_id));
+        drop(reloaded);
+        let after_delete = Workspace::load_from(directory.clone()).unwrap();
+        assert!(
+            !after_delete.is_user_profile(&preset_id),
+            "deletion persists across restart"
+        );
+        drop(after_delete);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }

@@ -243,3 +243,10 @@ Command Center navigation and framing (2026-11-18T23:45:00Z): wide mode now foll
 - Implemented: an explicit click on an already-active stored-session row now queues a fresh, profile-scoped `session.resume` request. It replaces request ownership without clearing the live transcript/runtime/draft. The active request's snapshot refresh is correlated; stale completions cannot overwrite it; archive/delete in-flight rows do not resume. Headless tests verify the actual row click, one resume and no prompt submit.
 - Added gateway-actor loopback proof: refusal is reported for the first resume, retry streams start/delta events while the snapshot is pending, then applies the refreshed transcript and completion.
 - Still open: prove reattach against a live Hermes gateway during an in-flight turn, cover actual offline/reconnect behavior, implement the source's exact `(connectionId, profile)` session owner route, capture source/target Windows behavior, and record the required source-paired evidence. Formal acceptance stays pending.
+
+
+### Keybinding settings follow-up (2026-11-19)
+
+- Implemented app-data persistence, Settings navigation, searchable/collapsible keybinding UI, capture/cancel, clear/reset/reset-all, conflict display, and live dispatch for the ten currently supported native action IDs.
+- Headless tests cover the real Settings draw route, persisted override dispatch, Escape capture cancellation, existing palette/find flows, and the panel's search/capture/conflict/text-entry behavior.
+- Remains partial: physical Windows keyboard-layout behavior, every rebound action's runtime interaction, pinned-source conflict precedence/normalization comparison, and source-paired acceptance are unverified. No formal progress row was promoted.

@@ -1,5 +1,5 @@
 {
-  "revision": 13,
+  "revision": 16,
   "schema_version": 1,
   "tasks": [
     {
@@ -578,7 +578,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -587,11 +587,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T01:47:35Z",
+              "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
               "objective": "ui-persist-named-layout-profiles",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -602,10 +602,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0017",
               "title": "PAR-0017 Persist named layout profiles",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#user_layout_preset_picker_saves_and_lists_persisted_preset_headlessly"
+              ]
             },
             {
               "agent_identity": {
@@ -10760,7 +10762,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -10769,11 +10771,11 @@
                 "priority": "P2",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T01:47:36Z",
+              "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
               "objective": "ui-customize-keyboard-shortcuts",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -10784,15 +10786,17 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0333",
               "title": "PAR-0333 Customize keyboard shortcuts",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#persisted_keybinding_override_drives_the_native_shortcut_handler"
+              ]
             },
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -10801,11 +10805,11 @@
                 "priority": "P2",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T01:47:37Z",
+              "lease_id": "2a6a6aa5-7a79-4f7d-b69d-d40356aa59be",
               "objective": "ui-detect-shortcut-collisions",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -10816,10 +10820,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0334",
               "title": "PAR-0334 Detect shortcut collisions",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/keybindings.rs#conflicts_are_canonical_and_ordered_by_supported_action_list"
+              ]
             },
             {
               "agent_identity": {
@@ -16186,5 +16192,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T00:33:41Z"
+  "updated_at": "2026-11-19T01:47:37Z"
 }

@@ -320,14 +320,37 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0017": {
         "state": "partial",
-        "level": "headless_builtin_layout_profiles_and_persistence",
+        "level": "headless_custom_layout_save_apply_delete_and_picker",
         "refs": [
-            ".staging/hermes-pinned-878305/apps/desktop/src/components/pane-shell/tree/presets.ts#saveLayoutPresetTree",
-            "apps/hermes-native/src/layout.rs#fn source_profiles",
-            "apps/hermes-native/src/layout.rs#pub fn set_profile",
-            "apps/hermes-native/src/layout.rs#every_source_profile_projects_with_all_panels_open",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/pane-shell/tree/presets.ts#saveCurrentLayoutAs",
+            "apps/hermes-native/src/layout.rs#user_layout_presets_persist_geometry_and_retain_live_session_and_resting_panes",
+            "apps/hermes-native/src/app.rs#user_layout_preset_picker_saves_and_lists_persisted_preset_headlessly",
         ],
-        "gaps": ["native exposes source-defined built-in profiles but no user-created/custom named profile save, rename, or delete flow", "restart selection and physical/source-paired behavior remain unverified"],
+        "gaps": ["physical Windows pointer/keyboard behavior and formal pinned-source acceptance remain open", "visual source pairing is not recorded; presentation polish follows functional coverage per operator direction"],
+    },
+    "PAR-0333": {
+        "state": "partial",
+        "level": "headless_keybinding_settings_capture_persistence_and_dispatch",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/settings/keybind-settings.tsx#KeybindSettings",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/keybinds.ts#bindingsFor",
+            "apps/hermes-native/src/keybindings.rs#pub const NATIVE_ACTIONS",
+            "apps/hermes-native/src/keybindings_ui.rs#armed_capture_records_a_supported_combo_and_clear_reset_work",
+            "apps/hermes-native/src/app.rs#settings_route_switches_between_workspace_and_keybindings",
+            "apps/hermes-native/src/app.rs#persisted_keybinding_override_drives_the_native_shortcut_handler",
+        ],
+        "gaps": ["native editor exposes only ten actions with existing handlers; remaining pinned-source actions have no native implementation", "physical Windows keyboard-layout capture and formal pinned-source acceptance remain open"],
+    },
+    "PAR-0334": {
+        "state": "partial",
+        "level": "headless_keybinding_conflict_detection_and_visible_warning",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/keybinds.ts#conflictsFor",
+            "apps/hermes-native/src/keybindings.rs#conflicts_for",
+            "apps/hermes-native/src/keybindings.rs#conflicts_are_canonical_and_ordered_by_supported_action_list",
+            "apps/hermes-native/src/keybindings_ui.rs#conflict_warning_is_visible_and_reset_all_clears_overrides",
+        ],
+        "gaps": ["conflict precedence and collision behavior have not been compared against every pinned-source action", "physical keyboard and formal pinned-source acceptance remain open"],
     },
     "PAR-0018": {
         "state": "partial",
