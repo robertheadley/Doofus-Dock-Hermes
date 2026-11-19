@@ -2917,3 +2917,4 @@ UCM evidence addendum (2026-11-19T20:53Z): EV-0042 binds the PAR-0264 manual MCP
 - **performance:** One foreground bounded RPC per add; app prevents duplicate in-flight adds and server names already in the loaded inventory.
 - **risks:** Live secret-store behavior, OAuth handoff, server startup and installed Windows behavior remain unverified. Bearer token is masked in the form and sent separately from MCP config.
 - **follow_up:** Implement pinned MCP import/paste and passthrough environment rows; continue remove/catalog operations and verify against a running Gateway.
+UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP add, safe bearer secret transport and focused RPC/app/accessibility tests to behavior commit e72ab8590eeaf95b21ea537ba514d9622d9e2fbf. The capability remains partial pending import/passthrough, live secret/OAuth/runtime and source-paired acceptance.

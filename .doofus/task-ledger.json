@@ -1,5 +1,5 @@
 {
-  "revision": 44,
+  "revision": 45,
   "schema_version": 1,
   "tasks": [
     {
@@ -8528,7 +8528,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -8537,11 +8537,11 @@
                 "priority": "P2",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T21:18:02Z",
+              "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-add-mcp-server-via-http-or-stdio",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -8552,10 +8552,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0263",
               "title": "PAR-0263 Add MCP server via HTTP or stdio",
-              "verification_evidence": []
+              "verification_evidence": [
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0043.json#EV-0043"
+              ]
             },
             {
               "agent_identity": {
@@ -16252,5 +16254,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T20:57:42Z"
+  "updated_at": "2026-11-19T21:18:02Z"
 }

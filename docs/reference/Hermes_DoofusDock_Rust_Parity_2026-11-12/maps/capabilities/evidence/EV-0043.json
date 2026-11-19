@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0043",
+  "capability_id": "ui-add-mcp-server-via-http-or-stdio",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-mcp-server-add-http-stdio-and-bearer-secret",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "e72ab8590eeaf95b21ea537ba514d9622d9e2fbf",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust Gateway JSON-RPC fixture, Connectors app reducer and headless AccessKit rendering tests; no live Gateway, remote auth, secret store, OAuth handoff, installed UI or physical Windows input used.",
+  "notes": "Gateway actor test verifies mcp.servers.add with the active profile, HTTP config and dedicated bearer_token field; the parsed result contains only the safe server summary. App test exercises the registered action, validates submitted config/secret and ignores stale profile results before accepting the active endpoint receipt. Form payload test covers stdio command/args/env/cwd and HTTP URL/headers/bearer separation plus duplicate-key rejection. Headless AccessKit test renders accessible stdio and HTTP/bearer form controls. Test locators: apps/hermes-native/src/gateway.rs#mcp_server_add_uses_profile_scoped_rpc_and_keeps_bearer_out_of_result, apps/hermes-native/src/app.rs#mcp_server_add_sends_config_and_secret_and_fences_result, apps/hermes-native/src/app.rs#mcp_server_add_form_builds_stdio_and_http_payloads_without_plaintext_bearer_config, and apps/hermes-native/src/app.rs#mcp_server_add_form_renders_transport_controls_and_submit_accessibly. Pinned paste/import parsing and passthrough environment rows, live secret storage/OAuth, actual server startup, packaged UI and source-paired acceptance remain open; capability remains partial."
+}
