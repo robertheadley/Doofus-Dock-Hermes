@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0040",
+  "capability_id": "ui-browse-mcp-servers",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-mcp-server-inventory",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "f0836b5ae9d21b33d1b5453a0c9b58b6526b6a8c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust HTTP fixture and headless AccessKit test with synthetic profile data; no live Gateway, remote authenticated profile, installed UI or physical Windows input used.",
+  "notes": "The focused HTTP test confirms GET /api/mcp/servers?profile=home-bot uses the one-use X-Hermes-Gateway-Ticket and decodes the typed inventory. The AccessKit test confirms the Connectors view exposes MCP server name and tool count. Test locators: apps/hermes-native/src/gateway.rs#mcp_server_inventory_uses_profile_scoped_ticketed_get and apps/hermes-native/src/app.rs#connectors_directory_shows_connected_state_and_account_details. MCP mutation and catalog workflows, live runtime, remote auth and source-paired acceptance remain open; capability remains partial."
+}

@@ -2874,3 +2874,5 @@ UCM evidence addendum (2026-11-19T20:17Z): EV-0039 records the PAR-0254 per-skil
 - **performance:** Single bounded HTTP read on Connectors entry/refresh; existing worker and response limits apply.
 - **risks:** Add/edit/test/toggle/remove/catalog install are not implemented; live Gateway, remote auth and packaged Windows UI remain unverified. PyYAML is unavailable, so package validator skipped optional YAML parse.
 - **follow_up:** Implement MCP server enable/test mutations and catalog flows as separate reviewable slices.
+UCM evidence addendum (2026-11-19T20:33Z): EV-0040 binds the PAR-0262 MCP server inventory and focused HTTP/UI tests to behavior commit f0836b5ae9d21b33d1b5453a0c9b58b6526b6a8c. The capability remains partial pending mutation flows and live/source-paired acceptance.
+EV-0040 receipt write recovery (2026-11-19T20:34Z): the first atomic-write attempt failed before creating the file because its destination did not yet exist for Resolve-Path. The receipt was then written to a temp file in the verified evidence folder and atomically moved into place; evidence validator confirms it.
