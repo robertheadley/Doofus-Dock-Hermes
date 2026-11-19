@@ -2828,3 +2828,5 @@ UCM evidence addendum (2026-11-19T19:55Z): EV-0036 records installed Skills sear
 - **performance:** No material runtime change.
 - **risks:** Usage sort order, rendered interaction, profile switching, live Gateway and source-paired acceptance remain open.
 - **follow_up:** Match pinned usage ordering and add UI interaction/source-paired coverage.
+
+UCM evidence addendum (2026-11-19T19:58Z): EV-0037 records the Skills search field test and is bound to code/docs commit `a2d1608a36a9efc834cc24930671e928f6aa1172`; capability remains partial.

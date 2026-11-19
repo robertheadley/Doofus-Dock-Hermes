@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0037",
+  "capability_id": "ui-search-installed-skills",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "installed-skills-search-name-category-description",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "a2d1608a36a9efc834cc24930671e928f6aa1172",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust unit test and pinned Desktop source review; no live Gateway, installed UI, or physical Windows input used.",
+  "notes": "The focused native filter test passes for case-insensitive name, category, and description matching and empty-query listing. Pinned Desktop uses the same searchable fields but sorts by usage descending then skill name; native retains Gateway response order. Rendered search interactions, profile changes, live Gateway, physical Windows and source-paired acceptance remain open. Capability stays partial."
+}
