@@ -3103,3 +3103,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PyYAML is not installed, so optional YAML parsing was skipped; package validator passes. Live Gateway and installed Windows behavior remain unverified.
 - **follow_up:** Publish behavior and evidence commits on main and verify exact remote SHA equality.
+
+- **id:** hermes-par0042-main-publish
+- **timestamp:** 2026-11-19T23:32:00Z
+- **what:** Published PAR-0042 behavior commit `fc53c4dafb7d59fd157ce17b5447f5b0c709edca` and EV-0049 evidence commit `a677b049510bc81077fa6f7c472a6048749c6e65` directly to `main`; fresh fetch confirmed exact local/remote SHA equality.
+- **why:** Keep the main-only repository current and make the tested partial tool payload disclosure reviewable.
+- **components:** Hermes Native transcript tool rows, UCM receipt and projections, task ledger and implementation progress.
+- **type:** main publication
+- **validation:** PASS exact `HEAD == origin/main` at `a677b049510bc81077fa6f7c472a6048749c6e65`; full locked suite, workspace check, formatting, task/progress/UCM validators passed.
+- **performance:** Payload serialization is deferred until disclosure; 20,000-character rendering cap.
+- **risks:** Separate persisted tool-view preference, live Gateway, installed Windows behavior, and source-paired acceptance remain open.
+- **follow_up:** Continue with PAR-0044 generated tool-image rendering and enlarge behavior.
