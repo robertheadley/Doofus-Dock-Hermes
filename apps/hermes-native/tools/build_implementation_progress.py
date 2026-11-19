@@ -628,20 +628,34 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0267": {
         "state": "partial",
-        "level": "headless_profile_scoped_mcp_catalog_rpc_and_accessible_state_tests",
+        "level": "headless_profile_scoped_mcp_catalog_rest_and_accessible_state_tests",
         "refs": [
-            ".staging/hermes-pinned-878305/tui_gateway/contracts/tools_mcp_plugins.py#McpCatalogResult",
-            ".staging/hermes-pinned-878305/tui_gateway/methods_tools.py#mcp.catalog",
-            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/mcp/use-mcp-servers.ts#catalogQuery",
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/mcp.ts#getMcpCatalog",
+            ".staging/hermes-pinned-878305/hermes_cli/web_routers/mcp.py#list_mcp_catalog",
             "apps/hermes-native/src/gateway.rs#parse_mcp_catalog_result",
-            "apps/hermes-native/src/gateway.rs#mcp_catalog_uses_profile_scoped_rpc_and_validates_catalog_rows",
+            "apps/hermes-native/src/gateway.rs#mcp_catalog_uses_desktop_rest_contract_and_validates_install_metadata",
             "apps/hermes-native/src/app.rs#load_mcp_catalog",
             "apps/hermes-native/src/app.rs#mcp_catalog_load_is_profile_fenced_and_renders_accessible_states",
-            "apps/hermes-native/docs/PLAN.md#Revision 258",
+            "apps/hermes-native/docs/PLAN.md#Revision 259",
         ],
         "gaps": [
-            "catalog integration installation remains a separate capability",
             "live Gateway, remote profile, installed Windows UI and source-paired acceptance remain unverified",
+        ],
+    },
+    "PAR-0268": {
+        "state": "partial",
+        "level": "headless_profile_scoped_secret_safe_install_and_background_action_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/mcp.ts#installMcpCatalogEntry",
+            ".staging/hermes-pinned-878305/hermes_cli/web_routers/mcp.py#install_mcp_catalog_entry",
+            "apps/hermes-native/src/gateway.rs#mcp_catalog_install_posts_profile_scoped_env_and_returns_background_action",
+            "apps/hermes-native/src/gateway.rs#mcp_catalog_install_http_failure_does_not_echo_credentials",
+            "apps/hermes-native/src/app.rs#mcp_catalog_install_masks_required_values_and_tracks_background_action",
+            "apps/hermes-native/src/app.rs#mcp_catalog_install_disconnect_marks_sync_outcome_uncertain",
+            "apps/hermes-native/docs/PLAN.md#Revision 260",
+        ],
+        "gaps": [
+            "live Gateway secret persistence, authenticated remote behavior, installed Windows behavior and source-paired acceptance remain unverified",
         ],
     },
     "PAR-0252": {

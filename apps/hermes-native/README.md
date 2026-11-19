@@ -1,6 +1,6 @@
 # Hermes Native Rust
 
-Current delivery scope is complete, verified support for chat, tools, skills, MCP integrations, and plugins from pinned Hermes Desktop snapshot `8783054ef6cbafd86f10892241436862c1171a66`, tracked separately in `docs/status/CHAT_TOOL_SCOPE.csv` and `docs/status/CHAT_TOOL_PROGRESS.csv`. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory. Doofus Hermes will be backported after this scope is complete.
+The delivery goal is verified support for chat, tools, skills, MCP integrations, and plugins from pinned Hermes Desktop snapshot `8783054ef6cbafd86f10892241436862c1171a66`, tracked separately in `docs/status/CHAT_TOOL_SCOPE.csv` and `docs/status/CHAT_TOOL_PROGRESS.csv`. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory. Doofus Hermes will be backported after this scope is complete.
 
 Independent native Rust/egui implementation of the stock upstream Hermes Desktop GUI. It uses the Hermes Python gateway as the runtime and DoofusDock for canonical workspace layouts, profiles, docking and presentation.
 
@@ -13,7 +13,7 @@ The source pin and source tree evidence are recorded in `docs/SOURCE_AUDIT.md`. 
 
 For the distinction between partial engineering progress, local/headless evidence and strict pinned-source acceptance, see [docs/COMPLETION_OVERVIEW.md](docs/COMPLETION_OVERVIEW.md) and its [requirement-level progress ledger](docs/status/IMPLEMENTATION_PROGRESS.csv). The 491-row supplemental inventory validator is not a completion score; the fixed parity gate remains 0/499 accepted until source-paired evidence is reviewed.
 
-The current scoped ledger maps 28/173 chat/tool requirements (1 implemented, 27 partial); all 173 still need live-runtime and source-paired acceptance. Recent progress includes profile-scoped MCP inventory, catalog browsing, add, enable/disable, test, and confirmed removal. MCP paste/import, automatic connection-probe caching, and integration installation remain open.
+The current scoped ledger maps 29/173 chat/tool requirements (1 implemented, 28 partial); all 173 still need live-runtime and source-paired acceptance. Recent progress includes profile-scoped MCP inventory, REST catalog browsing, add, enable/disable, test, confirmed removal, and curated catalog installation with masked credential prompts and background action tracking. MCP paste/import, automatic connection-probe caching, real Gateway secret persistence, Windows interaction, and source-paired acceptance remain open.
 
 The pinned Hermes Bots pane is available as a HideOnly tab beside Sessions. Its first native slice reads and validates the active gateway profile's `profiles.list`, renders the current rows, retains last-good data through transient refresh errors, and exposes those same rows in the headless automation state. It is read-only and partial: cross-gateway agent union, Bot Mode plugin lifecycle, management actions, groups/activity and source-paired acceptance remain open.
 

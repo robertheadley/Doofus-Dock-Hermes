@@ -1468,7 +1468,7 @@ pub struct McpServersSnapshot {
     pub servers: Vec<McpServerSummary>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct McpCatalogEntry {
     pub name: String,
     #[serde(default)]
@@ -1482,13 +1482,72 @@ pub struct McpCatalogEntry {
     #[serde(default)]
     pub requires: Vec<String>,
     #[serde(default)]
+    pub required_env: Vec<McpCatalogEnvSpec>,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub auth_type: String,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub install_url: Option<String>,
+    #[serde(default)]
+    pub install_ref: Option<String>,
+    #[serde(default)]
+    pub bootstrap: Vec<String>,
+    #[serde(default)]
+    pub default_enabled: Option<Vec<String>>,
+    #[serde(default)]
+    pub post_install: String,
+    #[serde(default)]
+    pub needs_install: bool,
+    #[serde(default)]
     pub transport: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct McpCatalogEnvSpec {
+    pub name: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub required: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct McpCatalogSnapshot {
     #[serde(default)]
+    #[serde(alias = "entries")]
     pub servers: Vec<McpCatalogEntry>,
+    #[serde(default)]
+    pub diagnostics: Vec<McpCatalogDiagnostic>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct McpCatalogDiagnostic {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct McpCatalogInstallReceipt {
+    pub ok: bool,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub pid: Option<u32>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub background: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -2034,6 +2093,22 @@ pub enum GatewayEvent {
         authority_epoch: u64,
         result: Result<McpCatalogSnapshot, String>,
     },
+    McpCatalogInstallCompleted {
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<McpCatalogInstallReceipt, String>,
+    },
+    McpCatalogInstallStatusLoaded {
+        request_id: String,
+        action_name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<GatewayActionStatus, String>,
+    },
     McpServerEnabledUpdated {
         request_id: String,
         name: String,
@@ -2248,12 +2323,6 @@ enum GatewayCommand {
         instance_id: String,
         authority_epoch: u64,
     },
-    LoadMcpCatalog {
-        request_id: String,
-        profile_id: String,
-        instance_id: String,
-        authority_epoch: u64,
-    },
     DeleteProject {
         request_id: String,
         project_id: String,
@@ -2435,6 +2504,27 @@ enum GatewayHttpCommand {
     },
     LoadMcpServers {
         request_id: String,
+    },
+    LoadMcpCatalog {
+        request_id: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    InstallMcpCatalogEntry {
+        request_id: String,
+        name: String,
+        env: BTreeMap<String, Zeroizing<String>>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    LoadMcpCatalogInstallStatus {
+        request_id: String,
+        action_name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
     },
     SetMcpServerEnabled {
         request_id: String,
@@ -2673,6 +2763,27 @@ pub(crate) enum TestGatewayCommand {
         attachments: Vec<GatewayPromptAttachment>,
     },
     Other,
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum TestMcpCatalogCommand {
+    Install {
+        request_id: String,
+        name: String,
+        env: BTreeMap<String, Zeroizing<String>>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    Status {
+        request_id: String,
+        action_name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
 }
 
 struct CronTriggerCommand {
@@ -3403,9 +3514,9 @@ impl GatewayDiscovery {
     ) {
         let (_status_sender, status_receiver) = mpsc::channel();
         let (event_sender, event_receiver) = mpsc::channel();
-        let (command_sender, command_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
         let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
-        let (http_sender, _http_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
         let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
         let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
         let (artifact_sender, _artifact_receiver) = mpsc::channel();
@@ -3413,8 +3524,8 @@ impl GatewayDiscovery {
         let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
         let (request_sender, request_receiver) = mpsc::channel();
         thread::spawn(move || {
-            while let Ok(command) = command_receiver.recv() {
-                if let GatewayCommand::LoadMcpCatalog {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::LoadMcpCatalog {
                     request_id,
                     profile_id,
                     instance_id,
@@ -3424,6 +3535,80 @@ impl GatewayDiscovery {
                         .send((request_id, profile_id, instance_id, authority_epoch))
                         .is_err()
                 {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_mcp_catalog_install() -> (
+        Self,
+        Receiver<TestMcpCatalogCommand>,
+        mpsc::Sender<GatewayEvent>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                let observed = match command {
+                    GatewayHttpCommand::InstallMcpCatalogEntry {
+                        request_id,
+                        name,
+                        env,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                    } => TestMcpCatalogCommand::Install {
+                        request_id,
+                        name,
+                        env,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                    },
+                    GatewayHttpCommand::LoadMcpCatalogInstallStatus {
+                        request_id,
+                        action_name,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                    } => TestMcpCatalogCommand::Status {
+                        request_id,
+                        action_name,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                    },
+                    _ => continue,
+                };
+                if request_sender.send(observed).is_err() {
                     break;
                 }
             }
@@ -4519,14 +4704,57 @@ impl GatewayDiscovery {
         instance_id: String,
         authority_epoch: u64,
     ) -> Result<(), String> {
-        self.command_sender
-            .send(GatewayCommand::LoadMcpCatalog {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadMcpCatalog {
                 request_id,
                 profile_id,
                 instance_id,
                 authority_epoch,
             })
             .map_err(|_| "Hermes MCP catalog reader has closed".to_owned())
+    }
+
+    pub fn install_mcp_catalog_entry(
+        &self,
+        request_id: String,
+        name: String,
+        env: BTreeMap<String, String>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::InstallMcpCatalogEntry {
+                request_id,
+                name,
+                env: env
+                    .into_iter()
+                    .map(|(key, value)| (key, Zeroizing::new(value)))
+                    .collect(),
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes MCP catalog installer has closed".to_owned())
+    }
+
+    pub fn load_mcp_catalog_install_status(
+        &self,
+        request_id: String,
+        action_name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadMcpCatalogInstallStatus {
+                request_id,
+                action_name,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes MCP catalog installer status reader has closed".to_owned())
     }
 
     pub fn set_mcp_server_enabled(
@@ -5613,37 +5841,6 @@ fn gateway_actor(
                     .send(GatewayEvent::BotRosterLoaded {
                         request_id,
                         profile,
-                        result,
-                    })
-                    .is_err()
-                {
-                    return;
-                }
-            }
-            Ok(GatewayCommand::LoadMcpCatalog {
-                request_id,
-                profile_id,
-                instance_id,
-                authority_epoch,
-            }) => {
-                let result = session_profile_params(serde_json::json!({}), Some(&profile_id))
-                    .and_then(|params| {
-                        rpc_with_events(
-                            socket,
-                            next_request_id,
-                            "mcp.catalog",
-                            params,
-                            Some(&events),
-                        )
-                    })
-                    .and_then(parse_mcp_catalog_result);
-                next_request_id = next_request_id.saturating_add(1);
-                if events
-                    .send(GatewayEvent::McpCatalogLoaded {
-                        request_id,
-                        profile_id,
-                        instance_id,
-                        authority_epoch,
                         result,
                     })
                     .is_err()
@@ -8213,6 +8410,54 @@ fn gateway_http_actor(
             }
             continue;
         }
+        if let GatewayHttpCommand::InstallMcpCatalogEntry {
+            request_id,
+            name,
+            env,
+            profile_id,
+            instance_id,
+            authority_epoch,
+        } = command
+        {
+            let endpoint = endpoint.clone();
+            let events = events.clone();
+            let failed_events = events.clone();
+            let failed_request_id = request_id.clone();
+            let failed_name = name.clone();
+            let failed_profile_id = profile_id.clone();
+            let failed_instance_id = instance_id.clone();
+            let worker = thread::Builder::new()
+                .name("hermes-mcp-catalog-install".into())
+                .spawn(move || {
+                    let result = if endpoint.profile_id != profile_id
+                        || endpoint.instance_id != instance_id
+                        || endpoint.authority_epoch != authority_epoch
+                    {
+                        Err("Hermes MCP catalog install belongs to a stale connection".into())
+                    } else {
+                        install_mcp_catalog_http(&endpoint, &name, env)
+                    };
+                    let _ = events.send(GatewayEvent::McpCatalogInstallCompleted {
+                        request_id,
+                        name,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                        result,
+                    });
+                });
+            if worker.is_err() {
+                let _ = failed_events.send(GatewayEvent::McpCatalogInstallCompleted {
+                    request_id: failed_request_id,
+                    name: failed_name,
+                    profile_id: failed_profile_id,
+                    instance_id: failed_instance_id,
+                    authority_epoch,
+                    result: Err("Could not start the MCP catalog install worker".into()),
+                });
+            }
+            continue;
+        }
         // Preserve FIFO and never coalesce a write. Search is already debounced
         // by the UI; each accepted mutation must produce its own receipt.
         let event = match command {
@@ -8286,6 +8531,25 @@ fn gateway_http_actor(
                 profile_id: endpoint.profile_id.clone(),
                 result: load_mcp_servers_http(&endpoint),
             },
+            GatewayHttpCommand::LoadMcpCatalog {
+                request_id,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            } => GatewayEvent::McpCatalogLoaded {
+                request_id,
+                profile_id: profile_id.clone(),
+                instance_id: instance_id.clone(),
+                authority_epoch,
+                result: if endpoint.profile_id != profile_id
+                    || endpoint.instance_id != instance_id
+                    || endpoint.authority_epoch != authority_epoch
+                {
+                    Err("Hermes MCP catalog request belongs to a stale connection".into())
+                } else {
+                    load_mcp_catalog_http(&endpoint)
+                },
+            },
             GatewayHttpCommand::SetMcpServerEnabled {
                 request_id,
                 name,
@@ -8299,6 +8563,30 @@ fn gateway_http_actor(
                 enabled,
                 result: set_mcp_server_enabled_http(&endpoint, &name, enabled),
             },
+            GatewayHttpCommand::LoadMcpCatalogInstallStatus {
+                request_id,
+                action_name,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            } => GatewayEvent::McpCatalogInstallStatusLoaded {
+                request_id,
+                action_name: action_name.clone(),
+                profile_id: profile_id.clone(),
+                instance_id: instance_id.clone(),
+                authority_epoch,
+                result: if endpoint.profile_id != profile_id
+                    || endpoint.instance_id != instance_id
+                    || endpoint.authority_epoch != authority_epoch
+                {
+                    Err("Hermes MCP catalog install status belongs to a stale connection".into())
+                } else {
+                    load_gateway_action_status_http(&endpoint, &action_name, Some(&profile_id))
+                },
+            },
+            GatewayHttpCommand::InstallMcpCatalogEntry { .. } => {
+                unreachable!("MCP catalog installs are dispatched to their bounded worker")
+            }
             GatewayHttpCommand::TestMcpServer { .. } => {
                 unreachable!("MCP server tests are dispatched to their bounded UI request worker")
             }
@@ -11449,6 +11737,167 @@ fn load_mcp_servers_http(endpoint: &GatewayEndpoint) -> Result<McpServersSnapsho
     validate_mcp_servers(snapshot)
 }
 
+fn load_mcp_catalog_http(endpoint: &GatewayEndpoint) -> Result<McpCatalogSnapshot, String> {
+    let url = format!(
+        "{}/api/mcp/catalog{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(&endpoint.profile_id)
+    );
+    if endpoint.remote_auth.is_some() {
+        let snapshot: serde_json::Value =
+            profile_scoped_gateway_http_request(endpoint, "GET", &url, None)?;
+        return parse_mcp_catalog_result(snapshot);
+    }
+    let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+    read_mcp_catalog(&endpoint.api_origin, &ticket, &endpoint.profile_id)
+}
+
+#[derive(Serialize)]
+struct McpCatalogInstallPayload<'a> {
+    name: &'a str,
+    env: BTreeMap<&'a str, &'a str>,
+    enable: bool,
+}
+
+fn install_mcp_catalog_http(
+    endpoint: &GatewayEndpoint,
+    name: &str,
+    env: BTreeMap<String, Zeroizing<String>>,
+) -> Result<McpCatalogInstallReceipt, String> {
+    if name.trim().is_empty()
+        || name.trim() != name
+        || name.len() > 512
+        || name.chars().any(char::is_control)
+        || endpoint.profile_id.is_empty()
+        || endpoint.profile_id.len() > 128
+        || endpoint.profile_id.chars().any(char::is_control)
+        || env.len() > 1024
+        || env.iter().any(|(key, value)| {
+            key.trim().is_empty()
+                || key.len() > 512
+                || key.chars().any(char::is_control)
+                || value.len() > 16_384
+                || value.chars().any(char::is_control)
+        })
+    {
+        return Err("MCP catalog install request is invalid or oversized".into());
+    }
+    let env_refs = env
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    let payload = McpCatalogInstallPayload {
+        name,
+        env: env_refs,
+        enable: true,
+    };
+    let body = Zeroizing::new(
+        serde_json::to_string(&payload)
+            .map_err(|_| "Could not encode MCP catalog install request".to_owned())?,
+    );
+    let url = format!(
+        "{}/api/mcp/catalog/install{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(&endpoint.profile_id)
+    );
+    let response: serde_json::Value = request_profile_scoped_post_json_body(
+        endpoint,
+        &url,
+        body.as_str(),
+        Duration::from_secs(60),
+    )?;
+    let receipt: McpCatalogInstallReceipt = serde_json::from_value(response)
+        .map_err(|_| "Hermes returned an invalid MCP catalog install receipt".to_owned())?;
+    if !receipt.ok
+        || receipt
+            .name
+            .as_deref()
+            .is_some_and(|reported| reported != name)
+        || receipt.pid.is_some_and(|pid| pid == 0)
+        || (receipt.background
+            && receipt
+                .action
+                .as_deref()
+                .is_none_or(|action| validate_action_name(action).is_err()))
+    {
+        return Err("Hermes did not confirm the requested MCP catalog install".into());
+    }
+    drop(env);
+    Ok(receipt)
+}
+
+fn request_profile_scoped_post_json_body<T: DeserializeOwned>(
+    endpoint: &GatewayEndpoint,
+    url: &str,
+    body: &str,
+    timeout: Duration,
+) -> Result<T, String> {
+    if !api_url_is_within_origin(&endpoint.api_origin, url) {
+        return Err("MCP catalog install API target is invalid".into());
+    }
+    let builder = ureq::Agent::config_builder().timeout_global(Some(timeout));
+    let builder = if endpoint.remote_auth.is_none() {
+        builder.proxy(None)
+    } else {
+        builder
+    };
+    let agent: ureq::Agent = builder.max_redirects(0).build().into();
+    let request = agent
+        .post(url)
+        .header("Accept", "application/json")
+        .header("Content-Type", "application/json");
+    let response = if endpoint.remote_auth.is_some() {
+        match remote_http_auth(endpoint)? {
+            RemoteHttpAuth::SessionToken(token) => request
+                .header("X-Hermes-Session-Token", token.as_str())
+                .send(body),
+            RemoteHttpAuth::Bearer(token) => request
+                .header("Authorization", &format!("Bearer {}", token.as_str()))
+                .send(body),
+        }
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("MCP catalog install requires the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        request
+            .header("X-Hermes-Gateway-Ticket", ticket.as_str())
+            .send(body)
+    }
+    .map_err(|_| "Hermes MCP catalog install request failed".to_owned())?;
+    let mut bytes = Vec::new();
+    response
+        .into_body()
+        .into_reader()
+        .take(GATEWAY_HTTP_RESPONSE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Could not read Hermes MCP catalog install response".to_owned())?;
+    if bytes.len() as u64 > GATEWAY_HTTP_RESPONSE_LIMIT {
+        return Err("Hermes MCP catalog install response exceeded 512 KiB".into());
+    }
+    serde_json::from_slice(&bytes)
+        .map_err(|_| "Hermes returned invalid MCP catalog install JSON".to_owned())
+}
+
+fn read_mcp_catalog(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+) -> Result<McpCatalogSnapshot, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err("Hermes MCP catalog reads require the verified loopback API origin".into());
+    }
+    let url = format!(
+        "{}/api/mcp/catalog{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let snapshot: serde_json::Value = request_gateway_json(api_origin, ticket, &url)?;
+    parse_mcp_catalog_result(snapshot)
+}
+
 fn read_mcp_servers(
     api_origin: &str,
     ticket: &str,
@@ -11500,9 +11949,10 @@ fn validate_mcp_servers(snapshot: McpServersSnapshot) -> Result<McpServersSnapsh
 }
 
 fn parse_mcp_catalog_result(response: serde_json::Value) -> Result<McpCatalogSnapshot, String> {
-    let snapshot: McpCatalogSnapshot = serde_json::from_value(response)
+    let mut snapshot: McpCatalogSnapshot = serde_json::from_value(response)
         .map_err(|_| "Hermes returned an invalid MCP catalog response".to_owned())?;
     if snapshot.servers.len() > 10_000
+        || snapshot.diagnostics.len() > 10_000
         || snapshot.servers.iter().any(|entry| {
             entry.name.trim().is_empty()
                 || entry.name.len() > 512
@@ -11519,9 +11969,65 @@ fn parse_mcp_catalog_result(response: serde_json::Value) -> Result<McpCatalogSna
                 || entry.requires.iter().any(|key| {
                     key.trim().is_empty() || key.len() > 512 || key.chars().any(char::is_control)
                 })
+                || entry.required_env.len() > 1024
+                || entry.required_env.iter().any(|spec| {
+                    spec.name.trim().is_empty()
+                        || spec.name.len() > 512
+                        || spec.name.chars().any(char::is_control)
+                        || spec.prompt.len() > 4096
+                        || spec.prompt.chars().any(char::is_control)
+                })
+                || entry.source.len() > 512
+                || entry.source.chars().any(char::is_control)
+                || entry.auth_type.len() > 128
+                || entry.auth_type.chars().any(char::is_control)
+                || entry.command.as_ref().is_some_and(|value| {
+                    value.len() > 16_384 || value.chars().any(char::is_control)
+                })
+                || entry.args.len() > 1024
+                || entry
+                    .args
+                    .iter()
+                    .any(|value| value.len() > 16_384 || value.chars().any(char::is_control))
+                || [&entry.url, &entry.install_url, &entry.install_ref]
+                    .into_iter()
+                    .flatten()
+                    .any(|value| value.len() > 16_384 || value.chars().any(char::is_control))
+                || entry.bootstrap.len() > 1024
+                || entry
+                    .bootstrap
+                    .iter()
+                    .any(|value| value.len() > 16_384 || value.chars().any(char::is_control))
+                || entry.post_install.len() > 32_768
+                || entry.post_install.chars().any(char::is_control)
+                || entry.default_enabled.as_ref().is_some_and(|names| {
+                    names.len() > 10_000
+                        || names.iter().any(|value| {
+                            value.trim().is_empty()
+                                || value.len() > 512
+                                || value.chars().any(char::is_control)
+                        })
+                })
+        })
+        || snapshot.diagnostics.iter().any(|diagnostic| {
+            diagnostic.name.len() > 512
+                || diagnostic.name.chars().any(char::is_control)
+                || diagnostic.kind.len() > 128
+                || diagnostic.kind.chars().any(char::is_control)
+                || diagnostic.message.len() > 32_768
+                || diagnostic.message.chars().any(char::is_control)
         })
     {
         return Err("Hermes returned an invalid MCP catalog entry".into());
+    }
+    for entry in &mut snapshot.servers {
+        if entry.requires.is_empty() {
+            entry.requires = entry
+                .required_env
+                .iter()
+                .map(|spec| spec.name.clone())
+                .collect();
+        }
     }
     Ok(snapshot)
 }
@@ -19955,75 +20461,152 @@ mod tests {
     }
 
     #[test]
-    fn mcp_catalog_uses_profile_scoped_rpc_and_validates_catalog_rows() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+    fn mcp_catalog_uses_desktop_rest_contract_and_validates_install_metadata() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
         let address = listener.local_addr().expect("fixture address");
         let server = thread::spawn(move || {
-            let (stream, _) = listener.accept().expect("accept fixture client");
-            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
-            let request: serde_json::Value = match socket.read().expect("read MCP catalog") {
-                Message::Text(text) => serde_json::from_str(&text).expect("parse MCP catalog"),
-                other => panic!("expected MCP catalog text, got {other:?}"),
-            };
-            assert_eq!(request["method"], "mcp.catalog");
-            assert_eq!(request["params"]["profile"], "home-bot");
-            assert_eq!(request["params"].as_object().unwrap().len(), 1);
-            let id = request["id"].as_u64().expect("RPC id");
-            socket
-                .send(Message::Text(
-                    json!({
-                        "jsonrpc":"2.0",
-                        "id":id,
-                        "result":{"servers":[
-                            {"name":"docs","description":"Search docs","connector_slug":"docs-search","installed":true,"enabled":false,"requires":["DOCS_TOKEN"],"transport":"stdio"},
-                            {"name":"calendar","description":"Calendar tools","installed":false,"enabled":false,"requires":[],"transport":"http"}
-                        ]}
-                    })
-                    .to_string()
-                    .into(),
-                ))
-                .expect("return MCP catalog");
-            socket.close(None).expect("close fixture WebSocket");
+            let (mut stream, _) = listener.accept().expect("accept MCP catalog request");
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            loop {
+                let count = stream.read(&mut buffer).expect("read catalog request");
+                if count == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buffer[..count]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let request = String::from_utf8(request).expect("HTTP request is ASCII");
+            assert!(request.starts_with("GET /api/mcp/catalog?profile=home-bot HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-mcp-catalog-ticket\r\n")
+            );
+            let body = json!({"entries":[
+                {"name":"docs","description":"Search docs","connector_slug":"docs-search","source":"bundled","transport":"stdio","auth_type":"api_key","required_env":[{"name":"DOCS_TOKEN","prompt":"API token","required":true}],"command":"uvx","args":["mcp-server-docs"],"installed":false,"enabled":false,"needs_install":false},
+                {"name":"calendar","description":"Calendar tools","source":"community","transport":"http","auth_type":"none","required_env":[],"url":"https://mcp.example","install_url":"https://github.com/example/calendar","install_ref":"main","bootstrap":["uv sync"],"needs_install":true,"installed":false,"enabled":false}
+            ],"diagnostics":[{"name":"bad-entry","kind":"manifest","message":"Skipped invalid entry"}]}).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).expect("write catalog response");
         });
-        let (mut socket, _) =
-            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
-        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
-            stream
-                .set_read_timeout(Some(Duration::from_millis(50)))
-                .expect("configure fixture client read timeout");
-        }
-        let (command_tx, command_rx) = mpsc::channel();
-        let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
-        command_tx
-            .send(GatewayCommand::LoadMcpCatalog {
-                request_id: "mcp-catalog-1".into(),
-                profile_id: "home-bot".into(),
-                instance_id: "gateway-home-bot".into(),
-                authority_epoch: 12,
-            })
-            .expect("queue MCP catalog");
-        assert!(matches!(
-            event_rx.recv_timeout(Duration::from_secs(3)).expect("catalog result"),
-            GatewayEvent::McpCatalogLoaded {
-                request_id,
-                profile_id,
-                instance_id,
-                authority_epoch: 12,
-                result: Ok(McpCatalogSnapshot { servers }),
-            } if request_id == "mcp-catalog-1" && profile_id == "home-bot"
-                && instance_id == "gateway-home-bot" && servers.len() == 2
-                && servers[0].connector_slug.as_deref() == Some("docs-search")
-                && servers[0].requires == ["DOCS_TOKEN"]
-                && !servers[0].enabled && !servers[1].installed
-        ));
-        drop(command_tx);
-        actor.join().expect("gateway actor exits after peer close");
-        server.join().expect("fixture server exits");
+
+        let snapshot = read_mcp_catalog(
+            &format!("http://{address}"),
+            "fixture-mcp-catalog-ticket",
+            "home-bot",
+        )
+        .expect("read REST MCP catalog");
+        assert_eq!(snapshot.servers.len(), 2);
+        assert_eq!(snapshot.servers[0].required_env[0].name, "DOCS_TOKEN");
+        assert_eq!(snapshot.servers[0].requires, ["DOCS_TOKEN"]);
+        assert!(snapshot.servers[1].needs_install);
+        assert_eq!(snapshot.servers[1].bootstrap, ["uv sync"]);
+        assert_eq!(snapshot.diagnostics[0].kind, "manifest");
+        server.join().expect("MCP catalog fixture exits");
         assert!(
-            parse_mcp_catalog_result(json!({"servers":[{"name":"  ","transport":"stdio"}]}))
+            parse_mcp_catalog_result(json!({"entries":[{"name":"  ","transport":"stdio"}]}))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn mcp_catalog_install_posts_profile_scoped_env_and_returns_background_action() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind MCP catalog install fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept install request");
+            let request = read_http_fixture_request(&mut stream);
+            let (headers, body) = request.split_once("\r\n\r\n").expect("HTTP body");
+            assert!(headers.starts_with(
+                "POST /hermes/api/mcp/catalog/install?profile=remote-profile HTTP/1.1\r\n"
+            ));
+            assert!(
+                headers
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-install-token"),
+                "headers: {headers:?}"
+            );
+            let body: serde_json::Value = serde_json::from_str(body).expect("install JSON");
+            assert_eq!(body["name"], "calendar");
+            assert_eq!(body["env"]["CALENDAR_TOKEN"], "private-install-secret");
+            assert_eq!(body["enable"], true);
+            let response = json!({"ok":true,"name":"calendar","background":true,"action":"mcp-install-calendar-abc12345"}).to_string();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response.len(), response
+            )
+            .expect("write install response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "remote-profile".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-install-token".into(),
+            ))),
+        };
+        let env = BTreeMap::from([(
+            "CALENDAR_TOKEN".into(),
+            Zeroizing::new("private-install-secret".into()),
+        )]);
+        let receipt =
+            install_mcp_catalog_http(&endpoint, "calendar", env).expect("catalog install receipt");
+        assert!(receipt.ok);
+        assert!(receipt.background);
+        assert_eq!(
+            receipt.action.as_deref(),
+            Some("mcp-install-calendar-abc12345")
+        );
+        server.join().expect("install fixture exits");
+    }
+
+    #[test]
+    fn mcp_catalog_install_http_failure_does_not_echo_credentials() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind failing install fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept install request");
+            let _request = read_http_fixture_request(&mut stream);
+            let response = "{\"detail\":\"private-install-secret rejected\"}";
+            write!(
+                stream,
+                "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response.len(), response
+            )
+            .expect("write failed install response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "remote-profile".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-install-token".into(),
+            ))),
+        };
+        let env = BTreeMap::from([(
+            "CALENDAR_TOKEN".into(),
+            Zeroizing::new("private-install-secret".into()),
+        )]);
+        let error = install_mcp_catalog_http(&endpoint, "calendar", env)
+            .expect_err("rejected install should not report success");
+        assert!(!error.contains("private-install-secret"));
+        assert_eq!(error, "Hermes MCP catalog install request failed");
+        server.join().expect("failing install fixture exits");
     }
 
     #[test]

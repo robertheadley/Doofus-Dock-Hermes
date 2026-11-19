@@ -2996,3 +2996,29 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime change.
 - **risks:** Live Gateway, remote profile, installed Windows behavior and source-paired acceptance remain unverified.
 - **follow_up:** Continue with separate MCP catalog installation and remaining chat/tool/skills/plugins gaps.
+
+### PAR-0268 — MCP catalog install and Desktop REST contract (2026-11-19T22:28Z)
+
+- **id:** hermes-par0268-mcp-catalog-install-20261119
+- **timestamp:** 2026-11-19T22:28:32Z
+- **what:** Switched MCP catalog loading from the bot-oriented `mcp.catalog` RPC to the pinned Desktop `GET /api/mcp/catalog` response, preserving required prompts, install/bootstrap metadata, default tools, post-install text and diagnostics. Added a Connectors install form with masked environment fields, required-value validation, automation registry actions, exact profile-scoped `POST /api/mcp/catalog/install` payload, synchronous refresh, and background action polling through the pinned status endpoint.
+- **why:** The Desktop install workflow needs the richer REST catalog contract and waits for bootstrap actions before reporting completion; the previous RPC omitted required flags and user-facing prompts.
+- **components:** Native MCP catalog DTO and parser, HTTP transport, Connectors form, registered human/agent actions, Gateway install/status fencing, progress and parity documentation.
+- **type:** feature parity implementation
+- **validation:** PASS six focused MCP catalog tests; PASS full locked feature suite (424 library, 15 automation protocol, 3 launcher tests, and doc tests). Focused coverage includes the exact REST profile query and payload, background receipt, credential error non-echo, masked accessible field, required-value rejection, synchronous completion, and successful background status. Workspace check, format, task/UCM/progress validators and diff check are recorded after this entry.
+- **performance:** No benchmark was needed; synchronous HTTP uses the pinned 60-second bound and background bootstrap status is checked every 1.5 seconds for at most ten minutes.
+- **risks:** No real local/remote Gateway or physical Windows run was performed. Profile secret persistence, background reconnect reconciliation and formal pinned-source acceptance remain unverified; both PAR-0267 and PAR-0268 remain partial.
+- **follow_up:** Run final validators, append evidence receipts, publish to `main`, then continue the remaining chat/tool/skills/plugin gaps.
+
+### PAR-0268 disconnect safety and progress validation correction (2026-11-19T22:38Z)
+
+- **id:** hermes-par0268-disconnect-safety-20261119
+- **timestamp:** 2026-11-19T22:38:36Z
+- **what:** Clear credential drafts on Gateway disconnect, mark an in-flight synchronous catalog install as outcome-unknown, resume background polling only for the same Gateway owner, and stop polling after the source deadline. Correct the PAR-0267 progress locator to the pinned REST API and current Gateway test.
+- **why:** Prevent stale install state, credential retention, misleading retry affordances and indefinite background polling; keep generated progress tied to the actual pinned contract.
+- **components:** MCP catalog install lifecycle, Gateway event handling, implementation-progress generator, README, architecture, backlog and parity plan.
+- **type:** reliability and evidence correction
+- **validation:** PASS seven focused catalog tests; PASS full locked suite (425 library, 15 protocol, 3 launcher tests, doc tests); PASS locked workspace/all-target check with pre-existing dead-code warnings only; PASS `cargo fmt --check`, UCM package validator, Doofus task validator, both progress generators and `git diff --check`.
+- **performance:** No runtime benchmark change; background status cadence and ten-minute bound follow the pinned Desktop behavior.
+- **risks:** No real local/remote Gateway, credential persistence, installed Windows UI, or source-paired acceptance was exercised. PAR-0267 and PAR-0268 remain partial.
+- **follow_up:** Add exact UCM receipts, validate evidence references, and publish the tested changes to `main`.

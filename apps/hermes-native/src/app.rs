@@ -12,14 +12,14 @@ use crate::gateway::{
     CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ComposerAttachmentReceipt,
     ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload, CronDeliveryTarget,
     CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus,
-    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpCatalogSnapshot,
-    McpServerTestResult, McpServersSnapshot, MessagingEnvVarInfo, MessagingPlatformInfo,
-    MessagingPlatformUpdate, MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind,
-    PairingSnapshot, PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject,
-    ProjectTreeSnapshot, PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript,
-    SessionSearchResult, SessionSummary, SkillInfo, SlashCompletionItem, SlashCompletionResult,
-    TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
-    project_tree_session_colors,
+    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpCatalogEntry,
+    McpCatalogSnapshot, McpServerTestResult, McpServersSnapshot, MessagingEnvVarInfo,
+    MessagingPlatformInfo, MessagingPlatformUpdate, MessagingPlatformsSnapshot,
+    ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
+    ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
+    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillInfo,
+    SlashCompletionItem, SlashCompletionResult, TelegramOnboardingApplyReceipt,
+    TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
 };
 use crate::keybindings::{KeyPlatform, KeybindingStore};
 use crate::keybindings_ui::{KeybindingsPanel, key_event_to_combo};
@@ -109,6 +109,15 @@ pub enum RegisteredUiAction {
         name: String,
         config: serde_json::Value,
         bearer_token: Option<String>,
+    },
+    RequestMcpCatalogInstall {
+        name: String,
+    },
+    ConfirmMcpCatalogInstall {
+        name: String,
+    },
+    CancelMcpCatalogInstall {
+        name: String,
     },
     RequestMcpServerRemoval {
         name: String,
@@ -773,6 +782,45 @@ struct McpServerAddDraft {
     headers: String,
     auth: String,
     bearer_token: String,
+}
+
+#[derive(Clone, Debug)]
+struct McpCatalogInstallDraft {
+    entry: McpCatalogEntry,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+    env: BTreeMap<String, String>,
+    error: Option<String>,
+}
+
+impl Drop for McpCatalogInstallDraft {
+    fn drop(&mut self) {
+        for value in self.env.values_mut() {
+            value.zeroize();
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct PendingMcpCatalogInstall {
+    request_id: String,
+    name: String,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMcpCatalogInstallStatus {
+    request_id: String,
+    name: String,
+    action_name: String,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+    attempts: u16,
+    next_poll: Option<std::time::Instant>,
 }
 
 impl Default for McpServerAddDraft {
@@ -1544,6 +1592,9 @@ pub struct HermesNativeApp {
     mcp_catalog_request_id: Option<String>,
     mcp_catalog_pending: bool,
     mcp_catalog_error: Option<String>,
+    mcp_catalog_install_draft: Option<McpCatalogInstallDraft>,
+    pending_mcp_catalog_install: Option<PendingMcpCatalogInstall>,
+    pending_mcp_catalog_install_status: Option<PendingMcpCatalogInstallStatus>,
     pending_mcp_server_updates: BTreeMap<String, PendingMcpServerUpdate>,
     mcp_server_test_results: BTreeMap<String, McpServerTestResult>,
     pending_mcp_server_tests: BTreeMap<String, PendingMcpServerTest>,
@@ -3887,6 +3938,9 @@ fn render_message() -> &'static str {
             mcp_catalog_request_id: None,
             mcp_catalog_pending: false,
             mcp_catalog_error: None,
+            mcp_catalog_install_draft: None,
+            pending_mcp_catalog_install: None,
+            pending_mcp_catalog_install_status: None,
             pending_mcp_server_updates: BTreeMap::new(),
             mcp_server_test_results: BTreeMap::new(),
             pending_mcp_server_tests: BTreeMap::new(),
@@ -11932,6 +11986,8 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .map_or(0, |catalog| catalog.servers.len());
                 let mut refresh_mcp_catalog = false;
+                let mut request_mcp_catalog_install = None;
+                let mut cancel_mcp_catalog_install = false;
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("MCP catalog · {catalog_count}"))
@@ -11989,6 +12045,7 @@ fn render_message() -> &'static str {
                                     .as_deref()
                                     .is_some_and(|slug| slug.to_lowercase().contains(&query))
                         })
+                        .cloned()
                         .collect::<Vec<_>>();
                     if entries.is_empty() {
                         ui.label(if query.is_empty() {
@@ -12039,6 +12096,20 @@ fn render_message() -> &'static str {
                                         .color(MUTED),
                                     );
                                 }
+                                if !entry.installed
+                                    && ui
+                                        .add_enabled(
+                                            self.pending_mcp_catalog_install.is_none(),
+                                            egui::Button::new("Install…"),
+                                        )
+                                        .accessible_name(format!(
+                                            "Install MCP integration {}",
+                                            entry.name
+                                        ))
+                                        .clicked()
+                                {
+                                    request_mcp_catalog_install = Some(entry.name.clone());
+                                }
                             });
                             row.response.accessible_name(format!(
                                 "MCP catalog row {} · {catalog_status}",
@@ -12048,6 +12119,119 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                if let Some(draft) = self.mcp_catalog_install_draft.as_mut() {
+                    ui.separator();
+                    ui.heading(format!("Install {}", draft.entry.name));
+                    ui.label(RichText::new(&draft.entry.description).color(MUTED));
+                    ui.label(format!(
+                        "{} · {} · source {}",
+                        draft.entry.transport,
+                        draft.entry.auth_type,
+                        if draft.entry.source.is_empty() {
+                            "unknown"
+                        } else {
+                            &draft.entry.source
+                        }
+                    ));
+                    if let Some(command) = draft.entry.command.as_deref() {
+                        ui.label(format!("Command: {command} {}", draft.entry.args.join(" ")));
+                    }
+                    if let Some(url) = draft.entry.url.as_deref() {
+                        ui.label(format!("Endpoint: {url}"));
+                    }
+                    if let Some(url) = draft.entry.install_url.as_deref() {
+                        ui.label(format!("Install source: {url}"));
+                    }
+                    if let Some(reference) = draft.entry.install_ref.as_deref() {
+                        ui.label(format!("Install ref: {reference}"));
+                    }
+                    if draft
+                        .entry
+                        .default_enabled
+                        .as_ref()
+                        .is_some_and(|names| !names.is_empty())
+                    {
+                        ui.label(format!(
+                            "Enabled by default: {}",
+                            draft
+                                .entry
+                                .default_enabled
+                                .as_deref()
+                                .unwrap_or_default()
+                                .join(", ")
+                        ));
+                    }
+                    if !draft.entry.post_install.is_empty() {
+                        ui.label(format!("After install: {}", draft.entry.post_install));
+                    }
+                    for spec in &draft.entry.required_env {
+                        let value = draft.env.entry(spec.name.clone()).or_default();
+                        ui.horizontal(|ui| {
+                            ui.label(format!(
+                                "{}{}",
+                                spec.name,
+                                if spec.required {
+                                    " · required"
+                                } else {
+                                    " · optional"
+                                }
+                            ));
+                            let response =
+                                ui.add(egui::TextEdit::singleline(value).password(true).hint_text(
+                                    if spec.prompt.is_empty() {
+                                        "Value"
+                                    } else {
+                                        &spec.prompt
+                                    },
+                                ));
+                            response.accessible_name(format!("MCP credential {}", spec.name));
+                        });
+                    }
+                    for command in &draft.entry.bootstrap {
+                        ui.label(
+                            RichText::new(format!("Setup: {command}"))
+                                .small()
+                                .color(MUTED),
+                        );
+                    }
+                    if let Some(error) = draft.error.as_deref() {
+                        ui.colored_label(Color32::LIGHT_RED, error);
+                    }
+                    let mut confirm = false;
+                    let install_pending = self.pending_mcp_catalog_install.is_some()
+                        || self.pending_mcp_catalog_install_status.is_some();
+                    let required_ready = draft.entry.required_env.iter().all(|spec| {
+                        !spec.required
+                            || draft
+                                .env
+                                .get(&spec.name)
+                                .is_some_and(|value| !value.trim().is_empty())
+                    });
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                !install_pending && required_ready,
+                                egui::Button::new("Install and enable"),
+                            )
+                            .clicked()
+                        {
+                            confirm = true;
+                        }
+                        if ui
+                            .add_enabled(!install_pending, egui::Button::new("Cancel"))
+                            .clicked()
+                        {
+                            cancel_mcp_catalog_install = true;
+                        }
+                        if install_pending {
+                            ui.spinner();
+                            ui.label("Installing MCP integration…");
+                        }
+                    });
+                    if confirm {
+                        request_mcp_catalog_install = Some(draft.entry.name.clone());
+                    }
+                }
                 if refresh_mcp_catalog {
                     self.mcp_catalog_profile_id = None;
                     self.mcp_catalog_loaded_at = None;
@@ -12055,6 +12239,28 @@ fn render_message() -> &'static str {
                     self.mcp_catalog_error = None;
                     self.load_mcp_catalog()
                         .unwrap_or_else(|error| self.mcp_catalog_error = Some(error));
+                }
+                if let Some(name) = request_mcp_catalog_install {
+                    let action = if self
+                        .mcp_catalog_install_draft
+                        .as_ref()
+                        .is_some_and(|draft| draft.entry.name == name)
+                    {
+                        RegisteredUiAction::ConfirmMcpCatalogInstall { name }
+                    } else {
+                        RegisteredUiAction::RequestMcpCatalogInstall { name }
+                    };
+                    self.execute_registered_action(action)
+                        .unwrap_or_else(|error| self.mcp_catalog_error = Some(error));
+                }
+                if cancel_mcp_catalog_install {
+                    self.execute_registered_action(RegisteredUiAction::CancelMcpCatalogInstall {
+                        name: self
+                            .mcp_catalog_install_draft
+                            .as_ref()
+                            .map_or_else(String::new, |draft| draft.entry.name.clone()),
+                    })
+                    .unwrap_or_else(|error| self.mcp_catalog_error = Some(error));
                 }
             }
         }
@@ -17811,6 +18017,21 @@ fn render_message() -> &'static str {
             } => {
                 self.add_mcp_server(name, config, bearer_token)?;
             }
+            RegisteredUiAction::RequestMcpCatalogInstall { name } => {
+                self.request_mcp_catalog_install(name)?;
+            }
+            RegisteredUiAction::ConfirmMcpCatalogInstall { name } => {
+                self.confirm_mcp_catalog_install(&name)?;
+            }
+            RegisteredUiAction::CancelMcpCatalogInstall { name } => {
+                if self
+                    .mcp_catalog_install_draft
+                    .as_ref()
+                    .is_some_and(|draft| draft.entry.name == name)
+                {
+                    self.mcp_catalog_install_draft = None;
+                }
+            }
             RegisteredUiAction::RequestMcpServerRemoval { name } => {
                 self.request_mcp_server_removal(name)?;
             }
@@ -17999,6 +18220,226 @@ fn render_message() -> &'static str {
         self.mcp_catalog_pending = true;
         self.mcp_catalog_error = None;
         Ok(())
+    }
+
+    fn request_mcp_catalog_install(&mut self, name: String) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before installing an MCP integration".into());
+        }
+        if self.pending_mcp_catalog_install.is_some()
+            || self.pending_mcp_catalog_install_status.is_some()
+        {
+            return Err("An MCP catalog installation is already in progress".into());
+        }
+        if name.is_empty() || name.len() > 512 || name.chars().any(char::is_control) {
+            return Err("MCP catalog entry name is invalid".into());
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        if self.mcp_catalog_profile_id.as_deref() != Some(endpoint.profile_id.as_str()) {
+            return Err("Refresh the MCP catalog for the active profile before installing".into());
+        }
+        let entry = self
+            .mcp_catalog
+            .as_ref()
+            .and_then(|catalog| catalog.servers.iter().find(|entry| entry.name == name))
+            .cloned()
+            .ok_or_else(|| "MCP catalog entry is not in the loaded catalog".to_owned())?;
+        if entry.installed {
+            return Err("MCP catalog integration is already installed".into());
+        }
+        if self
+            .mcp_catalog_install_draft
+            .as_ref()
+            .is_some_and(|draft| draft.entry.name == name)
+        {
+            return Ok(());
+        }
+        self.mcp_catalog_install_draft = Some(McpCatalogInstallDraft {
+            entry,
+            profile_id: endpoint.profile_id.clone(),
+            instance_id: endpoint.instance_id.clone(),
+            authority_epoch: endpoint.authority_epoch,
+            env: BTreeMap::new(),
+            error: None,
+        });
+        Ok(())
+    }
+
+    fn confirm_mcp_catalog_install(&mut self, name: &str) -> Result<(), String> {
+        if self.pending_mcp_catalog_install.is_some()
+            || self.pending_mcp_catalog_install_status.is_some()
+        {
+            return Err("An MCP catalog installation is already in progress".into());
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        let draft = self
+            .mcp_catalog_install_draft
+            .as_mut()
+            .filter(|draft| draft.entry.name == name)
+            .ok_or_else(|| "Open the MCP catalog install form first".to_owned())?;
+        if draft.profile_id != endpoint.profile_id
+            || draft.instance_id != endpoint.instance_id
+            || draft.authority_epoch != endpoint.authority_epoch
+            || !self.gateway_connected
+        {
+            return Err("MCP catalog install form belongs to a stale Gateway connection".into());
+        }
+        if draft.entry.required_env.iter().any(|spec| {
+            spec.required
+                && draft
+                    .env
+                    .get(&spec.name)
+                    .is_none_or(|value| value.trim().is_empty())
+        }) {
+            return Err("Enter a value for each required environment field".into());
+        }
+        let request_id = operation_id("mcp-catalog-install");
+        let profile_id = draft.profile_id.clone();
+        let instance_id = draft.instance_id.clone();
+        let authority_epoch = draft.authority_epoch;
+        let mut env = std::mem::take(&mut draft.env);
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            for value in env.values_mut() {
+                value.zeroize();
+            }
+            return Err("Hermes MCP catalog installer is unavailable".into());
+        };
+        gateway.install_mcp_catalog_entry(
+            request_id.clone(),
+            name.to_owned(),
+            env,
+            profile_id.clone(),
+            instance_id.clone(),
+            authority_epoch,
+        )?;
+        self.pending_mcp_catalog_install = Some(PendingMcpCatalogInstall {
+            request_id,
+            name: name.to_owned(),
+            profile_id,
+            instance_id,
+            authority_epoch,
+        });
+        self.mcp_catalog_error = None;
+        self.status = format!("Installing MCP integration {name}…");
+        Ok(())
+    }
+
+    fn poll_mcp_catalog_install_status(&mut self, ctx: &egui::Context) {
+        let Some(pending) = self.pending_mcp_catalog_install_status.as_mut() else {
+            return;
+        };
+        if !pending.request_id.is_empty()
+            || pending
+                .next_poll
+                .is_some_and(|deadline| deadline > std::time::Instant::now())
+        {
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            pending.next_poll =
+                Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+            ctx.request_repaint_after(std::time::Duration::from_millis(1500));
+            return;
+        };
+        if !self.gateway_connected
+            || endpoint.profile_id != pending.profile_id
+            || endpoint.instance_id != pending.instance_id
+            || endpoint.authority_epoch != pending.authority_epoch
+        {
+            if self.gateway_connected {
+                let name = pending.name.clone();
+                self.pending_mcp_catalog_install_status = None;
+                self.set_mcp_catalog_install_error(
+                    &name,
+                    "MCP install action belongs to a different Gateway connection; refresh the profile inventory before retrying".into(),
+                );
+                return;
+            }
+            pending.next_poll =
+                Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+            ctx.request_repaint_after(std::time::Duration::from_millis(1500));
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            pending.next_poll =
+                Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+            ctx.request_repaint_after(std::time::Duration::from_millis(1500));
+            return;
+        };
+        let request_id = operation_id("mcp-catalog-install-status");
+        match gateway.load_mcp_catalog_install_status(
+            request_id.clone(),
+            pending.action_name.clone(),
+            pending.profile_id.clone(),
+            pending.instance_id.clone(),
+            pending.authority_epoch,
+        ) {
+            Ok(()) => {
+                pending.request_id = request_id;
+                pending.next_poll = None;
+                ctx.request_repaint_after(std::time::Duration::from_millis(1500));
+            }
+            Err(_) if pending.attempts < 400 => {
+                pending.attempts = pending.attempts.saturating_add(1);
+                pending.next_poll =
+                    Some(std::time::Instant::now() + std::time::Duration::from_millis(1500));
+                ctx.request_repaint_after(std::time::Duration::from_millis(1500));
+            }
+            Err(_) => {
+                let name = pending.name.clone();
+                self.pending_mcp_catalog_install_status = None;
+                self.set_mcp_catalog_install_error(
+                    &name,
+                    "Timed out waiting for the MCP catalog install action".into(),
+                );
+            }
+        }
+    }
+
+    fn finish_mcp_catalog_install(&mut self, name: &str, ctx: &egui::Context) {
+        self.pending_mcp_catalog_install = None;
+        self.pending_mcp_catalog_install_status = None;
+        self.mcp_catalog_install_draft = None;
+        if let Some(entry) = self
+            .mcp_catalog
+            .as_mut()
+            .and_then(|catalog| catalog.servers.iter_mut().find(|entry| entry.name == name))
+        {
+            entry.installed = true;
+            entry.enabled = true;
+        }
+        self.status = format!("Installed and enabled MCP integration {name}");
+        self.mcp_catalog_loaded_at = None;
+        self.mcp_catalog = None;
+        self.load_mcp_catalog()
+            .unwrap_or_else(|error| self.mcp_catalog_error = Some(error));
+        self.load_mcp_servers()
+            .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
+        ctx.request_repaint();
+    }
+
+    fn set_mcp_catalog_install_error(&mut self, name: &str, error: String) {
+        let error = if error.len() > 2048 || error.chars().any(char::is_control) {
+            "Hermes MCP catalog installation failed".to_owned()
+        } else {
+            error
+        };
+        if let Some(draft) = self
+            .mcp_catalog_install_draft
+            .as_mut()
+            .filter(|draft| draft.entry.name == name)
+        {
+            draft.error = Some(error);
+        } else {
+            self.mcp_catalog_error = Some(error);
+        }
+        self.status = format!("Could not install MCP integration {name}");
     }
 
     fn load_agent_plugins(&mut self) -> Result<(), String> {
@@ -25726,6 +26167,164 @@ fn render_message() -> &'static str {
                         Err(error) => self.mcp_catalog_error = Some(error),
                     }
                 }
+                GatewayEvent::McpCatalogInstallCompleted {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_mcp_catalog_install.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.name != name
+                        || pending.profile_id != profile_id
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    self.pending_mcp_catalog_install = None;
+                    match result {
+                        Ok(receipt)
+                            if receipt.ok
+                                && receipt
+                                    .name
+                                    .as_deref()
+                                    .is_none_or(|received| received == name) =>
+                        {
+                            if receipt.background {
+                                if let Some(action_name) = receipt.action {
+                                    self.pending_mcp_catalog_install_status =
+                                        Some(PendingMcpCatalogInstallStatus {
+                                            request_id: String::new(),
+                                            name: name.clone(),
+                                            action_name,
+                                            profile_id,
+                                            instance_id,
+                                            authority_epoch,
+                                            attempts: 0,
+                                            next_poll: Some(std::time::Instant::now()),
+                                        });
+                                    self.status = format!("Installing MCP integration {name}…");
+                                    self.poll_mcp_catalog_install_status(ctx);
+                                } else {
+                                    self.set_mcp_catalog_install_error(
+                                        &name,
+                                        "Hermes started the install without returning an action identifier".into(),
+                                    );
+                                }
+                            } else {
+                                self.finish_mcp_catalog_install(&name, ctx);
+                            }
+                        }
+                        Ok(_) => self.set_mcp_catalog_install_error(
+                            &name,
+                            "Hermes did not confirm the requested MCP integration".into(),
+                        ),
+                        Err(error) => self.set_mcp_catalog_install_error(&name, error),
+                    }
+                }
+                GatewayEvent::McpCatalogInstallStatusLoaded {
+                    request_id,
+                    action_name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_mcp_catalog_install_status.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.action_name != action_name
+                        || pending.profile_id != profile_id
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    let install_name = pending.name.clone();
+                    let attempts = pending.attempts.saturating_add(1);
+                    if let Some(pending) = self.pending_mcp_catalog_install_status.as_mut() {
+                        pending.request_id.clear();
+                        pending.attempts = attempts;
+                    }
+                    match result {
+                        Ok(status)
+                            if status.name == action_name
+                                && (status.running || status.exit_code.is_none()) =>
+                        {
+                            if attempts >= 400 {
+                                self.pending_mcp_catalog_install_status = None;
+                                self.set_mcp_catalog_install_error(
+                                    &install_name,
+                                    "Timed out waiting for the MCP catalog install action".into(),
+                                );
+                                continue;
+                            }
+                            if let Some(pending) = self.pending_mcp_catalog_install_status.as_mut()
+                            {
+                                pending.next_poll = Some(
+                                    std::time::Instant::now()
+                                        + std::time::Duration::from_millis(1500),
+                                );
+                            }
+                            ctx.request_repaint_after(std::time::Duration::from_millis(1500));
+                        }
+                        Ok(status) if status.name == action_name && status.exit_code == Some(0) => {
+                            self.finish_mcp_catalog_install(&install_name, ctx);
+                        }
+                        Ok(status) if status.name == action_name => {
+                            let code = status.exit_code.map_or_else(
+                                || "without an exit code".to_owned(),
+                                |code| format!("with exit code {code}"),
+                            );
+                            self.pending_mcp_catalog_install_status = None;
+                            self.set_mcp_catalog_install_error(
+                                &install_name,
+                                format!("MCP installation finished {code}"),
+                            );
+                        }
+                        Ok(_) => {
+                            self.pending_mcp_catalog_install_status = None;
+                            self.mcp_catalog_error = Some(
+                                "Hermes returned status for a different install action".into(),
+                            );
+                        }
+                        Err(error) if attempts < 400 => {
+                            if let Some(pending) = self.pending_mcp_catalog_install_status.as_mut()
+                            {
+                                pending.next_poll = Some(
+                                    std::time::Instant::now()
+                                        + std::time::Duration::from_millis(1500),
+                                );
+                            }
+                            if !error.is_empty() {
+                                self.status =
+                                    format!("Waiting for MCP install status · attempt {attempts}");
+                            }
+                            ctx.request_repaint_after(std::time::Duration::from_millis(1500));
+                        }
+                        Err(_) => {
+                            self.pending_mcp_catalog_install_status = None;
+                            self.mcp_catalog_error =
+                                Some("Timed out waiting for the MCP catalog install action".into());
+                        }
+                    }
+                }
                 GatewayEvent::McpServerEnabledUpdated {
                     request_id,
                     name,
@@ -25901,7 +26500,18 @@ fn render_message() -> &'static str {
                 GatewayEvent::Disconnected(error) => {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
-                    let mut repo_scan_uncertainty = Vec::new();
+                    let mut disconnect_uncertainty = Vec::new();
+                    if let Some(pending) = self.pending_mcp_catalog_install.take() {
+                        disconnect_uncertainty.push(format!(
+                            "MCP install outcome for {} is unknown after Gateway disconnect; refresh the profile inventory before retrying",
+                            pending.name
+                        ));
+                    }
+                    if let Some(pending) = self.pending_mcp_catalog_install_status.as_mut() {
+                        pending.request_id.clear();
+                        pending.next_poll = Some(std::time::Instant::now());
+                    }
+                    self.mcp_catalog_install_draft = None;
                     let disconnected_profile = self
                         .gateway_endpoint
                         .as_ref()
@@ -25922,10 +26532,10 @@ fn render_message() -> &'static str {
                     if self.repo_scan_config_save_request.take().is_some() {
                         let note = "workspace settings save outcome is unknown; reload the profile before retrying";
                         self.repo_scan_config_error = Some(note.into());
-                        repo_scan_uncertainty.push(note);
+                        disconnect_uncertainty.push(note.into());
                     }
                     if self.repo_scan_discovery_request.take().is_some() {
-                        repo_scan_uncertainty.push("repository discovery outcome is unknown; refresh the project view to reconcile");
+                        disconnect_uncertainty.push("repository discovery outcome is unknown; refresh the project view to reconcile".into());
                     }
                     self.repo_scan_config = None;
                     self.repo_scan_config_profile = None;
@@ -26031,10 +26641,10 @@ fn render_message() -> &'static str {
                             "Plugin uninstall outcome unknown after gateway disconnect; refresh the inventory".into(),
                         );
                     }
-                    self.status = if repo_scan_uncertainty.is_empty() {
+                    self.status = if disconnect_uncertainty.is_empty() {
                         error
                     } else {
-                        format!("{error} · {}", repo_scan_uncertainty.join("; "))
+                        format!("{error} · {}", disconnect_uncertainty.join("; "))
                     };
                 }
             }
@@ -26064,6 +26674,7 @@ fn render_message() -> &'static str {
             self.request_active_session_statuses();
         }
         self.sync_display_timestamps_config();
+        self.poll_mcp_catalog_install_status(ctx);
         if load_archived_after_connect {
             self.load_archived_sessions();
         }
@@ -38809,6 +39420,7 @@ mod tests {
                             enabled: true,
                             requires: vec!["DOCS_TOKEN".into()],
                             transport: "stdio".into(),
+                            ..Default::default()
                         },
                         crate::gateway::McpCatalogEntry {
                             name: "calendar".into(),
@@ -38818,8 +39430,10 @@ mod tests {
                             enabled: false,
                             requires: Vec::new(),
                             transport: "http".into(),
+                            ..Default::default()
                         },
                     ],
+                    ..Default::default()
                 }),
             })
             .expect("send current catalog result");
@@ -38899,6 +39513,267 @@ mod tests {
                 .is_some()
         );
         drop(empty_view);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_catalog_install_masks_required_values_and_tracks_background_action() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_mcp_catalog_install();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.load_connectors_fixture_for_automation();
+        app.mcp_catalog_profile_id = Some("home-bot".into());
+        app.mcp_catalog = Some(McpCatalogSnapshot {
+            servers: vec![
+                McpCatalogEntry {
+                    name: "docs".into(),
+                    description: "Search documentation".into(),
+                    required_env: vec![crate::gateway::McpCatalogEnvSpec {
+                        name: "DOCS_TOKEN".into(),
+                        prompt: "API token".into(),
+                        required: true,
+                    }],
+                    source: "bundled".into(),
+                    transport: "stdio".into(),
+                    ..McpCatalogEntry::default()
+                },
+                McpCatalogEntry {
+                    name: "calendar".into(),
+                    description: "Calendar tools".into(),
+                    needs_install: true,
+                    install_url: Some("https://github.com/example/calendar".into()),
+                    bootstrap: vec!["uv sync".into()],
+                    transport: "stdio".into(),
+                    ..McpCatalogEntry::default()
+                },
+            ],
+            ..McpCatalogSnapshot::default()
+        });
+
+        app.execute_registered_action(RegisteredUiAction::RequestMcpCatalogInstall {
+            name: "docs".into(),
+        })
+        .expect("open catalog install form");
+        let form = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(form.query_by_label("MCP credential DOCS_TOKEN").is_some());
+        drop(form);
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::ConfirmMcpCatalogInstall {
+                name: "docs".into(),
+            })
+            .is_err(),
+            "required credentials must be present before install"
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "invalid form must not send an install request"
+        );
+        app.mcp_catalog_install_draft
+            .as_mut()
+            .unwrap()
+            .env
+            .insert("DOCS_TOKEN".into(), "private-docs-token".into());
+        app.execute_registered_action(RegisteredUiAction::ConfirmMcpCatalogInstall {
+            name: "docs".into(),
+        })
+        .expect("queue synchronous install");
+        let crate::gateway::TestMcpCatalogCommand::Install {
+            request_id,
+            name,
+            env,
+            profile_id,
+            instance_id,
+            authority_epoch,
+        } = requests
+            .recv_timeout(Duration::from_secs(1))
+            .expect("install reaches Gateway")
+        else {
+            panic!("expected MCP install command");
+        };
+        assert_eq!(name, "docs");
+        assert_eq!(&*env["DOCS_TOKEN"], "private-docs-token");
+        assert_eq!(profile_id, "home-bot");
+        assert_eq!(instance_id, "gateway-home-bot");
+        assert_eq!(authority_epoch, 12);
+        assert!(!app.status.contains("private-docs-token"));
+        events
+            .send(GatewayEvent::McpCatalogInstallCompleted {
+                request_id,
+                name: "docs".into(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Ok(crate::gateway::McpCatalogInstallReceipt {
+                    ok: true,
+                    name: Some("docs".into()),
+                    pid: None,
+                    action: None,
+                    background: false,
+                }),
+            })
+            .expect("deliver synchronous install receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.status, "Installed and enabled MCP integration docs");
+        assert!(app.mcp_catalog_install_draft.is_none());
+
+        app.mcp_catalog_profile_id = Some("home-bot".into());
+        app.mcp_catalog = Some(McpCatalogSnapshot {
+            servers: vec![McpCatalogEntry {
+                name: "calendar".into(),
+                needs_install: true,
+                required_env: Vec::new(),
+                transport: "stdio".into(),
+                ..McpCatalogEntry::default()
+            }],
+            ..McpCatalogSnapshot::default()
+        });
+        app.execute_registered_action(RegisteredUiAction::RequestMcpCatalogInstall {
+            name: "calendar".into(),
+        })
+        .expect("open bootstrap install form");
+        app.execute_registered_action(RegisteredUiAction::ConfirmMcpCatalogInstall {
+            name: "calendar".into(),
+        })
+        .expect("queue background install");
+        let crate::gateway::TestMcpCatalogCommand::Install { request_id, .. } = requests
+            .recv_timeout(Duration::from_secs(1))
+            .expect("background install reaches Gateway")
+        else {
+            panic!("expected MCP install command");
+        };
+        events
+            .send(GatewayEvent::McpCatalogInstallCompleted {
+                request_id,
+                name: "calendar".into(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Ok(crate::gateway::McpCatalogInstallReceipt {
+                    ok: true,
+                    name: Some("calendar".into()),
+                    pid: Some(812),
+                    action: Some("mcp-install-calendar-abc12345".into()),
+                    background: true,
+                }),
+            })
+            .expect("deliver background install receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        let crate::gateway::TestMcpCatalogCommand::Status {
+            request_id,
+            action_name,
+            ..
+        } = requests
+            .recv_timeout(Duration::from_secs(1))
+            .expect("poll background install")
+        else {
+            panic!("expected install status request");
+        };
+        assert_eq!(action_name, "mcp-install-calendar-abc12345");
+        events
+            .send(GatewayEvent::McpCatalogInstallStatusLoaded {
+                request_id,
+                action_name: action_name.clone(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Ok(GatewayActionStatus {
+                    name: action_name.clone(),
+                    running: true,
+                    exit_code: None,
+                    pid: Some(812),
+                    lines: vec!["installing".into()],
+                }),
+            })
+            .expect("deliver running background status");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_mcp_catalog_install_status.is_some());
+        app.pending_mcp_catalog_install_status
+            .as_mut()
+            .unwrap()
+            .next_poll = Some(std::time::Instant::now());
+        app.poll_mcp_catalog_install_status(&egui::Context::default());
+        let crate::gateway::TestMcpCatalogCommand::Status {
+            request_id,
+            action_name,
+            ..
+        } = requests
+            .recv_timeout(Duration::from_secs(1))
+            .expect("poll still-running background install")
+        else {
+            panic!("expected second install status request");
+        };
+        events
+            .send(GatewayEvent::McpCatalogInstallStatusLoaded {
+                request_id,
+                action_name: action_name.clone(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Ok(GatewayActionStatus {
+                    name: action_name.clone(),
+                    running: false,
+                    exit_code: Some(0),
+                    pid: Some(812),
+                    lines: vec!["installed".into()],
+                }),
+            })
+            .expect("deliver successful background status");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.status, "Installed and enabled MCP integration calendar");
+        assert!(app.pending_mcp_catalog_install_status.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_catalog_install_disconnect_marks_sync_outcome_uncertain() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, _requests, events) = GatewayDiscovery::for_test_mcp_catalog_install();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.pending_mcp_catalog_install = Some(PendingMcpCatalogInstall {
+            request_id: "mcp-install-request".into(),
+            name: "docs".into(),
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+        });
+        events
+            .send(GatewayEvent::Disconnected("connection lost".into()))
+            .expect("deliver Gateway disconnect");
+
+        app.update_gateway_discovery(&egui::Context::default());
+
+        assert!(!app.gateway_connected);
+        assert!(app.pending_mcp_catalog_install.is_none());
+        assert!(
+            app.status
+                .contains("MCP install outcome for docs is unknown")
+        );
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
