@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0045",
+  "capability_id": "ui-browse-mcp-catalog",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-mcp-catalog-browse-search-cache-and-states",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "a95595723e28cc4999c256f2da0e54b0b6d82487",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native Rust Gateway WebSocket fixture and headless egui/AccessKit tests; no live Hermes Gateway, installed Windows UI, credentials or physical input used.",
+  "notes": "Gateway test asserts the exact profile-scoped mcp.catalog method, parses connector_slug when present and omits it when absent, validates required environment-key names, and rejects malformed entries. App test checks loading and refresh semantics, installed/enabled and available catalog rows, shared search, stale authority/profile response rejection, visible error and empty states. Cache test verifies the five-minute refresh boundary. Full command cargo test -p hermes-native --features agent-automation --locked passed 421 library tests, 15 automation protocol tests, 3 launcher tests and doc tests; cargo check, rustfmt, progress generators, task validator, UCM package validator and diff check passed. Live/remote Gateway, packaged Windows behavior and source-paired acceptance remain open; installation is a separate capability. Test locators: apps/hermes-native/src/gateway.rs#mcp_catalog_uses_profile_scoped_rpc_and_validates_catalog_rows; apps/hermes-native/src/app.rs#mcp_catalog_load_is_profile_fenced_and_renders_accessible_states; apps/hermes-native/src/app.rs#mcp_catalog_cache_expires_after_five_minutes."
+}

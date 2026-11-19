@@ -2983,3 +2983,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime behavior change.
 - **risks:** Additional widgets remain visible actions by design; focused and full suites now cover the expanded registry.
 - **follow_up:** Keep automation tests scoped to action identities and behavior as the UI grows.
+
+### PAR-0267 evidence — MCP catalog browsing (2026-11-19T21:59Z)
+
+- **id:** hermes-par0267-ev0045-20261119
+- **timestamp:** 2026-11-19T21:59:00Z
+- **what:** Added EV-0045 bound to behavior commit `a95595723e28cc4999c256f2da0e54b0b6d82487` and marked task PAR-0267 tested with partial feature evidence.
+- **why:** Bind the reviewed Gateway, fencing, cache and headless UI evidence to the exact published revision.
+- **components:** UCM receipt and portable Doofus task ledger.
+- **type:** evidence and task-state update
+- **validation:** Receipt JSON parsed; package validator passed with catalog capability still partial; task ledger revision 48 valid.
+- **performance:** No runtime change.
+- **risks:** Live Gateway, remote profile, installed Windows behavior and source-paired acceptance remain unverified.
+- **follow_up:** Continue with separate MCP catalog installation and remaining chat/tool/skills/plugins gaps.
