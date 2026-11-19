@@ -1,5 +1,5 @@
 {
-  "revision": 29,
+  "revision": 30,
   "schema_version": 1,
   "tasks": [
     {
@@ -2214,7 +2214,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-19T19:10:39Z",
+              "last_updated_at": "2026-11-19T19:12:53Z",
               "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-keep-command-slash-suggestions-accessible",
               "outputs": [],
@@ -2237,7 +2237,9 @@
                 "apps/hermes-native/docs/PLAN.md#Revision 243",
                 "apps/hermes-native/src/app.rs#slash_suggestion_inserts_a_draft_without_submitting_it",
                 "apps/hermes-native/src/gateway.rs#slash_completion_actor_routes_catalog_and_typed_queries_to_the_scoped_gateway",
-                "apps/hermes-native/docs/PLAN.md#Revision 244"
+                "apps/hermes-native/docs/PLAN.md#Revision 244",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0031.json#EV-0031",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml#ui-keep-command-slash-suggestions-accessible"
               ]
             },
             {
@@ -16219,5 +16221,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T19:10:39Z"
+  "updated_at": "2026-11-19T19:12:53Z"
 }

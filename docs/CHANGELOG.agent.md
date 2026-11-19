@@ -2707,3 +2707,16 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** 60 ms input debounce; no benchmark run.
 - **risks:** Arrow navigation, directive chips, mid-message triggers, owner-scoped caching, special local commands, live Gateway behavior, installed Windows interaction and source-paired acceptance remain open.
 - **follow_up:** Continue the next dependency-ready pinned chat/tool feature; keep UI styling deferred until scoped feature support is complete.
+
+## UCM receipt for PAR-0067
+
+- **id:** hermes-par-0067-ucm-evidence-20261119
+- **timestamp:** 2026-11-19T19:10:00Z
+- **what:** Added EV-0031 for slash completion, bound to exact implementation SHA `de719b6f8f6bf9c3cba4ba04e6202df11d5d6e20`; marked the UCM capability and crosswalk partial.
+- **why:** Keep the machine-readable capability map aligned with tested implementation while retaining live and source-paired gates.
+- **components:** UCM capability map, evidence receipt and crosswalk.
+- **type:** evidence
+- **validation:** PASS package validator (565 target behaviors, 565 inventory items, 565 pending tests, 14 source and 16 implementation receipts); optional YAML parse skipped because PyYAML is unavailable.
+- **performance:** No runtime change.
+- **risks:** Evidence is local/headless only; it does not demonstrate authenticated Gateway or installed Windows behavior.
+- **follow_up:** Bind future evidence to exact implementation commits and preserve partial status until all acceptance gates pass.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0031",
+  "capability_id": "ui-keep-command-slash-suggestions-accessible",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "gateway-scoped-accessible-slash-suggestions",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "de719b6f8f6bf9c3cba4ba04e6202df11d5d6e20",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native headless egui test suite and workspace all-target check; no live Gateway, installed UI or source-paired capture used.",
+  "notes": "Bare slash requests commands.catalog and typed slash input requests complete.slash, fenced to the active session/profile and Gateway connection. Pinned Desktop registry and interface mode filter returned items; accessible buttons insert the selected text into the draft without submitting it. Seven focused slash tests and the full feature suite pass. Arrow navigation, directive chips, mid-message triggers, caching/invalidation, special local session/skin commands, live Gateway, installed Windows interaction and source-paired acceptance remain open; capability stays partial."
+}
