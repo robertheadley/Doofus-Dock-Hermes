@@ -159,4 +159,9 @@ Session resume and pane identity now retain the selected Gateway connection owne
 
 When Hermes reports `session.replay_gap`, the native app requests a fresh authoritative resume for the unique matching active chat or open session tile. The cached transcript and draft remain visible while the snapshot is pending, and repeated gap events are coalesced. Automatic Gateway reconnect and live backend replay verification remain open.
 
-The native chat composer can attach images and files to a session using Hermes Gateway attachment RPCs. Uploads are limited to 16 MiB; selected items are cached with their session while the user changes chats. Restart-safe interrupted-image restore and live Gateway verification are still pending.
+The native chat composer can attach images and files to a session using Hermes Gateway attachment RPCs. Uploads are limited to 16 MiB; selected items are cached with their session while the user changes chats. Interrupted image drafts can now be restored after restart into the exact session/profile/connection composer without sending; the user must press Send. Live Gateway validation of persisted references and packaged Windows restart behavior remain pending.
+
+
+## Current scoped evidence
+
+The generated 173-row chat/tool/skills/plugins view currently reports 1 implemented, 11 partial, and 161 unknown. Twelve requirements have mapped implementation evidence; live runtime is unverified for all 173, source-paired acceptance is pending for all 173, and visual pairs are absent for all 173. See `docs/status/CHAT_TOOL_PROGRESS.csv`; these are independent evidence dimensions, not a completion percentage.

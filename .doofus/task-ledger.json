@@ -1,5 +1,5 @@
 {
-  "revision": 21,
+  "revision": 22,
   "schema_version": 1,
   "tasks": [
     {
@@ -2063,7 +2063,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -2072,11 +2072,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-19T17:57:13Z",
+              "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-restore-interrupted-image-draft-without-sending",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -2087,10 +2087,13 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0063",
               "title": "PAR-0063 Restore interrupted image draft without sending",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#prepared_image_restore_is_scoped_and_does_not_send",
+                "apps/hermes-native/src/prepared_image_drafts.rs#prepared_image_drafts_round_trip_and_retire_atomically"
+              ]
             },
             {
               "agent_identity": {
@@ -16199,5 +16202,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T17:01:02Z"
+  "updated_at": "2026-11-19T17:57:13Z"
 }

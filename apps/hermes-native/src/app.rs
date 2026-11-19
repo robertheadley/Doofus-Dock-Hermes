@@ -29,6 +29,7 @@ use crate::layout::{
 use crate::native_oauth::{NativeOAuthLoginWorker, NativeOAuthSession};
 use crate::native_window::{self, READINESS_TIMEOUT, ReadinessReceiver, ReadinessTarget};
 use crate::plugin_catalog::{PluginCatalogEntry, PluginCatalogWorker};
+use crate::prepared_image_drafts::{PreparedImageAttachment, PreparedImageDraft};
 use crate::remote_probe::{
     RemoteAuthMode, RemoteConnectionTestReport, RemoteConnectionTestWorker, RemoteProbeReport,
     RemoteProbeWorker,
@@ -797,13 +798,17 @@ struct SessionChatViewState {
     older_transcript_error: Option<String>,
     draft: String,
     composer_attachments: Vec<ComposerAttachment>,
+    active_prepared_image_draft_id: Option<String>,
+    restored_prepared_image_draft_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ComposerAttachment {
     path: String,
+    source_path: String,
     name: String,
     is_image: bool,
+    mime: String,
     attached_session_id: Option<String>,
     ref_text: Option<String>,
     request_id: Option<String>,
@@ -1373,6 +1378,10 @@ pub struct HermesNativeApp {
     draft: String,
     composer_attachments: Vec<ComposerAttachment>,
     pending_composer_paths: Option<Vec<std::path::PathBuf>>,
+    prepared_image_drafts: Vec<PreparedImageDraft>,
+    prepared_image_draft_store_error: Option<String>,
+    active_prepared_image_draft_id: Option<String>,
+    restored_prepared_image_draft_id: Option<String>,
     pending_create: Option<(String, String)>,
     untouched_blank_session: Option<(String, Option<String>)>,
     pending_submissions: BTreeMap<String, PendingPrompt>,
@@ -3331,6 +3340,11 @@ fn render_message() -> &'static str {
         let gateway_connection_id =
             connect_gateway.then(|| workspace.selected_gateway_connection_id().to_owned());
         let gateway_discovery = start_saved_gateway_connection(&workspace, connect_gateway);
+        let (prepared_image_drafts, prepared_image_draft_store_error) =
+            match crate::prepared_image_drafts::load(workspace.data_directory()) {
+                Ok(drafts) => (drafts, None),
+                Err(error) => (Vec::new(), Some(error)),
+            };
         let keybinding_platform = current_key_platform();
         let (keybindings, keybindings_error) = match KeybindingStore::load(
             workspace.data_directory().join("keybindings.json"),
@@ -3344,12 +3358,16 @@ fn render_message() -> &'static str {
             narrow_viewport: false,
             narrow_pane_overlay: None,
             load_error,
-            status: if connect_gateway {
-                "Backend offline"
-            } else {
-                "Automation · gateway isolated"
-            }
-            .into(),
+            status: prepared_image_draft_store_error.as_ref().map_or_else(
+                || {
+                    if connect_gateway {
+                        "Backend offline".to_owned()
+                    } else {
+                        "Automation · gateway isolated".to_owned()
+                    }
+                },
+                |error| format!("Prepared image recovery unavailable: {error}"),
+            ),
             next_native_window_id: 1,
             native_window_id: None,
             allow_native_window_launch: false,
@@ -3656,6 +3674,10 @@ fn render_message() -> &'static str {
             draft: String::new(),
             composer_attachments: Vec::new(),
             pending_composer_paths: None,
+            prepared_image_drafts,
+            prepared_image_draft_store_error,
+            active_prepared_image_draft_id: None,
+            restored_prepared_image_draft_id: None,
             pending_create: None,
             untouched_blank_session: None,
             pending_submissions: BTreeMap::new(),
@@ -11755,6 +11777,153 @@ fn render_message() -> &'static str {
         });
     }
 
+    fn matching_prepared_image_drafts(&self) -> Vec<PreparedImageDraft> {
+        let AppRoute::Session(stored_session_id) = &self.route else {
+            return Vec::new();
+        };
+        let connection_id = self.active_gateway_connection_id();
+        self.prepared_image_drafts
+            .iter()
+            .filter(|draft| {
+                draft.connection_id == connection_id
+                    && draft.profile == self.active_session_profile
+                    && draft.stored_session_id == *stored_session_id
+                    && draft.id
+                        != self
+                            .restored_prepared_image_draft_id
+                            .as_deref()
+                            .unwrap_or_default()
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn persist_active_prepared_image_draft(&mut self) {
+        if !self
+            .composer_attachments
+            .iter()
+            .any(|attachment| attachment.is_image)
+        {
+            if let Some(id) = self.active_prepared_image_draft_id.clone() {
+                self.retire_prepared_image_draft(&id);
+            }
+            return;
+        }
+        let AppRoute::Session(stored_session_id) = &self.route else {
+            return;
+        };
+        if self.composer_attachments.iter().any(|attachment| {
+            attachment.request_id.is_some()
+                || attachment.error.is_some()
+                || attachment.ref_text.is_none() && !attachment.is_image
+        }) {
+            return;
+        }
+        let id = self
+            .active_prepared_image_draft_id
+            .clone()
+            .unwrap_or_else(|| operation_id("prepared-image"));
+        let created_at_unix_seconds = self
+            .prepared_image_drafts
+            .iter()
+            .find(|draft| draft.id == id)
+            .map(|draft| draft.created_at_unix_seconds)
+            .unwrap_or_else(|| unix_now_seconds() as u64);
+        let draft = PreparedImageDraft {
+            version: 1,
+            id: id.clone(),
+            connection_id: self.active_gateway_connection_id().to_owned(),
+            profile: self.active_session_profile.clone(),
+            stored_session_id: stored_session_id.clone(),
+            text: self.draft.clone(),
+            attachments: self
+                .composer_attachments
+                .iter()
+                .map(|attachment| PreparedImageAttachment {
+                    path: attachment.path.clone(),
+                    source_path: attachment.source_path.clone(),
+                    name: attachment.name.clone(),
+                    mime: attachment.mime.clone(),
+                    ref_text: attachment.ref_text.clone(),
+                })
+                .collect(),
+            created_at_unix_seconds,
+        };
+        match crate::prepared_image_drafts::write(self.workspace.data_directory(), &draft) {
+            Ok(()) => {
+                self.active_prepared_image_draft_id = Some(id.clone());
+                self.prepared_image_draft_store_error = None;
+                if let Some(current) = self
+                    .prepared_image_drafts
+                    .iter_mut()
+                    .find(|current| current.id == id)
+                {
+                    *current = draft;
+                } else {
+                    self.prepared_image_drafts.push(draft);
+                }
+            }
+            Err(error) => {
+                self.prepared_image_draft_store_error = Some(error.clone());
+                self.status = format!("Could not save interrupted image draft: {error}");
+            }
+        }
+    }
+
+    fn retire_prepared_image_draft(&mut self, id: &str) {
+        match crate::prepared_image_drafts::remove(self.workspace.data_directory(), id) {
+            Ok(()) => {
+                self.prepared_image_drafts.retain(|draft| draft.id != id);
+                if self.active_prepared_image_draft_id.as_deref() == Some(id) {
+                    self.active_prepared_image_draft_id = None;
+                }
+                if self.restored_prepared_image_draft_id.as_deref() == Some(id) {
+                    self.restored_prepared_image_draft_id = None;
+                }
+            }
+            Err(error) => {
+                self.prepared_image_draft_store_error = Some(error.clone());
+                self.status = format!("Could not retire prepared image draft: {error}");
+            }
+        }
+    }
+
+    fn restore_prepared_image_draft(&mut self, id: &str) {
+        if !self.draft.trim().is_empty() || !self.composer_attachments.is_empty() {
+            return;
+        }
+        let Some(runtime_session_id) = self.active_runtime_session_id.clone() else {
+            return;
+        };
+        let Some(draft) = self
+            .matching_prepared_image_drafts()
+            .into_iter()
+            .find(|draft| draft.id == id)
+        else {
+            return;
+        };
+        self.draft = draft.text.clone();
+        self.composer_attachments = draft
+            .attachments
+            .iter()
+            .map(|attachment| ComposerAttachment {
+                path: attachment.path.clone(),
+                source_path: attachment.source_path.clone(),
+                name: attachment.name.clone(),
+                is_image: attachment.mime.starts_with("image/"),
+                mime: attachment.mime.clone(),
+                attached_session_id: Some(runtime_session_id.clone()),
+                ref_text: attachment.ref_text.clone(),
+                request_id: None,
+                error: None,
+            })
+            .collect();
+        self.active_prepared_image_draft_id = Some(id.to_owned());
+        self.restored_prepared_image_draft_id = Some(id.to_owned());
+        self.save_active_chat_view();
+        self.status = "Interrupted image draft restored. Review it, then send when ready.".into();
+    }
+
     fn attach_composer_paths(&mut self, session_id: String, paths: Vec<std::path::PathBuf>) {
         let Some(gateway) = self.gateway_discovery.as_ref() else {
             self.status = "Hermes gateway is unavailable".into();
@@ -11780,8 +11949,10 @@ fn render_message() -> &'static str {
             let path = path.to_string_lossy().into_owned();
             let attachment = ComposerAttachment {
                 path: path.clone(),
+                source_path: path.clone(),
                 name: name.clone(),
                 is_image,
+                mime: crate::gateway::composer_attachment_mime(&name).to_owned(),
                 attached_session_id: None,
                 ref_text: None,
                 request_id: Some(request_id.clone()),
@@ -11836,6 +12007,7 @@ fn render_message() -> &'static str {
                         self.status = error;
                     }
                 }
+                self.persist_active_prepared_image_draft();
                 self.save_active_chat_view();
             }
             return;
@@ -11961,9 +12133,45 @@ fn render_message() -> &'static str {
             if let Some(path) = remove_attachment_path {
                 self.composer_attachments
                     .retain(|attachment| attachment.path != path);
+                self.persist_active_prepared_image_draft();
                 self.save_active_chat_view();
             }
         });
+        let recoverable_drafts = self.matching_prepared_image_drafts();
+        if !recoverable_drafts.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    RichText::new("Interrupted image drafts")
+                        .size(11.0)
+                        .color(MUTED),
+                );
+                let occupied =
+                    !self.draft.trim().is_empty() || !self.composer_attachments.is_empty();
+                for draft in recoverable_drafts {
+                    let label = draft
+                        .attachments
+                        .iter()
+                        .map(|attachment| attachment.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let restore = ui
+                        .add_enabled(
+                            !occupied && self.active_runtime_session_id.is_some(),
+                            egui::Button::new(format!("Restore: {label}")),
+                        )
+                        .accessible_name(format!(
+                            "Restore interrupted image draft with {} attachment(s)",
+                            draft.attachments.len()
+                        ));
+                    if restore.clicked() {
+                        self.restore_prepared_image_draft(&draft.id);
+                    }
+                }
+            });
+            if let Some(error) = &self.prepared_image_draft_store_error {
+                ui.label(RichText::new(error).size(11.0).color(Color32::LIGHT_RED));
+            }
+        }
         ui.horizontal(|ui| {
             let input = ui
                 .add_enabled(
@@ -11979,7 +12187,12 @@ fn render_message() -> &'static str {
                         }),
                 )
                 .accessible_name("Message composer");
+            let changed = input.changed();
             input.on_hover_text("Type a message to Hermes");
+            if changed {
+                self.persist_active_prepared_image_draft();
+                self.save_active_chat_view();
+            }
             if waiting_for_this_session {
                 let uncertain = pending.as_ref().is_some_and(|pending| pending.uncertain);
                 if uncertain {
@@ -14095,7 +14308,10 @@ fn render_message() -> &'static str {
                 mime: crate::gateway::composer_attachment_mime(&attachment.name).to_owned(),
             })
             .collect::<Vec<_>>();
-        let submission_id = operation_id("submit");
+        let submission_id = self
+            .active_prepared_image_draft_id
+            .clone()
+            .unwrap_or_else(|| operation_id("submit"));
         if let Err(error) = gateway.submit_prompt_with_attachments(
             session_id.clone(),
             self.active_session_profile.clone(),
@@ -14238,6 +14454,10 @@ fn render_message() -> &'static str {
                 status,
                 execution_generation,
             }) => {
+                // A prepared draft is retired only after Hermes confirms admission.
+                // Using the draft ID as the submission ID keeps this correct if the
+                // user navigated away while the request was in flight.
+                self.retire_prepared_image_draft(&submission_id);
                 if let Some(stored_session_id) =
                     self.stored_session_id_for_runtime(&session_id, pending.profile.as_deref())
                 {
@@ -15640,6 +15860,10 @@ fn render_message() -> &'static str {
                         older_transcript_error: self.older_transcript_error.clone(),
                         draft: self.draft.clone(),
                         composer_attachments: self.composer_attachments.clone(),
+                        active_prepared_image_draft_id: self.active_prepared_image_draft_id.clone(),
+                        restored_prepared_image_draft_id: self
+                            .restored_prepared_image_draft_id
+                            .clone(),
                     },
                 );
             }
@@ -15857,6 +16081,8 @@ fn render_message() -> &'static str {
                     self.active_runtime_session_id = view.runtime_session_id;
                     self.draft = view.draft;
                     self.composer_attachments = view.composer_attachments;
+                    self.active_prepared_image_draft_id = view.active_prepared_image_draft_id;
+                    self.restored_prepared_image_draft_id = view.restored_prepared_image_draft_id;
                     self.status =
                         format!("Session open · {} messages", view.transcript_message_count);
                 }
@@ -15914,6 +16140,8 @@ fn render_message() -> &'static str {
                     self.active_runtime_session_id = view.runtime_session_id;
                     self.draft = view.draft;
                     self.composer_attachments = view.composer_attachments;
+                    self.active_prepared_image_draft_id = view.active_prepared_image_draft_id;
+                    self.restored_prepared_image_draft_id = view.restored_prepared_image_draft_id;
                 } else {
                     self.transcript.clear();
                     self.transcript_message_count = 0;
@@ -15923,6 +16151,8 @@ fn render_message() -> &'static str {
                     self.active_runtime_session_id = None;
                     self.draft.clear();
                     self.composer_attachments.clear();
+                    self.active_prepared_image_draft_id = None;
+                    self.restored_prepared_image_draft_id = None;
                 }
                 if explicit_resume {
                     self.request_explicit_session_resume(
@@ -15941,6 +16171,8 @@ fn render_message() -> &'static str {
                 self.older_transcript_error = None;
                 self.active_runtime_session_id = None;
                 self.composer_attachments.clear();
+                self.active_prepared_image_draft_id = None;
+                self.restored_prepared_image_draft_id = None;
                 self.active_session_profile = self
                     .gateway_endpoint
                     .as_ref()
@@ -20844,6 +21076,8 @@ fn render_message() -> &'static str {
                         self.broadcast_local_sessions_changed();
                         if self.pending_composer_paths.is_some() {
                             self.composer_attachments.clear();
+                            self.active_prepared_image_draft_id = None;
+                            self.restored_prepared_image_draft_id = None;
                         } else {
                             self.draft = text;
                         }
@@ -25483,8 +25717,10 @@ mod tests {
     fn prompt_composer_places_gateway_attachment_refs_before_user_text() {
         let attachment = ComposerAttachment {
             path: "attachments/brief.pdf".into(),
+            source_path: "C:/brief.pdf".into(),
             name: "brief.pdf".into(),
             is_image: false,
+            mime: "application/pdf".into(),
             attached_session_id: Some("runtime-a".into()),
             ref_text: Some("@file:attachments/brief.pdf".into()),
             request_id: None,
@@ -25501,8 +25737,10 @@ mod tests {
     fn prompt_composer_rejects_unstaged_or_wrong_session_attachments() {
         let attachment = ComposerAttachment {
             path: "capture.png".into(),
+            source_path: "C:/capture.png".into(),
             name: "capture.png".into(),
             is_image: true,
+            mime: "image/png".into(),
             attached_session_id: Some("runtime-old".into()),
             ref_text: Some("@image:capture.png".into()),
             request_id: None,
@@ -25516,8 +25754,10 @@ mod tests {
     fn image_only_prompt_uses_source_default_text_and_image_ref_stays_in_attachment_metadata() {
         let attachment = ComposerAttachment {
             path: "attachments/capture.png".into(),
+            source_path: "C:/capture.png".into(),
             name: "capture.png".into(),
             is_image: true,
+            mime: "image/png".into(),
             attached_session_id: Some("runtime-image".into()),
             ref_text: Some("@image:attachments/capture.png".into()),
             request_id: None,
@@ -33041,6 +33281,70 @@ mod tests {
             HermesNativeApp::new_for_automation(profile.clone()),
             profile,
         )
+    }
+
+    #[test]
+    fn prepared_image_restore_is_scoped_and_does_not_send() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        let draft = PreparedImageDraft {
+            version: 1,
+            id: "prepared-image-recovery-1".into(),
+            connection_id: connection_id.clone(),
+            profile: Some("work".into()),
+            stored_session_id: "stored-session".into(),
+            text: "Describe this image".into(),
+            attachments: vec![PreparedImageAttachment {
+                path: "attachments/image.png".into(),
+                source_path: "C:\\images\\image.png".into(),
+                name: "image.png".into(),
+                mime: "image/png".into(),
+                ref_text: Some("[image attached]".into()),
+            }],
+            created_at_unix_seconds: 10,
+        };
+        crate::prepared_image_drafts::write(app.workspace.data_directory(), &draft)
+            .expect("persist recovery draft");
+        app.prepared_image_drafts =
+            crate::prepared_image_drafts::load(app.workspace.data_directory())
+                .expect("load recovery draft");
+        app.prepared_image_drafts.push(PreparedImageDraft {
+            connection_id: "another-connection".into(),
+            id: "wrong-owner".into(),
+            ..draft.clone()
+        });
+
+        let visible = app.matching_prepared_image_drafts();
+        assert_eq!(visible, [draft.clone()], "only the exact owner is visible");
+        app.restore_prepared_image_draft(&draft.id);
+        assert_eq!(app.draft, draft.text);
+        assert_eq!(app.composer_attachments.len(), 1);
+        assert_eq!(
+            app.composer_attachments[0].attached_session_id.as_deref(),
+            Some("runtime-session")
+        );
+        assert!(
+            app.gateway_discovery.is_none(),
+            "restore must not require or call Gateway"
+        );
+        assert_eq!(
+            crate::prepared_image_drafts::load(app.workspace.data_directory()).unwrap(),
+            [draft],
+            "restoring only hides the item locally and does not retire it"
+        );
+
+        app.draft = "keep existing text".into();
+        app.composer_attachments.clear();
+        app.restore_prepared_image_draft("prepared-image-recovery-1");
+        assert_eq!(
+            app.draft, "keep existing text",
+            "occupied composer is unchanged"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[cfg(feature = "agent-automation")]

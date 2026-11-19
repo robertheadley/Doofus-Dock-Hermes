@@ -70,24 +70,103 @@
   "blockers": [],
   "changed_files": [
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "doofus/events.jsonl",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/lib.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0026.json",
+      "path": "apps/hermes-native/src/prepared_image_drafts.rs",
       "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "git rev-parse HEAD; git status --short --branch; git show --stat --oneline HEAD",
+    "command": "cargo test -p hermes-native --features agent-automation --locked; cargo check --workspace --all-targets --locked; python apps/hermes-native/tools/test_doofus_task.py; python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
     "evidence": [
-      "apps/hermes-native/src/gateway.rs#prompt_submit_includes_source_image_attachment_metadata",
-      "apps/hermes-native/src/app.rs#image_only_prompt_uses_source_default_text_and_image_ref_stays_in_attachment_metadata"
+      "apps/hermes-native/src/app.rs#prepared_image_restore_is_scoped_and_does_not_send",
+      "apps/hermes-native/src/prepared_image_drafts.rs#prepared_image_drafts_round_trip_and_retire_atomically"
     ],
-    "state": "in_progress",
-    "summary": "Published tested PAR-0062 attachment transport as 3dc3257 on main. The commit includes the source-faithful file/image upload split, prompt-submit image metadata, scoped UI state, tests and partial progress evidence. PAR-0063 durable explicit restore remains the next code task.",
-    "verified_at": "2026-11-19T17:40:04Z"
+    "state": "tested",
+    "summary": "PAR-0063 now has a bounded atomic image-draft journal and explicit exact-owner Restore action. Restore does not send; draft retires only on admission. Focused test and full suite pass. Current base is main/origin 45d2216; worktree edits are limited to PAR-0063 implementation, progress and docs plus task records. Scoped status is 1 implemented, 11 partial, 161 unknown; 12/173 mapped.",
+    "verified_at": "2026-11-19T17:58:29Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
+    "hermes-par-0063",
     "hermes-par-0074",
     "hermes-par-0333",
     "hermes-par-0334",
@@ -96,7 +175,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T18:40:04Z",
+    "lease_expires_at": "2026-11-19T18:58:29Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -440,9 +519,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "95c09ed4-e4d9-42b1-8f06-6b507078bd48",
+  "last_event_id": "fe42a896-ba89-420d-b9a4-3272fa83f1da",
   "last_operation": {
-    "request_id": "95c09ed4-e4d9-42b1-8f06-6b507078bd48",
+    "request_id": "fe42a896-ba89-420d-b9a4-3272fa83f1da",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -461,7 +540,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Implement the prepared-image draft journal and explicit no-send restore control with owner/session fencing, then test persistence/restart and occupied-composer behavior.",
+  "recommended_next_action": "Commit and push PAR-0063 recovery slice to main; then record exact-SHA UCM partial evidence and continue next chat/tool requirement. Live Gateway staged-path validity after restart remains open.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -526,7 +605,6 @@
     "hermes-par-0060",
     "hermes-par-0061",
     "hermes-par-0062",
-    "hermes-par-0063",
     "hermes-par-0064",
     "hermes-par-0065",
     "hermes-par-0066",
@@ -962,24 +1040,76 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "618b45b67fd98f32ab6b9af3d8f55d4578f5226d8a97817825d7f6538da4d5f5",
+    "change_fingerprint": "0f16f6e45f84177c1c61d9dcadf251a5968b17cac38172c23e4ec13ff13974ad",
     "changed_files": [
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0026.json",
+        "path": "doofus/events.jsonl",
+        "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/lib.rs",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/prepared_image_drafts.rs",
         "status": "??"
       }
     ],
-    "head_commit": "3dc32577292e9a9596d1e93cfc772a64d59739da",
+    "head_commit": "45d221634958f78662d8db219a9a0a1b579e0b44",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 210,
+  "revision": 213,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 210,
+  "state_revision": 213,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0062",
-  "task_ledger_revision": 21,
+  "task_id": "hermes-par-0063",
+  "task_ledger_revision": 22,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -1934,5 +2064,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T17:40:04Z"
+  "updated_at": "2026-11-19T17:58:29Z"
 }

@@ -2568,3 +2568,17 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime performance claim; payload size remains capped at 16 MiB.
 - **risks:** Headless payload tests do not prove a live Gateway accepts the upload or that Windows picker behavior matches source.
 - **follow_up:** Implement PAR-0063 restore, then verify live attachment RPC results and source-paired Windows behavior.
+
+
+### PAR-0063 prepared image draft recovery — 2026-11-19T17:54:06Z
+
+- **id:** hermes-par-0063-prepared-image-draft-recovery-20261119
+- **timestamp:** 2026-11-19T17:54:06Z
+- **what:** Added a bounded versioned image-draft journal, owner-filtered Restore control, empty-composer guard, text/update persistence, and admission-receipt retirement. Restore is local-only and never submits to Hermes.
+- **why:** Preserve interrupted image composition across restart while matching the pinned explicit no-send recovery behavior.
+- **components:** Hermes Native composer, prepared image draft store, 173-row chat/tool progress ledger.
+- **type:** feature
+- **validation:** Focused test passes for exact connection/profile/session filtering, restore without Gateway, occupied composer no-op, and journal retention; store tests pass for write/update/read/remove and bounds; `cargo fmt` and scoped progress generator pass. Full suite, locked workspace check, task protocol, package validation, and diff checks pending.
+- **performance:** Store writes are bounded to 4 MiB per entry, 128 entries, and atomic local-file replacement; no benchmark claim.
+- **risks:** Persisted staged Gateway references may expire or be unavailable after restart; live Gateway, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** Run full validation, publish to main, then continue with the next dependency-ready chat/tool capability.
