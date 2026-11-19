@@ -255,3 +255,6 @@ Gateway `tool.start` and `tool.complete` events are projected into accessible tr
 ## Installed skills
 
 The capabilities view consumes Gateway `SkillInfo` rows and filters them case-insensitively by name, category, and description. Skill loading is profile-scoped through the Gateway capability request. This listing slice does not cover skill lifecycle controls or pinned usage ordering; see the generated capability progress view.
+
+
+Skills search results are filtered by name/category/description, then sorted by usage descending and name ascending. Native tie-breaking uses lowercase ordinal comparison; localized names may order differently from the pinned Desktop locale comparison.

@@ -1,5 +1,5 @@
 {
-  "revision": 38,
+  "revision": 40,
   "schema_version": 1,
   "tasks": [
     {
@@ -8176,7 +8176,7 @@
                 "priority": "P2",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-19T19:56:53Z",
+              "last_updated_at": "2026-11-19T20:00:12Z",
               "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
               "objective": "ui-search-installed-skills",
               "outputs": [],
@@ -8195,7 +8195,8 @@
               "task_id": "hermes-par-0252",
               "title": "PAR-0252 Search installed skills",
               "verification_evidence": [
-                "apps/hermes-native/src/app.rs#installed_skills_search_matches_name_category_and_description"
+                "apps/hermes-native/src/app.rs#installed_skills_search_matches_name_category_and_description",
+                "apps/hermes-native/src/app.rs#filter_installed_skills"
               ]
             },
             {
@@ -16240,5 +16241,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T19:56:53Z"
+  "updated_at": "2026-11-19T20:00:12Z"
 }

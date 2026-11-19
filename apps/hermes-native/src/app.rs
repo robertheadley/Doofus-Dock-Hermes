@@ -24550,7 +24550,7 @@ fn pdf_preview_fixture_bytes_for_pages(page_count: usize) -> Vec<u8> {
 
 fn filter_installed_skills(skills: &[SkillInfo], query: &str) -> Vec<SkillInfo> {
     let query = query.trim().to_lowercase();
-    skills
+    let mut filtered = skills
         .iter()
         .filter(|skill| {
             query.is_empty()
@@ -24559,7 +24559,14 @@ fn filter_installed_skills(skills: &[SkillInfo], query: &str) -> Vec<SkillInfo> 
                 || skill.description.to_lowercase().contains(&query)
         })
         .cloned()
-        .collect()
+        .collect::<Vec<_>>();
+    filtered.sort_by(|a, b| {
+        b.usage
+            .unwrap_or_default()
+            .cmp(&a.usage.unwrap_or_default())
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    filtered
 }
 
 fn merge_older_transcript_page(
@@ -36759,6 +36766,14 @@ mod tests {
                 provenance: Some("workspace".into()),
             },
             SkillInfo {
+                category: "research".into(),
+                description: "Audits API references".into(),
+                enabled: true,
+                name: "api-research".into(),
+                usage: Some(3),
+                provenance: Some("workspace".into()),
+            },
+            SkillInfo {
                 category: "documentation".into(),
                 description: "Indexes local notes".into(),
                 enabled: false,
@@ -36777,7 +36792,14 @@ mod tests {
             assert_eq!(visible.len(), 1, "query {query:?}");
             assert_eq!(visible[0].name, expected, "query {query:?}");
         }
-        assert_eq!(filter_installed_skills(&skills, " ").len(), 2);
+        let all = filter_installed_skills(&skills, " ");
+        assert_eq!(
+            all.iter()
+                .map(|skill| skill.name.as_str())
+                .collect::<Vec<_>>(),
+            ["api-research", "web-research", "notes-index"],
+            "usage sorts descending, then equal-usage skill names sort ascending"
+        );
     }
 
     #[test]

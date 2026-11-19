@@ -1509,3 +1509,8 @@ PAR-0251 is partial. The pinned Desktop Capabilities page loads skills by profil
 ### Revision 250 — Installed Skills search evidence (2026-11-19T19:56Z)
 
 PAR-0252 is partial. The pinned `filteredSkills` query and native shared filter both match installed skills across name, category, and description; the focused native test confirms those three fields plus blank-query behavior. Pinned results sort by usage descending and then name; native currently preserves the Gateway-provided order. Rendered search interaction, profile switch, live Gateway, physical Windows, and source-paired acceptance remain open.
+
+
+### Revision 251 — Skills ordering follow-up (2026-11-19T19:59Z)
+
+The PAR-0252 filter now orders matches by usage descending and then lowercase skill name, matching the pinned `filteredSkills` order for ordinary English identifiers. The focused regression asserts both search fields and ordering. Locale-sensitive tie-breaking, rendered search interaction, profile switching, live Gateway, Windows and source-paired acceptance remain open, so the row stays partial.

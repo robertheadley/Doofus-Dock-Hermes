@@ -180,3 +180,6 @@ Inline tool invocation cards are accessible and generation-scoped. Consecutive r
 
 
 Installed Skills are loaded from Hermes Gateway and searched across name, category, and description. Headless filtering coverage passes; usage ordering, list-rendering acceptance, lifecycle actions, and live/source-paired verification remain open.
+
+
+Installed Skills search now sorts matches by usage descending and then skill name, matching the pinned ordering for ordinary English identifiers. Locale-sensitive name ties and rendered search interaction remain open.

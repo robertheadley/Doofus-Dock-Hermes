@@ -534,9 +534,10 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#filter_installed_skills",
             "apps/hermes-native/src/app.rs#installed_skills_search_matches_name_category_and_description",
             "apps/hermes-native/docs/PLAN.md#Revision 250",
+            "apps/hermes-native/docs/PLAN.md#Revision 251",
         ],
         "gaps": [
-            "native matching preserves server list order instead of pinned usage-descending then alphabetical ordering",
+            "native tie-breaking uses lowercase ordinal name ordering, which may differ from pinned localeCompare for locale-specific names",
             "skill search UI/hint behavior and rendered results lack dedicated interaction coverage",
             "profile changes, live Gateway, Windows interaction, and source-paired acceptance remain unverified",
         ],

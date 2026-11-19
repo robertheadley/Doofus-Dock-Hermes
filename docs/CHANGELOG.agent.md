@@ -2830,3 +2830,17 @@ UCM evidence addendum (2026-11-19T19:55Z): EV-0036 records installed Skills sear
 - **follow_up:** Match pinned usage ordering and add UI interaction/source-paired coverage.
 
 UCM evidence addendum (2026-11-19T19:58Z): EV-0037 records the Skills search field test and is bound to code/docs commit `a2d1608a36a9efc834cc24930671e928f6aa1172`; capability remains partial.
+
+
+## PAR-0252 Skills result ordering
+
+- **id:** hermes-par-0252-skills-ordering-20261119
+- **timestamp:** 2026-11-19T19:59:00Z
+- **what:** Sort native matching skills by usage descending then lowercase name; extend the focused test to verify both priority and alphabetical tie order.
+- **why:** Close the known ordering mismatch against pinned Desktop search results.
+- **components:** Installed Skills filter, search result ordering and regression test.
+- **type:** behavior correction
+- **validation:** PASS focused Skills filter test and formatting; package/task validators run before publication.
+- **performance:** Sorting adds O(n log n) work after the existing O(n) filter.
+- **risks:** Lowercase ordinal tie-breaking can differ from locale-aware Desktop ordering for non-English names.
+- **follow_up:** Add rendered search interaction and locale-aware ordering acceptance.
