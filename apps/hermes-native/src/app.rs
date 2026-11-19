@@ -17,8 +17,8 @@ use crate::gateway::{
     ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
     ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
     RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillInfo,
-    TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
-    project_tree_session_colors,
+    SlashCompletionItem, SlashCompletionResult, TelegramOnboardingApplyReceipt,
+    TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
 };
 use crate::keybindings::{KeyPlatform, KeybindingStore};
 use crate::keybindings_ui::{KeybindingsPanel, key_event_to_combo};
@@ -57,7 +57,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     process::{Child, Command},
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -827,6 +827,15 @@ struct PendingActiveTranscriptRefresh {
 }
 
 #[derive(Clone, Debug)]
+struct PendingSlashCompletion {
+    request_id: String,
+    query: String,
+    session_id: Option<String>,
+    profile: Option<String>,
+    connection_id: String,
+}
+
+#[derive(Clone, Debug)]
 struct PendingActiveStatusRefresh {
     request_id: String,
     profile_id: String,
@@ -1377,6 +1386,14 @@ pub struct HermesNativeApp {
     active_runtime_session_id: Option<String>,
     active_session_profile: Option<String>,
     draft: String,
+    slash_completion_query: Option<String>,
+    slash_completion_scope: Option<String>,
+    slash_completion_due: Option<std::time::Instant>,
+    slash_completion_pending: Option<PendingSlashCompletion>,
+    slash_completion_items: Vec<SlashCompletionItem>,
+    slash_completion_error: Option<String>,
+    slash_completion_selected_index: usize,
+    slash_completion_dismissed: bool,
     composer_attachments: Vec<ComposerAttachment>,
     pending_composer_paths: Option<Vec<std::path::PathBuf>>,
     prepared_image_drafts: Vec<PreparedImageDraft>,
@@ -3673,6 +3690,14 @@ fn render_message() -> &'static str {
             active_runtime_session_id: None,
             active_session_profile: None,
             draft: String::new(),
+            slash_completion_query: None,
+            slash_completion_scope: None,
+            slash_completion_due: None,
+            slash_completion_pending: None,
+            slash_completion_items: Vec::new(),
+            slash_completion_error: None,
+            slash_completion_selected_index: 0,
+            slash_completion_dismissed: false,
             composer_attachments: Vec::new(),
             pending_composer_paths: None,
             prepared_image_drafts,
@@ -12093,7 +12118,94 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn sync_slash_completion_query(&mut self) {
+        let query = slash_completion_query(&self.draft);
+        let session_id = self.active_runtime_session_id.as_deref().unwrap_or("");
+        let profile = self
+            .active_session_profile
+            .as_deref()
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            })
+            .unwrap_or("");
+        let scope = format!(
+            "{}\u{1f}{session_id}\u{1f}{profile}",
+            self.active_gateway_connection_id()
+        );
+        if self.slash_completion_query == query
+            && self.slash_completion_scope.as_deref() == Some(&scope)
+        {
+            return;
+        }
+        self.slash_completion_query = query.clone();
+        self.slash_completion_scope = Some(scope);
+        self.slash_completion_due = query
+            .as_ref()
+            .map(|_| std::time::Instant::now() + std::time::Duration::from_millis(60));
+        self.slash_completion_pending = None;
+        self.slash_completion_items.clear();
+        self.slash_completion_error = None;
+        self.slash_completion_selected_index = 0;
+        self.slash_completion_dismissed = false;
+    }
+
+    fn request_slash_completion_if_due(&mut self, ctx: &egui::Context) {
+        if self.slash_completion_dismissed || self.slash_completion_pending.is_some() {
+            return;
+        }
+        let Some(query) = self.slash_completion_query.clone() else {
+            return;
+        };
+        let Some(due) = self.slash_completion_due else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        if now < due {
+            ctx.request_repaint_after(due - now);
+            return;
+        }
+        if !self.gateway_connected {
+            self.slash_completion_due = None;
+            self.slash_completion_error = Some("Hermes Gateway is disconnected".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.slash_completion_due = None;
+            self.slash_completion_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("slash-completion");
+        let session_id = self.active_runtime_session_id.clone();
+        let profile = self.active_session_profile.clone().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        });
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        if let Err(error) = gateway.complete_slash(
+            request_id.clone(),
+            query.clone(),
+            session_id.clone(),
+            profile.clone(),
+        ) {
+            self.slash_completion_error = Some(error);
+            self.slash_completion_due = None;
+            return;
+        }
+        self.slash_completion_pending = Some(PendingSlashCompletion {
+            request_id,
+            query,
+            session_id,
+            profile,
+            connection_id,
+        });
+        self.slash_completion_due = None;
+    }
+
     fn composer(&mut self, ui: &mut Ui) {
+        self.sync_slash_completion_query();
         let session_id = self.active_runtime_session_id.clone();
         let pending_key = session_id.as_deref().map(|session_id| {
             self.session_identity_key(session_id, self.active_session_profile.as_deref())
@@ -12233,6 +12345,7 @@ fn render_message() -> &'static str {
             if changed {
                 self.persist_active_prepared_image_draft();
                 self.save_active_chat_view();
+                self.sync_slash_completion_query();
             }
             if waiting_for_this_session {
                 let uncertain = pending.as_ref().is_some_and(|pending| pending.uncertain);
@@ -12287,6 +12400,71 @@ fn render_message() -> &'static str {
         });
         if waiting_for_this_session || waiting_for_new_session {
             ui.label(RichText::new("Waiting for Hermes…").size(11.0).color(MUTED));
+        }
+        self.request_slash_completion_if_due(ui.ctx());
+        if !self.slash_completion_dismissed && self.slash_completion_query.is_some() {
+            if self.slash_completion_pending.is_some() {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(
+                        RichText::new("Loading slash suggestions…")
+                            .size(11.0)
+                            .color(MUTED),
+                    );
+                });
+            } else if let Some(error) = &self.slash_completion_error {
+                ui.label(
+                    RichText::new(format!("Slash suggestions unavailable: {error}"))
+                        .size(11.0)
+                        .color(Color32::LIGHT_RED),
+                );
+            } else if !self.slash_completion_items.is_empty() {
+                let items = self.slash_completion_items.clone();
+                let mut insert = None;
+                ui.group(|ui| {
+                    ui.label(RichText::new("Slash suggestions").strong());
+                    let mut previous_group = String::new();
+                    for item in items.iter().take(24) {
+                        if item.group != previous_group {
+                            previous_group.clone_from(&item.group);
+                            ui.label(RichText::new(&item.group).size(10.0).color(MUTED));
+                        }
+                        let button_text = if item.meta.trim().is_empty() {
+                            item.display.clone()
+                        } else {
+                            format!("{} · {}", item.display, item.meta)
+                        };
+                        if ui
+                            .button(button_text)
+                            .accessible_name(format!(
+                                "Insert {} into the message draft without sending",
+                                item.display
+                            ))
+                            .clicked()
+                        {
+                            insert = Some(item.text.clone());
+                        }
+                    }
+                    ui.label(
+                        RichText::new(
+                            "Tab to a suggestion and press Enter to insert; nothing is sent.",
+                        )
+                        .size(10.0)
+                        .color(MUTED),
+                    );
+                });
+                if let Some(text) = insert {
+                    self.draft = text;
+                    self.sync_slash_completion_query();
+                    self.slash_completion_due = None;
+                    self.slash_completion_pending = None;
+                    self.slash_completion_items.clear();
+                    self.slash_completion_error = None;
+                    self.slash_completion_dismissed = true;
+                    self.persist_active_prepared_image_draft();
+                    self.save_active_chat_view();
+                }
+            }
         }
     }
 
@@ -23011,6 +23189,48 @@ fn render_message() -> &'static str {
                         Err(error) => self.cron_model_options_error = Some(error),
                     }
                 }
+                GatewayEvent::SlashCompletionLoaded {
+                    request_id,
+                    query,
+                    session_id,
+                    profile,
+                    connection_id,
+                    result,
+                } => {
+                    let Some(pending) = self.slash_completion_pending.as_ref() else {
+                        continue;
+                    };
+                    let event_connection = connection_id
+                        .as_deref()
+                        .unwrap_or_else(|| self.active_gateway_connection_id());
+                    if pending.request_id != request_id
+                        || pending.query != query
+                        || pending.session_id != session_id
+                        || pending.profile != profile
+                        || pending.connection_id != event_connection
+                        || self.active_runtime_session_id != session_id
+                        || self.slash_completion_query.as_deref() != Some(query.as_str())
+                    {
+                        continue;
+                    }
+                    self.slash_completion_pending = None;
+                    match result {
+                        Ok(SlashCompletionResult { items, .. }) => {
+                            let advanced =
+                                self.workspace.preferences.mode == InterfaceMode::Advanced;
+                            self.slash_completion_items = items
+                                .into_iter()
+                                .filter(|item| desktop_slash_suggestion_allowed(item, advanced))
+                                .collect();
+                            self.slash_completion_selected_index = 0;
+                            self.slash_completion_error = None;
+                        }
+                        Err(error) => {
+                            self.slash_completion_items.clear();
+                            self.slash_completion_error = Some(error);
+                        }
+                    }
+                }
                 GatewayEvent::CronBlueprintsLoaded {
                     request_id,
                     profile,
@@ -24715,6 +24935,33 @@ fn format_timeline_tooltip(start: f64, end: Option<f64>) -> String {
         return start;
     };
     format!("{start} → {end}")
+}
+
+static DESKTOP_SLASH_REGISTRY: OnceLock<BTreeMap<String, Option<String>>> = OnceLock::new();
+
+fn desktop_slash_registry() -> &'static BTreeMap<String, Option<String>> {
+    DESKTOP_SLASH_REGISTRY.get_or_init(|| {
+        serde_json::from_str(include_str!("desktop_slash_registry.json"))
+            .expect("pinned Hermes slash registry must remain valid JSON")
+    })
+}
+
+fn slash_completion_query(draft: &str) -> Option<String> {
+    let query = draft.trim_start();
+    if !query.starts_with('/') || query.contains('\n') || query.contains('\r') || query.len() > 512
+    {
+        return None;
+    }
+    Some(query.to_owned())
+}
+
+fn desktop_slash_suggestion_allowed(item: &SlashCompletionItem, advanced: bool) -> bool {
+    let root = item.text.split_whitespace().next().unwrap_or(&item.text);
+    match desktop_slash_registry().get(&root.to_ascii_lowercase()) {
+        Some(None) => true,
+        Some(Some(surface)) => surface == "advanced" && advanced,
+        None => item.group.to_ascii_lowercase().contains("skill"),
+    }
 }
 
 fn timestamps_status(enabled: bool) -> String {
@@ -28955,6 +29202,78 @@ mod tests {
         );
         assert!(tooltip.contains(" → "));
         assert!(format_timeline_tooltip(f64::NAN, None).is_empty());
+    }
+
+    #[test]
+    fn slash_completion_requires_a_leading_single_line_command() {
+        assert_eq!(
+            slash_completion_query("/review fix"),
+            Some("/review fix".into())
+        );
+        assert_eq!(slash_completion_query("ordinary /text"), None);
+        assert_eq!(slash_completion_query("/review\nmore"), None);
+        assert_eq!(slash_completion_query("/".repeat(513).as_str()), None);
+    }
+
+    #[test]
+    fn slash_suggestion_filter_uses_pinned_desktop_surface_and_skill_rows() {
+        let item = |text: &str, group: &str| SlashCompletionItem {
+            text: text.into(),
+            display: text.into(),
+            meta: String::new(),
+            group: group.into(),
+        };
+        assert!(desktop_slash_suggestion_allowed(
+            &item("/resume", "Session"),
+            false
+        ));
+        assert!(!desktop_slash_suggestion_allowed(
+            &item("/cron", "Commands"),
+            true
+        ));
+        assert!(!desktop_slash_suggestion_allowed(
+            &item("/curator", "Commands"),
+            false
+        ));
+        assert!(desktop_slash_suggestion_allowed(
+            &item("/curator", "Commands"),
+            true
+        ));
+        assert!(desktop_slash_suggestion_allowed(
+            &item("/project-review", "Skills"),
+            false
+        ));
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn slash_suggestion_inserts_a_draft_without_submitting_it() {
+        let (mut app, profile) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::NewChat;
+        app.draft = "/rev".into();
+        app.sync_slash_completion_query();
+        app.slash_completion_items = vec![SlashCompletionItem {
+            text: "/review fix".into(),
+            display: "/review fix".into(),
+            meta: "Review the working tree".into(),
+            group: "Commands".into(),
+        }];
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness
+            .get_by_label("Insert /review fix into the message draft without sending")
+            .click();
+        harness.run();
+        assert_eq!(app.borrow().draft, "/review fix");
+        assert!(app.borrow().pending_submissions.is_empty());
+        assert!(app.borrow().slash_completion_dismissed);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
     }
 
     #[test]

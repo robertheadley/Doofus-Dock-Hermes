@@ -2694,3 +2694,16 @@ Publication addendum (2026-11-19T17:02:58Z): Published `a2f4ed924307df440b102849
 - **performance:** No runtime changes.
 - **risks:** Terminal implementation remains a substantial prerequisite for terminal-derived chat context.
 - **follow_up:** Implement accessible slash completion using the active session/profile Gateway owner.
+
+## Hermes PAR-0067 slash completion
+
+- **id:** hermes-par-0067-slash-completion-20261119
+- **timestamp:** 2026-11-19T19:08:00Z
+- **what:** Added debounced, Gateway-backed slash catalog and query requests; owner-fenced results; pinned Desktop registry/interface-mode filtering; accessible suggestions that insert into the current draft without sending; and visible disconnected/unavailable states. Updated the evidence generator to preserve prior PAR-0062..0065 and PAR-0511 partial rows rather than silently dropping them.
+- **why:** Provide a useful first native slash-command flow while keeping status conservative and chat/tool progress reproducible.
+- **components:** Hermes Native composer, Gateway discovery actor, pinned slash registry, 499-row implementation overlay and 173-row chat/tool view.
+- **type:** feature and progress-evidence maintenance
+- **validation:** PASS 7 focused slash tests; PASS full feature suite (404 library, 15 protocol, 3 launcher); PASS workspace all-target check; PASS Doofus task continuity (18/18); PASS UCM package validator (565 behaviors/inventory/tests, 14 source and 15 implementation receipts); PASS progress generators (47 reviewed: 6 implemented, 41 partial, 452 unknown; 173 chat/tool: 1 implemented, 14 partial, 158 unknown); PASS rustfmt, Python compilation and diff check.
+- **performance:** 60 ms input debounce; no benchmark run.
+- **risks:** Arrow navigation, directive chips, mid-message triggers, owner-scoped caching, special local commands, live Gateway behavior, installed Windows interaction and source-paired acceptance remain open.
+- **follow_up:** Continue the next dependency-ready pinned chat/tool feature; keep UI styling deferred until scoped feature support is complete.

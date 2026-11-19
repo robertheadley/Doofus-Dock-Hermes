@@ -800,6 +800,20 @@ pub struct ModelOptionsSnapshot {
     pub provider: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SlashCompletionItem {
+    pub text: String,
+    pub display: String,
+    pub meta: String,
+    pub group: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SlashCompletionResult {
+    pub items: Vec<SlashCompletionItem>,
+    pub replace_from: usize,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct ModelOptionProvider {
     pub slug: String,
@@ -1753,6 +1767,14 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<ModelOptionsSnapshot, String>,
     },
+    SlashCompletionLoaded {
+        request_id: String,
+        query: String,
+        session_id: Option<String>,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        result: Result<SlashCompletionResult, String>,
+    },
     CronDeliveryTargetsLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2147,6 +2169,12 @@ enum GatewayCommand {
     ResumeSession {
         request_id: String,
         session_id: String,
+        profile: Option<String>,
+    },
+    CompleteSlash {
+        request_id: String,
+        query: String,
+        session_id: Option<String>,
         profile: Option<String>,
     },
     CreateSession {
@@ -3140,8 +3168,12 @@ impl GatewayDiscovery {
 
     pub fn poll_event(&self) -> Option<GatewayEvent> {
         let mut event = self.event_receiver.try_recv().ok()?;
-        if let GatewayEvent::SessionResumed { connection_id, .. } = &mut event {
-            *connection_id = self.connection_id.clone();
+        match &mut event {
+            GatewayEvent::SessionResumed { connection_id, .. }
+            | GatewayEvent::SlashCompletionLoaded { connection_id, .. } => {
+                *connection_id = self.connection_id.clone();
+            }
+            _ => {}
         }
         Some(event)
     }
@@ -3254,6 +3286,23 @@ impl GatewayDiscovery {
                 submission_id,
                 text,
                 attachments: Vec::new(),
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn complete_slash(
+        &self,
+        request_id: String,
+        query: String,
+        session_id: Option<String>,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::CompleteSlash {
+                request_id,
+                query,
+                session_id,
+                profile,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -5744,6 +5793,32 @@ fn gateway_actor(
                     return;
                 }
             }
+            Ok(GatewayCommand::CompleteSlash {
+                request_id,
+                query,
+                session_id,
+                profile,
+            }) => {
+                let (method, params) =
+                    slash_completion_rpc_payload(&query, session_id.as_deref(), profile.as_deref());
+                let result =
+                    rpc_with_events(socket, next_request_id, method, params, Some(&events))
+                        .and_then(|value| parse_slash_completion_result(&query, value));
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::SlashCompletionLoaded {
+                        request_id,
+                        query,
+                        session_id,
+                        profile,
+                        connection_id: None,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::SubmitPrompt {
                 session_id,
                 profile,
@@ -6436,6 +6511,172 @@ fn resume_session(
         runtime_session_id: runtime_session_id.to_owned(),
         message_count,
         messages,
+    })
+}
+
+fn slash_completion_rpc_payload(
+    query: &str,
+    session_id: Option<&str>,
+    profile: Option<&str>,
+) -> (&'static str, serde_json::Value) {
+    let mut params = serde_json::Map::new();
+    if let Some(session_id) = session_id.filter(|id| !id.is_empty()) {
+        params.insert(
+            "session_id".into(),
+            serde_json::Value::String(session_id.into()),
+        );
+    } else if let Some(profile) = profile.filter(|profile| !profile.is_empty()) {
+        params.insert("profile".into(), serde_json::Value::String(profile.into()));
+    }
+    if query.trim() == "/" {
+        ("commands.catalog", serde_json::Value::Object(params))
+    } else {
+        params.insert("text".into(), serde_json::Value::String(query.into()));
+        ("complete.slash", serde_json::Value::Object(params))
+    }
+}
+
+fn parse_slash_completion_result(
+    query: &str,
+    value: serde_json::Value,
+) -> Result<SlashCompletionResult, String> {
+    const MAX_ITEMS: usize = 200;
+    const MAX_TEXT: usize = 512;
+    let mut items = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+
+    let mut push_item = |text: &str, display: &str, meta: &str, group: &str| {
+        let raw_text = text.trim();
+        if raw_text.is_empty() || raw_text.chars().count() > MAX_TEXT || items.len() >= MAX_ITEMS {
+            return;
+        }
+        let text = if raw_text.starts_with('/') {
+            raw_text.to_owned()
+        } else {
+            format!("/{raw_text}")
+        };
+        if !seen.insert(text.to_ascii_lowercase()) {
+            return;
+        }
+        items.push(SlashCompletionItem {
+            display: if display.trim().is_empty() {
+                text.clone()
+            } else {
+                display.trim().chars().take(MAX_TEXT).collect()
+            },
+            text,
+            meta: meta.chars().take(1_024).collect(),
+            group: if group.trim().is_empty() {
+                "Commands".into()
+            } else {
+                group.trim().chars().take(64).collect()
+            },
+        });
+    };
+
+    let mut replace_from = 1;
+    if query.trim() == "/" {
+        let mut categorized = std::collections::BTreeSet::new();
+        if let Some(categories) = value
+            .get("categories")
+            .and_then(serde_json::Value::as_array)
+        {
+            for category in categories {
+                let group = category
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("Commands");
+                let Some(pairs) = category.get("pairs").and_then(serde_json::Value::as_array)
+                else {
+                    continue;
+                };
+                for pair in pairs {
+                    let Some(pair) = pair.as_array() else {
+                        continue;
+                    };
+                    let Some(command) = pair.first().and_then(serde_json::Value::as_str) else {
+                        continue;
+                    };
+                    let description = pair
+                        .get(1)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("");
+                    categorized.insert(command.to_ascii_lowercase());
+                    push_item(command, command, description, group);
+                }
+            }
+        }
+        if let Some(pairs) = value.get("pairs").and_then(serde_json::Value::as_array) {
+            for pair in pairs {
+                let Some(pair) = pair.as_array() else {
+                    continue;
+                };
+                let Some(command) = pair.first().and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if categorized.contains(&command.to_ascii_lowercase()) {
+                    continue;
+                }
+                let description = pair
+                    .get(1)
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                push_item(command, command, description, "Skills");
+            }
+        }
+    } else {
+        replace_from = value
+            .get("replace_from")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(1)
+            .min(MAX_TEXT as u64) as usize;
+        if let Some(entries) = value.get("items").and_then(serde_json::Value::as_array) {
+            let prefix = query
+                .char_indices()
+                .take_while(|(index, _)| *index < replace_from)
+                .map(|(_, ch)| ch)
+                .collect::<String>();
+            for entry in entries {
+                let Some(raw_text) = entry.get("text").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                let text = if replace_from > 1 {
+                    format!("{prefix}{raw_text}")
+                } else {
+                    raw_text.to_owned()
+                };
+                let display = entry
+                    .get("display")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(raw_text);
+                let meta = entry
+                    .get("meta")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("");
+                let group = entry
+                    .get("group")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| {
+                        if replace_from > 1 {
+                            Some("Options")
+                        } else if entry
+                            .get("kind")
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|kind| kind.eq_ignore_ascii_case("skill"))
+                        {
+                            Some("Skills")
+                        } else {
+                            Some("Commands")
+                        }
+                    })
+                    .unwrap_or("Commands");
+                push_item(&text, display, meta, group);
+            }
+        }
+    }
+    Ok(SlashCompletionResult {
+        items,
+        replace_from,
     })
 }
 
@@ -11726,6 +11967,62 @@ mod tests {
     use super::*;
 
     #[test]
+    fn slash_completion_uses_catalog_and_query_rpc_with_exact_owner_scope() {
+        let (method, params) = slash_completion_rpc_payload("/", None, Some("profile-a"));
+        assert_eq!(method, "commands.catalog");
+        assert_eq!(params, serde_json::json!({"profile":"profile-a"}));
+
+        let (method, params) =
+            slash_completion_rpc_payload("/review fix", Some("runtime-1"), Some("profile-a"));
+        assert_eq!(method, "complete.slash");
+        assert_eq!(
+            params,
+            serde_json::json!({"session_id":"runtime-1","text":"/review fix"})
+        );
+    }
+
+    #[test]
+    fn slash_catalog_parser_groups_categories_and_unlisted_skills() {
+        let parsed = parse_slash_completion_result(
+            "/",
+            serde_json::json!({
+                "categories":[{"name":"Session","pairs":[["/resume","Resume a session"]]}],
+                "pairs":[["/resume","duplicate"],["review-skill","Review code"]]
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(parsed.replace_from, 1);
+        assert_eq!(parsed.items.len(), 2);
+        assert_eq!(parsed.items[0].text, "/resume");
+        assert_eq!(parsed.items[0].group, "Session");
+        assert_eq!(parsed.items[1].text, "/review-skill");
+        assert_eq!(parsed.items[1].group, "Skills");
+    }
+
+    #[test]
+    fn slash_argument_parser_rebuilds_full_command_and_bounds_payload() {
+        let parsed = parse_slash_completion_result(
+            "/personality alic",
+            serde_json::json!({
+                "replace_from":13,
+                "items":[{"text":"alice","display":"Alice","meta":"Recommended","kind":"option"}]
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(parsed.items.len(), 1);
+        assert_eq!(parsed.items[0].text, "/personality alice");
+        assert_eq!(parsed.items[0].display, "Alice");
+        assert_eq!(parsed.items[0].meta, "Recommended");
+        assert_eq!(parsed.items[0].group, "Options");
+
+        let malformed =
+            parse_slash_completion_result("/x", serde_json::json!({"items":[]})).unwrap();
+        assert!(malformed.items.is_empty());
+    }
+
+    #[test]
     fn composer_image_upload_uses_pinned_gateway_bytes_contract() {
         let (method, params) = composer_attachment_rpc_payload(
             "runtime-1",
@@ -16643,6 +16940,95 @@ mod tests {
 
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn slash_completion_actor_routes_catalog_and_typed_queries_to_the_scoped_gateway() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for (method, expected_params, result) in [
+                (
+                    "commands.catalog",
+                    json!({"profile":"profile-a"}),
+                    json!({"categories":[{"name":"Session","pairs":[["/resume","Resume"]]}]}),
+                ),
+                (
+                    "complete.slash",
+                    json!({"session_id":"runtime-1","text":"/review fix"}),
+                    json!({"items":[{"text":"/review fix"}],"replace_from":1}),
+                ),
+            ] {
+                let request: serde_json::Value = match socket.read().expect("read RPC") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse RPC"),
+                    other => panic!("expected RPC text, got {other:?}"),
+                };
+                assert_eq!(request["method"], method);
+                assert_eq!(request["params"], expected_params);
+                let id = request["id"].as_u64().expect("RPC id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":result})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send RPC result");
+            }
+            socket.close(None).expect("close fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("set RPC timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::CompleteSlash {
+                request_id: "catalog-1".into(),
+                query: "/".into(),
+                session_id: None,
+                profile: Some("profile-a".into()),
+            })
+            .expect("queue catalog query");
+        let GatewayEvent::SlashCompletionLoaded {
+            request_id,
+            result: Ok(catalog),
+            ..
+        } = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("catalog response")
+        else {
+            panic!("expected catalog completion event");
+        };
+        assert_eq!(request_id, "catalog-1");
+        assert_eq!(catalog.items[0].text, "/resume");
+        command_tx
+            .send(GatewayCommand::CompleteSlash {
+                request_id: "query-1".into(),
+                query: "/review fix".into(),
+                session_id: Some("runtime-1".into()),
+                profile: Some("profile-a".into()),
+            })
+            .expect("queue typed completion");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("typed response"),
+            GatewayEvent::SlashCompletionLoaded {
+                request_id,
+                query,
+                session_id: Some(session_id),
+                result: Ok(_),
+                ..
+            } if request_id == "query-1" && query == "/review fix" && session_id == "runtime-1"
+        ));
+        drop(command_tx);
+        actor.join().expect("RPC actor exits");
         server.join().expect("fixture server exits");
     }
 

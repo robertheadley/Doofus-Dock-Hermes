@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 235 (implementation in progress).
+- **Working revision:** 244 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1460,3 +1460,10 @@ UCM timestamp evidence addendum (2026-11-19T18:44Z): Added EV-0030 bound to `2db
 Pinned source `use-terminal-session.ts` adds trimmed selected terminal text to the chat draft via its selection callback and clears the selection without submitting a prompt. Hermes Native currently renders the Terminal panel as an offline placeholder, so PAR-0066 cannot be implemented until the terminal surface exists; it remains blocked and must not be reported as complete. The native composer also has no slash-completion implementation, while pinned source uses Gateway-backed `commands.catalog` and `complete.slash`; PAR-0067 is the next independent chat slice.
 
 Source comparison used the exact local Hermes checkout at `8783054ef6cbafd86f10892241436862c1171a66`.
+
+
+### Revision 244 — Gateway-backed slash completion (2026-11-19T19:10Z)
+
+Hermes Native now recognizes a leading, single-line slash query in the composer and debounces it for 60 ms. A bare `/` requests the pinned Desktop command catalog; a typed slash query calls `complete.slash`. Requests carry the active session when present, otherwise the active profile. Results are fenced by request, query, session, profile and Gateway connection identity, filtered through the pinned Desktop slash registry and current interface mode, and rendered as accessible insertion buttons. Choosing a result updates and persists the draft without sending it. Offline and unavailable Gateway states are visible. PAR-0067 is partial: arrow-key navigation, directive chips, mid-message triggers, owner-scoped cache invalidation, special local `/skin` and session commands, live Gateway behavior, installed Windows interaction and source-paired acceptance remain open.
+
+Focused evidence: 7 slash tests pass, including exact catalog/query RPC selection and owner parameters, catalog grouping/deduplication, argument replacement, registry filtering and no-send draft insertion. Full Hermes Native suite passes (404 library + 15 automation protocol + 3 launcher tests). Workspace check and package/evidence updates remain in progress.

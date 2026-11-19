@@ -78,21 +78,115 @@
     "status": "authorized"
   },
   "blockers": [],
-  "changed_files": [],
+  "changed_files": [
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "doofus/events.jsonl",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/desktop_slash_registry.json",
+      "status": "??"
+    }
+  ],
   "checkpoint": {
     "command": "cargo test -p hermes-native --features agent-automation --locked",
     "evidence": [
-      "apps/hermes-native/docs/PLAN.md#Revision 243"
+      "apps/hermes-native/src/app.rs#slash_suggestion_inserts_a_draft_without_submitting_it",
+      "apps/hermes-native/src/gateway.rs#slash_completion_actor_routes_catalog_and_typed_queries_to_the_scoped_gateway",
+      "apps/hermes-native/docs/PLAN.md#Revision 244"
     ],
-    "state": "in_progress",
-    "summary": "PAR-0065 timestamp details validated and published; source audit identifies the native terminal as a blocker for PAR-0066 and Gateway-backed slash completion as next work.",
-    "verified_at": "2026-11-19T18:44:17Z"
+    "state": "tested",
+    "summary": "PAR-0067 slash completion implementation passes focused and full feature validation; status remains partial.",
+    "verified_at": "2026-11-19T19:10:52Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
     "hermes-par-0063",
     "hermes-par-0064",
     "hermes-par-0065",
+    "hermes-par-0067",
     "hermes-par-0074",
     "hermes-par-0333",
     "hermes-par-0334",
@@ -101,7 +195,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T19:44:17Z",
+    "lease_expires_at": "2026-11-19T20:10:52Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -487,9 +581,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "94eeb1b4-8000-486d-90e1-8ee4fb19aa7d",
+  "last_event_id": "2cca6e59-bfdb-44aa-8746-964a46973074",
   "last_operation": {
-    "request_id": "94eeb1b4-8000-486d-90e1-8ee4fb19aa7d",
+    "request_id": "2cca6e59-bfdb-44aa-8746-964a46973074",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -508,7 +602,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Implement accessible Gateway-backed slash completion in Hermes Native composer using active session/profile scope.",
+  "recommended_next_action": "Publish implementation commit, record exact-SHA UCM partial evidence, then select the next dependency-ready chat/tool gap.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -574,7 +668,6 @@
     "hermes-par-0061",
     "hermes-par-0062",
     "hermes-par-0066",
-    "hermes-par-0067",
     "hermes-par-0068",
     "hermes-par-0069",
     "hermes-par-0070",
@@ -1006,19 +1099,80 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "9d512858ca4789f4ef9c3a7ee0147840a067ca5a8131b03c8ea822c32edab1b5",
-    "changed_files": [],
-    "head_commit": "34b3773ba0fc7f99b9e68464d04d992012c27e2a",
+    "change_fingerprint": "1f6a1f7e34f1304ee30a14ae2120d33d6fa3e083cff42ae9690c22505149e181",
+    "changed_files": [
+      {
+        "path": "doofus/events.jsonl",
+        "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/desktop_slash_registry.json",
+        "status": "??"
+      }
+    ],
+    "head_commit": "ca4c3a5d64c07549d405bece5ef7f332090f7621",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 235,
+  "revision": 237,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 235,
+  "state_revision": 237,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0067",
-  "task_ledger_revision": 28,
+  "task_ledger_revision": 29,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -1984,9 +2138,14 @@
       "command": "python apps/hermes-native/tools/test_doofus_task.py",
       "result": "PASS full suite: 397 library + 15 automation protocol + 3 launcher; PASS workspace all-target check; PASS task protocol 18/18; PASS UCM package validator (565 behaviors, 14 source, 15 implementation receipts); PASS rustfmt/diff. Progress scope is 173 chat/tool rows: 1 implemented, 13 partial, 159 unknown, 14 mapped; overall task progress review is 46/499 (9.2%).",
       "timestamp": "2026-11-19T18:44:17Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked slash_ -- --nocapture",
+      "result": "PASS 7 slash tests; full suite 404 library + 15 automation protocol + 3 launcher; workspace check; Doofus continuity 18/18; progress 47 reviewed, 6 implemented, 41 partial, 452 unknown; chat/tool 1 implemented, 14 partial, 158 unknown.",
+      "timestamp": "2026-11-19T19:10:52Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T18:44:17Z"
+  "updated_at": "2026-11-19T19:10:52Z"
 }
