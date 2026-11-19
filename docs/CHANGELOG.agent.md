@@ -3059,3 +3059,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change; event updates mutate existing rows and add no polling.
 - **risks:** Headless evidence only; live Gateway notifications, interrupted-turn source parity, installed Windows rendering, and source-paired acceptance remain open.
 - **follow_up:** Bind EV-0048 to the behavior commit, mark PAR-0043 tested partial, and publish directly to main.
+
+- **id:** hermes-par0043-ev0048
+- **timestamp:** 2026-11-19T23:06:00Z
+- **what:** Added EV-0048 for the tested partial live tool progress capability and updated all UCM capability projections to partial.
+- **why:** Tie the implementation claim to reproducible evidence while preserving the live-runtime and source-paired acceptance gaps.
+- **components:** UCM capability map, crosswalk, UI inventory, full map, evidence receipt, Doofus task ledger.
+- **type:** evidence and progress tracking
+- **validation:** PASS UCM package validator (565 target behaviors, 565 inventory rows, 14 source receipts, 33 implementation receipts); JSON receipt parse; task ledger validation at revision 330.
+- **performance:** No benchmark change.
+- **risks:** PyYAML is not installed, so optional YAML parsing was skipped; package validator passed. Live Gateway and installed Windows behavior remain unverified.
+- **follow_up:** Publish both commits on main and verify origin/main equals local HEAD.

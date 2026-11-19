@@ -117,6 +117,7 @@
     "hermes-par-0017",
     "hermes-par-0040",
     "hermes-par-0041",
+    "hermes-par-0043",
     "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0063",
@@ -483,6 +484,18 @@
       "state": "succeeded"
     },
     {
+      "evidence": [],
+      "kind": "git_push_main",
+      "note": "Publish validated live tool-progress behavior commit ed4281c and EV-0048/UCM/task evidence directly to main; fresh fetch must confirm exact origin/main SHA equality.",
+      "observed_at": "2026-11-19T23:07:31Z",
+      "operation_id": "hermes-par0043-main-publish-20261119",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
+    },
+    {
       "evidence": [
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0034.json#EV-0034"
       ],
@@ -695,11 +708,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0043-implementation-checkpoint-20261119",
+  "last_event_id": "hermes-par0043-publish-20261119",
   "last_operation": {
-    "request_id": "hermes-par0043-implementation-checkpoint-20261119",
+    "request_id": "hermes-par0043-publish-20261119",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "external_operation.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -759,7 +772,6 @@
     "hermes-par-0038",
     "hermes-par-0039",
     "hermes-par-0042",
-    "hermes-par-0043",
     "hermes-par-0044",
     "hermes-par-0045",
     "hermes-par-0046",
@@ -1222,13 +1234,13 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 329,
+  "revision": 331,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 329,
+  "state_revision": 331,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0043",
-  "task_ledger_revision": 50,
+  "task_ledger_revision": 51,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2323,5 +2335,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T22:58:16Z"
+  "updated_at": "2026-11-19T23:07:31Z"
 }
