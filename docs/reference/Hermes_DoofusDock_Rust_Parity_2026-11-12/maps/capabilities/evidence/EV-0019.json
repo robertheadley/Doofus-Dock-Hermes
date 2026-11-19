@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0019",
+  "capability_id": "ui-reattach-to-in-flight-turn-without-duplicating-submit",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "gateway-loopback-inflight",
+  "locator": "../../../../apps/hermes-native/src/gateway.rs",
+  "date": "2026-11-19",
+  "commit": "885bfd278bd39dfbe309f4a54c7283a258e35342",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Local ephemeral WebSocket fixture driving gateway_actor; no Hermes backend credentials or private sessions.",
+  "notes": "The fixture verifies profile-scoped session.resume refusal correlation, a successful retry, message.start and message.delta forwarding while the resumed transcript RPC is pending, snapshot identity/count, and message.complete ordering after the snapshot. This is protocol integration evidence only; real Hermes gateway behavior, connectionId-plus-profile owner routing, Windows installed UI, and source-paired visual acceptance remain unverified."
+}

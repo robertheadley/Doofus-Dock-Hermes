@@ -1299,5 +1299,7 @@ Add a local WebSocket actor fixture for the active-session reattach contract. Th
 
 The fixture was initially blocked because its test WebSocket had no read timeout, so `gateway_actor` could wait in `socket.read()` before observing the queued retry. Configuring the same bounded read timeout used in the production actor exposed and fixed the fixture setup; the focused test now passes. Keep the capability partial: native session rows still lack the pinned source's `(connectionId, profile)` owner route, and production live in-flight/reconnect, Windows, and source-paired proof remain open.
 
+UCM evidence addendum (2026-11-19): EV-0019 is bound to implementation commit `885bfd278bd39dfbe309f4a54c7283a258e35342` and covers the `gateway-loopback-inflight` scenario. The UCM capability remains `partial`; `headless-trigger` and `gateway-loopback-inflight` pass, while `live-inflight` and `failure-recovery` remain open.
+
 
 UCM evidence addendum (2026-11-19T00:40:50Z): `ui-reattach-to-in-flight-turn-without-duplicating-submit` is now recorded as `partial` in the supplemental UCM map with EV-0018 bound to implementation commit 82426709e09654d34e47493913b2bc360be39a26. The headless trigger scenario is covered; live in-flight, recovery, and full connection-owner scenarios remain open. The UCM checker reports the target capability as partial. Its global run remains red on historical EV-0016/17 schema errors and the separate EV-0017 timestamp evidence reconciliation; those prior records were left intact.

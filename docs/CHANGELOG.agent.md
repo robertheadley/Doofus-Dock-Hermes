@@ -2296,3 +2296,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** test-only code and documentation; no runtime performance change.
 - **risks:** This uses a local fixture rather than a real Hermes backend. Native session rows still lack the pinned source's exact `(connectionId, profile)` owner route; Windows and source-paired evidence remain open.
 - **follow_up:** Implement and validate exact session owner routing, then exercise production reconnect/in-flight behavior and source/target Windows parity.
+
+
+### UCM evidence for loopback in-flight reattach — 2026-11-19T01:02:00Z
+
+- **id:** hermes-ucm-par-0510-ev0019-20261119
+- **timestamp:** 2026-11-19T01:02:00Z
+- **what:** Added EV-0019 for the local gateway loopback resume/retry/stream scenario and declared its coverage in the UCM map.
+- **why:** Keep protocol integration proof distinct from live-backend, owner-route, Windows, and visual acceptance.
+- **components:** UCM capability map/evidence and Hermes parity plan.
+- **type:** evidence-backed status refinement; PAR-0510 remains partial.
+- **validation:** Targeted UCM report shows `gateway-loopback-inflight` and `headless-trigger` covered, with `live-inflight` and `failure-recovery` open; package validator passes. The global checker still reports the pre-existing EV-0016/17 schema errors and timestamp reconciliation.
+- **performance:** no runtime change.
+- **risks:** Loopback behavior does not prove production Hermes behavior or exact `(connectionId, profile)` routing.
+- **follow_up:** Implement the source owner route and obtain controlled live gateway evidence.
