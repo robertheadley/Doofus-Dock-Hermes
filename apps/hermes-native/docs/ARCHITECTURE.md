@@ -251,7 +251,7 @@ Current pagination requests profile-scoped offset pages, fences the response to 
 
 ## Tool invocation transcript projection
 
-Gateway `tool.start` and `tool.complete` events are projected into accessible transcript cards keyed by session, tool ID, and execution generation. Reused tool IDs in a later generation remain separate. The pinned Desktop additionally groups consecutive invocations into run summaries with live ticking and persisted disclosure; the native UI currently renders individual cards.
+Gateway `tool.start` and `tool.complete` events are projected into accessible transcript cards keyed by session, tool ID, and execution generation. Reused tool IDs in a later generation remain separate. `tool.progress` annotates the matching running row with bounded status text and a percentage; batched MCP rows receive the progress by call-ID suffix. Updates are session/profile scoped and are cleared on tool completion, turn completion, or error. The pinned Desktop additionally groups consecutive invocations into run summaries with live ticking and persisted disclosure; the native UI currently renders individual cards. Live Gateway behavior, interrupted-turn parity and installed Windows rendering remain unverified.
 
 
 ## Installed skills

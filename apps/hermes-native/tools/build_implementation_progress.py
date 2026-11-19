@@ -709,6 +709,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live Gateway, installed Windows behavior, and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0043": {
+        "state": "partial",
+        "level": "headless_session_profile_scoped_tool_progress_rows_and_cleanup",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/gateway-event/tools.ts#handleToolProgressEvent",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/tool-progress.ts#setToolProgress",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/gateway-event/tools-progress.test.ts#shows tool.progress on its running row and drops it when the call completes",
+            "apps/hermes-native/src/app.rs#update_tool_call_progress",
+            "apps/hermes-native/src/app.rs#tool_progress_text",
+            "apps/hermes-native/src/app.rs#tool_progress_annotates_running_rows_and_retires_on_completion_or_turn_end",
+            "apps/hermes-native/src/app.rs#background_tool_progress_isolated_by_profile_for_reused_runtime_and_tool_ids",
+            "apps/hermes-native/src/app.rs#tool_progress_fans_out_to_batched_rows_and_bounds_display_text",
+            "apps/hermes-native/docs/PLAN.md#Revision 262",
+        ],
+        "gaps": [
+            "native evidence is headless; real MCP notifications, interrupted-turn parity, installed Windows rendering, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0057": {
         "state": "partial",
         "level": "headless_older_transcript_page_and_gateway_scope_tests",

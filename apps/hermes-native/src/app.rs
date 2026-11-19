@@ -16488,6 +16488,7 @@ fn render_message() -> &'static str {
             event_type,
             "tool.start"
                 | "tool.complete"
+                | "tool.progress"
                 | "message.start"
                 | "message.delta"
                 | "message.complete"
@@ -16647,6 +16648,10 @@ fn render_message() -> &'static str {
             .get("execution_generation")
             .or_else(|| payload.get("execution_generation"))
             .and_then(|value| value.as_u64());
+        let event_profile = event
+            .get("profile")
+            .or_else(|| payload.get("profile"))
+            .and_then(|value| value.as_str());
         if event_type == "message.complete"
             && let Some(admission_id) = payload.get("admission_id").and_then(|value| value.as_str())
         {
@@ -16702,7 +16707,15 @@ fn render_message() -> &'static str {
         let Some(active_session) = self.active_runtime_session_id.as_deref() else {
             return;
         };
-        if session_id.is_some_and(|session_id| session_id != active_session) {
+        let wrong_profile_tool_progress = event_type == "tool.progress"
+            && event_profile.is_some_and(|profile| {
+                self.active_session_profile
+                    .as_deref()
+                    .is_some_and(|active_profile| active_profile != profile)
+            });
+        if session_id.is_some_and(|session_id| session_id != active_session)
+            || wrong_profile_tool_progress
+        {
             self.apply_background_chat_event(
                 session_id.unwrap_or_default(),
                 &event,
@@ -16722,6 +16735,16 @@ fn render_message() -> &'static str {
                         .and_then(|value| value.as_str()),
                 );
             }
+            return;
+        }
+        if event_type == "tool.progress"
+            && self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, interrupted_session)| {
+                    Some(interrupted_session.as_str()) == session_id
+                })
+        {
             return;
         }
         match event_type {
@@ -16864,8 +16887,8 @@ fn render_message() -> &'static str {
                     self.clarify_prompts.remove(prompt_id);
                 }
             }
-            "tool.start" | "tool.complete" | "message.start" | "message.delta"
-            | "message.complete" => {
+            "tool.start" | "tool.complete" | "tool.progress" | "message.start"
+            | "message.delta" | "message.complete" => {
                 apply_stream_event_to_transcript(
                     &mut self.transcript,
                     event_type,
@@ -26842,8 +26865,14 @@ fn apply_stream_event_to_transcript(
 ) {
     match event_type {
         "tool.start" | "tool.complete" => {
+            if event_type == "tool.complete"
+                && let Some(tool_id) = payload.get("tool_id").and_then(|value| value.as_str())
+            {
+                clear_tool_call_progress(transcript, tool_id);
+            }
             upsert_tool_row(transcript, event_type, payload, execution_generation);
         }
+        "tool.progress" => update_tool_call_progress(transcript, payload),
         "message.start" => {
             for message in transcript.iter_mut() {
                 if message
@@ -26891,6 +26920,7 @@ fn apply_stream_event_to_transcript(
             }
         }
         "message.complete" => {
+            clear_session_tool_progress(transcript);
             let final_text = payload
                 .get("text")
                 .or_else(|| payload.get("rendered"))
@@ -26976,6 +27006,7 @@ fn apply_stream_event_to_transcript(
             }
         }
         "error" => {
+            clear_session_tool_progress(transcript);
             let error = payload
                 .get("message")
                 .and_then(|value| value.as_str())
@@ -27184,7 +27215,12 @@ fn transcript_message(message: &serde_json::Value) -> (String, String) {
             .get("status")
             .and_then(|value| value.as_str())
             .unwrap_or("running");
-        let speaker = format!("{name} · {status}");
+        let speaker = format!(
+            "{name} · {status}{}",
+            tool_progress_text(message)
+                .map(|progress| format!(" · {progress}"))
+                .unwrap_or_default()
+        );
         let content = [
             "result_text",
             "summary",
@@ -27238,6 +27274,27 @@ fn transcript_message(message: &serde_json::Value) -> (String, String) {
         };
     }
     (speaker, body)
+}
+
+fn tool_progress_text(message: &serde_json::Value) -> Option<String> {
+    if message.get("status").and_then(|value| value.as_str()) != Some("running") {
+        return None;
+    }
+    let progress = message.get("tool_progress")?;
+    let percent = progress
+        .get("percent")
+        .and_then(serde_json::Value::as_number)
+        .map(|percent| format!("{percent}%"));
+    let description = progress
+        .get("message")
+        .and_then(|value| value.as_str())
+        .filter(|message| !message.trim().is_empty());
+    match (percent, description) {
+        (Some(percent), Some(description)) => Some(format!("{percent} · {description}")),
+        (Some(percent), None) => Some(percent),
+        (None, Some(description)) => Some(description.to_owned()),
+        (None, None) => None,
+    }
 }
 
 fn transcript_search_matches(messages: &[serde_json::Value], query: &str) -> Vec<usize> {
@@ -27327,6 +27384,9 @@ fn upsert_tool_row(
         }
     } else {
         row["status"] = serde_json::json!("complete");
+        row.as_object_mut()
+            .expect("tool transcript row is an object")
+            .remove("tool_progress");
         for key in [
             "args",
             "result",
@@ -27342,6 +27402,72 @@ fn upsert_tool_row(
             if let Some(value) = payload.get(key).filter(|value| !value.is_null()) {
                 row[key] = value.clone();
             }
+        }
+    }
+}
+
+fn update_tool_call_progress(transcript: &mut [serde_json::Value], payload: &serde_json::Value) {
+    let Some(tool_id) = payload
+        .get("tool_id")
+        .and_then(|value| value.as_str())
+        .filter(|tool_id| {
+            !tool_id.is_empty() && tool_id.len() <= 512 && !tool_id.chars().any(char::is_control)
+        })
+    else {
+        return;
+    };
+    let message = payload
+        .get("message")
+        .and_then(|value| value.as_str())
+        .filter(|message| !message.is_empty())
+        .map(|message| message.chars().take(1024).collect::<String>());
+    let percent = payload
+        .get("percent")
+        .filter(|value| value.is_number())
+        .cloned();
+    let progress = serde_json::json!({"message":message,"percent":percent});
+    for row in transcript.iter_mut().filter(|row| {
+        row.get("type").and_then(|value| value.as_str()) == Some("tool_call")
+            && row.get("status").and_then(|value| value.as_str()) == Some("running")
+            && row
+                .get("tool_call_id")
+                .and_then(|value| value.as_str())
+                .is_some_and(|row_id| tool_row_matches_progress_id(row_id, tool_id))
+    }) {
+        row["tool_progress"] = progress.clone();
+    }
+}
+
+fn tool_row_matches_progress_id(row_id: &str, tool_id: &str) -> bool {
+    row_id == tool_id
+        || row_id
+            .strip_prefix(tool_id)
+            .and_then(|suffix| suffix.strip_prefix(':'))
+            .is_some_and(|index| {
+                !index.is_empty() && index.chars().all(|char| char.is_ascii_digit())
+            })
+}
+
+fn clear_tool_call_progress(transcript: &mut [serde_json::Value], tool_id: &str) {
+    for row in transcript.iter_mut().filter(|row| {
+        row.get("type").and_then(|value| value.as_str()) == Some("tool_call")
+            && row
+                .get("tool_call_id")
+                .and_then(|value| value.as_str())
+                .is_some_and(|row_id| tool_row_matches_progress_id(row_id, tool_id))
+    }) {
+        if let Some(fields) = row.as_object_mut() {
+            fields.remove("tool_progress");
+        }
+    }
+}
+
+fn clear_session_tool_progress(transcript: &mut [serde_json::Value]) {
+    for row in transcript.iter_mut() {
+        if row.get("type").and_then(|value| value.as_str()) == Some("tool_call")
+            && let Some(fields) = row.as_object_mut()
+        {
+            fields.remove("tool_progress");
         }
     }
 }
@@ -40061,6 +40187,220 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn tool_progress_annotates_running_rows_and_retires_on_completion_or_turn_end() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.handle_server_event(json!({
+            "type":"tool.start",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "execution_generation":9,
+            "payload":{"tool_id":"call_0","name":"mcp__meshy__refine"}
+        }));
+        app.handle_server_event(json!({
+            "type":"tool.progress",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "payload":{"tool_id":"call_0","percent":42,"message":"refining mesh"}
+        }));
+
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(
+            transcript_message(&app.transcript[0]).0,
+            "mcp__meshy__refine · running · 42% · refining mesh"
+        );
+        assert_eq!(
+            app.transcript[0]["tool_progress"]["message"],
+            "refining mesh"
+        );
+        app.pending_interrupt = Some(("interrupt-request".into(), "runtime-session".into()));
+        app.handle_server_event(json!({
+            "type":"tool.progress",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "payload":{"tool_id":"call_0","percent":99,"message":"late progress"}
+        }));
+        assert_eq!(
+            app.transcript[0]["tool_progress"]["message"], "refining mesh",
+            "do not update progress after an interrupt is pending"
+        );
+        app.pending_interrupt = None;
+        let progress_harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1800.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            progress_harness
+                .query_all_by(|node| node.label().is_some_and(|label| {
+                    label.starts_with("mcp__meshy__refine · running · 42% · refining mesh:")
+                }))
+                .next()
+                .is_some(),
+            "live tool progress should appear in the accessible running-tool row"
+        );
+        drop(progress_harness);
+
+        app.handle_server_event(json!({
+            "type":"tool.complete",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "execution_generation":9,
+            "payload":{"tool_id":"call_0","name":"mcp__meshy__refine","result_text":"done"}
+        }));
+        assert!(app.transcript[0].get("tool_progress").is_none());
+        assert_eq!(
+            transcript_message(&app.transcript[0]).0,
+            "mcp__meshy__refine · complete"
+        );
+
+        app.handle_server_event(json!({
+            "type":"tool.start",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "execution_generation":10,
+            "payload":{"tool_id":"call_1","name":"mcp__meshy__refine"}
+        }));
+        app.handle_server_event(json!({
+            "type":"tool.progress",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "payload":{"tool_id":"call_1","percent":7,"message":"previewing"}
+        }));
+        app.handle_server_event(json!({
+            "type":"message.complete",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "payload":{"text":"Finished"}
+        }));
+        assert!(app.transcript[2].get("tool_progress").is_none());
+
+        app.handle_server_event(json!({
+            "type":"tool.start",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "execution_generation":11,
+            "payload":{"tool_id":"call_2","name":"mcp__meshy__refine"}
+        }));
+        app.handle_server_event(json!({
+            "type":"tool.progress",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "payload":{"tool_id":"call_2","percent":8,"message":"still running"}
+        }));
+        app.handle_server_event(json!({
+            "type":"error",
+            "session_id":"runtime-session",
+            "profile":"work",
+            "payload":{"message":"turn failed"}
+        }));
+        assert!(app.transcript[3].get("tool_progress").is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn tool_progress_fans_out_to_batched_rows_and_bounds_display_text() {
+        let mut transcript = vec![
+            json!({"type":"tool_call","tool_call_id":"call_4:0","status":"running"}),
+            json!({"type":"tool_call","tool_call_id":"call_4:1","status":"running"}),
+        ];
+        update_tool_call_progress(
+            &mut transcript,
+            &json!({
+                "tool_id":"call_4",
+                "percent":101,
+                "message":"x".repeat(1025)
+            }),
+        );
+
+        assert!(transcript.iter().all(|row| {
+            row["tool_progress"]["percent"] == 101
+                && row["tool_progress"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .chars()
+                    .count()
+                    == 1024
+        }));
+        clear_tool_call_progress(&mut transcript, "call_4");
+        assert!(
+            transcript
+                .iter()
+                .all(|row| row.get("tool_progress").is_none())
+        );
+    }
+
+    #[test]
+    fn background_tool_progress_isolated_by_profile_for_reused_runtime_and_tool_ids() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("active-session".into());
+        app.active_runtime_session_id = Some("active-runtime".into());
+        app.active_session_profile = Some("personal".into());
+        let running_row = || {
+            vec![json!({
+                "type":"tool_call",
+                "tool_call_id":"call_0",
+                "execution_generation":3,
+                "name":"mcp__meshy__refine",
+                "status":"running"
+            })]
+        };
+        app.session_chat_views.insert(
+            session_identity_key("stored-work", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-shared".into()),
+                transcript: running_row(),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.session_chat_views.insert(
+            session_identity_key("stored-personal", Some("personal")),
+            SessionChatViewState {
+                profile: Some("personal".into()),
+                runtime_session_id: Some("runtime-shared".into()),
+                transcript: running_row(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.handle_server_event(json!({
+            "type":"tool.progress",
+            "session_id":"runtime-shared",
+            "profile":"work",
+            "payload":{"tool_id":"call_0","percent":11,"message":"work progress"}
+        }));
+        let work = &app.session_chat_views[&session_identity_key("stored-work", Some("work"))]
+            .transcript[0];
+        let personal = &app.session_chat_views
+            [&session_identity_key("stored-personal", Some("personal"))]
+            .transcript[0];
+        assert_eq!(work["tool_progress"]["message"], "work progress");
+        assert!(personal.get("tool_progress").is_none());
+        assert!(app.transcript.is_empty());
+
+        app.handle_server_event(json!({
+            "type":"tool.complete",
+            "session_id":"runtime-shared",
+            "profile":"work",
+            "execution_generation":3,
+            "payload":{"tool_id":"call_0","name":"mcp__meshy__refine"}
+        }));
+        let work = &app.session_chat_views[&session_identity_key("stored-work", Some("work"))]
+            .transcript[0];
+        assert!(work.get("tool_progress").is_none());
+        assert!(
+            app.session_chat_views[&session_identity_key("stored-personal", Some("personal"))]
+                .transcript[0]
+                .get("tool_progress")
+                .is_none()
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

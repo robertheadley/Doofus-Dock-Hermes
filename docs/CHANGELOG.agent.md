@@ -3048,3 +3048,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** The capability is partial and remains unverified against a live Hermes Gateway or installed Windows UI; overall source acceptance remains 0/499.
 - **follow_up:** Select the next high-value chat/tool/skills/plugin behavior gap; keep functional parity ahead of the user's planned visual restyling.
+
+- **id:** hermes-par0043-tool-progress
+- **timestamp:** 2026-11-19T23:05:00Z
+- **what:** Projected Gateway `tool.progress` events onto matching running tool rows with accessible percentage/status, profile/session-scoped routing, MCP batch fanout, and terminal cleanup.
+- **why:** Let the operator and coding agent see what a running tool is doing during a chat turn.
+- **components:** Hermes native transcript reducer/rendering, profile-scoped background chat handling, implementation progress report.
+- **type:** functional parity
+- **validation:** PASS full locked feature suite (428 library + 15 automation protocol + 3 launcher tests + doc tests), workspace/all-target check, rustfmt, both progress generators, task validator, and diff checks. Existing dead-code warnings only.
+- **performance:** No benchmark change; event updates mutate existing rows and add no polling.
+- **risks:** Headless evidence only; live Gateway notifications, interrupted-turn source parity, installed Windows rendering, and source-paired acceptance remain open.
+- **follow_up:** Bind EV-0048 to the behavior commit, mark PAR-0043 tested partial, and publish directly to main.
