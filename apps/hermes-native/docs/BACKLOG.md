@@ -325,3 +325,5 @@ PAR-0062/0063 composer attachments (2026-11-19):
 - PAR-0252 now matches pinned field filtering and usage-descending/name ordering; remaining work is rendered search interaction, locale-sensitive ties, profile switching and live/source-paired acceptance.
 
 - PAR-0254 now covers one-at-a-time skill toggles with optimistic state, owner fencing and rollback. Bulk toggles, disable-unused, lock/edit/details, profile-switch UI behavior and live/source-paired acceptance remain open.
+
+**Latest scoped progress (2026-11-19):** PAR-0267 adds profile-fenced MCP catalog browsing with installed/available status, required environment-key metadata, shared search, and accessible loading/error/empty states. Focused RPC and headless app tests pass. The next distinct MCP capability is approved catalog integration installation; this browse slice does not install servers or claim live-runtime acceptance.

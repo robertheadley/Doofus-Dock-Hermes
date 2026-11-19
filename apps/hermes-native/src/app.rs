@@ -12,12 +12,12 @@ use crate::gateway::{
     CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ComposerAttachmentReceipt,
     ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload, CronDeliveryTarget,
     CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus,
-    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpServerTestResult,
-    McpServersSnapshot, MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformUpdate,
-    MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot,
-    PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot,
-    PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult,
-    SessionSummary, SkillInfo, SlashCompletionItem, SlashCompletionResult,
+    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpCatalogSnapshot,
+    McpServerTestResult, McpServersSnapshot, MessagingEnvVarInfo, MessagingPlatformInfo,
+    MessagingPlatformUpdate, MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind,
+    PairingSnapshot, PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject,
+    ProjectTreeSnapshot, PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript,
+    SessionSearchResult, SessionSummary, SkillInfo, SlashCompletionItem, SlashCompletionResult,
     TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
     project_tree_session_colors,
 };
@@ -1238,6 +1238,11 @@ struct BatchClarifyPrompt {
 }
 
 const SESSION_SWITCHER_REVEAL_DELAY: std::time::Duration = std::time::Duration::from_millis(220);
+const MCP_CATALOG_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn mcp_catalog_cache_is_stale(loaded_at: Option<std::time::Instant>) -> bool {
+    loaded_at.is_none_or(|loaded_at| loaded_at.elapsed() >= MCP_CATALOG_STALE_AFTER)
+}
 const PLUGIN_CATALOG_PAGE_SIZE: usize = 60;
 
 #[derive(Clone, Debug)]
@@ -1533,6 +1538,12 @@ pub struct HermesNativeApp {
     mcp_servers_request_id: Option<String>,
     mcp_servers_pending: bool,
     mcp_servers_error: Option<String>,
+    mcp_catalog: Option<McpCatalogSnapshot>,
+    mcp_catalog_profile_id: Option<String>,
+    mcp_catalog_loaded_at: Option<std::time::Instant>,
+    mcp_catalog_request_id: Option<String>,
+    mcp_catalog_pending: bool,
+    mcp_catalog_error: Option<String>,
     pending_mcp_server_updates: BTreeMap<String, PendingMcpServerUpdate>,
     mcp_server_test_results: BTreeMap<String, McpServerTestResult>,
     pending_mcp_server_tests: BTreeMap<String, PendingMcpServerTest>,
@@ -3578,6 +3589,11 @@ fn render_message() -> &'static str {
         self.mcp_servers_request_id = None;
         self.mcp_servers_pending = false;
         self.mcp_servers_error = None;
+        self.mcp_catalog = None;
+        self.mcp_catalog_profile_id = None;
+        self.mcp_catalog_request_id = None;
+        self.mcp_catalog_pending = false;
+        self.mcp_catalog_error = None;
         self.connectors_request_id = None;
         self.connectors_pending = false;
         self.connectors_error = None;
@@ -3865,6 +3881,12 @@ fn render_message() -> &'static str {
             mcp_servers_request_id: None,
             mcp_servers_pending: false,
             mcp_servers_error: None,
+            mcp_catalog: None,
+            mcp_catalog_profile_id: None,
+            mcp_catalog_loaded_at: None,
+            mcp_catalog_request_id: None,
+            mcp_catalog_pending: false,
+            mcp_catalog_error: None,
             pending_mcp_server_updates: BTreeMap::new(),
             mcp_server_test_results: BTreeMap::new(),
             pending_mcp_server_tests: BTreeMap::new(),
@@ -11903,6 +11925,137 @@ fn render_message() -> &'static str {
                     })
                     .unwrap_or_else(|error| self.mcp_server_add_error = Some(error));
                 }
+                ui.add_space(12.0);
+                ui.separator();
+                let catalog_count = self
+                    .mcp_catalog
+                    .as_ref()
+                    .map_or(0, |catalog| catalog.servers.len());
+                let mut refresh_mcp_catalog = false;
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("MCP catalog · {catalog_count}"))
+                            .strong()
+                            .color(TEXT),
+                    )
+                    .accessible_name(format!("MCP catalog · {catalog_count}"));
+                    let catalog_loading = self.mcp_catalog_pending;
+                    if ui
+                        .add_enabled(
+                            self.gateway_connected && !catalog_loading,
+                            egui::Button::new(if catalog_loading {
+                                "Loading…"
+                            } else {
+                                "Refresh catalog"
+                            }),
+                        )
+                        .accessible_name(if catalog_loading {
+                            "MCP catalog loading"
+                        } else {
+                            "Refresh MCP catalog"
+                        })
+                        .clicked()
+                    {
+                        refresh_mcp_catalog = true;
+                    }
+                });
+                if self.mcp_catalog_pending && self.mcp_catalog.is_none() {
+                    ui.label(
+                        RichText::new("Loading MCP catalog…")
+                            .size(12.0)
+                            .color(MUTED),
+                    )
+                    .accessible_name("MCP catalog loading");
+                }
+                if let Some(error) = &self.mcp_catalog_error {
+                    ui.label(
+                        RichText::new(format!("MCP catalog could not be loaded: {error}"))
+                            .size(12.0)
+                            .color(MUTED),
+                    )
+                    .accessible_name("MCP catalog error");
+                }
+                if let Some(catalog) = self.mcp_catalog.as_ref() {
+                    let entries = catalog
+                        .servers
+                        .iter()
+                        .filter(|entry| {
+                            query.is_empty()
+                                || entry.name.to_lowercase().contains(&query)
+                                || entry.description.to_lowercase().contains(&query)
+                                || entry.transport.to_lowercase().contains(&query)
+                                || entry
+                                    .connector_slug
+                                    .as_deref()
+                                    .is_some_and(|slug| slug.to_lowercase().contains(&query))
+                        })
+                        .collect::<Vec<_>>();
+                    if entries.is_empty() {
+                        ui.label(if query.is_empty() {
+                            "No MCP catalog entries are available"
+                        } else {
+                            "No matching MCP catalog entries"
+                        })
+                        .accessible_name(if query.is_empty() {
+                            "MCP catalog empty"
+                        } else {
+                            "MCP catalog search empty"
+                        });
+                    } else {
+                        for entry in entries {
+                            let catalog_status = if entry.installed {
+                                if entry.enabled {
+                                    "Installed · enabled"
+                                } else {
+                                    "Installed · disabled"
+                                }
+                            } else {
+                                "Available"
+                            };
+                            let row = ui.group(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(&entry.name).strong().color(TEXT))
+                                        .accessible_name(format!(
+                                            "MCP catalog entry {}",
+                                            entry.name
+                                        ));
+                                    ui.label(RichText::new(&entry.transport).color(ACCENT));
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        ui.label(RichText::new(catalog_status).color(MUTED));
+                                    });
+                                });
+                                if !entry.description.is_empty() {
+                                    ui.label(
+                                        RichText::new(&entry.description).size(11.0).color(MUTED),
+                                    );
+                                }
+                                if !entry.requires.is_empty() {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "Requires environment keys: {}",
+                                            entry.requires.join(", ")
+                                        ))
+                                        .size(10.0)
+                                        .color(MUTED),
+                                    );
+                                }
+                            });
+                            row.response.accessible_name(format!(
+                                "MCP catalog row {} · {catalog_status}",
+                                entry.name
+                            ));
+                            ui.add_space(4.0);
+                        }
+                    }
+                }
+                if refresh_mcp_catalog {
+                    self.mcp_catalog_profile_id = None;
+                    self.mcp_catalog_loaded_at = None;
+                    self.mcp_catalog = None;
+                    self.mcp_catalog_error = None;
+                    self.load_mcp_catalog()
+                        .unwrap_or_else(|error| self.mcp_catalog_error = Some(error));
+                }
             }
         }
     }
@@ -17277,6 +17430,8 @@ fn render_message() -> &'static str {
             self.connectors_pending = false;
             self.mcp_servers_request_id = None;
             self.mcp_servers_pending = false;
+            self.mcp_catalog_request_id = None;
+            self.mcp_catalog_pending = false;
             if !self.pending_mcp_server_updates.is_empty() {
                 self.pending_mcp_server_updates.clear();
                 self.mcp_servers = None;
@@ -17394,6 +17549,8 @@ fn render_message() -> &'static str {
                 self.connectors_pending = false;
                 self.mcp_servers_request_id = None;
                 self.mcp_servers_pending = false;
+                self.mcp_catalog_request_id = None;
+                self.mcp_catalog_pending = false;
                 if !self.pending_mcp_server_updates.is_empty() {
                     self.pending_mcp_server_updates.clear();
                     self.mcp_servers = None;
@@ -17429,6 +17586,17 @@ fn render_message() -> &'static str {
             {
                 self.load_mcp_servers()
                     .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
+            }
+            if tab == CapabilitiesTab::Connectors
+                && !self.mcp_catalog_pending
+                && self.gateway_connected
+                && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                    self.mcp_catalog_profile_id.as_deref() != Some(endpoint.profile_id.as_str())
+                        || mcp_catalog_cache_is_stale(self.mcp_catalog_loaded_at)
+                })
+            {
+                self.load_mcp_catalog()
+                    .unwrap_or_else(|error| self.mcp_catalog_error = Some(error));
             }
             if tab == CapabilitiesTab::Plugins
                 && self.plugin_catalog.is_none()
@@ -17798,6 +17966,38 @@ fn render_message() -> &'static str {
         self.mcp_servers_request_id = Some(request_id);
         self.mcp_servers_pending = true;
         self.mcp_servers_error = None;
+        Ok(())
+    }
+
+    fn load_mcp_catalog(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before loading the MCP catalog".into());
+        }
+        if self.mcp_catalog_pending {
+            return Ok(());
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway profile is unavailable".to_owned())?;
+        if self.mcp_catalog_profile_id.as_deref() != Some(endpoint.profile_id.as_str()) {
+            self.mcp_catalog = None;
+            self.mcp_catalog_loaded_at = None;
+        }
+        let request_id = operation_id("mcp-catalog");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes MCP catalog reader is unavailable".to_owned())?;
+        gateway.load_mcp_catalog(
+            request_id.clone(),
+            endpoint.profile_id.clone(),
+            endpoint.instance_id.clone(),
+            endpoint.authority_epoch,
+        )?;
+        self.mcp_catalog_request_id = Some(request_id);
+        self.mcp_catalog_pending = true;
+        self.mcp_catalog_error = None;
         Ok(())
     }
 
@@ -25496,6 +25696,36 @@ fn render_message() -> &'static str {
                         Err(error) => self.mcp_servers_error = Some(error),
                     }
                 }
+                GatewayEvent::McpCatalogLoaded {
+                    request_id,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    if self.route != AppRoute::Capabilities
+                        || self.capabilities_tab != CapabilitiesTab::Connectors
+                        || self.mcp_catalog_request_id.as_deref() != Some(&request_id)
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    self.mcp_catalog_request_id = None;
+                    self.mcp_catalog_pending = false;
+                    match result {
+                        Ok(snapshot) => {
+                            self.mcp_catalog = Some(snapshot);
+                            self.mcp_catalog_profile_id = Some(profile_id);
+                            self.mcp_catalog_loaded_at = Some(std::time::Instant::now());
+                            self.mcp_catalog_error = None;
+                        }
+                        Err(error) => self.mcp_catalog_error = Some(error),
+                    }
+                }
                 GatewayEvent::McpServerEnabledUpdated {
                     request_id,
                     name,
@@ -25750,6 +25980,13 @@ fn render_message() -> &'static str {
                     self.mcp_servers_request_id = None;
                     self.mcp_servers = None;
                     self.mcp_servers_error = None;
+                    self.mcp_catalog = None;
+                    self.mcp_catalog_profile_id = None;
+                    self.mcp_catalog_loaded_at = None;
+                    self.mcp_catalog_loaded_at = None;
+                    self.mcp_catalog_request_id = None;
+                    self.mcp_catalog_pending = false;
+                    self.mcp_catalog_error = None;
                     if !self.pending_mcp_server_updates.is_empty() {
                         self.pending_mcp_server_updates.clear();
                         self.mcp_servers_error = Some(
@@ -27743,6 +27980,7 @@ mod tests {
     use egui_kittest::kittest::{NodeT, Queryable};
     use std::cell::RefCell;
     use std::rc::Rc;
+    use std::time::Duration;
 
     #[test]
     fn prompt_composer_places_gateway_attachment_refs_before_user_text() {
@@ -38475,6 +38713,192 @@ mod tests {
         assert_eq!(app.mcp_servers.as_ref().unwrap().servers[0].name, "docs");
         assert!(!app.status.contains("secret-value"));
         assert_eq!(app.status, "Added MCP server docs");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_catalog_cache_expires_after_five_minutes() {
+        let now = std::time::Instant::now();
+        assert!(mcp_catalog_cache_is_stale(None));
+        assert!(!mcp_catalog_cache_is_stale(Some(now)));
+        assert!(mcp_catalog_cache_is_stale(Some(
+            now - Duration::from_secs(301)
+        )));
+    }
+
+    #[test]
+    fn mcp_catalog_load_is_profile_fenced_and_renders_accessible_states() {
+        let (mut app, profile_dir) = isolated_app();
+        app.load_connectors_fixture_for_automation();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_mcp_catalog();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Connectors;
+        app.load_mcp_catalog().expect("request catalog");
+        let (request_id, profile_id, instance_id, authority_epoch) = requests
+            .recv_timeout(Duration::from_secs(3))
+            .expect("catalog request");
+        assert_eq!(profile_id, "home-bot");
+        assert_eq!(instance_id, "gateway-home-bot");
+        assert_eq!(authority_epoch, 12);
+        assert!(app.mcp_catalog_pending);
+
+        let loading = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(loading.query_by_label("MCP catalog loading").is_some());
+        drop(loading);
+
+        events
+            .send(GatewayEvent::McpCatalogLoaded {
+                request_id: request_id.clone(),
+                profile_id: profile_id.clone(),
+                instance_id: instance_id.clone(),
+                authority_epoch: authority_epoch + 1,
+                result: Ok(McpCatalogSnapshot::default()),
+            })
+            .expect("send stale authority result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.mcp_catalog.is_none(), "stale authority must be ignored");
+        assert!(
+            app.mcp_catalog_pending,
+            "stale response must not settle request"
+        );
+
+        events
+            .send(GatewayEvent::McpCatalogLoaded {
+                request_id: request_id.clone(),
+                profile_id: "other-profile".into(),
+                instance_id: instance_id.clone(),
+                authority_epoch,
+                result: Ok(McpCatalogSnapshot::default()),
+            })
+            .expect("send stale profile result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.mcp_catalog.is_none(), "stale profile must be ignored");
+        assert!(
+            app.mcp_catalog_pending,
+            "stale profile must not settle request"
+        );
+
+        events
+            .send(GatewayEvent::McpCatalogLoaded {
+                request_id,
+                profile_id,
+                instance_id,
+                authority_epoch,
+                result: Ok(McpCatalogSnapshot {
+                    servers: vec![
+                        crate::gateway::McpCatalogEntry {
+                            name: "docs".into(),
+                            description: "Search documentation".into(),
+                            connector_slug: Some("docs-search".into()),
+                            installed: true,
+                            enabled: true,
+                            requires: vec!["DOCS_TOKEN".into()],
+                            transport: "stdio".into(),
+                        },
+                        crate::gateway::McpCatalogEntry {
+                            name: "calendar".into(),
+                            description: "Calendar tools".into(),
+                            connector_slug: None,
+                            installed: false,
+                            enabled: false,
+                            requires: Vec::new(),
+                            transport: "http".into(),
+                        },
+                    ],
+                }),
+            })
+            .expect("send current catalog result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(!app.mcp_catalog_pending);
+        assert_eq!(app.mcp_catalog_profile_id.as_deref(), Some("home-bot"));
+        let rendered = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            rendered
+                .query_by_label("MCP catalog row docs · Installed · enabled")
+                .is_some()
+        );
+        assert!(
+            rendered
+                .query_by_label("MCP catalog row calendar · Available")
+                .is_some()
+        );
+        assert!(rendered.query_by_label("Refresh MCP catalog").is_some());
+        drop(rendered);
+
+        app.capabilities_query = "cal".into();
+        let filtered = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            filtered
+                .query_by_label("MCP catalog row calendar · Available")
+                .is_some()
+        );
+        assert!(
+            filtered
+                .query_by_label("MCP catalog row docs · Installed · enabled")
+                .is_none()
+        );
+        drop(filtered);
+        app.capabilities_query.clear();
+
+        app.mcp_catalog_request_id = Some("mcp-catalog-error".into());
+        app.mcp_catalog_pending = true;
+        events
+            .send(GatewayEvent::McpCatalogLoaded {
+                request_id: "mcp-catalog-error".into(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Err("catalog unavailable".into()),
+            })
+            .expect("send catalog error");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.mcp_catalog_error.as_deref(),
+            Some("catalog unavailable")
+        );
+        let error_view = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            error_view
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("MCP catalog could not be loaded: catalog unavailable"))
+                .next()
+                .is_some()
+        );
+        drop(error_view);
+
+        app.mcp_catalog_error = None;
+        app.mcp_catalog = Some(McpCatalogSnapshot::default());
+        app.capabilities_query.clear();
+        let empty_view = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            empty_view
+                .query_by_label("No MCP catalog entries are available")
+                .is_some()
+        );
+        drop(empty_view);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

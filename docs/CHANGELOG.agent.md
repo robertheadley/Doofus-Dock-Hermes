@@ -2957,3 +2957,29 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime changes.
 - **risks:** Native catalog UI, profile fencing, failure states and live Gateway behavior remain unimplemented/unverified. Catalog installation is a separate task.
 - **follow_up:** Implement typed `mcp.catalog` browsing and focused tests.
+
+### PAR-0267 — Profile-scoped MCP catalog browsing (2026-11-19T21:55Z)
+
+- **id:** hermes-par0267-catalog-browse-20261119
+- **timestamp:** 2026-11-19T21:55:00Z
+- **what:** Added a profile-scoped `mcp.catalog` Gateway request, bounded typed response validation, request/profile/instance/authority-epoch fencing, five-minute in-memory freshness, shared search, and installed/available rows with descriptions and required environment-key names.
+- **why:** Give people and the coding agent the same read-only MCP catalog visibility while advancing chat/tool/skills/plugin feature coverage.
+- **components:** Gateway actor and DTO, Connectors state/rendering, UCM capability projections, scoped progress generation and docs.
+- **type:** feature implementation
+- **validation:** PASS 3 focused catalog tests; PASS full Hermes Native `agent-automation` feature suite (420 library tests plus protocol and launcher targets); PASS locked cargo check, rustfmt, progress generators, UCM package validator, Doofus task validator and diff check. Progress is 60/499 reviewed (6 implemented, 54 partial, 439 unknown); scoped progress is 28/173 mapped (1 implemented, 27 partial, 145 unknown).
+- **performance:** Catalog fetch is one Gateway RPC; local cache freshness is 5 minutes; entry count, text fields and environment-key lists are bounded.
+- **risks:** Catalog install, live/remote Gateway behavior, installed Windows behavior and source-paired acceptance remain open.
+- **follow_up:** Implement approved catalog installation as a separate slice; keep feature work ahead of visual restyling.
+
+### PAR-0267 validation correction — automation action registry (2026-11-19T22:03Z)
+
+- **id:** hermes-par0267-registry-test-fix-20261119
+- **timestamp:** 2026-11-19T22:03:00Z
+- **what:** Replaced a brittle exact global widget/action count assertion with a minimum legacy-action count; the test continues to assert every required existing action type.
+- **why:** Adding accessible catalog controls legitimately grows the UI action inventory; registry growth must not break a behavior test unrelated to exact total size.
+- **components:** Hermes automation protocol integration test and native MCP catalog widgets.
+- **type:** regression-test robustness
+- **validation:** Full locked `agent-automation` suite passes: 421 library, 15 protocol and 3 launcher tests; locked cargo check, formatting, package/task validators and diff check pass.
+- **performance:** No runtime behavior change.
+- **risks:** Additional widgets remain visible actions by design; focused and full suites now cover the expanded registry.
+- **follow_up:** Keep automation tests scoped to action identities and behavior as the UI grows.

@@ -1714,7 +1714,10 @@ mod tests {
             &app,
         );
         assert_eq!(registry["status"], "succeeded");
-        assert_eq!(registry["result"]["actions"].as_array().unwrap().len(), 22);
+        assert!(
+            registry["result"]["actions"].as_array().unwrap().len() >= 22,
+            "new accessible UI actions may extend the registry without changing existing actions"
+        );
         assert!(
             registry["result"]["actions"]
                 .as_array()

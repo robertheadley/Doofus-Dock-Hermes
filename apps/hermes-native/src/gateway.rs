@@ -1469,6 +1469,29 @@ pub struct McpServersSnapshot {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct McpCatalogEntry {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub connector_slug: Option<String>,
+    #[serde(default)]
+    pub installed: bool,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub requires: Vec<String>,
+    #[serde(default)]
+    pub transport: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct McpCatalogSnapshot {
+    #[serde(default)]
+    pub servers: Vec<McpCatalogEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct McpServerTestTool {
     pub name: String,
     #[serde(default)]
@@ -2004,6 +2027,13 @@ pub enum GatewayEvent {
         profile_id: String,
         result: Result<McpServersSnapshot, String>,
     },
+    McpCatalogLoaded {
+        request_id: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<McpCatalogSnapshot, String>,
+    },
     McpServerEnabledUpdated {
         request_id: String,
         name: String,
@@ -2214,6 +2244,12 @@ enum GatewayCommand {
     RemoveMcpServer {
         request_id: String,
         name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    LoadMcpCatalog {
+        request_id: String,
         profile_id: String,
         instance_id: String,
         authority_epoch: u64,
@@ -3360,6 +3396,58 @@ impl GatewayDiscovery {
     }
 
     #[cfg(test)]
+    pub(crate) fn for_test_mcp_catalog() -> (
+        Self,
+        Receiver<(String, String, String, u64)>,
+        mpsc::Sender<GatewayEvent>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, _http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = command_receiver.recv() {
+                if let GatewayCommand::LoadMcpCatalog {
+                    request_id,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                } = command
+                    && request_sender
+                        .send((request_id, profile_id, instance_id, authority_epoch))
+                        .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn for_test_transcript_refresh()
     -> (Self, Receiver<(String, String, Option<String>, String)>) {
         let (_status_sender, status_receiver) = mpsc::channel();
@@ -4422,6 +4510,23 @@ impl GatewayDiscovery {
         self.http_sender
             .send(GatewayHttpCommand::LoadMcpServers { request_id })
             .map_err(|_| "Hermes MCP server reader has closed".to_owned())
+    }
+
+    pub fn load_mcp_catalog(
+        &self,
+        request_id: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::LoadMcpCatalog {
+                request_id,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes MCP catalog reader has closed".to_owned())
     }
 
     pub fn set_mcp_server_enabled(
@@ -5508,6 +5613,37 @@ fn gateway_actor(
                     .send(GatewayEvent::BotRosterLoaded {
                         request_id,
                         profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::LoadMcpCatalog {
+                request_id,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            }) => {
+                let result = session_profile_params(serde_json::json!({}), Some(&profile_id))
+                    .and_then(|params| {
+                        rpc_with_events(
+                            socket,
+                            next_request_id,
+                            "mcp.catalog",
+                            params,
+                            Some(&events),
+                        )
+                    })
+                    .and_then(parse_mcp_catalog_result);
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::McpCatalogLoaded {
+                        request_id,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
                         result,
                     })
                     .is_err()
@@ -11359,6 +11495,33 @@ fn validate_mcp_servers(snapshot: McpServersSnapshot) -> Result<McpServersSnapsh
                 .is_some_and(|tools| tools.len() > 10_000)
     }) {
         return Err("Hermes returned an invalid MCP server inventory".into());
+    }
+    Ok(snapshot)
+}
+
+fn parse_mcp_catalog_result(response: serde_json::Value) -> Result<McpCatalogSnapshot, String> {
+    let snapshot: McpCatalogSnapshot = serde_json::from_value(response)
+        .map_err(|_| "Hermes returned an invalid MCP catalog response".to_owned())?;
+    if snapshot.servers.len() > 10_000
+        || snapshot.servers.iter().any(|entry| {
+            entry.name.trim().is_empty()
+                || entry.name.len() > 512
+                || entry.name.chars().any(char::is_control)
+                || entry.description.len() > 32_768
+                || entry.description.chars().any(char::is_control)
+                || entry
+                    .connector_slug
+                    .as_ref()
+                    .is_some_and(|slug| slug.len() > 512 || slug.chars().any(char::is_control))
+                || entry.transport.len() > 128
+                || entry.transport.chars().any(char::is_control)
+                || entry.requires.len() > 1024
+                || entry.requires.iter().any(|key| {
+                    key.trim().is_empty() || key.len() > 512 || key.chars().any(char::is_control)
+                })
+        })
+    {
+        return Err("Hermes returned an invalid MCP catalog entry".into());
     }
     Ok(snapshot)
 }
@@ -19789,6 +19952,78 @@ mod tests {
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn mcp_catalog_uses_profile_scoped_rpc_and_validates_catalog_rows() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read MCP catalog") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse MCP catalog"),
+                other => panic!("expected MCP catalog text, got {other:?}"),
+            };
+            assert_eq!(request["method"], "mcp.catalog");
+            assert_eq!(request["params"]["profile"], "home-bot");
+            assert_eq!(request["params"].as_object().unwrap().len(), 1);
+            let id = request["id"].as_u64().expect("RPC id");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":id,
+                        "result":{"servers":[
+                            {"name":"docs","description":"Search docs","connector_slug":"docs-search","installed":true,"enabled":false,"requires":["DOCS_TOKEN"],"transport":"stdio"},
+                            {"name":"calendar","description":"Calendar tools","installed":false,"enabled":false,"requires":[],"transport":"http"}
+                        ]}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("return MCP catalog");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::LoadMcpCatalog {
+                request_id: "mcp-catalog-1".into(),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+            })
+            .expect("queue MCP catalog");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("catalog result"),
+            GatewayEvent::McpCatalogLoaded {
+                request_id,
+                profile_id,
+                instance_id,
+                authority_epoch: 12,
+                result: Ok(McpCatalogSnapshot { servers }),
+            } if request_id == "mcp-catalog-1" && profile_id == "home-bot"
+                && instance_id == "gateway-home-bot" && servers.len() == 2
+                && servers[0].connector_slug.as_deref() == Some("docs-search")
+                && servers[0].requires == ["DOCS_TOKEN"]
+                && !servers[0].enabled && !servers[1].installed
+        ));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+        assert!(
+            parse_mcp_catalog_result(json!({"servers":[{"name":"  ","transport":"stdio"}]}))
+                .is_err()
+        );
     }
 
     #[test]

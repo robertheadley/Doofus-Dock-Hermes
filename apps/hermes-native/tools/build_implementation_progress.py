@@ -626,6 +626,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "installed Windows interaction and pinned-source paired acceptance remain open",
         ],
     },
+    "PAR-0267": {
+        "state": "partial",
+        "level": "headless_profile_scoped_mcp_catalog_rpc_and_accessible_state_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/tui_gateway/contracts/tools_mcp_plugins.py#McpCatalogResult",
+            ".staging/hermes-pinned-878305/tui_gateway/methods_tools.py#mcp.catalog",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/mcp/use-mcp-servers.ts#catalogQuery",
+            "apps/hermes-native/src/gateway.rs#parse_mcp_catalog_result",
+            "apps/hermes-native/src/gateway.rs#mcp_catalog_uses_profile_scoped_rpc_and_validates_catalog_rows",
+            "apps/hermes-native/src/app.rs#load_mcp_catalog",
+            "apps/hermes-native/src/app.rs#mcp_catalog_load_is_profile_fenced_and_renders_accessible_states",
+            "apps/hermes-native/docs/PLAN.md#Revision 258",
+        ],
+        "gaps": [
+            "catalog integration installation remains a separate capability",
+            "live Gateway, remote profile, installed Windows UI and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0252": {
         "state": "partial",
         "level": "native_installed_skill_search_fields_tested",
