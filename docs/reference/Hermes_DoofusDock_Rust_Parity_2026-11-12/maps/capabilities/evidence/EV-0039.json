@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0039",
+  "capability_id": "ui-toggle-a-skill-on-or-off",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "per-skill-enable-disable-gateway-mutation",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "0d6207564b8b5a753c5b5b2b519d1c5c05a99539",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused Hermes Native Rust unit tests and pinned Desktop source review; no live Gateway, installed UI or physical Windows input used.",
+  "notes": "Focused tests pass for the pinned PUT /api/skills/toggle payload, ticket header, response receipt validation, profile and authority fencing, optimistic state, denial rollback and retry. Test locators: apps/hermes-native/src/gateway.rs#skill_toggle_uses_pinned_put_payload_and_validates_receipt and apps/hermes-native/src/app.rs#skill_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial. Live Gateway, rendered interaction, bulk controls, profile switching, Windows packaging and source-paired acceptance remain open; capability remains partial."
+}

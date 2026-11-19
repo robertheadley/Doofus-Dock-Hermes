@@ -2860,3 +2860,5 @@ UCM evidence addendum (2026-11-19T20:00Z): EV-0038 records Skills search filteri
 - **performance:** One bounded 5-second HTTP mutation; no polling or repeated reads.
 - **risks:** Bulk controls, profile-switch interaction, live runtime, Windows rendering and source-paired acceptance remain open.
 - **follow_up:** Validate the rendered checkbox on Windows/headless accessibility tree and implement remaining skill management controls.
+
+UCM evidence addendum (2026-11-19T20:17Z): EV-0039 records the PAR-0254 per-skill enable/disable Gateway mutation and focused tests, bound to behavior commit 0d6207564b8b5a753c5b5b2b519d1c5c05a99539. The capability remains partial pending live and rendered UI verification.
