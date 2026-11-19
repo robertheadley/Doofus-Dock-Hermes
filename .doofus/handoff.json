@@ -136,6 +136,12 @@
     {
       "change_type": "modified",
       "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
       "path": "apps/hermes-native/tools/build_implementation_progress.py",
       "status": " M"
     },
@@ -177,13 +183,13 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation --locked tool_start_and_complete_render_generation_scoped_transcript_cards -- --nocapture",
+    "command": "cargo test -p hermes-native --features agent-automation --locked installed_skills_search_matches_name_category_and_description -- --nocapture",
     "evidence": [
-      "apps/hermes-native/src/app.rs#tool_start_and_complete_render_generation_scoped_transcript_cards"
+      "apps/hermes-native/src/app.rs#installed_skills_search_matches_name_category_and_description"
     ],
     "state": "tested",
-    "summary": "PAR-0041 mapped partial: generation-scoped accessible tool cards exist and focused test passes; pinned run summaries, ticker, persisted disclosure and specialized renderers are open.",
-    "verified_at": "2026-11-19T19:46:37Z"
+    "summary": "PAR-0251 mapped partial: native Skills list consumes Gateway skill rows; focused helper test confirms name, category, description and blank-query filtering. UCM now reports 20 mapped chat/tool rows.",
+    "verified_at": "2026-11-19T19:54:50Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -196,6 +202,7 @@
     "hermes-par-0065",
     "hermes-par-0067",
     "hermes-par-0074",
+    "hermes-par-0251",
     "hermes-par-0333",
     "hermes-par-0334",
     "hermes-par-0511",
@@ -203,7 +210,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T20:46:37Z",
+    "lease_expires_at": "2026-11-19T20:54:50Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -532,6 +539,20 @@
     },
     {
       "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0035.json#EV-0035"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed PAR-0041 evidence and EV-0035; fresh fetch confirmed exact HEAD equality at e90f3acd4d6cde9e7a39d949e2abcb5fe5431182.",
+      "observed_at": "2026-11-19T19:47:59Z",
+      "operation_id": "hermes-par0041-main-publish-20261119",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0034.json#EV-0034"
       ],
       "kind": "git_push_main",
@@ -645,9 +666,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0041-checkpoint-20261119",
+  "last_event_id": "hermes-par0251-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-par0041-checkpoint-20261119",
+    "request_id": "hermes-par0251-checkpoint-20261119",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -659,14 +680,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "03-chat",
+  "phase": "07-management",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit and push PAR-0041 partial evidence with EV-0035, then continue scoped parity review.",
+  "recommended_next_action": "Commit the filter extraction, test, partial progress, and UCM updates; bind EV-0036 to the exact code/docs commit, then continue with PAR-0252 search or profile-scoped skills load.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -910,7 +931,6 @@
     "hermes-par-0248",
     "hermes-par-0249",
     "hermes-par-0250",
-    "hermes-par-0251",
     "hermes-par-0252",
     "hermes-par-0253",
     "hermes-par-0254",
@@ -1159,7 +1179,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "73a8637ab5aab2c3df3e401c1abf824dc1d0e053fa8b479215ac900391fe8eec",
+    "change_fingerprint": "8eead7c1ec9545bcdbab8a57bdef3243c2753f2beaadbad2baa15dab0a325ab7",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1198,6 +1218,10 @@
         "status": " M"
       },
       {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
         "path": "apps/hermes-native/tools/build_implementation_progress.py",
         "status": " M"
       },
@@ -1226,17 +1250,17 @@
         "status": " M"
       }
     ],
-    "head_commit": "cb286f4efdd0eeb6f36c666b17fa2eb25ce8ca91",
+    "head_commit": "e90f3acd4d6cde9e7a39d949e2abcb5fe5431182",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 267,
+  "revision": 273,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 267,
+  "state_revision": 273,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0041",
-  "task_ledger_revision": 36,
+  "task_id": "hermes-par-0251",
+  "task_ledger_revision": 37,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2242,9 +2266,19 @@
       "command": "tool_start_and_complete_render_generation_scoped_transcript_cards",
       "result": "PASS: 1 passed, 0 failed",
       "timestamp": "2026-11-19T19:46:37Z"
+    },
+    {
+      "command": "tool_start_and_complete_render_generation_scoped_transcript_cards",
+      "result": "PASS: 1 passed",
+      "timestamp": "2026-11-19T19:48:00Z"
+    },
+    {
+      "command": "installed_skills_search_matches_name_category_and_description",
+      "result": "PASS: 1 passed, 0 failed",
+      "timestamp": "2026-11-19T19:54:50Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T19:46:37Z"
+  "updated_at": "2026-11-19T19:54:50Z"
 }

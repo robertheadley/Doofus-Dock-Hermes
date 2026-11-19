@@ -250,3 +250,8 @@ Current pagination requests profile-scoped offset pages, fences the response to 
 ## Tool invocation transcript projection
 
 Gateway `tool.start` and `tool.complete` events are projected into accessible transcript cards keyed by session, tool ID, and execution generation. Reused tool IDs in a later generation remain separate. The pinned Desktop additionally groups consecutive invocations into run summaries with live ticking and persisted disclosure; the native UI currently renders individual cards.
+
+
+## Installed skills
+
+The capabilities view consumes Gateway `SkillInfo` rows and filters them case-insensitively by name, category, and description. Skill loading is profile-scoped through the Gateway capability request. This listing slice does not cover skill lifecycle controls or pinned usage ordering; see the generated capability progress view.

@@ -2795,3 +2795,20 @@ UCM evidence addendum (2026-11-19T19:44Z): EV-0034 records the five focused pagi
 UCM evidence addendum (2026-11-19T19:49Z): EV-0035 records the focused generation-scoped tool-card test and is bound to commit `077677f0d08c07cf7a590fc104986e7c3182611d`; capability and crosswalk remain partial.
 
 Correction (2026-11-19T19:50Z): EV-0035 implementation commit is `077677f1c8e184b1a3b614024626b0ed41061692`; the initially typed abbreviated hash expanded incorrectly and was corrected before receipt commit.
+
+
+## PAR-0251 installed Skills evidence
+
+- **id:** hermes-par-0251-installed-skills-evidence-20261119
+- **timestamp:** 2026-11-19T19:51:00Z
+- **what:** Extracted the native installed Skills filter helper, added coverage for name/category/description and blank-query listing behavior, and mapped PAR-0251 partial.
+- **why:** Verify an existing skills surface without conflating listing/search with skill lifecycle features.
+- **components:** Capabilities view, Gateway skill model, generated status and UCM crosswalk.
+- **type:** behavior test and evidence mapping
+- **validation:** Focused test passes; progress generators and UCM/task validators are run before publication.
+- **performance:** No material runtime change; filtering remains a small linear scan.
+- **risks:** No dedicated rendered list test, usage ordering, live Gateway, physical Windows or source-paired acceptance yet.
+- **follow_up:** Add rendered Skills list/owner-switch acceptance and continue separate skill lifecycle rows.
+
+
+Validation addendum (2026-11-19T19:53Z): PASS focused `installed_skills_search_matches_name_category_and_description` test; PASS cargo fmt check; PASS progress generators (52 reviewed: 6 implemented, 46 partial, 447 unknown; chat/tool 20 mapped: 1 implemented, 19 partial, 153 unknown); PASS UCM validator (565 inventory/behavior/test entries, 14 source and 20 implementation receipts); PASS task validation and `git diff --check`. The first atomic documentation pass stopped because the YAML row label used a different `area` than the expected patch; no later documentation was written in that attempt. The exact row was then updated and all validators passed. Optional YAML parsing skipped because PyYAML is unavailable.

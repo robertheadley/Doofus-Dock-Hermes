@@ -1499,3 +1499,8 @@ PAR-0057 is now mapped partial from the current native implementation. Hermes Na
 ### Revision 248 — Inline tool invocation evidence (2026-11-19T19:46Z)
 
 PAR-0041 is mapped partial. Hermes Native reduces `tool.start`/`tool.complete` into generation-scoped tool transcript rows; the focused headless UI test verifies reused tool IDs produce two accessible completed cards. The pinned Desktop groups consecutive calls under a summarized `ToolRun` disclosure, keeps a live ticker while running, persists run disclosure state, and has specialized tool fallback renderers. Native still renders individual cards, so run grouping/ticker/disclosure and specialized rendering are open. Live Gateway, Windows, and source-paired acceptance remain pending.
+
+
+### Revision 249 — Installed Skills listing evidence (2026-11-19T19:51Z)
+
+PAR-0251 is partial. The pinned Desktop Capabilities page loads skills by profile and renders usage-sorted installed-skill rows; its shared search matches name, description, and category. Native renders Gateway `SkillInfo` rows and now has a focused regression proving case-insensitive name/category/description filtering, plus blank-query visibility of the full list. The skill list still lacks dedicated headless rendering coverage and does not establish pinned usage ordering or hub/toggle/detail/update lifecycle parity. Live Gateway, Windows, and source-paired acceptance remain open.

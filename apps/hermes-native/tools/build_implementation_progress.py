@@ -526,6 +526,25 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "physical Windows clipboard behavior and source-paired visuals/acceptance remain unverified",
         ],
     },
+    "PAR-0251": {
+        "state": "partial",
+        "level": "native_installed_skill_rows_and_search_filter_test",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/index.tsx#CapabilitiesView",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/skills/skills-data.ts#useSkillsQuery",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/skills/skills-data.ts#filteredSkills",
+            "apps/hermes-native/src/app.rs#CapabilitiesTab::Skills",
+            "apps/hermes-native/src/app.rs#filter_installed_skills",
+            "apps/hermes-native/src/app.rs#installed_skills_search_matches_name_category_and_description",
+            "apps/hermes-native/src/gateway.rs#SkillInfo",
+            "apps/hermes-native/docs/PLAN.md#Revision 249",
+        ],
+        "gaps": [
+            "native installed-skill list has no dedicated headless rendering test and does not match pinned usage ordering/category metadata presentation",
+            "skill toggle, details/source, hub/install/update lifecycle, load-error UI, and profile-switch cache behavior are not established by this row",
+            "live Gateway, installed Windows interaction, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0041": {
         "state": "partial",
         "level": "headless_generation_scoped_accessible_tool_cards",

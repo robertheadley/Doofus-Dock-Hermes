@@ -9944,17 +9944,8 @@ fn render_message() -> &'static str {
                     self.route_unavailable(ui, "Connect to Hermes to browse installed Skills.");
                     return;
                 };
-                let query = self.capabilities_query.trim().to_lowercase();
-                let visible = skills
-                    .iter()
-                    .filter(|skill| {
-                        query.is_empty()
-                            || skill.name.to_lowercase().contains(&query)
-                            || skill.category.to_lowercase().contains(&query)
-                            || skill.description.to_lowercase().contains(&query)
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
+                let has_query = !self.capabilities_query.trim().is_empty();
+                let visible = filter_installed_skills(skills, &self.capabilities_query);
                 ui.label(
                     RichText::new(format!("Installed Skills · {}", visible.len()))
                         .strong()
@@ -9963,7 +9954,7 @@ fn render_message() -> &'static str {
                 if visible.is_empty() {
                     self.empty_panel(
                         ui,
-                        if query.is_empty() {
+                        if !has_query {
                             "No installed Skills"
                         } else {
                             "No matching Skills"
@@ -24557,6 +24548,20 @@ fn pdf_preview_fixture_bytes_for_pages(page_count: usize) -> Vec<u8> {
     bytes
 }
 
+fn filter_installed_skills(skills: &[SkillInfo], query: &str) -> Vec<SkillInfo> {
+    let query = query.trim().to_lowercase();
+    skills
+        .iter()
+        .filter(|skill| {
+            query.is_empty()
+                || skill.name.to_lowercase().contains(&query)
+                || skill.category.to_lowercase().contains(&query)
+                || skill.description.to_lowercase().contains(&query)
+        })
+        .cloned()
+        .collect()
+}
+
 fn merge_older_transcript_page(
     older: Vec<serde_json::Value>,
     current: Vec<serde_json::Value>,
@@ -36740,6 +36745,39 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn installed_skills_search_matches_name_category_and_description() {
+        let skills = vec![
+            SkillInfo {
+                category: "research".into(),
+                description: "Finds and cites sources".into(),
+                enabled: true,
+                name: "web-research".into(),
+                usage: Some(3),
+                provenance: Some("workspace".into()),
+            },
+            SkillInfo {
+                category: "documentation".into(),
+                description: "Indexes local notes".into(),
+                enabled: false,
+                name: "notes-index".into(),
+                usage: Some(1),
+                provenance: Some("local".into()),
+            },
+        ];
+
+        for (query, expected) in [
+            ("web-research", "web-research"),
+            ("documentation", "notes-index"),
+            ("cites sources", "web-research"),
+        ] {
+            let visible = filter_installed_skills(&skills, query);
+            assert_eq!(visible.len(), 1, "query {query:?}");
+            assert_eq!(visible[0].name, expected, "query {query:?}");
+        }
+        assert_eq!(filter_installed_skills(&skills, " ").len(), 2);
     }
 
     #[test]
