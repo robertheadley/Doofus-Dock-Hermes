@@ -28,47 +28,17 @@
     "status": "authorized"
   },
   "blockers": [],
-  "changed_files": [
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "doofus/events.jsonl",
-      "status": "M "
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/src/app.rs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/src/gateway.rs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/src/layout.rs",
-      "status": " M"
-    }
-  ],
+  "changed_files": [],
   "checkpoint": {
-    "command": null,
+    "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked",
     "evidence": [
       "apps/hermes-native/src/app.rs#session_resume_result_is_fenced_by_gateway_owner_and_request_id",
-      "apps/hermes-native/src/layout.rs#session_pane_owner_scopes_identical_profile_and_session_across_connections"
+      "apps/hermes-native/src/layout.rs#session_pane_owner_scopes_identical_profile_and_session_across_connections",
+      "apps/hermes-native/src/gateway.rs#poll_event_attaches_stable_connection_id_to_session_resume"
     ],
-    "state": "in_progress",
-    "summary": "Integrating stable Gateway connection ownership into active session panes, cache keys, resume correlation and peer transcript refresh for PAR-0510; source changes are present and focused/full validation passed in the prior continuation. Progress evidence and required project records are not yet updated.",
-    "verified_at": "2026-11-19T16:41:26Z"
+    "state": "tested",
+    "summary": "PAR-0510 connection-owned active session resume pane/cache identity, Gateway event attribution, result fencing, and peer refresh integration is committed to main as b349bf9; publication receipt is committed as 9c42232. Full native suite (382+15+3), workspace check, task-protocol tests (18), schema validation, scope generator, rustfmt and diff checks passed. PAR-0510 remains partial; live and full multi-connection routing evidence are open.",
+    "verified_at": "2026-11-19T16:48:17Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -79,7 +49,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-19T17:41:26Z",
+    "lease_expires_at": "2026-11-19T17:48:17Z",
     "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
     "model": null,
     "ownership_state": "active",
@@ -409,11 +379,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par-0510-publish-record-20261119-1647",
+  "last_event_id": "hermes-par-0510-owner-route-final-checkpoint-20261119",
   "last_operation": {
-    "request_id": "hermes-par-0510-publish-record-20261119-1647",
+    "request_id": "hermes-par-0510-owner-route-final-checkpoint-20261119",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -430,7 +400,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Append the validated owner-route evidence to the PAR-0510 source row, update the generated 173-row progress view and append plan/backlog/architecture/README/log records, then rerun validation and publish the scoped changes to main.",
+  "recommended_next_action": "Review pinned-source PAR-0511 and neighboring P0 reconnect requirements against current Gateway transcript/event code; implement the next dependency-ready chat/tool behavior and add evidence-backed progress.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -932,37 +902,16 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "2ef916f9bdf1efbff1dcd2dcf805e84c471740a0e9d7c95dcff284345a61beb2",
-    "changed_files": [
-      {
-        "path": "doofus/events.jsonl",
-        "status": "M "
-      },
-      {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/app.rs",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/gateway.rs",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/layout.rs",
-        "status": " M"
-      }
-    ],
-    "head_commit": "6eb538c5685b5de9891df62821ad39772f7397eb",
+    "change_fingerprint": "4db1a1bb2b5d8a430dbb089c5ed26b663e9c957c83b6e04c801656a2cd68a6c1",
+    "changed_files": [],
+    "head_commit": "9c42232b68ff165ff983ba9b4dbda0924d96fb72",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 193,
+  "revision": 194,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 193,
+  "state_revision": 194,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0510",
   "task_ledger_revision": 20,
@@ -1881,9 +1830,24 @@
       "command": "build_chat_tool_progress.py; python -m py_compile; doofus_task.py validate; git diff --check",
       "result": "PASS: 173 rows, 1 implemented, 8 partial, 164 unknown, 9 mapped evidence; schema revision 187/ledger 20/444 events valid; compile and diff check passed",
       "timestamp": "2026-11-19T15:52:33Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked",
+      "result": "PASS: 382 library + 15 automation protocol + 3 launcher; workspace check passed with existing dead-code warnings; 18 task-protocol tests; schema revision 193 valid; 173-row scoped generator and rustfmt/diff checks pass.",
+      "timestamp": "2026-11-19T16:48:17Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 382 library + 15 automation protocol + 3 launcher; workspace check passed with existing dead-code warnings; 18 task-protocol tests; schema revision 193 valid; 173-row scoped generator and rustfmt/diff checks pass.",
+      "timestamp": "2026-11-19T16:48:17Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: 382 library + 15 automation protocol + 3 launcher; workspace check passed with existing dead-code warnings; 18 task-protocol tests; schema revision 193 valid; 173-row scoped generator and rustfmt/diff checks pass.",
+      "timestamp": "2026-11-19T16:48:17Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-19T16:47:39Z"
+  "updated_at": "2026-11-19T16:48:17Z"
 }

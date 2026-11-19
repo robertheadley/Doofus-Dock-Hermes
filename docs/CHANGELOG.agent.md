@@ -2495,3 +2495,17 @@ Validation addendum (2026-11-19T16:44:23Z): PASS `cargo test --manifest-path app
 
 
 Publication addendum (2026-11-19T16:47:12Z): Commit `b349bf96378e250c8ec10f2dae6c9e28da1659b2` was pushed to `origin/main`; a fresh fetch verified exact SHA equality and a clean worktree.
+
+
+### UCM connection-owner evidence — 2026-11-19T16:51:05Z
+
+- **id:** hermes-par-0510-ucm-connection-owner-20261119
+- **timestamp:** 2026-11-19T16:51:05Z
+- **what:** Appended EV-0023, declared the connection-owner isolation scenario, and linked it to the existing partial session reattach capability.
+- **why:** Keep the user-requested partial completion view tied to reviewed, current test evidence.
+- **components:** UCM capability map and evidence.
+- **type:** Evidence tracking.
+- **validation:** PASS package validator (565 capabilities/inventory/tests; 14 inspection and 8 implementation receipts); optional YAML parse skipped because PyYAML is not installed.
+- **performance:** No runtime behavior changed.
+- **risks:** The UCM checker remains unavailable in this environment without PyYAML; package validator confirms its own crosswalk and receipt constraints.
+- **follow_up:** Keep UCM evidence and the 173-row implementation view synchronized as requirements are implemented.

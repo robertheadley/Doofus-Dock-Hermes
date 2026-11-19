@@ -9870,9 +9870,12 @@ capabilities:
       description: A live in-flight turn reattaches, continues streaming once, and refreshes the transcript without losing queued or pending messages.
     - id: failure-recovery
       description: Offline, denied, stale, and reconnect outcomes preserve ownership and never submit the prompt twice.
+    - id: connection-owner-isolation
+      description: Same profile/session IDs on different Gateways keep separate persisted panes and resume results remain fenced to the selected connection owner.
   evidence:
   - EV-0018
   - EV-0019
+  - EV-0023
 - id: ui-replay-session-transcript-after-disconnect
   name: Replay session transcript after disconnect
   area: protocol-reliability

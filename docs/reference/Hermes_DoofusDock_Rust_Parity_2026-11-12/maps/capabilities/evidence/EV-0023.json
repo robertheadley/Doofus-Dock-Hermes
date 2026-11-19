@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0023",
+  "capability_id": "ui-reattach-to-in-flight-turn-without-duplicating-submit",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "connection-owner-isolation",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-19",
+  "commit": "b349bf96378e250c8ec10f2dae6c9e28da1659b2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Rust app and DoofusDock layout tests plus a loopback Gateway actor test; no live Hermes Gateway or installed UI was used.",
+  "notes": "Tests prove that identical profile/session IDs on two Gateway connections map to separate pane IDs and persist the owner through close/restore; sidebar reselect queues resume under the registered active owner; GatewayDiscovery attributes SessionResumed to its stable connection ID; stale resume results and peer transcript refresh are fenced by connection owner and request ID. This capability remains partial because a saved-connection picker, concurrent discovery lifecycle, full owner routing for all session operations, live reconnect behavior, installed-Windows interaction, and source-paired acceptance remain open."
+}
