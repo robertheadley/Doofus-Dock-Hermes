@@ -2354,3 +2354,16 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **follow_up:** Carry the exact owner through endpoint descriptors, session identity caches, Gateway requests and correlated results; add same-ID cross-connection isolation tests.
 
 Validation addendum: The targeted UCM report marks named layout preset persistence verified from the real picker/persistence tests; keybinding settings/conflict capabilities remain partial with the full pinned action registry scenario open. Evidence EV-0020/21/22 is bound to the published implementation commit c0e1713. Backporting Doofus Hermes remains sequenced after full native functional parity.\n
+
+### Exact owner registry main publication — 2026-11-19T02:18:10Z
+
+- **id:** hermes-session-owner-foundation-main-20261119
+- **timestamp:** 2026-11-19T02:18:10Z
+- **what:** Published exact owner registry foundation, UCM EV-0020/21/22 and parity/backport sequencing as commit 21e349e84827a90de3c6bb573da916e930e7438c on main.
+- **why:** Keep the shared repository current with tested parity work and persistent task/evidence records.
+- **components:** Hermes Native owner identity, UCM map/evidence, parity plan/backlog, task ledger.
+- **type:** main publication.
+- **validation:** Fetched origin/main and confirmed exact equality with HEAD at 21e349e84827a90de3c6bb573da916e930e7438c.
+- **performance:** no runtime performance change.
+- **risks:** The registry remains a foundation; app and Gateway routing are not integrated.
+- **follow_up:** Implement connection descriptors and carry exact ownership through UI and Gateway actions.\n
