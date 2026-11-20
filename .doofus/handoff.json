@@ -110,90 +110,6 @@
   "blockers": [],
   "changed_files": [
     {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "doofus/events.jsonl",
-      "status": "M "
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/tools/build_implementation_progress.py",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
-    },
-    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -216,20 +132,17 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0060.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "task select",
-    "evidence": [],
-    "state": "unknown",
-    "summary": "PAR-0034 incremental assistant rendering is tested partial. Continue core chat sequence with final assistant-message merge semantics; inspect the pinned contract and existing terminal-event reducer before choosing behavior or evidence changes.",
-    "verified_at": "2026-11-20T15:30:57Z"
+    "command": null,
+    "evidence": [
+      "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id",
+      "apps/hermes-native/src/app.rs#incremental_assistant_delta_is_visible_before_terminal_message_complete"
+    ],
+    "state": "in_progress",
+    "summary": "PAR-0033 New Chat create-and-send and PAR-0034 staged incremental assistant rendering are headlessly tested and mapped partial with EV-0061/EV-0062. Generated evidence map is 43/173 chat/tool rows; live and source-paired acceptance remain 0/173. Commits 7216408, e6b35b5, 1334070 are on main; origin/main SHA verified exact. Three parallel read-only audits are reconciled stopped; operator work residue preserved.",
+    "verified_at": "2026-11-20T15:32:26Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -272,7 +185,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T16:08:24Z",
+    "lease_expires_at": "2026-11-20T16:32:26Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -602,14 +515,14 @@
     {
       "evidence": [],
       "kind": "git_push_main",
-      "note": "Publish the tested New Chat and incremental-stream coverage with EV-0061/0062, regenerated progress, task checkpoint and docs to origin/main; direct main-only publication is authorized.",
-      "observed_at": "2026-11-20T15:31:41Z",
+      "note": "Pushed commits 7216408, e6b35b5 and 1334070 to origin/main; fresh fetch verified local HEAD equals origin/main at 133407016e18ea87779642c646fdd0a5aa14f356.",
+      "observed_at": "2026-11-20T15:32:35Z",
       "operation_id": "hermes-par0033-0034-evidence-publish-20261120",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -1068,9 +981,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "dd546422-425d-40ca-81b9-ca26c81a5b84",
+  "last_event_id": "e422d1ea-8647-4608-954d-c3b8d86703fa",
   "last_operation": {
-    "request_id": "dd546422-425d-40ca-81b9-ca26c81a5b84",
+    "request_id": "e422d1ea-8647-4608-954d-c3b8d86703fa",
     "state": "committed",
     "type": "external_operation.state_changed"
   },
@@ -1089,7 +1002,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Audit pinned PAR-0035 final-message merge and duplicate/reordered terminal events, then add the missing behavior or rendered test.",
+  "recommended_next_action": "Audit pinned PAR-0035 final assistant message merge and terminal event ordering; then fix/test the highest-value remaining behavior and continue feature parity.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1559,16 +1472,8 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "f88e5ea27992cfb3e62bee842b2f6b2d6aa292f0d131a6eb1b1b3f204c317fee",
+    "change_fingerprint": "6f68e6610cea7ab15eb3ec19d15175bb85dcd6f07bb3869e49b9e2508dd5541f",
     "changed_files": [
-      {
-        "path": "pps/hermes-native/src/app.rs",
-        "status": "M "
-      },
-      {
-        "path": "apps/hermes-native/src/gateway.rs",
-        "status": " M"
-      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -1586,14 +1491,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "426dc3e483aa0a3ebe660307b7476d3f86db0a5b",
+    "head_commit": "133407016e18ea87779642c646fdd0a5aa14f356",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 431,
+  "revision": 433,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 431,
+  "state_revision": 433,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0035",
   "task_ledger_revision": 69,
@@ -2782,9 +2687,19 @@
       "command": "toolsets_catalog_renders_included_tools_and_hides_desktop_internal_rows",
       "result": "PASS focused headless egui test; task validation, progress generators, UCM package validator (565 map rows, 14 source receipts, 44 implementation receipts), rustfmt and diff check pass.",
       "timestamp": "2026-11-20T02:58:33Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation new_chat_send_creates_session_then_submits_draft_on_runtime_id -- --nocapture",
+      "result": "PASS 1 focused staged rendered-stream test; 456 filtered.",
+      "timestamp": "2026-11-20T15:32:26Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation incremental_assistant_delta_is_visible_before_terminal_message_complete -- --nocapture",
+      "result": "PASS 1 focused staged rendered-stream test; 456 filtered.",
+      "timestamp": "2026-11-20T15:32:26Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T15:31:41Z"
+  "updated_at": "2026-11-20T15:32:35Z"
 }

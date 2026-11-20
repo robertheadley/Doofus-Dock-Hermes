@@ -3404,3 +3404,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** The test uses synthetic Gateway events and does not verify the authenticated runtime or the pinned loading announcement.
 - **follow_up:** Continue with the next concrete chat/tool gap; keep PAR-0034 partial until live and source-paired evidence is complete.
+
+## PAR-0033/0034 main publication
+
+- **id:** hermes-par0033-0034-main-publish-20261120
+- **timestamp:** 2026-11-20 15:32 UTC
+- **what:** Published the New Chat and incremental assistant rendering tests, EV-0061/EV-0062, progress maps, completion docs and task records to `main`.
+- **why:** Keep the user's main-only repository current with the newly verified chat evidence.
+- **components:** Hermes Native chat tests, capability evidence, UCM/progress maps and `.doofus` task ledger.
+- **type:** Direct main publication.
+- **validation:** PASS focused tests and repository validators; fresh fetch confirms `origin/main` equals local `HEAD` at `133407016e18ea87779642c646fdd0a5aa14f356`.
+- **performance:** No performance change measured.
+- **risks:** Both requirements remain partial; Gateway runtime and source-paired acceptance are still open.
+- **follow_up:** Continue PAR-0035 and remaining chat/tool/Skills/MCP/plugin behavior against the pinned snapshot.
