@@ -13,6 +13,12 @@
 - **risks:** PAR-0256 remains partial. Installed/catalog merging, discovery shelves, facets, sort modes, card/list preference, live feed/Gateway verification, physical Windows interaction, and source-paired review remain open.
 - **follow_up:** Continue scoped Skills workflows with PAR-0257 installation and return to missing hub-browser behavior before claiming feature parity.
 
+### PAR-0256 publication record
+
+- Behavior commit bbc4c3770ca75b9125512295ef25fc738b83da92 and partial evidence receipt EV-0052 were pushed to main.
+- Fresh fetch confirmed local HEAD equals origin/main at 4159dcea2d3c3aa9a7cdab9c3190be98e1e632b7.
+- Strict source acceptance remains pending; this release is functional progress for the user to evaluate before visual customization, not a feature-parity completion claim.
+
 ## HUR-001-176/177 — 2026-11-16
 
 - **id:** HUR-001-176-177
