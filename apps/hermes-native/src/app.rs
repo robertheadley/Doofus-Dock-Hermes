@@ -1701,6 +1701,7 @@ pub struct HermesNativeApp {
     selected_skill_catalog_id: Option<String>,
     skill_catalog_visible_limit: usize,
     skill_catalog_filter_query: String,
+    skill_catalog_categories: BTreeSet<String>,
     skill_catalog_filtered_indexes: Vec<usize>,
     pending_skill_hub_installs: BTreeMap<String, PendingSkillHubInstall>,
     pending_skill_hub_update: Option<PendingSkillHubUpdate>,
@@ -4065,6 +4066,7 @@ fn render_message() -> &'static str {
             selected_skill_catalog_id: None,
             skill_catalog_visible_limit: SKILL_CATALOG_PAGE_SIZE,
             skill_catalog_filter_query: String::new(),
+            skill_catalog_categories: BTreeSet::new(),
             skill_catalog_filtered_indexes: Vec::new(),
             pending_skill_hub_installs: BTreeMap::new(),
             pending_skill_hub_update: None,
@@ -12693,16 +12695,28 @@ fn render_message() -> &'static str {
         };
 
         let query = self.capabilities_query.trim().to_lowercase();
-        if self.skill_catalog_filter_query != query {
-            self.skill_catalog_filter_query.clone_from(&query);
+        let selected_categories = self
+            .skill_catalog_categories
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\0");
+        let filter_key = format!("query:{query}\0categories:{selected_categories}");
+        if self.skill_catalog_filter_query != filter_key {
+            self.skill_catalog_filter_query.clone_from(&filter_key);
             self.skill_catalog_filtered_indexes = entries
                 .iter()
                 .enumerate()
-                .filter_map(|(index, entry)| entry.search.contains(&query).then_some(index))
+                .filter_map(|(index, entry)| {
+                    (entry.search.contains(&query)
+                        && (self.skill_catalog_categories.is_empty()
+                            || self.skill_catalog_categories.contains(&entry.category)))
+                    .then_some(index)
+                })
                 .collect();
             self.selected_skill_catalog_id = None;
             self.skill_catalog_visible_limit = SKILL_CATALOG_PAGE_SIZE;
-            self.skill_catalog_filter_query = query.clone();
+            self.skill_catalog_filter_query = filter_key;
         }
         let filtered_indexes = &self.skill_catalog_filtered_indexes;
         if self
@@ -12759,6 +12773,91 @@ fn render_message() -> &'static str {
                 ui.label(RichText::new(error).size(11.0).color(Color32::LIGHT_RED));
             }
         });
+        let mut categories = BTreeMap::<String, (String, usize)>::new();
+        for entry in entries {
+            let row = categories
+                .entry(entry.category.clone())
+                .or_insert_with(|| (entry.category_label.clone(), 0));
+            row.1 += 1;
+        }
+        let mut categories = categories.into_iter().collect::<Vec<_>>();
+        categories.sort_by(|left, right| {
+            let left_other = left.0 == "other" || left.1.0.eq_ignore_ascii_case("other");
+            let right_other = right.0 == "other" || right.1.0.eq_ignore_ascii_case("other");
+            left_other
+                .cmp(&right_other)
+                .then_with(|| left.1.0.to_lowercase().cmp(&right.1.0.to_lowercase()))
+        });
+        let mut filters_changed = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("Category").size(10.0).color(MUTED));
+            if ui
+                .selectable_label(self.skill_catalog_categories.is_empty(), "All")
+                .accessible_name("Skill hub category: All")
+                .clicked()
+                && !self.skill_catalog_categories.is_empty()
+            {
+                self.skill_catalog_categories.clear();
+                filters_changed = true;
+            }
+            let visible = categories
+                .iter()
+                .enumerate()
+                .filter(|(index, (key, _))| {
+                    *index < 3 || self.skill_catalog_categories.contains(key)
+                })
+                .map(|(_, row)| row.clone())
+                .collect::<Vec<_>>();
+            for (key, (label, _count)) in &visible {
+                let selected = self.skill_catalog_categories.contains(key);
+                if ui
+                    .selectable_label(selected, label)
+                    .accessible_name(format!("Skill hub category: {label}"))
+                    .clicked()
+                {
+                    if !self.skill_catalog_categories.insert(key.clone()) {
+                        self.skill_catalog_categories.remove(key);
+                    } else if categories
+                        .iter()
+                        .all(|(row_key, _)| self.skill_catalog_categories.contains(row_key))
+                    {
+                        self.skill_catalog_categories.clear();
+                    }
+                    filters_changed = true;
+                }
+            }
+            let overflow = categories
+                .iter()
+                .filter(|(key, _)| !visible.iter().any(|(visible_key, _)| visible_key == key))
+                .collect::<Vec<_>>();
+            if !overflow.is_empty() {
+                ui.menu_button(format!("More · {}", overflow.len()), |ui| {
+                    for (key, (label, _count)) in &overflow {
+                        let selected = self.skill_catalog_categories.contains(key);
+                        if ui
+                            .selectable_label(selected, label)
+                            .accessible_name(format!("Skill hub category: {label}"))
+                            .clicked()
+                        {
+                            if !self.skill_catalog_categories.insert((*key).clone()) {
+                                self.skill_catalog_categories.remove(key);
+                            } else if categories
+                                .iter()
+                                .all(|(row_key, _)| self.skill_catalog_categories.contains(row_key))
+                            {
+                                self.skill_catalog_categories.clear();
+                            }
+                            filters_changed = true;
+                            ui.close();
+                        }
+                    }
+                });
+            }
+        });
+        if filters_changed {
+            self.selected_skill_catalog_id = None;
+            self.skill_catalog_visible_limit = SKILL_CATALOG_PAGE_SIZE;
+        }
         if total == 0 {
             self.empty_panel(
                 ui,
@@ -41252,6 +41351,45 @@ mod tests {
         assert!(
             harness
                 .query_by_label("1 · Cloning skill repository")
+                .is_some()
+        );
+        harness.get_by_label("Skill hub category: Research").click();
+        harness.run();
+        assert_eq!(
+            app.borrow().skill_catalog_categories,
+            BTreeSet::from(["research".to_string()])
+        );
+        assert!(
+            harness
+                .query_by_label("Skill hub result: First fixture skill")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Skill hub result: Second fixture skill")
+                .is_none()
+        );
+        harness.get_by_label("Skill hub category: All").click();
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Skill hub result: Second fixture skill")
+                .is_some()
+        );
+        harness.get_by_label("Skill hub category: Research").click();
+        harness
+            .get_by_label("Skill hub category: Productivity")
+            .click();
+        harness.run();
+        assert!(app.borrow().skill_catalog_categories.is_empty());
+        assert!(
+            harness
+                .query_by_label("Skill hub result: First fixture skill")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Skill hub result: Second fixture skill")
                 .is_some()
         );
         harness
