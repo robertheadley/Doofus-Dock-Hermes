@@ -837,6 +837,31 @@ pub struct ModelOptionProvider {
     pub authenticated: Option<bool>,
     #[serde(default)]
     pub models: Vec<String>,
+    #[serde(default)]
+    pub capabilities: BTreeMap<String, ModelCapabilities>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct ModelCapabilities {
+    pub fast: bool,
+    #[serde(default)]
+    pub ultrafast: bool,
+    #[serde(default)]
+    pub daybreak: bool,
+    pub reasoning: bool,
+    #[serde(default)]
+    pub can_disable_reasoning: Option<bool>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChatPolicyMutationReceipt {
+    pub status: String,
+    pub model: Option<String>,
+    pub provider: Option<String>,
+    pub effort: Option<String>,
+    pub confirm: Option<String>,
+    pub confirm_message: Option<String>,
+    pub revision: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1752,6 +1777,8 @@ pub struct SessionTranscript {
     pub runtime_session_id: String,
     pub message_count: usize,
     pub messages: Vec<serde_json::Value>,
+    pub reasoning_effort: Option<String>,
+    pub reasoning_effort_wire: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -2321,6 +2348,18 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<String, String>,
     },
+    ChatModelOptionsLoaded {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        result: Result<ModelOptionsSnapshot, String>,
+    },
+    ChatPolicyMutated {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        result: Result<ChatPolicyMutationReceipt, String>,
+    },
     SessionDeleted {
         request_id: String,
         session_id: String,
@@ -2460,6 +2499,18 @@ enum GatewayCommand {
         profile: Option<String>,
         title: String,
         retry_only: bool,
+    },
+    LoadChatModelOptions {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+    },
+    MutateChatPolicy {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        operation: String,
+        payload: serde_json::Value,
     },
     SubmitPrompt {
         session_id: String,
@@ -4143,6 +4194,43 @@ impl GatewayDiscovery {
                 request_id,
                 session_id,
                 profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn load_chat_model_options(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::LoadChatModelOptions {
+                request_id,
+                session_id,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn mutate_chat_policy(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        operation: String,
+        payload: serde_json::Value,
+    ) -> Result<(), String> {
+        if !matches!(operation.as_str(), "model" | "reasoning") {
+            return Err("Unsupported chat policy mutation".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::MutateChatPolicy {
+                request_id,
+                session_id,
+                profile,
+                operation,
+                payload,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -6998,6 +7086,59 @@ fn gateway_actor(
                     return;
                 }
             }
+            Ok(GatewayCommand::LoadChatModelOptions {
+                request_id,
+                session_id,
+                profile,
+            }) => {
+                let result = load_chat_model_options_rpc(
+                    socket,
+                    &events,
+                    &mut next_request_id,
+                    &session_id,
+                    profile.as_deref(),
+                );
+                if events
+                    .send(GatewayEvent::ChatModelOptionsLoaded {
+                        request_id,
+                        session_id,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::MutateChatPolicy {
+                request_id,
+                session_id,
+                profile,
+                operation,
+                payload,
+            }) => {
+                let result = mutate_chat_policy_rpc(
+                    socket,
+                    &events,
+                    &mut next_request_id,
+                    &request_id,
+                    &session_id,
+                    profile.as_deref(),
+                    &operation,
+                    payload,
+                );
+                if events
+                    .send(GatewayEvent::ChatPolicyMutated {
+                        request_id,
+                        session_id,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::CompleteSlash {
                 request_id,
                 query,
@@ -7680,6 +7821,163 @@ fn rename_runtime_session_rpc(
     }
 }
 
+fn load_chat_model_options_rpc(
+    socket: &mut GatewaySocket,
+    events: &mpsc::Sender<GatewayEvent>,
+    next_request_id: &mut u64,
+    session_id: &str,
+    profile: Option<&str>,
+) -> Result<ModelOptionsSnapshot, String> {
+    let params = session_profile_params(
+        serde_json::json!({ "session_id": session_id, "explicit_only": true }),
+        profile,
+    )?;
+    let value = rpc_with_events(
+        socket,
+        *next_request_id,
+        "model.options",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    let value = value?;
+    let snapshot: ModelOptionsSnapshot = serde_json::from_value(value)
+        .map_err(|_| "Hermes returned malformed chat model options".to_owned())?;
+    if snapshot.providers.len() > 512 {
+        return Err("Hermes returned too many chat model providers".into());
+    }
+    for provider in &snapshot.providers {
+        if provider.slug.trim().is_empty()
+            || provider.slug.len() > 256
+            || provider.name.len() > 512
+            || provider.models.len() > 10_000
+            || provider
+                .models
+                .iter()
+                .any(|model| model.is_empty() || model.len() > CRON_FORM_MODEL_LIMIT)
+            || provider.capabilities.len() > 10_000
+        {
+            return Err("Hermes returned invalid chat model options".into());
+        }
+    }
+    Ok(snapshot)
+}
+
+fn mutate_chat_policy_rpc(
+    socket: &mut GatewaySocket,
+    events: &mpsc::Sender<GatewayEvent>,
+    next_request_id: &mut u64,
+    request_id: &str,
+    session_id: &str,
+    profile: Option<&str>,
+    operation: &str,
+    payload: serde_json::Value,
+) -> Result<ChatPolicyMutationReceipt, String> {
+    if !matches!(operation, "model" | "reasoning") || !payload.is_object() {
+        return Err("Invalid Hermes chat policy mutation".into());
+    }
+    let snapshot_params = session_profile_params(
+        serde_json::json!({ "session_id": session_id, "omit_messages": true }),
+        profile,
+    )?;
+    let snapshot = rpc_with_events(
+        socket,
+        *next_request_id,
+        "session.resume",
+        snapshot_params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    let snapshot = snapshot?;
+    if snapshot
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        != Some(session_id)
+    {
+        return Err("Hermes chat mutation snapshot destination mismatch".into());
+    }
+    let revision = snapshot
+        .get("revision")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "Hermes chat mutation snapshot omitted its revision".to_owned())?;
+    let generation = snapshot
+        .get("execution_generation")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            "Hermes chat mutation snapshot omitted its execution generation".to_owned()
+        })?;
+    let params = session_profile_params(
+        serde_json::json!({
+            "session_id": session_id,
+            "request_id": request_id,
+            "expected_revision": revision,
+            "expected_generation": generation,
+            "operation": operation,
+            "payload": payload,
+        }),
+        profile,
+    )?;
+    let reply = rpc_with_events(
+        socket,
+        *next_request_id,
+        "session.mutate",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    let reply = reply?;
+    parse_chat_policy_receipt(reply, session_id, operation, revision)
+}
+
+fn parse_chat_policy_receipt(
+    reply: serde_json::Value,
+    session_id: &str,
+    operation: &str,
+    expected_revision: u64,
+) -> Result<ChatPolicyMutationReceipt, String> {
+    if reply.get("session_id").and_then(serde_json::Value::as_str) != Some(session_id) {
+        return Err("Hermes chat mutation receipt destination mismatch".into());
+    }
+    if reply.get("operation").and_then(serde_json::Value::as_str) != Some(operation) {
+        return Err("Hermes chat mutation receipt operation mismatch".into());
+    }
+    let status = reply
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("committed");
+    if !matches!(
+        status,
+        "committed" | "deferred" | "confirmation_required" | "noop"
+    ) {
+        return Err(format!(
+            "Hermes returned an unsupported chat mutation status: {status}"
+        ));
+    }
+    let revision = reply.get("revision").and_then(serde_json::Value::as_u64);
+    if status == "committed" && revision.is_none_or(|value| value <= expected_revision) {
+        return Err("Hermes chat mutation receipt did not advance its revision".into());
+    }
+    let string_field = |key: &str| {
+        reply
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+    };
+    let confirm = string_field("confirm");
+    if status == "confirmation_required" && confirm.is_none() {
+        return Err("Hermes guarded model receipt omitted its confirmation token".into());
+    }
+    Ok(ChatPolicyMutationReceipt {
+        status: status.to_owned(),
+        model: string_field("model").or_else(|| string_field("target_model")),
+        provider: string_field("provider").or_else(|| string_field("target_provider")),
+        effort: string_field("effort"),
+        confirm,
+        confirm_message: string_field("confirm_message"),
+        revision,
+    })
+}
+
 fn resume_session(
     socket: &mut GatewaySocket,
     session_id: &str,
@@ -7716,6 +8014,14 @@ fn resume_session(
         runtime_session_id: runtime_session_id.to_owned(),
         message_count,
         messages,
+        reasoning_effort: snapshot
+            .pointer("/info/reasoning_effort")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        reasoning_effort_wire: snapshot
+            .pointer("/info/reasoning_effort_wire")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
     })
 }
 
@@ -20967,6 +21273,207 @@ mod tests {
 
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn chat_model_mutation_receipt_accepts_a_correlated_commit() {
+        let receipt = parse_chat_policy_receipt(
+            json!({"session_id":"runtime-1","operation":"model","model":"m2","provider":"p","revision":8}),
+            "runtime-1", "model", 7,
+        ).expect("valid commit receipt");
+        assert_eq!(receipt.status, "committed");
+        assert_eq!(receipt.model.as_deref(), Some("m2"));
+        assert_eq!(receipt.provider.as_deref(), Some("p"));
+        assert_eq!(receipt.revision, Some(8));
+    }
+
+    #[test]
+    fn chat_model_mutation_receipt_rejects_stale_or_wrong_owner_receipts() {
+        let stale = parse_chat_policy_receipt(
+            json!({"session_id":"runtime-1","operation":"reasoning","effort":"high","revision":7}),
+            "runtime-1",
+            "reasoning",
+            7,
+        );
+        assert_eq!(
+            stale.expect_err("stale receipt must fail closed"),
+            "Hermes chat mutation receipt did not advance its revision"
+        );
+        let wrong_session = parse_chat_policy_receipt(
+            json!({"session_id":"other","operation":"model","model":"m2","revision":8}),
+            "runtime-1",
+            "model",
+            7,
+        );
+        assert_eq!(
+            wrong_session.expect_err("wrong owner receipt must fail closed"),
+            "Hermes chat mutation receipt destination mismatch"
+        );
+        let wrong_operation = parse_chat_policy_receipt(
+            json!({"session_id":"runtime-1","operation":"reasoning","revision":8}),
+            "runtime-1",
+            "model",
+            7,
+        );
+        assert_eq!(
+            wrong_operation.expect_err("wrong operation must fail closed"),
+            "Hermes chat mutation receipt operation mismatch"
+        );
+    }
+
+    #[test]
+    fn guarded_chat_model_receipt_requires_confirmation_token() {
+        let missing = parse_chat_policy_receipt(
+            json!({"session_id":"runtime-1","operation":"model","status":"confirmation_required"}),
+            "runtime-1",
+            "model",
+            7,
+        );
+        assert_eq!(
+            missing.expect_err("guarded receipt must include a token"),
+            "Hermes guarded model receipt omitted its confirmation token"
+        );
+        let guarded = parse_chat_policy_receipt(
+            json!({"session_id":"runtime-1","operation":"model","status":"confirmation_required","confirm":"opaque"}),
+            "runtime-1", "model", 7,
+        ).expect("valid guarded receipt");
+        assert_eq!(guarded.confirm.as_deref(), Some("opaque"));
+    }
+
+    #[test]
+    fn chat_policy_error_receipts_and_unknown_statuses_fail_closed() {
+        let wrong_status = parse_chat_policy_receipt(
+            json!({"session_id":"runtime-1","operation":"model","status":"refused","revision":7}),
+            "runtime-1",
+            "model",
+            7,
+        );
+        assert_eq!(
+            wrong_status.expect_err("refusal must not be painted as an applied change"),
+            "Hermes returned an unsupported chat mutation status: refused"
+        );
+    }
+
+    #[test]
+    fn chat_model_pick_uses_fresh_profile_scoped_revision_and_generation() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let resume: serde_json::Value = match socket.read().expect("read snapshot") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse snapshot request"),
+                other => panic!("expected snapshot request, got {other:?}"),
+            };
+            assert_eq!(resume["method"], "session.resume");
+            assert_eq!(resume["params"]["session_id"], "runtime-1");
+            assert_eq!(resume["params"]["profile"], "work");
+            assert_eq!(resume["params"]["omit_messages"], true);
+            let resume_id = resume["id"].as_u64().expect("resume id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":resume_id,"result":{
+                        "session_id":"runtime-1","revision":12,"execution_generation":9
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send snapshot");
+            let mutation: serde_json::Value = match socket.read().expect("read mutation") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse mutation"),
+                other => panic!("expected mutation, got {other:?}"),
+            };
+            assert_eq!(mutation["method"], "session.mutate");
+            assert_eq!(mutation["params"]["session_id"], "runtime-1");
+            assert_eq!(mutation["params"]["profile"], "work");
+            assert_eq!(mutation["params"]["request_id"], "pick-1");
+            assert_eq!(mutation["params"]["expected_revision"], 12);
+            assert_eq!(mutation["params"]["expected_generation"], 9);
+            assert_eq!(mutation["params"]["operation"], "model");
+            assert_eq!(
+                mutation["params"]["payload"],
+                json!({"model":"m2","provider":"openai"})
+            );
+            let mutation_id = mutation["id"].as_u64().expect("mutation id");
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":mutation_id,"result":{
+                "session_id":"runtime-1","operation":"model","model":"m2","provider":"openai","revision":13
+            }}).to_string().into())).expect("send receipt");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (events, _) = mpsc::channel();
+        let mut rpc_id = 20;
+        let receipt = mutate_chat_policy_rpc(
+            &mut socket,
+            &events,
+            &mut rpc_id,
+            "pick-1",
+            "runtime-1",
+            Some("work"),
+            "model",
+            json!({"model":"m2","provider":"openai"}),
+        )
+        .expect("model mutation receipt");
+        assert_eq!(receipt.model.as_deref(), Some("m2"));
+        assert_eq!(receipt.revision, Some(13));
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn chat_model_options_read_uses_profile_session_and_provider_capabilities() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read options request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse options request"),
+                other => panic!("expected options request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "model.options");
+            assert_eq!(request["params"]["session_id"], "runtime-1");
+            assert_eq!(request["params"]["profile"], "work");
+            assert_eq!(request["params"]["explicit_only"], true);
+            let request_id = request["id"].as_u64().expect("options RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":request_id,"result":{
+                        "providers":[{
+                            "slug":"openai",
+                            "name":"OpenAI",
+                            "authenticated":true,
+                            "models":["m1"],
+                            "capabilities":{"m1":{"fast":true,"reasoning":true,"can_disable_reasoning":true}}
+                        }],
+                        "model":"m1",
+                        "provider":"openai"
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send model options");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (events, _) = mpsc::channel();
+        let mut rpc_id = 31;
+        let options = load_chat_model_options_rpc(
+            &mut socket,
+            &events,
+            &mut rpc_id,
+            "runtime-1",
+            Some("work"),
+        )
+        .expect("profile-scoped model options");
+        assert_eq!(options.model.as_deref(), Some("m1"));
+        assert_eq!(options.provider.as_deref(), Some("openai"));
+        assert!(options.providers[0].capabilities["m1"].reasoning);
+        assert_eq!(
+            options.providers[0].capabilities["m1"].can_disable_reasoning,
+            Some(true)
+        );
         server.join().expect("fixture server exits");
     }
 

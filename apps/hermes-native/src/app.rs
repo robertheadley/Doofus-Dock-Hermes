@@ -1152,6 +1152,52 @@ struct PendingSlashCompletion {
 }
 
 #[derive(Clone, Debug)]
+struct PendingChatModelOptions {
+    request_id: String,
+    session_id: String,
+    profile: Option<String>,
+    connection_id: String,
+}
+
+#[derive(Clone, Debug)]
+struct PendingChatPolicyMutation {
+    request_id: String,
+    session_id: String,
+    profile: Option<String>,
+    connection_id: String,
+    operation: String,
+    payload: serde_json::Value,
+}
+
+#[derive(Clone, Debug)]
+struct PendingModelConfirmation {
+    model: String,
+    provider: String,
+    token: String,
+    message: String,
+}
+
+fn chat_control_event_matches(
+    expected_request: &str,
+    expected_session: &str,
+    expected_profile: &Option<String>,
+    expected_connection: &str,
+    event_request: &str,
+    event_session: &str,
+    event_profile: &Option<String>,
+    active_session: Option<&str>,
+    active_profile: &Option<String>,
+    active_connection: &str,
+) -> bool {
+    expected_request == event_request
+        && expected_session == event_session
+        && expected_profile == event_profile
+        && expected_connection == active_connection
+        && active_session == Some(event_session)
+        && active_profile == event_profile
+}
+
+#[derive(Clone, Debug)]
 struct PendingActiveStatusRefresh {
     request_id: String,
     profile_id: String,
@@ -1575,6 +1621,15 @@ pub struct HermesNativeApp {
     cron_model_options: Option<ModelOptionsSnapshot>,
     cron_model_options_request: Option<(String, Option<String>)>,
     cron_model_options_error: Option<String>,
+    chat_model_options: Option<ModelOptionsSnapshot>,
+    chat_model_options_owner: Option<(String, Option<String>, String)>,
+    chat_model_options_pending: Option<PendingChatModelOptions>,
+    chat_model_options_error: Option<String>,
+    chat_reasoning_effort: Option<String>,
+    chat_reasoning_effort_wire: Option<String>,
+    chat_policy_mutation: Option<PendingChatPolicyMutation>,
+    chat_policy_error: Option<String>,
+    chat_model_confirmation: Option<PendingModelConfirmation>,
     cron_blueprints: Option<Vec<CronBlueprint>>,
     cron_blueprints_request: Option<(String, Option<String>)>,
     cron_blueprints_error: Option<String>,
@@ -2079,6 +2134,35 @@ fn cron_model_option_label(model: &str, provider: &str) -> String {
     } else {
         format!("{model} · {provider}")
     }
+}
+
+fn reasoning_effort_label_native(effort: &str, wire: Option<&str>) -> String {
+    let label = match effort.to_ascii_lowercase().as_str() {
+        "none" | "false" | "disabled" => "Off",
+        "minimal" => "Minimal",
+        "low" => "Low",
+        "medium" => "Medium",
+        "high" => "High",
+        "xhigh" => "Extra high",
+        "max" => "Max",
+        "ultra" => "Ultra",
+        _ => "Default",
+    };
+    if effort.eq_ignore_ascii_case("ultra") {
+        if let Some(wire) = wire.filter(|wire| !wire.eq_ignore_ascii_case("ultra")) {
+            let wire_label = match wire.to_ascii_lowercase().as_str() {
+                "max" => "Max",
+                "high" => "High",
+                "xhigh" => "Extra high",
+                "medium" => "Medium",
+                "low" => "Low",
+                "minimal" => "Minimal",
+                _ => wire,
+            };
+            return format!("{label} → {wire_label}");
+        }
+    }
+    label.into()
 }
 
 fn cron_time_parts(value: &str) -> Option<(u32, u32)> {
@@ -3942,6 +4026,15 @@ fn render_message() -> &'static str {
             cron_model_options: None,
             cron_model_options_request: None,
             cron_model_options_error: None,
+            chat_model_options: None,
+            chat_model_options_owner: None,
+            chat_model_options_pending: None,
+            chat_model_options_error: None,
+            chat_reasoning_effort: None,
+            chat_reasoning_effort_wire: None,
+            chat_policy_mutation: None,
+            chat_policy_error: None,
+            chat_model_confirmation: None,
             cron_blueprints: None,
             cron_blueprints_request: None,
             cron_blueprints_error: None,
@@ -14226,8 +14319,104 @@ fn render_message() -> &'static str {
         self.slash_completion_due = None;
     }
 
+    fn request_chat_model_options(&mut self) {
+        let Some(session_id) = self.active_runtime_session_id.clone() else {
+            return;
+        };
+        let profile = self.active_session_profile.clone().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        });
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let owner = (session_id.clone(), profile.clone(), connection_id.clone());
+        if self.chat_model_options_owner.as_ref() == Some(&owner)
+            || self
+                .chat_model_options_pending
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.session_id == session_id
+                        && pending.profile == profile
+                        && pending.connection_id == connection_id
+                })
+        {
+            return;
+        }
+        self.chat_model_options = None;
+        self.chat_model_options_owner = None;
+        self.chat_model_options_error = None;
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.chat_model_options_owner = Some(owner);
+            self.chat_model_options_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("chat-model-options");
+        if let Err(error) =
+            gateway.load_chat_model_options(request_id.clone(), session_id.clone(), profile.clone())
+        {
+            self.chat_model_options_error = Some(error);
+            return;
+        }
+        self.chat_model_options_pending = Some(PendingChatModelOptions {
+            request_id,
+            session_id,
+            profile,
+            connection_id,
+        });
+    }
+
+    fn mutate_chat_policy(&mut self, operation: &str, payload: serde_json::Value) {
+        let Some(session_id) = self.active_runtime_session_id.clone() else {
+            return;
+        };
+        if self.chat_policy_mutation.is_some() {
+            return;
+        }
+        let profile = self.active_session_profile.clone().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        });
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let request_id = operation_id("chat-policy");
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.chat_policy_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        };
+        match gateway.mutate_chat_policy(
+            request_id.clone(),
+            session_id.clone(),
+            profile.clone(),
+            operation.into(),
+            payload.clone(),
+        ) {
+            Ok(()) => {
+                self.chat_policy_mutation = Some(PendingChatPolicyMutation {
+                    request_id,
+                    session_id,
+                    profile,
+                    connection_id,
+                    operation: operation.into(),
+                    payload,
+                });
+                self.chat_policy_error = None;
+            }
+            Err(error) => self.chat_policy_error = Some(error),
+        }
+    }
+
+    fn confirm_chat_model_switch(&mut self) {
+        let Some(confirmation) = self.chat_model_confirmation.take() else {
+            return;
+        };
+        self.mutate_chat_policy("model", serde_json::json!({
+            "model": confirmation.model, "provider": confirmation.provider, "confirm": confirmation.token,
+        }));
+    }
+
     fn composer(&mut self, ui: &mut Ui) {
         self.sync_slash_completion_query();
+        self.request_chat_model_options();
         let session_id = self.active_runtime_session_id.clone();
         let pending_key = session_id.as_deref().map(|session_id| {
             self.session_identity_key(session_id, self.active_session_profile.as_deref())
@@ -14345,6 +14534,152 @@ fn render_message() -> &'static str {
             });
             if let Some(error) = &self.prepared_image_draft_store_error {
                 ui.label(RichText::new(error).size(11.0).color(Color32::LIGHT_RED));
+            }
+        }
+        if session_id.is_some() {
+            let options = self.chat_model_options.clone();
+            let options_loading = self.chat_model_options_pending.is_some();
+            let mutation_pending = self.chat_policy_mutation.is_some();
+            let reasoning = self
+                .chat_reasoning_effort
+                .clone()
+                .unwrap_or_else(|| "default".into());
+            let current_model = options
+                .as_ref()
+                .and_then(|options| options.model.clone())
+                .unwrap_or_else(|| "profile default".into());
+            let current_provider = options
+                .as_ref()
+                .and_then(|options| options.provider.clone())
+                .unwrap_or_default();
+            let current_capabilities = options
+                .as_ref()
+                .and_then(|options| {
+                    options.providers.iter().find(|provider| {
+                        provider.slug == current_provider || provider.name == current_provider
+                    })
+                })
+                .and_then(|provider| provider.capabilities.get(&current_model));
+            let supports_reasoning = current_capabilities
+                .map(|capabilities| capabilities.reasoning)
+                .unwrap_or(true);
+            let can_disable_reasoning = current_capabilities
+                .and_then(|capabilities| capabilities.can_disable_reasoning)
+                .unwrap_or(true);
+            let mut selected_model = None;
+            let mut selected_effort = None;
+            ui.horizontal_wrapped(|ui| {
+                let label = if current_provider.is_empty() {
+                    current_model.clone()
+                } else {
+                    format!("{current_model} · {current_provider}")
+                };
+                ui.add_enabled_ui(!mutation_pending, |ui| {
+                    ui.menu_button(format!("Model · {label}"), |ui| {
+                        if options_loading {
+                            ui.label("Loading configured models…");
+                        }
+                        if let Some(options) = &options {
+                            egui::ScrollArea::vertical()
+                                .max_height(360.0)
+                                .show(ui, |ui| {
+                                    for provider in &options.providers {
+                                        ui.label(RichText::new(&provider.name).strong());
+                                        for model in &provider.models {
+                                            let active = model == &current_model
+                                                && (provider.slug == current_provider
+                                                    || provider.name == current_provider);
+                                            let pick =
+                                                ui.selectable_label(active, model).on_hover_text(
+                                                    format!("Use {model} from {}", provider.name),
+                                                );
+                                            if pick.clicked() {
+                                                selected_model =
+                                                    Some((model.clone(), provider.slug.clone()));
+                                                ui.close();
+                                            }
+                                        }
+                                    }
+                                });
+                        }
+                        if let Some(error) = &self.chat_model_options_error {
+                            ui.colored_label(Color32::LIGHT_RED, error);
+                            if ui.button("Retry model list").clicked() {
+                                self.chat_model_options_owner = None;
+                                ui.close();
+                            }
+                        }
+                    })
+                })
+                .response
+                .accessible_name("Choose model for this chat session");
+                if supports_reasoning {
+                    ui.menu_button(
+                        format!(
+                            "Reasoning · {}",
+                            reasoning_effort_label_native(
+                                &reasoning,
+                                self.chat_reasoning_effort_wire.as_deref()
+                            )
+                        ),
+                        |ui| {
+                            for (effort, label) in [
+                                ("none", "Off"),
+                                ("minimal", "Minimal"),
+                                ("low", "Low"),
+                                ("medium", "Medium"),
+                                ("high", "High"),
+                                ("xhigh", "Extra high"),
+                                ("max", "Max"),
+                                ("ultra", "Ultra"),
+                            ] {
+                                if effort == "none" && !can_disable_reasoning {
+                                    continue;
+                                }
+                                let choice = ui
+                                    .selectable_label(reasoning == effort, label)
+                                    .accessible_name(format!("Set reasoning effort to {label}"));
+                                if choice.clicked() {
+                                    selected_effort = Some(effort.to_owned());
+                                    ui.close();
+                                }
+                            }
+                        },
+                    )
+                    .response
+                    .on_hover_text("Choose how much reasoning Hermes uses for this session");
+                }
+                if let Some(confirmation) = &self.chat_model_confirmation {
+                    ui.colored_label(Color32::YELLOW, &confirmation.message);
+                    let confirm = ui
+                        .button("Confirm model switch")
+                        .accessible_name("Confirm guarded model switch");
+                    if confirm.clicked() {
+                        self.confirm_chat_model_switch();
+                    }
+                    if ui.small_button("Cancel").clicked() {
+                        self.chat_model_confirmation = None;
+                    }
+                }
+            });
+            if let Some((model, provider)) = selected_model {
+                self.mutate_chat_policy(
+                    "model",
+                    serde_json::json!({"model": model, "provider": provider}),
+                );
+            }
+            if let Some(effort) = selected_effort {
+                self.mutate_chat_policy("reasoning", serde_json::json!({"effort": effort}));
+            }
+            if let Some(error) = &self.chat_policy_error {
+                ui.colored_label(Color32::LIGHT_RED, error);
+            }
+            if mutation_pending {
+                ui.label(
+                    RichText::new("Updating session settings…")
+                        .size(11.0)
+                        .color(MUTED),
+                );
             }
         }
         ui.horizontal(|ui| {
@@ -18546,6 +18881,8 @@ fn render_message() -> &'static str {
         view.resume_request_id = None;
         match result {
             Ok(snapshot) if snapshot.session_id == session_id && snapshot.profile == profile => {
+                let reasoning_effort = snapshot.reasoning_effort.clone();
+                let reasoning_effort_wire = snapshot.reasoning_effort_wire.clone();
                 view.profile = snapshot.profile.clone();
                 view.transcript = snapshot.messages;
                 view.transcript_message_count = snapshot.message_count.max(view.transcript.len());
@@ -18564,6 +18901,13 @@ fn render_message() -> &'static str {
                     self.older_transcript_request = None;
                     self.older_transcript_error = None;
                     self.active_runtime_session_id = view.runtime_session_id;
+                    self.chat_reasoning_effort = reasoning_effort;
+                    self.chat_reasoning_effort_wire = reasoning_effort_wire;
+                    self.chat_model_options_owner = None;
+                    self.chat_model_options_pending = None;
+                    self.chat_model_options = None;
+                    self.chat_model_confirmation = None;
+                    self.chat_policy_error = None;
                     self.draft = view.draft;
                     self.composer_attachments = view.composer_attachments;
                     self.active_prepared_image_draft_id = view.active_prepared_image_draft_id;
@@ -26704,6 +27048,151 @@ fn render_message() -> &'static str {
                         Err(error) => self.cron_model_options_error = Some(error),
                     }
                 }
+                GatewayEvent::ChatModelOptionsLoaded {
+                    request_id,
+                    session_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.chat_model_options_pending.as_ref() else {
+                        continue;
+                    };
+                    let active_profile = self.active_session_profile.clone().or_else(|| {
+                        self.gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                    });
+                    if !chat_control_event_matches(
+                        &pending.request_id,
+                        &pending.session_id,
+                        &pending.profile,
+                        &pending.connection_id,
+                        &request_id,
+                        &session_id,
+                        &profile,
+                        self.active_runtime_session_id.as_deref(),
+                        &active_profile,
+                        self.active_gateway_connection_id(),
+                    ) {
+                        continue;
+                    }
+                    let pending = self
+                        .chat_model_options_pending
+                        .take()
+                        .expect("matched pending model options");
+                    match result {
+                        Ok(snapshot) => {
+                            self.chat_model_options = Some(snapshot);
+                            self.chat_model_options_owner =
+                                Some((session_id, profile, pending.connection_id));
+                            self.chat_model_options_error = None;
+                        }
+                        Err(error) => {
+                            self.chat_model_options_owner =
+                                Some((session_id, profile, pending.connection_id));
+                            self.chat_model_options_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::ChatPolicyMutated {
+                    request_id,
+                    session_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.chat_policy_mutation.take() else {
+                        continue;
+                    };
+                    let active_profile = self.active_session_profile.clone().or_else(|| {
+                        self.gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                    });
+                    if !chat_control_event_matches(
+                        &pending.request_id,
+                        &pending.session_id,
+                        &pending.profile,
+                        &pending.connection_id,
+                        &request_id,
+                        &session_id,
+                        &profile,
+                        self.active_runtime_session_id.as_deref(),
+                        &active_profile,
+                        self.active_gateway_connection_id(),
+                    ) {
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.status == "confirmation_required" => {
+                            let model = receipt.model.or_else(|| {
+                                pending
+                                    .payload
+                                    .get("model")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_owned)
+                            });
+                            let provider = receipt.provider.or_else(|| {
+                                pending
+                                    .payload
+                                    .get("provider")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_owned)
+                            });
+                            if let (Some(model), Some(provider), Some(token)) =
+                                (model, provider, receipt.confirm)
+                            {
+                                self.chat_model_confirmation = Some(PendingModelConfirmation {
+                                    model,
+                                    provider,
+                                    token,
+                                    message: receipt.confirm_message.unwrap_or_else(|| {
+                                        "Hermes requires confirmation for this model selection."
+                                            .into()
+                                    }),
+                                });
+                                self.chat_policy_error = None;
+                            } else {
+                                self.chat_policy_error = Some(
+                                    "Hermes returned an incomplete model confirmation receipt"
+                                        .into(),
+                                );
+                            }
+                        }
+                        Ok(receipt) => {
+                            self.chat_policy_error = None;
+                            if pending.operation == "model" {
+                                if receipt.status == "deferred" {
+                                    self.status = "Model switch queued for the next turn".into();
+                                }
+                                if let Some(options) = self.chat_model_options.as_mut() {
+                                    if let Some(model) = receipt.model {
+                                        options.model = Some(model);
+                                    }
+                                    if let Some(provider) = receipt.provider {
+                                        options.provider = Some(provider);
+                                    }
+                                }
+                            } else if let Some(effort) = receipt.effort.or_else(|| {
+                                pending
+                                    .payload
+                                    .get("effort")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_owned)
+                            }) {
+                                self.chat_reasoning_effort = Some(effort);
+                                if receipt.status == "deferred" {
+                                    self.status =
+                                        "Reasoning change queued for the next turn".into();
+                                }
+                            }
+                            self.chat_model_options_owner = None;
+                        }
+                        Err(error) => {
+                            self.chat_policy_error =
+                                Some(format!("Hermes did not apply the session setting: {error}"))
+                        }
+                    }
+                }
                 GatewayEvent::SlashCompletionLoaded {
                     request_id,
                     query,
@@ -31015,6 +31504,120 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::time::Duration;
+
+    #[test]
+    fn chat_control_receipts_are_bound_to_the_active_request_owner_and_profile() {
+        let request = "control-1".to_owned();
+        let profile = Some("work".to_owned());
+        let connection = "connection-a";
+        assert!(chat_control_event_matches(
+            &request,
+            "session-a",
+            &profile,
+            connection,
+            "control-1",
+            "session-a",
+            &Some("work".into()),
+            Some("session-a"),
+            &profile,
+            connection,
+        ));
+        assert!(!chat_control_event_matches(
+            &request,
+            "session-a",
+            &profile,
+            connection,
+            "control-1",
+            "session-a",
+            &Some("other-profile".into()),
+            Some("session-a"),
+            &profile,
+            connection,
+        ));
+        assert!(!chat_control_event_matches(
+            &request,
+            "session-a",
+            &profile,
+            connection,
+            "control-1",
+            "session-a",
+            &profile,
+            Some("session-b"),
+            &profile,
+            connection,
+        ));
+        assert!(!chat_control_event_matches(
+            &request,
+            "session-a",
+            &profile,
+            connection,
+            "control-1",
+            "session-a",
+            &profile,
+            Some("session-a"),
+            &profile,
+            "connection-b",
+        ));
+    }
+
+    #[test]
+    fn composer_exposes_model_and_reasoning_controls_for_supported_session_model() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        app.chat_model_options_owner =
+            Some(("runtime-session".into(), Some("work".into()), connection_id));
+        app.chat_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "openai".into(),
+                name: "OpenAI".into(),
+                authenticated: Some(true),
+                models: vec!["m1".into(), "m2".into()],
+                capabilities: BTreeMap::from([
+                    (
+                        "m1".into(),
+                        crate::gateway::ModelCapabilities {
+                            fast: false,
+                            ultrafast: false,
+                            daybreak: false,
+                            reasoning: true,
+                            can_disable_reasoning: Some(true),
+                        },
+                    ),
+                    (
+                        "m2".into(),
+                        crate::gateway::ModelCapabilities {
+                            fast: false,
+                            ultrafast: false,
+                            daybreak: false,
+                            reasoning: true,
+                            can_disable_reasoning: Some(true),
+                        },
+                    ),
+                ]),
+            }],
+            model: Some("m1".into()),
+            provider: Some("openai".into()),
+        });
+        app.chat_reasoning_effort = Some("high".into());
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 620.0))
+            .build_ui(move |ui| frame_app.borrow_mut().composer(ui));
+        harness.run_steps(2);
+        assert!(
+            harness
+                .query_by_label("Choose model for this chat session")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Reasoning · High").is_some());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
 
     #[test]
     fn prompt_composer_places_gateway_attachment_refs_before_user_text() {
@@ -36720,6 +37323,7 @@ mod tests {
                 name: "OpenAI".into(),
                 authenticated: Some(true),
                 models: vec!["openai/gpt-fixture".into(), "openai/gpt-next".into()],
+                capabilities: BTreeMap::new(),
             }],
             model: None,
             provider: None,
@@ -37082,6 +37686,7 @@ mod tests {
                 name: "Current provider".into(),
                 authenticated: Some(true),
                 models: vec!["current-model".into()],
+                capabilities: BTreeMap::new(),
             }],
             model: None,
             provider: None,
@@ -37542,6 +38147,8 @@ mod tests {
             runtime_session_id: "runtime-a".into(),
             message_count: 1,
             messages: vec![json!({"role":"assistant","content":"gateway-a refreshed"})],
+            reasoning_effort: Some("high".into()),
+            reasoning_effort_wire: None,
         };
 
         app.settle_session_resume_for_owner(
@@ -37597,6 +38204,8 @@ mod tests {
                 runtime_session_id: "runtime-resumed".into(),
                 message_count: 1,
                 messages: vec![json!({"role":"assistant","content":"Resumed"})],
+                reasoning_effort: None,
+                reasoning_effort_wire: None,
             }),
         );
 
@@ -38478,6 +39087,8 @@ mod tests {
                 messages: vec![
                     serde_json::json!({"role":"assistant","content":"Refreshed snapshot"}),
                 ],
+                reasoning_effort: Some("minimal".into()),
+                reasoning_effort_wire: None,
             }),
         );
         assert_eq!(
