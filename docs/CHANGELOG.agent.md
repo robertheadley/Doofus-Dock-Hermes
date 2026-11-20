@@ -3326,3 +3326,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change measured or claimed.
 - **risks:** Gateway results and physical Windows interaction are unverified; an interrupted server mutation can remain unknown until the profile inventory is refreshed. Toolset themes, usage ranking and detailed configuration are still missing.
 - **follow_up:** Continue to the next scoped Toolsets behavior; preserve partial status until live and source-paired evidence exists.
+
+## PAR-0260 main publication
+
+- **id:** hermes-par0260-main-publish-20261120
+- **timestamp:** 2026-11-20 02:52 UTC
+- **what:** Published behavior commit `3dc596cbd4e2e172e978210a9421a11e5c69c177` and evidence/docs commit `96f27575f3a149202b31eff394066d28746a4221` to `origin/main`.
+- **why:** Keep the main-only repository current with the tested Toolsets feature and evidence.
+- **components:** Hermes Native Toolsets, EV-0058, task ledger, generated progress and UCM capability maps.
+- **type:** Direct main publication.
+- **validation:** PASS push and fresh fetch; local HEAD and `origin/main` both equal `96f27575f3a149202b31eff394066d28746a4221`.
+- **performance:** No benchmark change.
+- **risks:** PAR-0260 remains partial; live Gateway, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** PAR-0261 Toolset prerequisite display is selected next.
