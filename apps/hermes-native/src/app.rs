@@ -1125,6 +1125,8 @@ struct AgentPluginUpdateDialog {
 struct SessionChatViewState {
     profile: Option<String>,
     runtime_session_id: Option<String>,
+    backend_cwd: Option<String>,
+    terminal_backend: Option<String>,
     resume_request_id: Option<String>,
     resume_error: Option<String>,
     transcript: Vec<serde_json::Value>,
@@ -18230,6 +18232,14 @@ fn render_message() -> &'static str {
     }
 
     fn handle_server_event(&mut self, event: serde_json::Value) {
+        self.handle_server_event_from_connection(event, None);
+    }
+
+    fn handle_server_event_from_connection(
+        &mut self,
+        event: serde_json::Value,
+        connection_id: Option<&str>,
+    ) {
         let session_id = event.get("session_id").and_then(|value| value.as_str());
         let event_type = event
             .get("type")
@@ -18239,6 +18249,9 @@ fn render_message() -> &'static str {
             .get("payload")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+        if event_type == "session.info" {
+            self.capture_session_backend_metadata(&event, connection_id, &payload);
+        }
         let failed_prompt = if event_type == "error"
             || event_type == "message.complete"
                 && payload.get("status").and_then(|value| value.as_str()) == Some("error")
@@ -18649,6 +18662,80 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn capture_session_backend_metadata(
+        &mut self,
+        event: &serde_json::Value,
+        connection_id: Option<&str>,
+        payload: &serde_json::Value,
+    ) {
+        let Some(connection_id) = connection_id else {
+            return;
+        };
+        if self.gateway_connection_id.as_deref() != Some(connection_id) {
+            return;
+        }
+        let Some(runtime_session_id) = event.get("session_id").and_then(|value| value.as_str())
+        else {
+            return;
+        };
+        let event_profile = event
+            .get("profile")
+            .or_else(|| payload.get("profile"))
+            .and_then(|value| value.as_str());
+        let stored_session_id = payload
+            .get("stored_session_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty());
+        let active_matches = self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && event_profile
+                .is_none_or(|profile| self.active_session_profile.as_deref() == Some(profile))
+            && matches!(&self.route, AppRoute::Session(session_id)
+                if stored_session_id.is_none_or(|stored| stored == session_id));
+        if active_matches {
+            self.save_active_chat_view();
+        }
+
+        let matching_keys = self
+            .session_chat_views
+            .iter()
+            .filter(|(key, view)| {
+                if view.runtime_session_id.as_deref() != Some(runtime_session_id)
+                    || event_profile.is_some_and(|profile| view.profile.as_deref() != Some(profile))
+                {
+                    return false;
+                }
+                let Some(stored_id) = session_id_from_owner_identity_key(key) else {
+                    return false;
+                };
+                if stored_session_id.is_some_and(|stored| stored != stored_id) {
+                    return false;
+                }
+                self.session_identity_key_for_connection(
+                    Some(connection_id),
+                    stored_id,
+                    view.profile.as_deref(),
+                )
+                .as_str()
+                    == key.as_str()
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        let [key] = matching_keys.as_slice() else {
+            return;
+        };
+        if let Some(view) = self.session_chat_views.get_mut(key) {
+            if let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str()) {
+                view.backend_cwd = Some(cwd.to_owned());
+            }
+            if let Some(terminal_backend) = payload
+                .get("terminal_backend")
+                .and_then(|value| value.as_str())
+            {
+                view.terminal_backend = Some(terminal_backend.to_owned());
+            }
+        }
+    }
+
     fn settle_failed_turn(
         &mut self,
         runtime_session_id: &str,
@@ -19023,6 +19110,8 @@ fn render_message() -> &'static str {
                     SessionChatViewState {
                         profile: self.active_session_profile.clone(),
                         runtime_session_id: self.active_runtime_session_id.clone(),
+                        backend_cwd: previous.and_then(|view| view.backend_cwd.clone()),
+                        terminal_backend: previous.and_then(|view| view.terminal_backend.clone()),
                         resume_request_id: previous.and_then(|view| view.resume_request_id.clone()),
                         resume_error: previous.and_then(|view| view.resume_error.clone()),
                         transcript: self.transcript.clone(),
@@ -26505,7 +26594,10 @@ fn render_message() -> &'static str {
                 GatewayEvent::ServerRequestAnswered { id, result } => {
                     self.handle_server_request_answered(id, result)
                 }
-                GatewayEvent::ServerEvent(event) => self.handle_server_event(event),
+                GatewayEvent::ServerEvent {
+                    event,
+                    connection_id,
+                } => self.handle_server_event_from_connection(event, connection_id.as_deref()),
                 GatewayEvent::SessionsSearched {
                     request_id,
                     query,
@@ -41880,6 +41972,84 @@ mod tests {
             HermesNativeApp::new_for_automation(profile.clone()),
             profile,
         )
+    }
+
+    #[test]
+    fn session_info_backend_metadata_is_fenced_to_connection_profile_and_stored_session() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = "conn-a";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.route = AppRoute::Session("stored-1".into());
+        app.active_runtime_session_id = Some("runtime-1".into());
+        app.active_session_profile = Some("work".into());
+        let work_key =
+            app.session_identity_key_for_connection(Some(connection_id), "stored-1", Some("work"));
+        app.session_chat_views.insert(
+            work_key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-1".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        let personal_key = app.session_identity_key_for_connection(
+            Some(connection_id),
+            "stored-other",
+            Some("personal"),
+        );
+        app.session_chat_views.insert(
+            personal_key.clone(),
+            SessionChatViewState {
+                profile: Some("personal".into()),
+                runtime_session_id: Some("runtime-1".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        let event = |cwd: &str, terminal_backend: &str, stored_session_id: &str| {
+            serde_json::json!({
+                "type": "session.info",
+                "session_id": "runtime-1",
+                "profile": "work",
+                "payload": {
+                    "stored_session_id": stored_session_id,
+                    "cwd": cwd,
+                    "terminal_backend": terminal_backend
+                }
+            })
+        };
+        app.handle_server_event_from_connection(
+            event("/workspace/one", "local", "stored-1"),
+            Some(connection_id),
+        );
+        let work = app.session_chat_views.get(&work_key).expect("work view");
+        assert_eq!(work.backend_cwd.as_deref(), Some("/workspace/one"));
+        assert_eq!(work.terminal_backend.as_deref(), Some("local"));
+        let personal = app
+            .session_chat_views
+            .get(&personal_key)
+            .expect("personal view");
+        assert_eq!(personal.backend_cwd, None);
+        assert_eq!(personal.terminal_backend, None);
+
+        app.handle_server_event_from_connection(
+            event("/workspace/stale", "remote", "stored-1"),
+            Some("conn-b"),
+        );
+        app.handle_server_event_from_connection(
+            event("/workspace/wrong-session", "remote", "stored-other"),
+            Some(connection_id),
+        );
+        let work = app.session_chat_views.get(&work_key).expect("work view");
+        assert_eq!(work.backend_cwd.as_deref(), Some("/workspace/one"));
+        assert_eq!(work.terminal_backend.as_deref(), Some("local"));
+        let personal = app
+            .session_chat_views
+            .get(&personal_key)
+            .expect("personal view");
+        assert_eq!(personal.backend_cwd, None);
+        assert_eq!(personal.terminal_backend, None);
+        let _ = std::fs::remove_dir_all(profile_dir);
     }
 
     #[test]

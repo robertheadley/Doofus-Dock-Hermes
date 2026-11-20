@@ -1922,7 +1922,10 @@ pub enum GatewayEvent {
         result: Result<(), String>,
     },
     SessionCreated(Result<CreatedSession, String>),
-    ServerEvent(serde_json::Value),
+    ServerEvent {
+        event: serde_json::Value,
+        connection_id: Option<String>,
+    },
     SessionsSearched {
         request_id: String,
         query: String,
@@ -4216,6 +4219,9 @@ impl GatewayDiscovery {
         match &mut event {
             GatewayEvent::SessionResumed { connection_id, .. }
             | GatewayEvent::SlashCompletionLoaded { connection_id, .. } => {
+                *connection_id = self.connection_id.clone();
+            }
+            GatewayEvent::ServerEvent { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
             _ => {}
@@ -7759,7 +7765,10 @@ fn gateway_actor(
                     } else if frame.get("method").and_then(|value| value.as_str()) == Some("event")
                         && let Some(params) = frame.get("params")
                     {
-                        let _ = events.send(GatewayEvent::ServerEvent(params.clone()));
+                        let _ = events.send(GatewayEvent::ServerEvent {
+                            event: params.clone(),
+                            connection_id: None,
+                        });
                     }
                 }
             }
@@ -15185,7 +15194,10 @@ fn rpc_with_events_timeout(
             if frame.get("method").and_then(|value| value.as_str()) == Some("event")
                 && let (Some(sender), Some(params)) = (events, frame.get("params"))
             {
-                let _ = sender.send(GatewayEvent::ServerEvent(params.clone()));
+                let _ = sender.send(GatewayEvent::ServerEvent {
+                    event: params.clone(),
+                    connection_id: None,
+                });
             }
             continue;
         }
@@ -22035,16 +22047,16 @@ mod tests {
             );
         }
         assert!(
-            matches!(&seen[0], GatewayEvent::ServerEvent(event) if event["type"] == "message.start")
+            matches!(&seen[0], GatewayEvent::ServerEvent { event, .. } if event["type"] == "message.start")
         );
         assert!(
-            matches!(&seen[1], GatewayEvent::ServerEvent(event) if event["type"] == "message.delta")
+            matches!(&seen[1], GatewayEvent::ServerEvent { event, .. } if event["type"] == "message.delta")
         );
         assert!(
             matches!(&seen[2], GatewayEvent::PromptSubmitted { session_id, submission_id, result: Ok(PromptSubmitReceipt::Admitted { admission_id, status, .. }) } if session_id == "runtime-1" && submission_id == "submission-1" && admission_id == "admission-1" && status == "started")
         );
         assert!(
-            matches!(&seen[3], GatewayEvent::ServerEvent(event) if event["type"] == "message.complete")
+            matches!(&seen[3], GatewayEvent::ServerEvent { event, .. } if event["type"] == "message.complete")
         );
 
         drop(command_tx);
@@ -22214,12 +22226,12 @@ mod tests {
         }
         assert!(matches!(
             &seen[0],
-            GatewayEvent::ServerEvent(event) if event["type"] == "message.start"
+            GatewayEvent::ServerEvent { event, .. } if event["type"] == "message.start"
                 && event["session_id"] == "runtime-live-1"
         ));
         assert!(matches!(
             &seen[1],
-            GatewayEvent::ServerEvent(event) if event["type"] == "message.delta"
+            GatewayEvent::ServerEvent { event, .. } if event["type"] == "message.delta"
                 && event["payload"]["text"] == "Resumed response"
         ));
         assert!(matches!(
@@ -22235,7 +22247,7 @@ mod tests {
         ));
         assert!(matches!(
             &seen[3],
-            GatewayEvent::ServerEvent(event) if event["type"] == "message.complete"
+            GatewayEvent::ServerEvent { event, .. } if event["type"] == "message.complete"
         ));
 
         drop(command_tx);
