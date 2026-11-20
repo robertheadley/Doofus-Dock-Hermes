@@ -3575,3 +3575,15 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** The native editor uses free-text provider/model IDs; fallback execution against a live Gateway remains unverified.
 - **follow_up:** Publish evidence/maps to main and continue the next chat/tool capability slice.
+## PAR-0220 main publication
+
+- **id:** hermes-par0220-main-publication-20261120
+- **timestamp:** 2026-11-20 18:10 UTC
+- **what:** Published implementation commit `24470c4f8ddbd3403cece9fe65fceca3cb2a2a93` and EV-0069/UCM evidence commit `621070e65189cb2c3abf2a5c8b06a26d90238342` to `origin/main`; fresh fetch confirmed exact local/remote SHA equality.
+- **why:** Keep the user-designated main branch current with validated native work and the evidence supporting its partial status.
+- **components:** Native fallback Settings and Gateway config path, parity map, progress records and task journal.
+- **type:** Direct main publication.
+- **validation:** PASS focused fallback tests, cargo check, rustfmt, root and archival UCM validators, task validation, progress generation, push and post-push fetch.
+- **performance:** No runtime performance change measured.
+- **risks:** One unrelated library test remains failing; live fallback execution and source-paired acceptance remain open.
+- **follow_up:** Continue the next chat/tool functionality gap; exact visual parity is out of scope.
