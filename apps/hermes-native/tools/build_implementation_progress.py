@@ -666,6 +666,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "source themes/featured sections, tool-call ranking/counts, and toolset detail/configuration views remain open",
         ],
     },
+    "PAR-0260": {
+        "state": "partial",
+        "level": "headless_toolsets_master_toggle_sequential_rollback_and_disconnect_test",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/toolsets/toolsets-tab.tsx#bulkApply",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/toolsets/toolsets-tab.tsx#CatalogSwitch",
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/toolsets.ts#setToolsetEnabled",
+            "apps/hermes-native/src/gateway.rs#request_toolset_enabled",
+            "apps/hermes-native/src/app.rs#set_toolsets_enabled_bulk",
+            "apps/hermes-native/src/app.rs#advance_toolset_bulk_update",
+            "apps/hermes-native/src/app.rs#toolsets_master_toggle_uses_full_visible_inventory_sequentially_and_stops_on_denial",
+            "apps/hermes-native/docs/PLAN.md#Revision 272",
+        ],
+        "gaps": [
+            "live Gateway, packaged Windows interaction, and source-paired/formal acceptance remain unverified",
+            "Toolsets themes/featured ranking, tool-call usage counts, and toolset detail/configuration views remain open",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0058",
+  "capability_id": "ui-enable-and-disable-toolsets",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "toolsets-master-toggle-search-independent-sequential-denial-and-disconnect",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "3dc596cbd4e2e172e978210a9421a11e5c69c177",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui test using synthetic profile Toolsets and a gateway worker fixture. No live Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0260 adds an accessible All switch over the full Desktop-visible Toolsets inventory, independent of the active search query. Bulk requests run sequentially to avoid overlapping config read-modify-write mutations. The headless UI regression verifies the first request, search-independent next row, hidden Discord exclusion, serialization, denial rollback and stop behavior, then disconnect cleanup and unknown-outcome messaging. The pinned Desktop implements bulkApply sequentially in toolsets-tab.tsx and renders CatalogSwitch for the master control. Full locked suite passed 455 library, 15 automation-protocol, and 3 launcher tests; locked workspace/all-target check, rustfmt and diff checks passed. Live Gateway, packaged Windows, source-paired/formal acceptance, toolset themes/usage rankings and detail/configuration remain open; capability status is partial."
+}

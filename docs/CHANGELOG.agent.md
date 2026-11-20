@@ -3313,3 +3313,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0259 remains partial; live Gateway, packaged Windows and source-paired behavior remain unverified.
 - **follow_up:** Continue PAR-0260 Toolset enable/disable, then remaining chat/tool, Skills, plugins and MCP gaps.
+
+## PAR-0260 Toolsets master control
+
+- **id:** hermes-par0260-toolsets-master-20261120
+- **timestamp:** 2026-11-20 02:50 UTC
+- **what:** Added an accessible Toolsets All switch over the Desktop-visible inventory, search-independent sequential updates, denial rollback/stop behavior, and disconnect uncertainty handling. Added headless UI/gateway fixture coverage and mapped partial evidence as EV-0058.
+- **why:** Implement the pinned source's master toggle without overlapping Gateway configuration writes, and keep UI state honest after denied or interrupted operations.
+- **components:** Native Toolsets UI, gateway test fixture, PAR-0260 evidence, progress overlay, capability maps, plan, architecture, backlog, README and completion overview.
+- **type:** Native feature and validation.
+- **validation:** PASS focused headless test; PASS full locked suite (455 library, 15 automation protocol, 3 launcher tests); PASS workspace/all-target check, rustfmt, task validation, progress generators, package validator and diff check.
+- **performance:** No performance change measured or claimed.
+- **risks:** Gateway results and physical Windows interaction are unverified; an interrupted server mutation can remain unknown until the profile inventory is refreshed. Toolset themes, usage ranking and detailed configuration are still missing.
+- **follow_up:** Continue to the next scoped Toolsets behavior; preserve partial status until live and source-paired evidence exists.

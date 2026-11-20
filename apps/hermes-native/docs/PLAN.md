@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 271 (implementation in progress).
+- **Working revision:** 272 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1641,3 +1641,11 @@ PAR-0259 confirms the native Toolsets page already loads the profile-scoped inve
 This remains partial: live Gateway, packaged Windows, and source-paired/formal acceptance remain open. Toolset themes/featured ranking, usage counts, and detailed configuration panels remain separate work.
 
 Validation: PASS full locked feature suite (454 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, progress generation, task validator, UCM package validator, and diff check. No live profile was used.
+
+### Revision 272 — Toolsets master toggle and serialized updates (2026-11-20)
+
+PAR-0260 adds the accessible All switch over the full Desktop-visible Toolsets inventory, regardless of search. Changes run one at a time to avoid overlapping config read-modify-write mutations. A denied mutation rolls back the current row and stops the remaining batch. A Gateway disconnect clears pending UI state, restores the last confirmed local value, and flags the backend outcome as unknown until the inventory is refreshed.
+
+This remains partial: live Gateway behavior, packaged Windows interaction, and source-paired/formal acceptance are open. Toolset theme/featured ranking, usage counts, and detailed configuration views remain separate gaps.
+
+Validation: PASS focused headless egui/UI-worker regression for search-independent scope, hidden rows, serialized requests, denial rollback/stop, and disconnect uncertainty; PASS full locked suite (455 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, progress generation, task validation, pinned package checks, and diff check.
