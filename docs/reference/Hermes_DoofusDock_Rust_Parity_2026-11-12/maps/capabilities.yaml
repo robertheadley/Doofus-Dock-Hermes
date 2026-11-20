@@ -5388,6 +5388,8 @@ capabilities:
     backend: unknown
     ui: not_implemented
     tests: not_implemented
+  evidence:
+  - EV-0060
 - id: ui-list-native-desktop-plugins
   name: List native desktop plugins
   area: skills-plugins

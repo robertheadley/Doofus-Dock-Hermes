@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 273 (implementation in progress).
+- **Working revision:** 274 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1657,3 +1657,11 @@ PAR-0261 confirms that native Toolsets already displays whether each visible ite
 This remains partial: the current Gateway schema provides only a configured boolean, so the native screen cannot name individual missing keys/providers. Live Gateway, packaged Windows interaction, and source-paired/formal acceptance remain open.
 
 Validation: PASS focused `toolsets_catalog_renders_included_tools_and_hides_desktop_internal_rows`; progress generators, task validation, and UCM package validation pass. The full locked suite and workspace check passed immediately before this test-only addition.
+
+### Revision 274 — Linked Desktop plugin permission boundary (2026-11-20)
+
+PAR-0269 is explicitly recorded as not implemented in Hermes Native. The pinned Desktop's `preview.executeJavaScript` per-origin grants live in Electron app-local storage and are shown/revoked only for Desktop renderer plugins declaring that capability. The native app currently hosts Hermes Agent Plugins through Gateway APIs; this is a separate plugin model with no Desktop renderer-plugin inventory or origin-grant store. EV-0060 records the source audit. A faithful native port depends on a dedicated Desktop-plugin host and app-local permission persistence; the app must not fabricate preview-script grants for AgentPluginInfo rows.
+
+This is an architectural integration gap, not a missing Gateway request. Plugin permissions remain in the approved user scope. Chat/tool work can proceed independently while a native host design remains open.
+
+Validation: PASS pinned-source/native-model audit and UCM package validator. No implementation or live behavior is claimed for PAR-0269.

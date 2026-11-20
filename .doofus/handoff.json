@@ -92,6 +92,78 @@
       "status": " M"
     },
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -114,16 +186,20 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "codex",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0060.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "git push origin main; git fetch origin main; compare local HEAD to origin/main",
-    "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0059.json#EV-0059"
-    ],
-    "state": "tested",
-    "summary": "PAR-0261 is tested partial with EV-0059, and commits are published to main; origin/main matches local HEAD e00a50ed6216536987d3f2ea8c02ddc49702699a. PAR-0269 is selected next.",
-    "verified_at": "2026-11-20T02:59:50Z"
+    "command": "task select",
+    "evidence": [],
+    "state": "unknown",
+    "summary": "PAR-0269 is documented as a separate native plugin-host gap. Continue with high-priority chat creation and prompt submission, which is central to the user's requested functional parity and uses the existing Hermes Gateway.",
+    "verified_at": "2026-11-20T03:11:21Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -164,7 +240,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T03:59:50Z",
+    "lease_expires_at": "2026-11-20T04:11:20Z",
     "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
     "model": null,
     "ownership_state": "active",
@@ -886,11 +962,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0261-published-checkpoint-20261120",
+  "last_event_id": "hermes-par0033-selected-20261120",
   "last_operation": {
-    "request_id": "hermes-par0261-published-checkpoint-20261120",
+    "request_id": "hermes-par0033-selected-20261120",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "task.selected"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -900,14 +976,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "07-management",
+  "phase": "03-chat",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned PAR-0269 linked-plugin permission disclosure and implement the missing scoped behavior.",
+  "recommended_next_action": "Inspect pinned PAR-0033 chat creation and prompt submission; implement the highest-value missing behavior within the existing Gateway architecture.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1379,7 +1455,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "7726b21d95d31caffa0bf4c5012b9065fcfdcadf9c02ebb423f9c9733443139d",
+    "change_fingerprint": "cd0d274316d781602caa0103197a0aabb1fb6e5d73ec70404e499215eb0c28e2",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1387,6 +1463,54 @@
       },
       {
         "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
         "status": " M"
       },
       {
@@ -1404,19 +1528,23 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0060.json",
+        "status": "??"
       }
     ],
-    "head_commit": "e00a50ed6216536987d3f2ea8c02ddc49702699a",
+    "head_commit": "85e534df157f864fb7da1c6e1d5b4e7241828280",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 402,
+  "revision": 405,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 402,
+  "state_revision": 405,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0269",
-  "task_ledger_revision": 63,
+  "task_id": "hermes-par-0033",
+  "task_ledger_revision": 64,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2606,5 +2734,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T02:59:50Z"
+  "updated_at": "2026-11-20T03:11:21Z"
 }

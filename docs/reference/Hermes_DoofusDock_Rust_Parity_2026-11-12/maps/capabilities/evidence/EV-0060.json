@@ -1,0 +1,10 @@
+{
+  "uid": "EV-0060",
+  "capability_id": "ui-inspect-linked-plugin-permissions",
+  "kind": "inspection",
+  "outcome": "pass",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/plugins/plugin-page-access.tsx",
+  "date": "2026-11-20",
+  "commit": "8783054ef6cbafd86f10892241436862c1171a66",
+  "notes": "Static source audit only; no native feature test. The pinned Desktop component displays/revokes per-origin preview.executeJavaScript grants from app-local localStorage for Desktop plugins declaring that capability. Hermes Native's profile-scoped AgentPluginInfo is a separate Gateway plugin model and currently has no Desktop renderer-plugin inventory, capability metadata, local origin-grant persistence, or revoke surface. PAR-0269 is therefore explicitly not implemented in the native target. A faithful implementation first needs a native Desktop-plugin host and app-local permission store; do not synthesize grants for AgentPluginInfo."
+}

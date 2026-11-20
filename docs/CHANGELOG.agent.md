@@ -3365,3 +3365,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0261 remains partial; specific prerequisites, live Gateway, Windows and source-paired acceptance remain open.
 - **follow_up:** Inspect PAR-0269 linked-plugin permission disclosure.
+
+## PAR-0269 native plugin permission gap audit
+
+- **id:** hermes-par0269-permission-audit-20261120
+- **timestamp:** 2026-11-20 03:02 UTC
+- **what:** Recorded the pinned Electron-local per-origin `preview.executeJavaScript` grants as explicitly not implemented in Hermes Native and added source receipt EV-0060.
+- **why:** The native target currently exposes Hermes AgentPluginInfo, which is a separate Gateway plugin model. Claiming those rows have Desktop preview grants would misrepresent user permissions.
+- **components:** Linked Desktop plugin permissions, UCM evidence, implementation progress, architecture and backlog.
+- **type:** Source audit and scope boundary.
+- **validation:** PASS repository package validator and progress generators; source receipt is referenced by the capability map. The standalone UCM checker could not run because PyYAML is not installed; the package validator explicitly skipped YAML parsing for the same reason.
+- **performance:** No performance change.
+- **risks:** This feature remains a known gap until the native app has a Desktop renderer-plugin host and app-local grant persistence.
+- **follow_up:** Continue scoped chat/tool work; keep PAR-0269 planned and not implemented.

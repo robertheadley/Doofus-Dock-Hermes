@@ -700,6 +700,20 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live Gateway, packaged Windows interaction, and source-paired/formal acceptance remain unverified",
         ],
     },
+    "PAR-0269": {
+        "state": "not_implemented",
+        "level": "source_audited_native_desktop_plugin_host_gap",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/plugins/plugin-page-access.tsx#PluginPageAccess",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/plugin-preview-grants.ts#GRANTS_KEY",
+            "apps/hermes-native/src/gateway.rs#pub struct AgentPluginInfo",
+            "apps/hermes-native/src/app.rs#agent_plugin_is_manageable",
+        ],
+        "gaps": [
+            "pinned permission grants are Electron-local preview-script grants, while Hermes Native has no Desktop renderer-plugin host, capability metadata, origin-grant store, or revoke UI",
+            "a faithful native implementation depends on a separate native Desktop-plugin host and app-local permission persistence design",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",
