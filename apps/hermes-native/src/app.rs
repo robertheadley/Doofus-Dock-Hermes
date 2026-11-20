@@ -1167,6 +1167,7 @@ struct PendingChatPolicyMutation {
     connection_id: String,
     operation: String,
     payload: serde_json::Value,
+    remember_custom_model: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1175,6 +1176,7 @@ struct PendingModelConfirmation {
     provider: String,
     token: String,
     message: String,
+    remember_custom_model: bool,
 }
 
 fn chat_control_event_matches(
@@ -1630,6 +1632,7 @@ pub struct HermesNativeApp {
     chat_policy_mutation: Option<PendingChatPolicyMutation>,
     chat_policy_error: Option<String>,
     chat_model_confirmation: Option<PendingModelConfirmation>,
+    chat_custom_model_input: String,
     cron_blueprints: Option<Vec<CronBlueprint>>,
     cron_blueprints_request: Option<(String, Option<String>)>,
     cron_blueprints_error: Option<String>,
@@ -2163,6 +2166,35 @@ fn reasoning_effort_label_native(effort: &str, wire: Option<&str>) -> String {
         }
     }
     label.into()
+}
+
+fn custom_model_slug_native(value: &str) -> Option<String> {
+    let slug = value.trim();
+    if slug.is_empty()
+        || slug.len() > 1024
+        || slug.chars().any(char::is_whitespace)
+        || slug.chars().any(char::is_control)
+    {
+        return None;
+    }
+    Some(slug.to_owned())
+}
+
+fn custom_model_candidate_native(
+    value: &str,
+    providers: &[crate::gateway::ModelOptionProvider],
+) -> Option<String> {
+    let slug = custom_model_slug_native(value)?;
+    if providers.iter().any(|provider| {
+        provider
+            .models
+            .iter()
+            .any(|model| model.eq_ignore_ascii_case(&slug))
+    }) {
+        None
+    } else {
+        Some(slug)
+    }
 }
 
 fn cron_time_parts(value: &str) -> Option<(u32, u32)> {
@@ -4035,6 +4067,7 @@ fn render_message() -> &'static str {
             chat_policy_mutation: None,
             chat_policy_error: None,
             chat_model_confirmation: None,
+            chat_custom_model_input: String::new(),
             cron_blueprints: None,
             cron_blueprints_request: None,
             cron_blueprints_error: None,
@@ -14365,7 +14398,12 @@ fn render_message() -> &'static str {
         });
     }
 
-    fn mutate_chat_policy(&mut self, operation: &str, payload: serde_json::Value) {
+    fn mutate_chat_policy(
+        &mut self,
+        operation: &str,
+        payload: serde_json::Value,
+        remember_custom_model: bool,
+    ) {
         let Some(session_id) = self.active_runtime_session_id.clone() else {
             return;
         };
@@ -14398,6 +14436,7 @@ fn render_message() -> &'static str {
                     connection_id,
                     operation: operation.into(),
                     payload,
+                    remember_custom_model,
                 });
                 self.chat_policy_error = None;
             }
@@ -14411,7 +14450,7 @@ fn render_message() -> &'static str {
         };
         self.mutate_chat_policy("model", serde_json::json!({
             "model": confirmation.model, "provider": confirmation.provider, "confirm": confirmation.token,
-        }));
+        }), confirmation.remember_custom_model);
     }
 
     fn composer(&mut self, ui: &mut Ui) {
@@ -14566,7 +14605,7 @@ fn render_message() -> &'static str {
             let can_disable_reasoning = current_capabilities
                 .and_then(|capabilities| capabilities.can_disable_reasoning)
                 .unwrap_or(true);
-            let mut selected_model = None;
+            let mut selected_model: Option<(String, String, bool)> = None;
             let mut selected_effort = None;
             ui.horizontal_wrapped(|ui| {
                 let label = if current_provider.is_empty() {
@@ -14594,8 +14633,11 @@ fn render_message() -> &'static str {
                                                     format!("Use {model} from {}", provider.name),
                                                 );
                                             if pick.clicked() {
-                                                selected_model =
-                                                    Some((model.clone(), provider.slug.clone()));
+                                                selected_model = Some((
+                                                    model.clone(),
+                                                    provider.slug.clone(),
+                                                    false,
+                                                ));
                                                 ui.close();
                                             }
                                         }
@@ -14613,6 +14655,40 @@ fn render_message() -> &'static str {
                 })
                 .response
                 .accessible_name("Choose model for this chat session");
+                ui.add_enabled_ui(!mutation_pending, |ui| {
+                    ui.menu_button("Add custom model…", |ui| {
+                        ui.label("Enter a model ID supported by a configured provider");
+                        ui.text_edit_singleline(&mut self.chat_custom_model_input)
+                            .accessible_name("Custom model ID");
+                        let candidate = options.as_ref().and_then(|options| {
+                            custom_model_candidate_native(
+                                &self.chat_custom_model_input,
+                                &options.providers,
+                            )
+                        });
+                        if let (Some(candidate), Some(options)) = (candidate, options.as_ref()) {
+                            let mut providers: Vec<_> = options
+                                .providers
+                                .iter()
+                                .filter(|provider| !provider.models.is_empty())
+                                .collect();
+                            providers.sort_by_key(|provider| {
+                                provider.slug != current_provider
+                                    && provider.name != current_provider
+                            });
+                            for provider in providers {
+                                if ui
+                                    .button(format!("Use {candidate} · {}", provider.name))
+                                    .clicked()
+                                {
+                                    selected_model =
+                                        Some((candidate.clone(), provider.slug.clone(), true));
+                                    ui.close();
+                                }
+                            }
+                        }
+                    })
+                });
                 if supports_reasoning {
                     ui.menu_button(
                         format!(
@@ -14662,14 +14738,15 @@ fn render_message() -> &'static str {
                     }
                 }
             });
-            if let Some((model, provider)) = selected_model {
+            if let Some((model, provider, custom)) = selected_model {
                 self.mutate_chat_policy(
                     "model",
                     serde_json::json!({"model": model, "provider": provider}),
+                    custom,
                 );
             }
             if let Some(effort) = selected_effort {
-                self.mutate_chat_policy("reasoning", serde_json::json!({"effort": effort}));
+                self.mutate_chat_policy("reasoning", serde_json::json!({"effort": effort}), false);
             }
             if let Some(error) = &self.chat_policy_error {
                 ui.colored_label(Color32::LIGHT_RED, error);
@@ -27081,7 +27158,16 @@ fn render_message() -> &'static str {
                         .take()
                         .expect("matched pending model options");
                     match result {
-                        Ok(snapshot) => {
+                        Ok(mut snapshot) => {
+                            for provider in &mut snapshot.providers {
+                                for model in
+                                    self.workspace.custom_model_ids(&provider.slug).to_vec()
+                                {
+                                    if !provider.models.contains(&model) {
+                                        provider.models.push(model);
+                                    }
+                                }
+                            }
                             self.chat_model_options = Some(snapshot);
                             self.chat_model_options_owner =
                                 Some((session_id, profile, pending.connection_id));
@@ -27149,6 +27235,7 @@ fn render_message() -> &'static str {
                                         "Hermes requires confirmation for this model selection."
                                             .into()
                                     }),
+                                    remember_custom_model: pending.remember_custom_model,
                                 });
                                 self.chat_policy_error = None;
                             } else {
@@ -27161,15 +27248,66 @@ fn render_message() -> &'static str {
                         Ok(receipt) => {
                             self.chat_policy_error = None;
                             if pending.operation == "model" {
+                                let selected_model = receipt.model.clone().or_else(|| {
+                                    pending
+                                        .payload
+                                        .get("model")
+                                        .and_then(serde_json::Value::as_str)
+                                        .map(str::to_owned)
+                                });
+                                let selected_provider = receipt.provider.clone().or_else(|| {
+                                    pending
+                                        .payload
+                                        .get("provider")
+                                        .and_then(serde_json::Value::as_str)
+                                        .map(str::to_owned)
+                                });
                                 if receipt.status == "deferred" {
                                     self.status = "Model switch queued for the next turn".into();
                                 }
                                 if let Some(options) = self.chat_model_options.as_mut() {
-                                    if let Some(model) = receipt.model {
-                                        options.model = Some(model);
+                                    if let Some(model) = selected_model.as_ref() {
+                                        options.model = Some(model.clone());
                                     }
-                                    if let Some(provider) = receipt.provider {
-                                        options.provider = Some(provider);
+                                    if let Some(provider) = selected_provider.as_ref() {
+                                        options.provider = Some(provider.clone());
+                                    }
+                                }
+                                if pending.remember_custom_model {
+                                    if let (Some(model), Some(provider)) =
+                                        (selected_model.as_deref(), selected_provider.as_deref())
+                                    {
+                                        match self
+                                            .workspace
+                                            .remember_custom_model_id(provider, model)
+                                        {
+                                            Ok(()) => {
+                                                if let Some(options) =
+                                                    self.chat_model_options.as_mut()
+                                                {
+                                                    if let Some(provider_options) = options
+                                                        .providers
+                                                        .iter_mut()
+                                                        .find(|item| item.slug == provider)
+                                                    {
+                                                        if !provider_options
+                                                            .models
+                                                            .iter()
+                                                            .any(|item| item == model)
+                                                        {
+                                                            provider_options
+                                                                .models
+                                                                .push(model.to_owned());
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Err(error) => {
+                                                self.chat_policy_error = Some(format!(
+                                                    "Hermes selected the model, but it could not be remembered: {error}"
+                                                ));
+                                            }
+                                        }
                                     }
                                 }
                             } else if let Some(effort) = receipt.effort.or_else(|| {
@@ -31561,6 +31699,27 @@ mod tests {
     }
 
     #[test]
+    fn custom_model_candidate_trims_rejects_whitespace_and_suppresses_catalog_duplicates() {
+        let providers = vec![crate::gateway::ModelOptionProvider {
+            slug: "custom:local-ollama".into(),
+            name: "Local Ollama".into(),
+            authenticated: Some(true),
+            models: vec!["llama3.2:latest".into()],
+            capabilities: Default::default(),
+        }];
+        assert_eq!(
+            custom_model_candidate_native("  org/model:v2 ", &providers).as_deref(),
+            Some("org/model:v2")
+        );
+        assert_eq!(custom_model_candidate_native("two words", &providers), None);
+        assert_eq!(custom_model_candidate_native("  ", &providers), None);
+        assert_eq!(
+            custom_model_candidate_native("LLAMA3.2:LATEST", &providers),
+            None
+        );
+    }
+
+    #[test]
     fn composer_exposes_model_and_reasoning_controls_for_supported_session_model() {
         let (mut app, profile_dir) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());
@@ -31602,6 +31761,7 @@ mod tests {
             provider: Some("openai".into()),
         });
         app.chat_reasoning_effort = Some("high".into());
+        app.chat_custom_model_input = "org/model:v2".into();
         let app = Rc::new(RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
@@ -31614,6 +31774,15 @@ mod tests {
                 .is_some()
         );
         assert!(harness.query_by_label("Reasoning · High").is_some());
+        assert!(harness.query_by_label("Add custom model…").is_some());
+        harness.get_by_label("Add custom model…").click();
+        harness.run();
+        assert!(harness.query_by_label("Custom model ID").is_some());
+        assert!(
+            harness
+                .query_by_label("Use org/model:v2 · OpenAI")
+                .is_some()
+        );
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");

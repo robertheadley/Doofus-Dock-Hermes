@@ -21393,11 +21393,11 @@ mod tests {
             assert_eq!(mutation["params"]["operation"], "model");
             assert_eq!(
                 mutation["params"]["payload"],
-                json!({"model":"m2","provider":"openai"})
+                json!({"model":"m2","provider":"custom:local-ollama"})
             );
             let mutation_id = mutation["id"].as_u64().expect("mutation id");
             socket.send(Message::Text(json!({"jsonrpc":"2.0","id":mutation_id,"result":{
-                "session_id":"runtime-1","operation":"model","model":"m2","provider":"openai","revision":13
+                "session_id":"runtime-1","operation":"model","model":"m2","provider":"custom:local-ollama","revision":13
             }}).to_string().into())).expect("send receipt");
         });
         let (mut socket, _) =
@@ -21412,10 +21412,11 @@ mod tests {
             "runtime-1",
             Some("work"),
             "model",
-            json!({"model":"m2","provider":"openai"}),
+            json!({"model":"m2","provider":"custom:local-ollama"}),
         )
         .expect("model mutation receipt");
         assert_eq!(receipt.model.as_deref(), Some("m2"));
+        assert_eq!(receipt.provider.as_deref(), Some("custom:local-ollama"));
         assert_eq!(receipt.revision, Some(13));
         server.join().expect("fixture server exits");
     }
@@ -21440,14 +21441,14 @@ mod tests {
                 .send(Message::Text(
                     json!({"jsonrpc":"2.0","id":request_id,"result":{
                         "providers":[{
-                            "slug":"openai",
-                            "name":"OpenAI",
+                            "slug":"custom:local-ollama",
+                            "name":"Local Ollama",
                             "authenticated":true,
                             "models":["m1"],
                             "capabilities":{"m1":{"fast":true,"reasoning":true,"can_disable_reasoning":true}}
                         }],
                         "model":"m1",
-                        "provider":"openai"
+                        "provider":"custom:local-ollama"
                     }})
                     .to_string()
                     .into(),
@@ -21468,7 +21469,8 @@ mod tests {
         )
         .expect("profile-scoped model options");
         assert_eq!(options.model.as_deref(), Some("m1"));
-        assert_eq!(options.provider.as_deref(), Some("openai"));
+        assert_eq!(options.provider.as_deref(), Some("custom:local-ollama"));
+        assert_eq!(options.providers[0].slug, "custom:local-ollama");
         assert!(options.providers[0].capabilities["m1"].reasoning);
         assert_eq!(
             options.providers[0].capabilities["m1"].can_disable_reasoning,

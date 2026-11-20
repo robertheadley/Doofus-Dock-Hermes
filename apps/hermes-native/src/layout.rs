@@ -111,6 +111,8 @@ pub struct UiPreferences {
     pub selected_gateway_connection_id: String,
     #[serde(default)]
     pub user_layout_presets: BTreeMap<String, UserLayoutPreset>,
+    #[serde(default)]
+    pub custom_models_by_provider: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -146,6 +148,7 @@ impl Default for UiPreferences {
             gateway_connections: vec![GatewayConnectionDescriptor::local()],
             selected_gateway_connection_id: LOCAL_GATEWAY_CONNECTION_ID.into(),
             user_layout_presets: BTreeMap::new(),
+            custom_models_by_provider: BTreeMap::new(),
         }
     }
 }
@@ -1300,6 +1303,65 @@ impl Workspace {
         } else {
             Ok(())
         }
+    }
+
+    pub fn custom_model_ids(&self, provider: &str) -> &[String] {
+        self.preferences
+            .custom_models_by_provider
+            .get(provider)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    pub fn remember_custom_model_id(&mut self, provider: &str, model: &str) -> Result<(), String> {
+        let model = model.trim();
+        if provider.trim().is_empty()
+            || provider.len() > 256
+            || provider.chars().any(char::is_whitespace)
+            || provider.chars().any(char::is_control)
+            || model.is_empty()
+            || model.len() > 1024
+            || model.chars().any(char::is_whitespace)
+            || model.chars().any(char::is_control)
+        {
+            return Err(
+                "Custom model requires a valid provider and whitespace-free model ID".into(),
+            );
+        }
+        if self
+            .custom_model_ids(provider)
+            .iter()
+            .any(|entry| entry == model)
+        {
+            return Ok(());
+        }
+        let mut next = self.preferences.clone();
+        if next.custom_models_by_provider.len() >= 512
+            && !next.custom_models_by_provider.contains_key(provider)
+        {
+            return Err("Custom provider model limit of 512 providers was reached".into());
+        }
+        if next
+            .custom_models_by_provider
+            .values()
+            .map(Vec::len)
+            .sum::<usize>()
+            >= 4096
+        {
+            return Err("Custom model limit of 4096 total IDs was reached".into());
+        }
+        let models = next
+            .custom_models_by_provider
+            .entry(provider.to_owned())
+            .or_default();
+        if models.len() >= 256 {
+            return Err("Custom model limit of 256 per provider was reached".into());
+        }
+        models.push(model.to_owned());
+        write_preferences_atomic(&self.preferences_path, &next)?;
+        self.preferences = next;
+        self.persistence_error = None;
+        Ok(())
     }
 
     pub fn set_pinned_session_state(
@@ -4682,6 +4744,44 @@ mod tests {
         assert_eq!(reloaded.session_color("session-a"), None);
         std::fs::remove_dir_all(directory).unwrap();
     }
+
+    #[test]
+    fn custom_model_ids_are_provider_scoped_persisted_and_validated() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "HermesNative-custom-model-test-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut workspace = Workspace::load_from(directory.clone()).unwrap();
+        workspace
+            .remember_custom_model_id("custom:local-ollama", "llama3.2:latest")
+            .unwrap();
+        workspace
+            .remember_custom_model_id("custom:local-ollama", "llama3.2:latest")
+            .unwrap();
+        assert!(
+            workspace
+                .remember_custom_model_id("custom:local-ollama", "bad model")
+                .is_err()
+        );
+        assert_eq!(
+            workspace.custom_model_ids("custom:local-ollama"),
+            ["llama3.2:latest"]
+        );
+        drop(workspace);
+
+        let reloaded = Workspace::load_from(directory.clone()).unwrap();
+        assert_eq!(
+            reloaded.custom_model_ids("custom:local-ollama"),
+            ["llama3.2:latest"]
+        );
+        assert!(reloaded.custom_model_ids("openai").is_empty());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     #[test]
     fn file_preview_tabs_are_transient_and_do_not_enter_persisted_layouts() {
         let nonce = std::time::SystemTime::now()
