@@ -3274,3 +3274,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** Category facet computation is linear in loaded catalog entries and is re-evaluated during egui rendering, matching the pinned catalog’s derived-facet behavior; no benchmark change.
 - **risks:** Live/source-paired behavior remains unverified. The Skill Hub still lacks source/tag facets, installed/catalog merging, discovery shelves, sorting and card/list preference.
 - **follow_up:** Validate UCM and task records, publish evidence/docs to main, then continue remaining chat/tool, Skills, plugins and MCP functional gaps before visual redesign.
+
+## PAR-0253 main publication
+
+- **id:** hermes-par0253-main-publish-20261120
+- **timestamp:** 2026-11-20 02:21 UTC
+- **what:** Pushed category-filter behavior commit `dcc4837330fc1bb80311f943df681a68668cc213` and evidence/docs commit `dda14f4ee30be1673e78a07385d89867990c87d2` to `origin/main`; a fresh fetch verified exact SHA equality.
+- **why:** Keep the main-only repository current with the validated feature and its partial evidence record.
+- **components:** Skill Hub category filter, EV-0056, progress/UCM maps and task ledger.
+- **type:** Direct main publication.
+- **validation:** PASS push, fresh fetch and exact local/remote SHA equality.
+- **performance:** No benchmark change.
+- **risks:** PAR-0253 remains partial; live Gateway, packaged Windows and source-paired behavior remain unverified.
+- **follow_up:** Continue PAR-0259 Toolsets inventory, then remaining Skills, plugins/MCP and chat/tool behavior before visual tuning.
