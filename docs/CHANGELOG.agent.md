@@ -3811,3 +3811,16 @@ Validation: PASS focused owner-fencing regression; full locked `agent-automation
 - performance: Documentation-only validation.
 - risks: Unknown and partial workflow rows remain; the evidence counts are not an overall completion percentage.
 - follow_up: Continue implementation under the active agent-focused goal.
+
+### Agent workflow goal publication - 2026-11-20T21:33:00Z
+
+- id: hermes-agent-goal-publication-20261120
+- timestamp: 2026-11-20T21:33:00Z
+- what: Published the first-version agent-workflow goal, safe attachment routing and partial evidence on main at 905a059aa4ceec5b62d61a147d914e49b6228a0e.
+- why: Let functional agent workflows define the first milestone and keep the repo current.
+- components: native attachment route, goal/handoff documentation, evidence map.
+- type: Publication record.
+- validation: PASS fresh fetch confirmed local and origin main SHA equality.
+- performance: Push and verification completed in 18 seconds.
+- risks: Live Gateway and packaged Windows behavior remain unverified; incomplete features remain.
+- follow_up: Continue model/provider, tool, skill, plugin and MCP capabilities under the corrected scope.
