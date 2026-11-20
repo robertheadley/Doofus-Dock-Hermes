@@ -1111,7 +1111,7 @@ capabilities:
   name: Display thinking disclosure
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can display thinking disclosure.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1123,14 +1123,18 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0070.json
+
 - id: ui-display-reasoning-collapsed-in-simple-mode
   name: Display reasoning collapsed in Simple mode
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can display reasoning collapsed in Simple mode.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1142,9 +1146,13 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0071.json
+
 - id: ui-display-session-token-and-usage-status
   name: Display session token and usage status
   area: chat-transcript

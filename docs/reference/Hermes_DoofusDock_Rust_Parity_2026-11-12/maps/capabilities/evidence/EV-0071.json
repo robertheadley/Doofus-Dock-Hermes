@@ -1,0 +1,15 @@
+{
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-20",
+  "commit": "259fbf21f25bd89b1968fea30a5bf989f9ef6814",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "The complete locked agent-automation native library suite passes 498/498 tests. The new reducer fixture verifies split-tag suppression, separate reasoning.delta routing and answer reconciliation; the accessible UI fixture verifies disclosure expansion and Simple-mode collapse. cargo check -p hermes-native --lib, rustfmt and git diff checks pass. No live Hermes Gateway or packaged app was used.",
+  "uid": "EV-0071",
+  "capability_id": "ui-display-reasoning-collapsed-in-simple-mode",
+  "scenario": "simple_mode_keeps_reasoning_in_a_collapsed_accessible_disclosure",
+  "locator": "apps/hermes-native/src/app.rs#simple_mode_keeps_reasoning_in_a_collapsed_accessible_disclosure",
+  "notes": "Partial. The headless accessible UI confirms Simple mode starts collapsed and can be expanded; matched-source and packaged Windows acceptance remain open."
+}

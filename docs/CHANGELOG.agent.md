@@ -3613,3 +3613,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Live Gateway and packaged Windows behaviors remain unverified; the full scoped feature milestone remains in progress.
 - **follow_up:** Continue the remaining scoped chat/tool, skills, MCP and plugin capabilities; defer visual styling until functional parity is ready.
+
+
+## 2026-11-20 — Reasoning stream separation
+
+- **id:** hermes-par0046-reasoning-stream-disclosure
+- **timestamp:** 2026-11-20 19:16 UTC
+- **what:** Added a pinned-compatible streaming reasoning scrubber, separated Gateway `reasoning.delta` events from answer text in active and background transcript paths, added an accessible Thinking disclosure, and made it start collapsed in Simple mode. The accumulated raw stream is removed when its segment is sealed.
+- **why:** Prevent reasoning tags or partial tags from flashing into the user-visible answer while supporting the pinned reasoning disclosure behavior.
+- **components:** Hermes Native transcript reducer, reasoning module, transcript UI, parity progress overlay, capability evidence records and project docs.
+- **type:** Chat feature implementation and evidence update.
+- **validation:** PASS 498/498 locked agent-automation library tests, including split-frame scrubber, reducer reconciliation and Simple-mode accessible disclosure; PASS cargo check, rustfmt, diff checks and task schema validation.
+- **performance:** No performance change measured; the pinned behavior also reprocesses accumulated stream content on each frame.
+- **risks:** Profile-level `display.show_reasoning` loading, live Gateway delivery, packaged Windows behavior and source-paired acceptance remain open. The two parity rows remain partial.
+- **follow_up:** Implement profile reasoning preference loading and continue the remaining chat/tool, skills, MCP and plugin gaps before visual redesign.

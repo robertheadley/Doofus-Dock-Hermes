@@ -53,6 +53,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only 176-row priority audit completed. Recommended P0 PAR-0046/PAR-0047 reasoning separation and streaming scrubber; no edits/tests.",
+      "observed_at": "2026-11-20T18:58:45Z",
+      "pid": null,
+      "process_id": "subagent:next_chat_tool_slice_audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Audit complete: pinned streaming.test.tsx asserts first chunk before completion, later chunk after producer release, and loading indicator; native reducer exists but lacked rendered incremental coverage; Markdown preprocessing still has separate gaps.",
       "observed_at": "2026-11-20T15:27:51Z",
       "pid": null,
@@ -180,6 +190,72 @@
   "blockers": [],
   "changed_files": [
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "doofus/events.jsonl",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -202,17 +278,29 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0070.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0071.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "git push origin main; git fetch origin main; verify exact HEAD equality",
+    "command": "cargo check -p hermes-native --lib",
     "evidence": [
-      "apps/hermes-native/src/app.rs#fallback_model_options_results_are_fenced_by_request_and_profile",
-      "apps/hermes-native/src/app.rs#agent_plugin_settings_dialog_renders_typed_controls_and_masks_secret"
+      "apps/hermes-native/src/reasoning.rs#three_character_frames_preserve_safe_answer_and_extract_reasoning",
+      "apps/hermes-native/src/app.rs#simple_mode_keeps_reasoning_in_a_collapsed_accessible_disclosure"
     ],
-    "state": "in_progress",
-    "summary": "Implemented profile-scoped model catalog selectors for PAR-0220 and manifest-backed Agent Plugin settings; 488 locked library tests pass; code/evidence/docs published to main; no live Gateway or packaged Windows acceptance.",
-    "verified_at": "2026-11-20T18:52:15Z"
+    "state": "tested",
+    "summary": "PAR-0046 stream scrubber and reasoning disclosure implemented; full 498-test library suite, focused split-tag reducer test and Simple-mode accessible disclosure test pass. PAR-0046/0047 remain partial pending profile reasoning preference and live/source-paired acceptance.",
+    "verified_at": "2026-11-20T19:21:25Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -224,6 +312,7 @@
     "hermes-par-0042",
     "hermes-par-0043",
     "hermes-par-0044",
+    "hermes-par-0046",
     "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0063",
@@ -263,7 +352,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T19:52:15Z",
+    "lease_expires_at": "2026-11-20T20:21:25Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1168,9 +1257,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "20d7f58b-af88-460f-babb-fd55a8ee3bba",
+  "last_event_id": "5503e4a5-f54f-4c30-919a-3034db345ed2",
   "last_operation": {
-    "request_id": "20d7f58b-af88-460f-babb-fd55a8ee3bba",
+    "request_id": "5503e4a5-f54f-4c30-919a-3034db345ed2",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1182,14 +1271,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "06-agent-workflow",
+  "phase": "03-chat",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue next dependency-ready chat/tool capability, prioritizing remaining chat/tool, skills, MCP and Agent Plugin functionality; keep visual redesign deferred until feature scope is ready.",
+  "recommended_next_action": "Implement profile-scoped display.show_reasoning preference loading and continue the next dependency-ready P0 chat/tool gap.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1229,7 +1318,6 @@
     "hermes-par-0038",
     "hermes-par-0039",
     "hermes-par-0045",
-    "hermes-par-0046",
     "hermes-par-0047",
     "hermes-par-0048",
     "hermes-par-0049",
@@ -1651,8 +1739,52 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "b6afe651671c9e03f820539fe8f0d3123aafda2b33278b389e0033c7ca50409a",
+    "change_fingerprint": "819484b1355432cd9d26b919664256c0455a2a6ac263aaded2c844357629e0c9",
     "changed_files": [
+      {
+        "path": "doofus/events.jsonl",
+        "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "status": " M"
+      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -1668,19 +1800,27 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0070.json",
+        "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0071.json",
+        "status": "??"
       }
     ],
-    "head_commit": "7da4cf637d5f7455492d73523454e0f0f3210940",
+    "head_commit": "259fbf21f25bd89b1968fea30a5bf989f9ef6814",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 492,
+  "revision": 497,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 492,
+  "state_revision": 497,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0220",
-  "task_ledger_revision": 81,
+  "task_id": "hermes-par-0046",
+  "task_ledger_revision": 83,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2936,9 +3076,14 @@
       "command": "cargo test -p hermes-native --features agent-automation --locked --lib",
       "result": "PASS 488 passed, 0 failed; cargo check, rustfmt, progress generators, root and archival UCM validators, task validation passed.",
       "timestamp": "2026-11-20T18:52:15Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --lib",
+      "result": "PASS 498 passed, 0 failed; rustfmt, task validation, focused UI and reducer tests pass.",
+      "timestamp": "2026-11-20T19:21:25Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T18:52:15Z"
+  "updated_at": "2026-11-20T19:21:25Z"
 }
