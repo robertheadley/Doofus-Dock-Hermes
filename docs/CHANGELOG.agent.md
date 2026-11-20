@@ -3456,3 +3456,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change measured.
 - **risks:** Full structured reasoning/tool parts, live Gateway behavior and source-paired acceptance remain open.
 - **follow_up:** Continue the selected PAR-0214/0215 chat model/reasoning controls slice.
+
+## PAR-0214/0215 chat model and reasoning controls
+
+- **id:** hermes-par0214-0215-model-controls-20261120
+- **timestamp:** 2026-11-20 16:37 UTC
+- **what:** Added profile/session-scoped model options and reasoning controls to the active chat composer. Model and reasoning changes use fresh revision/execution-generation fences, correlated receipts, guarded confirmation tokens and stale owner/profile/connection rejection. Evidence is recorded as partial.
+- **why:** Model switching and reasoning effort are core chat controls needed for the user's feature-parity goal.
+- **components:** Hermes Native chat composer, Gateway RPC, requirement overlay, capability maps, progress and project documentation.
+- **type:** Feature and regression coverage.
+- **validation:** PASS `cargo check -p hermes-native --lib`; five focused Gateway tests and one rendered-controls test; rustfmt and diff checks. Progress and package validators run after evidence is written.
+- **performance:** No runtime performance change measured.
+- **risks:** UI harness confirms control rendering but does not activate a menu item. Live Gateway, packaged Windows behavior and source-paired acceptance remain open. PAR-0216/0217 custom provider/model flows remain separate.
+- **follow_up:** Complete evidence/package validation and publish to main; then continue with a high-impact chat/tool gap.

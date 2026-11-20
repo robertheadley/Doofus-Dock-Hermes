@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0065",
+  "capability_id": "ui-show-model-reasoning-controls",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "show-session-model-and-reasoning-controls-with-provider-capability-filtering",
+  "locator": "apps/hermes-native/src/app.rs#composer_exposes_model_and_reasoning_controls_for_supported_session_model",
+  "date": "2026-11-20",
+  "commit": "890c291b933df873532d8e33a128a5a00e3385dc",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui fixture confirms the composer exposes model and reasoning controls for a reasoning-capable session model. A profile-scoped model.options WebSocket fixture verifies provider capability rows; receipt fixtures cover stale and wrong-owner rejection. cargo check, five focused Gateway tests, one rendered-controls test, rustfmt and diff checks pass.",
+  "notes": "Partial evidence. The UI fixture does not click a menu item; live authenticated Gateway behavior, packaged Windows interaction and source-paired acceptance remain open. Reasoning disclosure in assistant transcript parts remains a separate gap."
+}

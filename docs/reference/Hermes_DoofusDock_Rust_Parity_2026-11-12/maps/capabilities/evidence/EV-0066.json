@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0066",
+  "capability_id": "ui-switch-model-in-a-running-session",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "switch-running-session-model-through-fresh-profile-scoped-gateway-mutation",
+  "locator": "apps/hermes-native/src/gateway.rs#chat_model_pick_uses_fresh_profile_scoped_revision_and_generation",
+  "date": "2026-11-20",
+  "commit": "890c291b933df873532d8e33a128a5a00e3385dc",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Loopback WebSocket fixture verifies profile/session-scoped session.resume followed by session.mutate with the fresh revision and execution generation. Focused tests cover committed receipt correlation, stale/wrong-owner rejection, required guarded confirmation and fail-closed unknown statuses. The headless egui fixture confirms model and reasoning controls render; cargo check, rustfmt and diff checks pass.",
+  "notes": "Partial evidence. The UI fixture does not click a model menu item; live authenticated Gateway behavior, packaged Windows interaction and source-paired acceptance remain open. Custom provider/model flows are tracked separately as PAR-0216/PAR-0217."
+}

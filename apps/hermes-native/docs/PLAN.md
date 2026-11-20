@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 278 (implementation in progress).
+- **Working revision:** 279 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1695,3 +1695,11 @@ PAR-0035 now seals streamed assistant bubbles on `message.interim` and tool-call
 This remains partial: native transcript rows still use a string body instead of Hermes' structured text, reasoning, and tool parts. Reasoning disclosure, live Gateway behavior, and source-paired acceptance remain open.
 
 Validation: PASS six focused Rust tests covering interim/tool boundaries, cumulative success/error terminal text, empty terminal text, standard stream settlement, and error settlement; PASS `cargo fmt --check`, task schema validation, both progress generators, root and pinned UCM package validation, and `git diff --check`. No live Gateway or paired Windows UI run was used.
+
+### Revision 279 — Chat model and reasoning controls (2026-11-20)
+
+The active chat composer now reads profile/session-scoped `model.options`, displays the configured model picker and reasoning-effort choices for model capabilities, and applies choices through `session.mutate`. Mutations first fetch a fresh `session.resume` revision and execution generation, then validate the returned session/operation/status/revision. Guarded model switches require the Gateway's confirmation token; deferred receipts are surfaced as queued changes. Stale session/profile/connection replies are fenced. PAR-0214 and PAR-0215 are mapped as partial. The headless UI test confirms controls render; separate Gateway fixtures cover scoped options, fresh revision/generation fencing, receipt correlation, guarded confirmation and fail-closed statuses.
+
+PAR-0214/0215 remain partial: the isolated app harness does not click a menu selection, and live Gateway, packaged Windows, source-paired acceptance remain open. Custom model/provider management is out of this slice (PAR-0216/0217).
+
+Validation: PASS `cargo check -p hermes-native --lib`; five focused model Gateway tests and one rendered-controls test; `cargo fmt --package hermes-native --check`; task schema validation; implementation/chat progress generation and both package validators are run after evidence mapping. `git diff --check` passes. No live Gateway behavior is claimed.

@@ -1229,6 +1229,36 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "formal source acceptance remains pending",
         ],
     },
+    "PAR-0214": {
+        "state": "partial",
+        "level": "headless_profile_scoped_model_and_reasoning_controls",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 279",
+            "apps/hermes-native/src/app.rs#composer_exposes_model_and_reasoning_controls_for_supported_session_model",
+            "apps/hermes-native/src/gateway.rs#chat_model_options_read_uses_profile_session_and_provider_capabilities",
+            "apps/hermes-native/src/gateway.rs#chat_model_mutation_receipt_rejects_stale_or_wrong_owner_receipts",
+        ],
+        "gaps": [
+            "headless UI fixture verifies control visibility but does not click a model/reasoning menu item",
+            "live authenticated Gateway behavior, packaged Windows interaction and source-paired acceptance remain unverified",
+        ],
+    },
+    "PAR-0215": {
+        "state": "partial",
+        "level": "headless_profile_scoped_model_switch_with_fresh_revision_fencing",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 279",
+            "apps/hermes-native/src/app.rs#composer_exposes_model_and_reasoning_controls_for_supported_session_model",
+            "apps/hermes-native/src/gateway.rs#chat_model_pick_uses_fresh_profile_scoped_revision_and_generation",
+            "apps/hermes-native/src/gateway.rs#guarded_chat_model_receipt_requires_confirmation_token",
+            "apps/hermes-native/src/gateway.rs#chat_policy_error_receipts_and_unknown_statuses_fail_closed",
+        ],
+        "gaps": [
+            "headless UI fixture verifies control visibility but does not click a model menu item",
+            "custom model/provider management is tracked separately in PAR-0216/PAR-0217",
+            "live authenticated Gateway behavior, packaged Windows interaction and source-paired acceptance remain unverified",
+        ],
+    },
 }
 
 FIELDS = [
