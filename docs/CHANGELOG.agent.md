@@ -3225,3 +3225,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change; scan requests use the existing bounded Gateway HTTP response limit and run off the UI thread.
 - **risks:** Live Gateway, installed Windows behavior, cancellation and source-paired acceptance remain unverified. Policy override is intentionally not exposed.
 - **follow_up:** Record EV-0054 against the behavior commit, publish directly to main, then continue PAR-0256 merge/discovery/facet/sort/card-list gaps and remaining chat/tool/skills/plugin work.
+
+## PAR-0257 main publication
+
+- **id:** hermes-par0257-scan-review-publish
+- **timestamp:** 2026-11-20 01:34:55 UTC
+- **what:** Published behavior commit a0e2428e1af3f6d2e1f796da9b7e78d7189c3f8a and EV-0054 commit 7373ab491dcdf9c6f2cc2b4f9674a776343a433e directly to main.
+- **why:** Keep the user's main-only repository current with tested behavior and evidence bound to its exact implementation commit.
+- **components:** Hermes Native Skills hub, Gateway scan client, EV-0054, UCM maps, task ledger.
+- **type:** direct main publication.
+- **validation:** PASS push and fresh fetch; local HEAD equals origin/main at 7373ab491dcdf9c6f2cc2b4f9674a776343a433e; the publication operation is recorded succeeded and task validation passes.
+- **performance:** No benchmark change.
+- **risks:** PAR-0257 remains partial; live Gateway, Windows behavior and source-paired acceptance remain open.
+- **follow_up:** Continue PAR-0256 catalog merging, discovery, facets, sort and card/list behavior, then the remaining scoped chat/tool, skills, plugins and MCP work.
