@@ -1322,14 +1322,16 @@ EVIDENCE: dict[str, dict[str, object]] = {
         "level": "headless_profile_scoped_fallback_route_configuration",
         "refs": [
             "apps/hermes-native/docs/PLAN.md#Revision 283",
+            "apps/hermes-native/docs/PLAN.md#Revision 285",
             "apps/hermes-native/src/app.rs#model_fallback_settings_render_ordered_routes_and_keep_blank_drafts_local",
+            "apps/hermes-native/src/app.rs#fallback_model_options_results_are_fenced_by_request_and_profile",
             "apps/hermes-native/src/app.rs#fallback_route_edits_preserve_route_specific_config_and_legacy_values",
             "apps/hermes-native/src/gateway.rs#fallback_providers_local_read_and_save_are_profile_scoped_and_preserve_route_keys",
             "apps/hermes-native/src/gateway.rs#fallback_providers_remote_save_uses_profile_scope_and_session_token",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/settings/fallback-models-field.tsx#FallbackModelsField",
         ],
         "gaps": [
-            "native settings use editable provider/model IDs instead of the pinned provider/model catalog selectors and do not yet prove save/read resynchronization through the full UI",
+            "full UI save/read resynchronization is not yet covered by a rendered interaction regression",
             "Hermes owns fallback execution; live default-model failure followed by a configured fallback route, packaged Windows behavior and source-paired acceptance remain open",
         ],
     },

@@ -6,10 +6,10 @@
   "scenario": "model_fallback_settings_render_ordered_routes_and_keep_blank_drafts_local",
   "locator": "apps/hermes-native/src/app.rs#model_fallback_settings_render_ordered_routes_and_keep_blank_drafts_local",
   "date": "2026-11-20",
-  "commit": "24470c4f8ddbd3403cece9fe65fceca3cb2a2a93",
+  "commit": "8a057d15b39b44d07204885a373b435c368c801e",
   "branch": "main",
   "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
   "platform": "Windows 11 x86_64",
-  "environment": "Headless egui test verifies ordered fallback route rows render and a blank Add route remains a local draft; a companion test verifies legacy route normalization, unknown route-key preservation and incomplete-row omission. Gateway HTTP fixtures cover profile-scoped local-ticket reads/sparse writes and remote-token writes. Ten fallback-filtered library tests, cargo check, rustfmt and diff checks pass. No live Hermes Gateway or packaged app was used.",
-  "notes": "Partial evidence. The native editor accepts provider/model IDs as free text rather than the pinned model-catalog selectors; full UI save/readback, profile stale-response UI coverage, actual fallback execution after a default model failure, live Gateway, packaged Windows behavior and source-paired acceptance remain open."
+  "environment": "Headless egui verifies ordered fallback routes, profile-scoped provider/model catalog selectors with custom ID entry, and request/profile fencing; companion tests cover blank local drafts, legacy route normalization and preservation of unknown route keys. Local-ticket and remote-token HTTP fixtures cover profile-scoped reads and sparse writes. The full locked feature library suite passes 488 tests; cargo check, rustfmt and diff checks pass. No live Hermes Gateway or packaged app was used.",
+  "notes": "Partial evidence. Full UI save/readback, actual fallback execution after a default model failure, live Gateway, packaged Windows behavior and source-paired acceptance remain open."
 }

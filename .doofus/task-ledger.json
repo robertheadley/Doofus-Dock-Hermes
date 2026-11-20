@@ -1,5 +1,5 @@
 {
-  "revision": 79,
+  "revision": 81,
   "schema_version": 1,
   "tasks": [
     {
@@ -7186,7 +7186,7 @@
                 "priority": "P1",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-20T18:02:13Z",
+              "last_updated_at": "2026-11-20T18:44:55Z",
               "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
               "objective": "ui-show-preferred-fallback-route",
               "outputs": [],
@@ -7205,7 +7205,8 @@
               "task_id": "hermes-par-0220",
               "title": "PAR-0220 Show preferred fallback route",
               "verification_evidence": [
-                "apps/hermes-native/src/app.rs#model_fallback_settings_render_ordered_routes_and_keep_blank_drafts_local"
+                "apps/hermes-native/src/app.rs#model_fallback_settings_render_ordered_routes_and_keep_blank_drafts_local",
+                "apps/hermes-native/src/app.rs#fallback_model_options_results_are_fenced_by_request_and_profile"
               ]
             },
             {
@@ -16324,5 +16325,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-20T18:02:13Z"
+  "updated_at": "2026-11-20T18:44:55Z"
 }

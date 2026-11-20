@@ -3587,3 +3587,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** One unrelated library test remains failing; live fallback execution and source-paired acceptance remain open.
 - **follow_up:** Continue the next chat/tool functionality gap; exact visual parity is out of scope.
+
+## 2026-11-20 — Fallback catalogs and Agent Plugin settings
+
+- **id:** hermes-par0220-fallback-catalog-agent-plugin-settings
+- **timestamp:** 2026-11-20 18:39 UTC
+- **what:** Added profile-scoped provider/model catalog selectors and profile-fenced option reads to fallback route settings. Added manifest-backed Agent Plugin settings with typed controls, changed-only nonsecret writes, sequential profile-scoped `/api/env` secret writes, blank-secret-is-keep behavior, secret masking/zeroization, partial-write failure reporting, disabled no-op saves, and dialog-level invalid-JSON coverage (commits `8a057d15b39b44d07204885a373b435c368c801e`, `626d861`).
+- **why:** Close functional gaps in Hermes fallback configuration and Agent Plugin configuration before the planned visual presentation pass.
+- **components:** Native Settings, Gateway model-options/config HTTP, Agent Plugin settings RPC/secret HTTP, implementation-progress generator and generated ledgers, status and architecture docs, EV-0069.
+- **type:** Feature implementation and scoped partial evidence update.
+- **validation:** PASS full locked `agent-automation` library suite (488/488), focused plugin-settings tests, `cargo check -p hermes-native --lib`, rustfmt check, both UCM package validators, task-ledger validation, progress generators and `git diff --check`.
+- **performance:** No runtime performance change measured.
+- **risks:** Live Gateway behavior, full fallback UI save/readback, fallback execution following default-model failure, physical Windows behavior and source-paired acceptance remain open; an `/api/env` sequence can partially persist earlier secrets before a later write fails.
+- **follow_up:** Publish evidence/docs to `main`, then continue scoped chat/tool, skills and plugin work; visual styling follows functional scope completion.
