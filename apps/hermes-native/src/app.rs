@@ -7010,6 +7010,30 @@ fn render_message() -> &'static str {
                         };
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
+                            if let Some(reasoning) = message
+                                .get("reasoning")
+                                .and_then(serde_json::Value::as_str)
+                                .filter(|reasoning| !reasoning.trim().is_empty())
+                                .filter(|_| {
+                                    message
+                                        .get("reasoning_enabled")
+                                        .and_then(serde_json::Value::as_bool)
+                                        == Some(true)
+                                })
+                            {
+                                let simple_mode =
+                                    self.workspace.preferences.mode == InterfaceMode::Simple;
+                                let streaming = message
+                                    .get("streaming")
+                                    .and_then(serde_json::Value::as_bool)
+                                    == Some(true);
+                                egui::CollapsingHeader::new("Thinking")
+                                    .id_salt(("assistant-reasoning", session_id, index))
+                                    .default_open(!simple_mode && streaming)
+                                    .show(ui, |ui| {
+                                        render_transcript_markdown(ui, markdown_cache, reasoning);
+                                    });
+                            }
                             if let Some((title, explanation)) = &structured_error {
                                 ui.label(RichText::new(title).strong().color(Color32::LIGHT_RED));
                                 ui.label(explanation);
@@ -18086,6 +18110,7 @@ fn render_message() -> &'static str {
                 | "tool.progress"
                 | "message.start"
                 | "message.delta"
+                | "reasoning.delta"
                 | "message.interim"
                 | "message.complete"
                 | "error"
@@ -18176,6 +18201,7 @@ fn render_message() -> &'static str {
             event_type,
             "message.start"
                 | "message.delta"
+                | "reasoning.delta"
                 | "message.interim"
                 | "message.complete"
                 | "tool.start"
@@ -18485,7 +18511,7 @@ fn render_message() -> &'static str {
                 }
             }
             "tool.start" | "tool.complete" | "tool.progress" | "message.start"
-            | "message.delta" | "message.interim" | "message.complete" => {
+            | "message.delta" | "reasoning.delta" | "message.interim" | "message.complete" => {
                 apply_stream_event_to_transcript(
                     &mut self.transcript,
                     event_type,
@@ -30485,6 +30511,9 @@ fn apply_stream_event_to_transcript(
                 // belongs to a new response bubble.
                 message["streaming"] = serde_json::Value::Bool(false);
                 message["interim"] = serde_json::Value::Bool(true);
+                if let Some(object) = message.as_object_mut() {
+                    object.remove("reasoning_stream_source");
+                }
                 message["completedAt"] = serde_json::json!(
                     payload
                         .get("timestamp")
@@ -30532,7 +30561,15 @@ fn apply_stream_event_to_transcript(
                     && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
             }) {
                 if let Some(text) = text {
-                    message["content"] = serde_json::Value::String(text.to_owned());
+                    let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                    let update = scrubber.push_delta(text);
+                    message["content"] = serde_json::Value::String(update.answer);
+                    if !update.reasoning.is_empty() {
+                        message["reasoning"] = serde_json::Value::String(update.reasoning);
+                    }
+                }
+                if let Some(object) = message.as_object_mut() {
+                    object.remove("reasoning_stream_source");
                 }
                 message["streaming"] = serde_json::Value::Bool(false);
                 message["interim"] = serde_json::Value::Bool(true);
@@ -30571,12 +30608,20 @@ fn apply_stream_event_to_transcript(
                 if let (Some(index), Some(existing)) = (prior_interim_index, prior_interim_text) {
                     if text.starts_with(&existing) {
                         let message = &mut transcript[index];
-                        message["content"] = serde_json::Value::String(text.to_owned());
+                        let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                        let update = scrubber.push_delta(text);
+                        message["content"] = serde_json::Value::String(update.answer);
+                        if !update.reasoning.is_empty() {
+                            message["reasoning"] = serde_json::Value::String(update.reasoning);
+                        }
                     }
                     if !existing.starts_with(text) && !text.starts_with(&existing) {
+                        let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                        let update = scrubber.push_delta(text);
                         transcript.push(serde_json::json!({
                             "role":"assistant",
-                            "content":text,
+                            "content":update.answer,
+                            "reasoning":update.reasoning,
                             "streaming":false,
                             "interim":true,
                             "timestamp":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
@@ -30584,9 +30629,12 @@ fn apply_stream_event_to_transcript(
                         }));
                     }
                 } else {
+                    let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                    let update = scrubber.push_delta(text);
                     transcript.push(serde_json::json!({
                         "role":"assistant",
-                        "content":text,
+                        "content":update.answer,
+                        "reasoning":update.reasoning,
                         "streaming":false,
                         "interim":true,
                         "timestamp":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
@@ -30607,16 +30655,57 @@ fn apply_stream_event_to_transcript(
                 message.get("role").and_then(|value| value.as_str()) == Some("assistant")
                     && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
             }) {
-                if let Some(content) = message
-                    .get("content")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_owned)
-                {
-                    message["content"] = serde_json::Value::String(format!("{content}{delta}"));
+                let raw = message
+                    .get("reasoning_stream_source")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| message.get("content").and_then(serde_json::Value::as_str))
+                    .unwrap_or_default();
+                let raw = format!("{raw}{delta}");
+                let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                let update = scrubber.push_delta(&raw);
+                message["reasoning_stream_source"] = serde_json::Value::String(raw);
+                message["content"] = serde_json::Value::String(update.answer);
+                if !update.reasoning.is_empty() {
+                    message["reasoning"] = serde_json::Value::String(update.reasoning);
                 }
             } else {
-                transcript
-                    .push(serde_json::json!({"role":"assistant","content":delta,"streaming":true}));
+                let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                let update = scrubber.push_delta(delta);
+                transcript.push(serde_json::json!({
+                    "role":"assistant",
+                    "content":update.answer,
+                    "reasoning":update.reasoning,
+                    "reasoning_stream_source":delta,
+                    "streaming":true
+                }));
+            }
+        }
+        "reasoning.delta" => {
+            let delta = payload
+                .get("text")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+            if delta.is_empty() {
+                return;
+            }
+            if let Some(message) = transcript.iter_mut().rev().find(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                    && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            }) {
+                let reasoning = message
+                    .get("reasoning")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default();
+                message["reasoning"] = serde_json::Value::String(format!("{reasoning}{delta}"));
+                message["reasoning_enabled"] = serde_json::Value::Bool(true);
+            } else {
+                transcript.push(serde_json::json!({
+                    "role":"assistant",
+                    "content":"",
+                    "reasoning":delta,
+                    "reasoning_enabled":true,
+                    "streaming":true
+                }));
             }
         }
         "message.complete" => {
@@ -30671,11 +30760,18 @@ fn apply_stream_event_to_transcript(
                                 .strip_prefix(&prior_interim_text)
                                 .filter(|_| !prior_interim_text.is_empty())
                                 .unwrap_or(text);
-                            message["content"] =
-                                serde_json::Value::String(response_text.to_owned());
+                            let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                            let update = scrubber.push_delta(response_text);
+                            message["content"] = serde_json::Value::String(update.answer);
+                            if !update.reasoning.is_empty() {
+                                message["reasoning"] = serde_json::Value::String(update.reasoning);
+                            }
                         }
                     } else {
                         message["content"] = serde_json::Value::String(String::new());
+                    }
+                    if let Some(object) = message.as_object_mut() {
+                        object.remove("reasoning_stream_source");
                     }
                     message["streaming"] = serde_json::Value::Bool(false);
                     message["error"] = serde_json::Value::String(error.to_owned());
@@ -30693,9 +30789,18 @@ fn apply_stream_event_to_transcript(
                             .unwrap_or_else(unix_now_seconds)
                     );
                 } else {
+                    let partial_text =
+                        if payload.get("partial").and_then(|value| value.as_bool()) == Some(true) {
+                            final_text.unwrap_or_default()
+                        } else {
+                            ""
+                        };
+                    let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                    let update = scrubber.push_delta(partial_text);
                     transcript.push(serde_json::json!({
                         "role":"assistant",
-                        "content":if payload.get("partial").and_then(|value| value.as_bool()) == Some(true) { final_text.unwrap_or_default() } else { "" },
+                        "content":update.answer,
+                        "reasoning":update.reasoning,
                         "streaming":false,
                         "error":error,
                         "error_surface":payload.get("error_surface").filter(|value| value.is_object()),
@@ -30757,16 +30862,36 @@ fn apply_stream_event_to_transcript(
                 }
                 let message = &mut transcript[index];
                 if let Some(text) = response_text {
-                    message["content"] = serde_json::Value::String(text.to_owned());
+                    let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                    let update = scrubber.push_delta(text);
+                    message["content"] = serde_json::Value::String(update.answer);
+                    if !update.reasoning.is_empty() {
+                        let existing = message
+                            .get("reasoning")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default();
+                        let reasoning = if existing.is_empty() {
+                            update.reasoning
+                        } else {
+                            format!("{existing}\n{}", update.reasoning)
+                        };
+                        message["reasoning"] = serde_json::Value::String(reasoning);
+                    }
+                }
+                if let Some(object) = message.as_object_mut() {
+                    object.remove("reasoning_stream_source");
                 }
                 message["streaming"] = serde_json::Value::Bool(false);
                 message["error_event_pending"] = serde_json::Value::Bool(false);
                 message["interim"] = serde_json::Value::Bool(false);
                 message["completedAt"] = serde_json::json!(completed_at);
             } else if let Some(text) = response_text.filter(|text| !text.is_empty()) {
+                let mut scrubber = crate::reasoning::ReasoningStreamScrubber::default();
+                let update = scrubber.push_delta(text);
                 transcript.push(serde_json::json!({
                     "role":"assistant",
-                    "content":text,
+                    "content":update.answer,
+                    "reasoning":update.reasoning,
                     "interim":false,
                     "timestamp":payload.get("started_at").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
                     "completedAt":completed_at
@@ -36297,6 +36422,99 @@ mod tests {
             transcript_timestamp(&transcript[0]),
             Some((100.25, Some(101.5)))
         );
+    }
+
+    #[test]
+    fn reasoning_stream_is_separate_and_partial_tags_never_enter_answer() {
+        let mut transcript = Vec::new();
+        apply_stream_event_to_transcript(&mut transcript, "message.start", &json!({}), Some(1));
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &json!({"text":"Answer.\n<thin"}),
+            Some(1),
+        );
+        assert_eq!(transcript[0]["content"], "Answer.\n");
+        assert!(!transcript[0]["content"].as_str().unwrap().contains("<thin"));
+
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &json!({"text":"king>private reasoning</thinking> The final answer."}),
+            Some(1),
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "reasoning.delta",
+            &json!({"text":"Gateway reasoning."}),
+            Some(1),
+        );
+        assert_eq!(
+            transcript[0]["reasoning"],
+            "private reasoningGateway reasoning."
+        );
+        assert_eq!(transcript[0]["content"], "Answer.\nThe final answer.");
+
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.complete",
+            &json!({"text":"Answer.\n<thinking>private reasoning</thinking> The final answer."}),
+            Some(1),
+        );
+        assert_eq!(transcript[0]["content"], "Answer.\nThe final answer.");
+        assert!(
+            !transcript[0]
+                .as_object()
+                .unwrap()
+                .contains_key("reasoning_stream_source")
+        );
+        assert_eq!(transcript[0]["streaming"], false);
+    }
+
+    #[test]
+    fn simple_mode_keeps_reasoning_in_a_collapsed_accessible_disclosure() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.workspace.preferences.mode = InterfaceMode::Simple;
+        app.transcript = vec![json!({
+            "role":"assistant",
+            "content":"Visible answer.",
+            "reasoning":"Private thought details.",
+            "reasoning_enabled":true,
+            "streaming":true
+        })];
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        let labels = harness
+            .query_all_by(|_| true)
+            .filter_map(|node| node.accesskit_node().label())
+            .collect::<Vec<_>>();
+        assert!(
+            labels.iter().any(|label| label == "Thinking"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref() == Some("Private thought details."))
+                .next()
+                .is_none(),
+            "Simple mode must not expose reasoning text while the disclosure is collapsed"
+        );
+        harness.get_by_label("Thinking").click();
+        harness.step();
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref() == Some("Private thought details."))
+                .next()
+                .is_some(),
+            "the accessible disclosure must expose reasoning when expanded"
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
     }
 
     #[test]

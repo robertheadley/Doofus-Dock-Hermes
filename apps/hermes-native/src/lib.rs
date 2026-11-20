@@ -11,6 +11,7 @@ pub mod native_token_store;
 pub mod native_window;
 pub mod plugin_catalog;
 pub mod prepared_image_drafts;
+pub mod reasoning;
 pub mod remote_probe;
 pub mod repo_discovery;
 pub mod routes;
