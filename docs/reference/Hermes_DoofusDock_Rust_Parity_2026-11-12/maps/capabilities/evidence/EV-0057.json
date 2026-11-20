@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0057",
+  "capability_id": "ui-list-toolsets-and-included-tools",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "toolsets-inventory-renders-included-tools-and-filters-desktop-hidden-rows",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "ed362576f8d599b5e9cdfc20bfa3c8024173fe9a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui UI test using synthetic Toolsets. No live Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0259 records the existing native profile-scoped Toolsets inventory and included-tool rendering, and adds the pinned Desktop visibility blocklist: discord, discord_admin, yuanbao, context_engine, and moa. The headless test verifies all five names are hidden by the predicate, renders one visible Web Search toolset and both included tools, and confirms a hidden Discord row and its tool are absent from the UI. Pinned references are toolsets-tab.tsx#item, toolsets-data.ts#filteredToolsets, and desktop-toolsets.ts#isDesktopToolsetVisible. Full locked suite passed 454 library, 15 automation-protocol, and 3 launcher tests; workspace/all-target check, rustfmt and diff checks passed. Live Gateway, packaged Windows behavior, source-paired acceptance, Toolsets themes/featured ranking and detail/configuration views remain open; capability status is partial."
+}

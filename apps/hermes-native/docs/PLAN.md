@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 270 (implementation in progress).
+- **Working revision:** 271 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1633,3 +1633,11 @@ PAR-0253 adds category filtering to the native Skill Hub catalog. Category optio
 This remains partial because live Gateway, packaged Windows interaction, and source-paired/formal acceptance have not been performed. The installed Skills list remains text-search based. The broader Hub still lacks installed/catalog merging, discovery shelves, source/tag facets, sort modes, and the card/list preference.
 
 Validation: PASS full locked feature suite (453 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt and diff checks. Focused headless category/search composition regression passes. Evidence review coverage and chat/tool mapped counts are regenerated in the progress overlay; live/source-paired acceptance remains open.
+
+### Revision 271 — Toolsets inventory source visibility (2026-11-20)
+
+PAR-0259 confirms the native Toolsets page already loads the profile-scoped inventory and renders each visible toolset's name, description, configuration/enabled state, and included tool names. The pinned Desktop excludes five platform/internal entries from this user-facing list; the native page now applies the same hidden set (`discord`, `discord_admin`, `yuanbao`, `context_engine`, `moa`). A headless egui test verifies all five predicate cases, the visible Web Search row and its included tools, and absence of the Discord row/tool.
+
+This remains partial: live Gateway, packaged Windows, and source-paired/formal acceptance remain open. Toolset themes/featured ranking, usage counts, and detailed configuration panels remain separate work.
+
+Validation: PASS full locked feature suite (454 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, progress generation, task validator, UCM package validator, and diff check. No live profile was used.

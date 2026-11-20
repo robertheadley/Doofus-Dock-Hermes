@@ -3287,3 +3287,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0253 remains partial; live Gateway, packaged Windows and source-paired behavior remain unverified.
 - **follow_up:** Continue PAR-0259 Toolsets inventory, then remaining Skills, plugins/MCP and chat/tool behavior before visual tuning.
+
+# Hermes Native Toolsets inventory curation
+
+- **id:** hermes-par0259-toolsets-inventory-20261120
+- **timestamp:** 2026-11-20 02:29 UTC
+- **what:** Applied the pinned Desktop hidden-toolset predicate to the native Toolsets list and added a headless UI regression proving included tool names render while all five hidden platform/internal names are excluded. Behavior commit: `ed362576f8d599b5e9cdfc20bfa3c8024173fe9a`.
+- **why:** Close the concrete list mismatch and establish rendered native evidence for the requested Toolsets capability.
+- **components:** Hermes Capabilities/Toolsets route, progress/UCM maps, task ledger and documentation.
+- **type:** Native UI source-alignment fix with partial capability evidence.
+- **validation:** PASS focused regression, full locked suite (454 library, 15 automation-protocol, 3 launcher), workspace/all-target check, rustfmt, both progress generators, task validator, JSON validation, and UCM package validator (565 behaviors/items, 14 source receipts, 42 implementation receipts; YAML parse skipped because PyYAML is unavailable). Publication remains pending.
+- **performance:** No benchmark change; filtering is a small fixed-name predicate before the existing search.
+- **risks:** Live Gateway, packaged Windows and source-paired behavior remain unverified; Toolsets themes/ranking/detail configuration remain separate gaps.
+- **follow_up:** Finish evidence validation and publish to main, then continue the next chat/tool/Skills/plugins/MCP task.

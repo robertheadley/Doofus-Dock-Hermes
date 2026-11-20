@@ -648,6 +648,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "catalog/source/tag facets, installed-row merging, discovery shelves, sort modes, and card/list preference remain open",
         ],
     },
+    "PAR-0259": {
+        "state": "partial",
+        "level": "headless_toolsets_inventory_included_tools_and_visibility_test",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/toolsets.ts#getToolsets",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/toolsets/toolsets-tab.tsx#item",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/toolsets/toolsets-data.ts#filteredToolsets",
+            ".staging/hermes-pinned-878305/apps/desktop/src/lib/desktop-toolsets.ts#isDesktopToolsetVisible",
+            "apps/hermes-native/src/gateway.rs#load_capabilities",
+            "apps/hermes-native/src/app.rs#desktop_toolset_visible",
+            "apps/hermes-native/src/app.rs#toolsets_catalog_renders_included_tools_and_hides_desktop_internal_rows",
+            "apps/hermes-native/docs/PLAN.md#Revision 271",
+        ],
+        "gaps": [
+            "live Gateway, packaged Windows interaction, and source-paired/formal acceptance remain unverified",
+            "source themes/featured sections, tool-call ranking/counts, and toolset detail/configuration views remain open",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",
