@@ -1770,3 +1770,10 @@ Validation: PASS full `agent-automation` native library suite (498/498), focused
 Native startup now loads the active profile's `display.show_reasoning`, applying `display.platforms.cli.show_reasoning` before the global value and defaulting off when unset. Both local ticket-authenticated and remote-authenticated configuration readers retain the selected profile; stale profile responses are discarded. A native control for changing the setting is still open.
 
 Validation: PASS focused profile HTTP and precedence fixtures, disabled-preference accessible UI regression, full 501-test `agent-automation` library suite, `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. Live Gateway and packaged Windows behavior remain unverified.
+
+
+### Revision 288 — Owner-scoped backend metadata for attachment routing (2026-11-20)
+
+PAR-0062 now captures `session.info` `cwd` and `terminal_backend` per connection/profile/runtime session. Raw Gateway events receive their stable connection ID when polled; the app rejects stale-connection updates and only mutates a uniquely matching stored-session view. Active chat state is saved before its metadata is updated, so a later session switch retains the values.
+
+Validation: PASS focused owner-fencing regression and full locked `agent-automation` package suite (503 library + 15 protocol + 3 launcher), `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. EV-0075 records partial prerequisite evidence. The metadata is not yet consumed by path-versus-bytes routing, so byte uploads remain the default; live Gateway and packaged Windows behavior remain unverified.

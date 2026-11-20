@@ -3753,3 +3753,9 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - performance: Publication and verification completed in approximately 30 seconds.
 - risks: Evidence coverage is not product completion; all 176 remain live-runtime and source-pair pending.
 - follow_up: Continue feature implementation under the active Hermes Native task.
+
+### Revision 288 - Owner-scoped backend metadata for attachment routing (2026-11-20)
+
+PAR-0062 now caches `session.info` cwd and terminal backend values per connection/profile/runtime session. Late events from another connection and metadata for a different stored session cannot overwrite the selected session view.
+
+Validation: PASS focused owner-fencing regression; full locked `agent-automation` package suite (503 library + 15 protocol + 3 launcher); `cargo check -p hermes-native --lib`; rustfmt; `git diff --check`. EV-0075 records partial prerequisite evidence. Direct path-versus-bytes routing, live Gateway and packaged Windows behavior remain open.

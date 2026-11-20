@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0075",
+  "capability_id": "ui-attach-image-or-file-to-prompt",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "session_info_backend_metadata_is_fenced_to_connection_profile_and_stored_session",
+  "locator": "apps/hermes-native/src/app.rs#session_info_backend_metadata_is_fenced_to_connection_profile_and_stored_session",
+  "date": "2026-11-20",
+  "commit": "fcbb38a161e8a8285f1dd121ad87fd3f2320ea48",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless owner-fencing regression verifies session.info cwd and terminal_backend are retained only for the exact active connection, profile, runtime session, and stored session. Full locked agent-automation suite passes (503 library, 15 protocol, 3 launcher); cargo check, rustfmt and diff checks pass. No live Gateway or physical Windows interaction was used.",
+  "notes": "Partial PAR-0062 prerequisite evidence. Metadata is cached safely but is not yet consumed by path-versus-bytes attachment routing; byte upload remains the default. Live Gateway behavior, shared-filesystem proof, direct-path RPC behavior, and packaged Windows acceptance remain open."
+}
