@@ -3508,3 +3508,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change measured.
 - **risks:** Candidate activation through the rendered app and live Gateway/source-paired acceptance remain open.
 - **follow_up:** Continue at checkpoint PAR-0218 catalog retry behavior.
+
+
+## PAR-0218 catalog retry and draft retention
+
+- **id:** hermes-par0218-catalog-retry-20261120
+- **timestamp:** 2026-11-20 17:16 UTC
+- **what:** Added an error-only top-level model catalog retry action and a rendered UI regression that clicks it through a disconnected-Gateway failure while preserving the typed draft, attachment, runtime session, and profile. Mapped PAR-0218 partial with evidence EV-0061.
+- **why:** Make catalog recovery accessible and demonstrate that a failed read cannot discard in-progress chat composition.
+- **components:** Hermes Native chat composer, scoped model-options cache, pinned-snapshot capability map and chat/tool progress scope.
+- **type:** Feature, regression coverage, and partial evidence.
+- **validation:** PASS focused `agent-automation` egui regression, `cargo check -p hermes-native --lib`, rustfmt check and diff check; package validators and progress generators run after evidence mapping.
+- **performance:** No runtime performance change measured.
+- **risks:** Pinned Desktop has no manual retry control; the native affordance is a recovery enhancement. Authenticated live Gateway and packaged Windows behavior remain unverified.
+- **follow_up:** Validate active/archival UCM packages, refresh progress, publish evidence/docs and continue scoped chat/tool requirements.

@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 280 (implementation in progress).
+- **Working revision:** 281 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -11,7 +11,7 @@
 
 ## Completion and runtime boundary
 
-Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 173-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
+Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 174-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
 
 ## Downloaded parity source snapshot
 
@@ -1711,3 +1711,12 @@ The model menu now has an explicit custom model entry. It trims model IDs, rejec
 PAR-0216/0217 are mapped partial. Headless interaction opens the custom-model editor and renders a provider candidate; helper tests validate ID rules and catalog duplicates; preference tests validate provider-scoped persistence; loopback Gateway tests verify fresh revision/generation mutation and exact `custom:local-ollama` slugs. The UI fixture does not activate the candidate row or run through a successful UI-to-Gateway receipt; live Gateway, packaged Windows, and source-paired acceptance remain open.
 
 Validation: PASS `cargo check -p hermes-native --lib`; custom-model validation and persistence tests; fresh profile-scoped model mutation and model-options Gateway tests; rendered model/reasoning/custom-entry UI test; rustfmt and diff checks. Progress and both package validators are run after evidence mapping.
+
+
+### Revision 281 — Recover an unavailable chat model catalog (2026-11-20)
+
+The chat composer now presents an error-only **Retry model list** action beside the model control, so recovery does not require opening a nested menu. Retrying invalidates only the scoped model-catalog owner and reissues the read on the next composer frame; it does not alter the prompt draft, attachment list, active session, profile, or any model mutation. A rendered headless regression clicks the retry action with the Gateway unavailable and checks those retained values.
+
+PAR-0218 is mapped partial. The pinned Hermes Desktop picker presents a catalog error but has no manual retry button; this native recovery control is an intentional recovery enhancement requested by the acceptance row. The failure regression covers an unavailable Gateway; live catalog error recovery, packaged Windows interaction, and source-paired acceptance remain open.
+
+Validation: PASS focused rendered retry regression, `cargo check -p hermes-native --lib`, `cargo fmt --package hermes-native --check`, and `git diff --check`.

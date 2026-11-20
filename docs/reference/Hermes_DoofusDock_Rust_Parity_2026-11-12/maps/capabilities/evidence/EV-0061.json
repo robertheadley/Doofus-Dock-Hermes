@@ -1,15 +1,15 @@
 {
   "uid": "EV-0061",
-  "capability_id": "ui-create-a-chat-and-send-a-prompt",
+  "capability_id": "ui-retry-unavailable-model-catalog-without-draft-loss",
   "kind": "test_result",
   "outcome": "partial",
-  "scenario": "new-chat-send-creates-session-then-submits-draft-on-runtime-id",
-  "locator": "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id",
+  "scenario": "retrying_chat_model_catalog_preserves_draft_and_attachments_on_failure",
+  "locator": "../../../../../../apps/hermes-native/src/app.rs",
   "date": "2026-11-20",
-  "commit": "7216408a5afe2e498337027c363efc19af4d725d",
+  "commit": "93bb1610ec6657cd766b15657df8658d43a64663",
   "branch": "main",
   "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
   "platform": "Windows 11 x86_64",
-  "environment": "Headless egui app and synthetic Hermes Gateway event channel. The test clicks the visible New Chat Send control, asserts session.create profile/source, delivers SessionCreated with distinct runtime and stored IDs, checks prompt.submit uses the runtime ID and original draft, then verifies stored-ID navigation and the admitted transcript state. No live authenticated Gateway or source-paired runtime was used.",
-  "notes": "Partial evidence for the fresh-chat success path. Create and submit failure/reconciliation paths, authenticated live Gateway behavior, and source-paired acceptance remain open."
+  "environment": "Headless egui rendered-composer test. The visible Retry model list action was clicked while the Gateway was unavailable; no authenticated live Gateway or packaged Windows runtime was used.",
+  "notes": "Partial evidence for PAR-0218. Retry remains outside the nested picker error row and the regression verifies the typed draft, attachment, active runtime session and profile remain unchanged through a failed retry. Pinned Desktop reports query errors without a visible manual retry button, so this native affordance extends rather than copies that error state. Live Gateway recovery and source-paired acceptance remain open."
 }

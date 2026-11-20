@@ -1288,6 +1288,20 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "custom provider endpoint configuration, live authenticated Gateway behavior, packaged Windows interaction and source-paired acceptance remain open",
         ],
     },
+    "PAR-0218": {
+        "state": "partial",
+        "level": "headless_rendered_catalog_retry_preserves_chat_draft_and_attachment",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 281",
+            "apps/hermes-native/src/app.rs#Retry model list",
+            "apps/hermes-native/src/app.rs#retrying_chat_model_catalog_preserves_draft_and_attachments_on_failure",
+            "apps/hermes-native/src/app.rs#retry_chat_model_options",
+        ],
+        "gaps": [
+            "pinned Desktop reports model catalog errors without a manual retry button, so the native retry is an added recovery behavior",
+            "headless test covers retry while the Gateway is unavailable; live Gateway recovery, packaged Windows behavior and source-paired acceptance remain open",
+        ],
+    },
 }
 
 FIELDS = [
