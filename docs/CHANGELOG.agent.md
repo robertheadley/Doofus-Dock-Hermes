@@ -3600,3 +3600,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Live Gateway behavior, full fallback UI save/readback, fallback execution following default-model failure, physical Windows behavior and source-paired acceptance remain open; an `/api/env` sequence can partially persist earlier secrets before a later write fails.
 - **follow_up:** Publish evidence/docs to `main`, then continue scoped chat/tool, skills and plugin work; visual styling follows functional scope completion.
+
+## 2026-11-20 — PAR-0220 and Agent Plugin settings publication
+
+- **id:** hermes-par0220-plugin-settings-publication-20261120
+- **timestamp:** 2026-11-20 18:48 UTC
+- **what:** Published implementation commits `8a057d15b39b44d07204885a373b435c368c801e` and `626d861497e7265dde6fe09a82bdc8a2896eaba2`, plus evidence/docs/task-state commit `d7b7966f9228b77fff5d66ab6b43ea3f99a83880`, to `origin/main`; fresh fetch confirmed exact SHA equality.
+- **why:** Keep the user-designated main branch current with the validated feature work and its evidence.
+- **components:** Fallback Settings, Agent Plugin Settings, Gateway, progress overlay, UCM evidence, task journal and project docs.
+- **type:** Direct main publication.
+- **validation:** PASS full 488-test library suite, cargo check, rustfmt, progress generators, root and archival UCM validators, task validation, git diff checks, push and post-push fresh fetch.
+- **performance:** No runtime performance change measured.
+- **risks:** Live Gateway and packaged Windows behaviors remain unverified; the full scoped feature milestone remains in progress.
+- **follow_up:** Continue the remaining scoped chat/tool, skills, MCP and plugin capabilities; defer visual styling until functional parity is ready.
