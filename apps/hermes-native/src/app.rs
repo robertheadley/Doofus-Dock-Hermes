@@ -6870,6 +6870,18 @@ fn render_message() -> &'static str {
                     ui.set_max_width(ui.available_width().min(860.0));
                     for (index, message) in messages.into_iter().enumerate() {
                         let (speaker, body) = transcript_message(&message);
+                        let structured_error = structured_provider_error_presentation(&message);
+                        let error_detail = message
+                            .get("error")
+                            .and_then(serde_json::Value::as_str)
+                            .filter(|error| !error.trim().is_empty())
+                            .map(str::to_owned);
+                        let partial_content = message
+                            .get("content")
+                            .filter(|content| {
+                                !content.is_null() && !content.as_str().is_some_and(str::is_empty)
+                            })
+                            .map(|content| bounded_transcript_value(content, 6_000));
                         let tool_image = tool_images.get(&index);
                         let matched = search_matches.contains(&index);
                         let selected_match = find_target == Some(index) && matched;
@@ -6889,7 +6901,24 @@ fn render_message() -> &'static str {
                         };
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
-                            render_transcript_markdown(ui, markdown_cache, &body);
+                            if let Some((title, explanation)) = &structured_error {
+                                ui.label(RichText::new(title).strong().color(Color32::LIGHT_RED));
+                                ui.label(explanation);
+                                if let Some(raw) = &error_detail {
+                                    egui::CollapsingHeader::new("Details")
+                                        .id_salt(("provider-error-details", session_id, index))
+                                        .default_open(false)
+                                        .show(ui, |ui| {
+                                            render_transcript_markdown(ui, markdown_cache, raw);
+                                        });
+                                }
+                                if let Some(partial) = &partial_content {
+                                    ui.label(RichText::new("Partial response").strong());
+                                    render_transcript_markdown(ui, markdown_cache, partial);
+                                }
+                            } else {
+                                render_transcript_markdown(ui, markdown_cache, &body);
+                            }
                             if let Some(artifact) = tool_image {
                                 let remote = self
                                     .gateway_endpoint
@@ -29965,6 +29994,53 @@ fn timestamps_status(enabled: bool) -> String {
     )
 }
 
+fn structured_provider_error_presentation(message: &serde_json::Value) -> Option<(String, String)> {
+    let raw_error = message
+        .get("error")
+        .and_then(serde_json::Value::as_str)
+        .filter(|error| !error.trim().is_empty())?;
+    let surface = message.get("error_surface")?.as_object()?;
+    let code = surface.get("code")?.as_str()?;
+    let provider = surface
+        .get("provider_label")
+        .or_else(|| surface.get("providerLabel"))
+        .or_else(|| surface.get("provider"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("the configured provider");
+    let model = surface
+        .get("model")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.rsplit('/').next().unwrap_or(value))
+        .unwrap_or("the selected model");
+
+    match code {
+        "model_not_found" => Some((
+            "Model not found".into(),
+            format!(
+                "Hermes could not find {model} on {provider}. Choose a model configured for this provider."
+            ),
+        )),
+        "provider_policy_blocked" => Some((
+            "Provider policy blocked this request".into(),
+            format!(
+                "{provider} blocked {model} under its current policy. Review the provider's settings or choose another model."
+            ),
+        )),
+        _ if surface.get("layer").and_then(serde_json::Value::as_str) == Some("provider") => {
+            Some((
+                "Provider compatibility error".into(),
+                format!("Hermes could not complete this request with {model} through {provider}."),
+            ))
+        }
+        _ => {
+            let _ = raw_error;
+            None
+        }
+    }
+}
+
 fn transcript_message(message: &serde_json::Value) -> (String, String) {
     if message.get("type").and_then(|value| value.as_str()) == Some("tool_call") {
         let name = message
@@ -31782,6 +31858,50 @@ mod tests {
         assert_eq!(app.active_session_profile.as_deref(), Some("work"));
         drop(app);
         drop(harness);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details() {
+        let (mut app, profile_dir) = isolated_app();
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({
+                "role":"assistant","content":"Partial output","error":"404: model does not exist",
+                "error_surface":{"layer":"provider","code":"model_not_found","retryable":false,"provider":"openrouter","providerLabel":"OpenRouter","model":"vendor/missing-model"}
+            }),
+            serde_json::json!({
+                "role":"assistant","error":"blocked by provider privacy policy",
+                "error_surface":{"layer":"provider","code":"provider_policy_blocked","retryable":false,"provider":"openrouter","model":"vendor/private-model"}
+            }),
+        ];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 720.0))
+            .build_ui(move |ui| {
+                frame_app
+                    .borrow_mut()
+                    .session_content(ui, "runtime-session")
+            });
+        harness.run_steps(2);
+
+        assert!(harness.query_by_label("Model not found").is_some());
+        assert!(
+            harness
+                .query_by_label("Hermes could not find missing-model on OpenRouter. Choose a model configured for this provider.")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Provider policy blocked this request")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Partial response").is_some());
+
+        drop(harness);
+        drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
