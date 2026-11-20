@@ -1129,6 +1129,8 @@ capabilities:
   evidence:
   - type: test_result
     locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0070.json
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0072.json
 
 - id: ui-display-reasoning-collapsed-in-simple-mode
   name: Display reasoning collapsed in Simple mode

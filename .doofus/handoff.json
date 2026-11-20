@@ -282,25 +282,19 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0070.json",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0071.json",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0072.json",
       "status": "??"
     }
   ],
   "checkpoint": {
     "command": "cargo check -p hermes-native --lib",
     "evidence": [
-      "apps/hermes-native/src/reasoning.rs#three_character_frames_preserve_safe_answer_and_extract_reasoning",
+      "apps/hermes-native/src/gateway.rs#display_reasoning_config_read_uses_profile_scoped_source_api",
       "apps/hermes-native/src/app.rs#simple_mode_keeps_reasoning_in_a_collapsed_accessible_disclosure"
     ],
     "state": "tested",
-    "summary": "PAR-0046 stream scrubber and reasoning disclosure implemented; full 498-test library suite, focused split-tag reducer test and Simple-mode accessible disclosure test pass. PAR-0046/0047 remain partial pending profile reasoning preference and live/source-paired acceptance.",
-    "verified_at": "2026-11-20T19:21:25Z"
+    "summary": "PAR-0046/0047 reasoning disclosure is implemented and profile-scoped display preference is loaded with CLI override precedence. Full 501-test suite, preference fixtures, Simple-mode UI and disabled-preference tests pass. A native setting control, live Gateway and source-paired acceptance remain open.",
+    "verified_at": "2026-11-20T19:32:47Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -313,6 +307,7 @@
     "hermes-par-0043",
     "hermes-par-0044",
     "hermes-par-0046",
+    "hermes-par-0047",
     "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0063",
@@ -352,7 +347,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T20:21:25Z",
+    "lease_expires_at": "2026-11-20T20:32:47Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1257,9 +1252,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "5503e4a5-f54f-4c30-919a-3034db345ed2",
+  "last_event_id": "2f200f53-c29f-466d-beba-f5a1f9210c47",
   "last_operation": {
-    "request_id": "5503e4a5-f54f-4c30-919a-3034db345ed2",
+    "request_id": "2f200f53-c29f-466d-beba-f5a1f9210c47",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1278,7 +1273,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Implement profile-scoped display.show_reasoning preference loading and continue the next dependency-ready P0 chat/tool gap.",
+  "recommended_next_action": "Continue the next dependency-ready P0 chat/tool capability in the fixed snapshot; prioritize remaining tool loop, attachment, skills, MCP and plugin gaps.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1318,7 +1313,6 @@
     "hermes-par-0038",
     "hermes-par-0039",
     "hermes-par-0045",
-    "hermes-par-0047",
     "hermes-par-0048",
     "hermes-par-0049",
     "hermes-par-0050",
@@ -1739,7 +1733,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "819484b1355432cd9d26b919664256c0455a2a6ac263aaded2c844357629e0c9",
+    "change_fingerprint": "5174ebb101b3f495680066b3c4660051fd303725420532a4f7137567afbfb68e",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1802,25 +1796,21 @@
         "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0070.json",
-        "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0071.json",
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0072.json",
         "status": "??"
       }
     ],
-    "head_commit": "259fbf21f25bd89b1968fea30a5bf989f9ef6814",
+    "head_commit": "d357cefb1dc481978723c55de448b5edbcad0021",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 497,
+  "revision": 501,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 497,
+  "state_revision": 501,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0046",
-  "task_ledger_revision": 83,
+  "task_id": "hermes-par-0047",
+  "task_ledger_revision": 84,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3081,9 +3071,19 @@
       "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --lib",
       "result": "PASS 498 passed, 0 failed; rustfmt, task validation, focused UI and reducer tests pass.",
       "timestamp": "2026-11-20T19:21:25Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --lib",
+      "result": "PASS 501 passed, 0 failed; focused profile HTTP/config and accessible UI tests pass; rustfmt and diff check pass.",
+      "timestamp": "2026-11-20T19:31:28Z"
+    },
+    {
+      "command": "cargo test --quiet --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --lib",
+      "result": "PASS 501 passed, 0 failed; focused profile config and accessible UI tests pass; both UCM validators, rustfmt and task validation pass.",
+      "timestamp": "2026-11-20T19:32:47Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T19:21:25Z"
+  "updated_at": "2026-11-20T19:32:47Z"
 }

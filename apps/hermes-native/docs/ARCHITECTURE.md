@@ -259,7 +259,7 @@ Current pagination requests profile-scoped offset pages, fences the response to 
 
 ## Reasoning and answer stream
 
-The transcript reducer scrubs tagged reasoning from `message.delta` before updating the answer bubble and holds incomplete tag prefixes between frames. `reasoning.delta` is associated with the active assistant row, including profile-scoped background transcripts. The Thinking disclosure renders reasoning separately; Simple mode defaults it closed. The accumulated raw stream is temporary and removed when the segment completes, is interrupted by a tool, or fails. Reasoning is exposed only after a Gateway reasoning event indicates the configured stream is enabled. Profile-level configuration loading, live Gateway verification, and source-paired Windows acceptance remain open.
+The transcript reducer scrubs tagged reasoning from `message.delta` before updating the answer bubble and holds incomplete tag prefixes between frames. `reasoning.delta` is associated with the active assistant row, including profile-scoped background transcripts. The Thinking disclosure renders reasoning separately; Simple mode defaults it closed. The accumulated raw stream is temporary and removed when the segment completes, is interrupted by a tool, or fails. Reasoning is exposed only after a Gateway reasoning event indicates the configured stream is enabled. The active profile's `display.show_reasoning` setting is loaded with CLI override precedence and defaults off when unset. A native setting control, live Gateway verification, and source-paired Windows acceptance remain open.
 
 ## Tool invocation transcript projection
 

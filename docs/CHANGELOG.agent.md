@@ -3641,3 +3641,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** PAR-0046/PAR-0047 remain partial; profile-level reasoning preference loading and live/source-paired acceptance remain open.
 - **follow_up:** Implement `display.show_reasoning` profile preference loading, then continue the dependency-ready chat/tool, skills, MCP and plugin gaps.
+
+
+## 2026-11-20 — Profile reasoning visibility
+
+- **id:** hermes-par0046-profile-reasoning-preference
+- **timestamp:** 2026-11-20 19:31 UTC
+- **what:** Added profile-scoped display reasoning reads for local and remote Gateway connections, with CLI override precedence and fail-closed off-by-default behavior. Responses are request/profile fenced and stale-profile responses are discarded.
+- **why:** Keep the Thinking disclosure aligned with the selected Hermes profile and prevent hidden reasoning from appearing when its configured preference is off.
+- **components:** Gateway HTTP worker, profile config reader, transcript rendering and chat parity evidence.
+- **type:** Chat setting integration and regression coverage.
+- **validation:** PASS profile-scoped HTTP fixture, CLI/global precedence tests, disabled-preference accessible UI test and full 501-test native library suite; cargo check, rustfmt and diff checks pass.
+- **performance:** No performance change measured.
+- **risks:** The Gateway setting can be read but not changed from a dedicated native control; live server and packaged Windows behavior remain unverified.
+- **follow_up:** Continue remaining chat/tool and skills/plugin parity work; consider the native reasoning setting control with the remaining preference surfaces.

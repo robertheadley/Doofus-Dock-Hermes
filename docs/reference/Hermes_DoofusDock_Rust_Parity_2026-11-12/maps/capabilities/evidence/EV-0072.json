@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0072",
+  "capability_id": "ui-display-thinking-disclosure",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "display_reasoning_config_read_uses_profile_scoped_source_api",
+  "locator": "apps/hermes-native/src/gateway.rs#display_reasoning_config_read_uses_profile_scoped_source_api",
+  "date": "2026-11-20",
+  "commit": "d357cefb1dc481978723c55de448b5edbcad0021",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Local ticket-authenticated profile-scoped /api/config fixture proves the CLI override wins over the global show_reasoning value; pure config tests cover boolean/string parsing and off-by-default behavior. Accessible UI test confirms disabled preference hides both the disclosure and reasoning text. Full agent-automation library suite passes 501/501 tests, cargo check and rustfmt pass.",
+  "notes": "Partial evidence. A dedicated native UI action to change display.show_reasoning, live Gateway behavior and source-paired/packaged Windows acceptance remain open."
+}

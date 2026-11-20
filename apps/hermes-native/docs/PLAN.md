@@ -1759,3 +1759,10 @@ Validation: PASS 488 locked `agent-automation` library tests, including fallback
 The native transcript now strips pinned Hermes reasoning tags from answer text across incremental frames, holds incomplete tag prefixes, routes `reasoning.delta` into a separate reasoning field for active and background sessions, and offers an accessible Thinking disclosure. Simple mode starts the disclosure collapsed. The raw accumulated stream is discarded when the assistant segment is sealed. PAR-0046 and PAR-0047 are recorded as partial because the profile-level `display.show_reasoning` setting and live Gateway/source-paired acceptance remain open.
 
 Validation: PASS full `agent-automation` native library suite (498/498), focused scrubber and transcript reducer tests, Simple-mode accessible disclosure test, `cargo check -p hermes-native --lib`, rustfmt, `git diff --check`, and task state validation. Commit `259fbf21f25bd89b1968fea30a5bf989f9ef6814` contains the implementation. No live Gateway or packaged Windows run was performed.
+
+
+### Revision 287 — Profile reasoning preference (2026-11-20)
+
+Native startup now loads the active profile's `display.show_reasoning`, applying `display.platforms.cli.show_reasoning` before the global value and defaulting off when unset. Both local ticket-authenticated and remote-authenticated configuration readers retain the selected profile; stale profile responses are discarded. A native control for changing the setting is still open.
+
+Validation: PASS focused profile HTTP and precedence fixtures, disabled-preference accessible UI regression, full 501-test `agent-automation` library suite, `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. Live Gateway and packaged Windows behavior remain unverified.
