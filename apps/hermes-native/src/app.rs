@@ -20465,6 +20465,19 @@ fn render_message() -> &'static str {
             return;
         }
         let busy = self.pending_agent_plugin_settings_save.is_some();
+        let dirty = dialog.plugin.settings_schema.iter().any(|field| {
+            if field.field_type == "secret" {
+                dialog
+                    .secrets
+                    .get(&field.key)
+                    .is_some_and(|value| !value.is_empty())
+            } else {
+                dialog
+                    .drafts
+                    .get(&field.key)
+                    .is_some_and(|value| value != &plugin_setting_initial_draft(field))
+            }
+        });
         let mut close = false;
         let mut save = false;
         let plugin_name = dialog.plugin.name.clone();
@@ -20547,7 +20560,7 @@ fn render_message() -> &'static str {
                 }
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(!busy, egui::Button::new("Save settings")).clicked() { save = true; }
+                    if ui.add_enabled(!busy && dirty, egui::Button::new("Save settings")).clicked() { save = true; }
                     if ui.add_enabled(!busy, egui::Button::new("Close")).clicked() { close = true; }
                     if busy { ui.label(RichText::new("Saving…").color(MUTED)); }
                 });
@@ -20630,6 +20643,10 @@ fn render_message() -> &'static str {
                     return;
                 }
             }
+        }
+        if values.is_empty() && secrets.is_empty() {
+            dialog.error = None;
+            return;
         }
         let request_id = operation_id("agent-plugin-settings-save");
         self.pending_agent_plugin_settings_save = Some(PendingAgentPluginSettingsSave {
@@ -36611,19 +36628,51 @@ mod tests {
 
     #[test]
     fn agent_plugin_settings_reject_invalid_json_and_omits_unchanged_values() {
-        let field: AgentPluginSettingField = serde_json::from_value(json!({
-            "key":"options","type":"json","label":"Options","value":{"enabled":true}
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        let plugin: AgentPluginInfo = serde_json::from_value(json!({
+            "key":"vendor:sample", "name":"Sample Plugin",
+            "settings_schema":[{
+                "key":"options","type":"json","label":"Options","value":{"enabled":true}
+            }]
         }))
         .expect("JSON setting fixture");
-        let original = plugin_setting_initial_draft(&field);
-        assert_eq!(original, "{\n  \"enabled\": true\n}");
-        let malformed = "{not json";
-        assert!(serde_json::from_str::<serde_json::Value>(malformed).is_err());
-        assert_eq!(
-            plugin_setting_initial_draft(&field),
-            original,
-            "unchanged values retain their baseline draft"
+        app.open_agent_plugin_settings(plugin);
+        let (discovery, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(discovery);
+
+        app.begin_agent_plugin_settings_save();
+        assert!(app.pending_agent_plugin_settings_save.is_none());
+        assert!(
+            commands.try_recv().is_err(),
+            "an unchanged settings form must not dispatch an RPC"
         );
+
+        let dialog = app.agent_plugin_settings_dialog.as_mut().unwrap();
+        dialog.drafts.insert("options".into(), "{not json".into());
+        app.begin_agent_plugin_settings_save();
+        assert!(app.pending_agent_plugin_settings_save.is_none());
+        assert!(
+            app.agent_plugin_settings_dialog
+                .as_ref()
+                .unwrap()
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("JSON object or array"))
+        );
+        assert!(commands.try_recv().is_err());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
