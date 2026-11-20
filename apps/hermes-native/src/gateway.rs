@@ -2124,6 +2124,16 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<RepoScanPolicy, String>,
     },
+    FallbackProvidersConfigLoaded {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<Vec<serde_json::Value>, String>,
+    },
+    FallbackProvidersConfigSaved {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<Vec<serde_json::Value>, String>,
+    },
     RepoDiscoveryCompleted {
         request_id: String,
         profile: String,
@@ -2804,6 +2814,15 @@ enum GatewayHttpCommand {
         request_id: String,
         profile: Option<String>,
         policy: RepoScanPolicy,
+    },
+    LoadFallbackProvidersConfig {
+        request_id: String,
+        profile: Option<String>,
+    },
+    SaveFallbackProvidersConfig {
+        request_id: String,
+        profile: Option<String>,
+        routes: Vec<serde_json::Value>,
     },
     SetToolsetEnabled {
         request_id: String,
@@ -4980,6 +4999,34 @@ impl GatewayDiscovery {
                 request_id,
                 profile,
                 policy,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn load_fallback_providers_config(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadFallbackProvidersConfig {
+                request_id,
+                profile,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn save_fallback_providers_config(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        routes: Vec<serde_json::Value>,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::SaveFallbackProvidersConfig {
+                request_id,
+                profile,
+                routes,
             })
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
@@ -9706,6 +9753,23 @@ fn gateway_http_actor(
                 profile: profile.clone(),
                 result: save_repo_scan_config_http(&endpoint, profile.as_deref(), &policy),
             },
+            GatewayHttpCommand::LoadFallbackProvidersConfig {
+                request_id,
+                profile,
+            } => GatewayEvent::FallbackProvidersConfigLoaded {
+                request_id,
+                profile: profile.clone(),
+                result: load_fallback_providers_http(&endpoint, profile.as_deref()),
+            },
+            GatewayHttpCommand::SaveFallbackProvidersConfig {
+                request_id,
+                profile,
+                routes,
+            } => GatewayEvent::FallbackProvidersConfigSaved {
+                request_id,
+                profile: profile.clone(),
+                result: save_fallback_providers_http(&endpoint, profile.as_deref(), &routes),
+            },
             GatewayHttpCommand::SetToolsetEnabled {
                 request_id,
                 name,
@@ -13427,6 +13491,191 @@ fn repo_scan_policy_from_config(config: &serde_json::Value) -> RepoScanPolicy {
         roots: strings("repo_scan_roots"),
         exclude_paths: strings("repo_scan_exclude_paths"),
     }
+}
+
+const FALLBACK_ROUTE_LIMIT: usize = 64;
+
+fn load_fallback_providers_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let url = format!(
+        "{}/api/config{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    if endpoint.remote_auth.is_some() {
+        let config: serde_json::Value = request_remote_gateway_json(endpoint, &url)?;
+        return fallback_providers_from_config(&config);
+    }
+    if !is_bare_loopback_origin(&endpoint.api_origin) {
+        return Err(
+            "Hermes fallback model settings require the verified loopback API origin".into(),
+        );
+    }
+    let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+    read_fallback_providers_local(&endpoint.api_origin, ticket.as_str(), profile_id)
+}
+
+fn read_fallback_providers_local(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err(
+            "Hermes fallback model settings require the verified loopback API origin".into(),
+        );
+    }
+    let url = format!(
+        "{}/api/config{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let config: serde_json::Value = request_gateway_json(api_origin, ticket, &url)?;
+    fallback_providers_from_config(&config)
+}
+
+fn save_fallback_providers_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+    routes: &[serde_json::Value],
+) -> Result<Vec<serde_json::Value>, String> {
+    let routes = normalize_fallback_providers(routes.to_vec())?;
+    if !fallback_providers_are_bounded(&routes) {
+        return Err("Hermes fallback model settings exceed their bounded schema".into());
+    }
+    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let url = format!(
+        "{}/api/config{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let body = fallback_providers_config_patch(&routes);
+    let response: serde_json::Value = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_mutation(endpoint, "PUT", &url, body)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err(
+                "Hermes fallback model settings require the verified loopback API origin".into(),
+            );
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        save_fallback_providers_local(&endpoint.api_origin, ticket.as_str(), profile_id, &routes)?
+    };
+    if response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err("Hermes did not confirm fallback model settings were saved".into());
+    }
+    Ok(routes)
+}
+
+fn save_fallback_providers_local(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+    routes: &[serde_json::Value],
+) -> Result<serde_json::Value, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err(
+            "Hermes fallback model settings require the verified loopback API origin".into(),
+        );
+    }
+    let routes = normalize_fallback_providers(routes.to_vec())?;
+    if !fallback_providers_are_bounded(&routes) {
+        return Err("Hermes fallback model settings exceed their bounded schema".into());
+    }
+    let url = format!(
+        "{}/api/config{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    cron_local_gateway_http_request_with_ticket(
+        api_origin,
+        ticket,
+        "PUT",
+        &url,
+        Some(fallback_providers_config_patch(&routes)),
+    )
+}
+
+fn fallback_providers_from_config(
+    config: &serde_json::Value,
+) -> Result<Vec<serde_json::Value>, String> {
+    let Some(value) = config.get("fallback_providers") else {
+        return Ok(Vec::new());
+    };
+    let routes = value
+        .as_array()
+        .ok_or_else(|| "Hermes fallback_providers must be a list".to_owned())?;
+    normalize_fallback_providers(routes.clone())
+}
+
+fn normalize_fallback_providers(
+    routes: Vec<serde_json::Value>,
+) -> Result<Vec<serde_json::Value>, String> {
+    if routes.len() > FALLBACK_ROUTE_LIMIT {
+        return Err("Hermes returned too many fallback model routes".into());
+    }
+    let mut normalized = Vec::with_capacity(routes.len());
+    for (index, route) in routes.into_iter().enumerate() {
+        let value = match route {
+            serde_json::Value::Object(_) => route,
+            serde_json::Value::String(value) => {
+                let (provider, model) = value.split_once('/').ok_or_else(|| {
+                    format!(
+                        "Hermes fallback route {} must use provider/model format",
+                        index + 1
+                    )
+                })?;
+                serde_json::json!({"provider": provider, "model": model})
+            }
+            _ => {
+                return Err(format!(
+                    "Hermes fallback route {} must be an object or legacy provider/model string",
+                    index + 1
+                ));
+            }
+        };
+        let object = value
+            .as_object()
+            .ok_or_else(|| format!("Hermes fallback route {} is invalid", index + 1))?;
+        for field in ["provider", "model"] {
+            let Some(value) = object.get(field).and_then(serde_json::Value::as_str) else {
+                return Err(format!(
+                    "Hermes fallback route {} has no valid {field}",
+                    index + 1
+                ));
+            };
+            if value.trim().is_empty()
+                || value.len() > CRON_FORM_MODEL_LIMIT
+                || value.chars().any(char::is_control)
+            {
+                return Err(format!(
+                    "Hermes fallback route {} has an invalid {field}",
+                    index + 1
+                ));
+            }
+        }
+        normalized.push(value);
+    }
+    if !fallback_providers_are_bounded(&normalized) {
+        return Err("Hermes fallback model settings exceed their bounded schema".into());
+    }
+    Ok(normalized)
+}
+
+fn fallback_providers_are_bounded(routes: &[serde_json::Value]) -> bool {
+    routes.len() <= FALLBACK_ROUTE_LIMIT
+        && serde_json::to_vec(routes)
+            .is_ok_and(|encoded| encoded.len() as u64 <= GATEWAY_HTTP_RESPONSE_LIMIT)
+}
+
+fn fallback_providers_config_patch(routes: &[serde_json::Value]) -> serde_json::Value {
+    serde_json::json!({"config": {"fallback_providers": routes}})
 }
 
 fn read_display_timestamps(
@@ -18624,6 +18873,161 @@ mod tests {
     }
 
     #[test]
+    fn fallback_providers_reads_legacy_routes_and_preserves_unknown_fields() {
+        let routes = fallback_providers_from_config(&json!({
+            "fallback_providers": [
+                "openai/gpt-fixture",
+                {"provider":"custom","model":"glm-fixture","base_url":"http://gw:8080/v1","key_env":"GW_KEY","api_mode":"responses"}
+            ]
+        }))
+        .expect("valid fallback route config");
+        assert_eq!(
+            routes[0],
+            json!({"provider":"openai","model":"gpt-fixture"})
+        );
+        assert_eq!(routes[1]["base_url"], "http://gw:8080/v1");
+        assert_eq!(routes[1]["key_env"], "GW_KEY");
+        assert_eq!(routes[1]["api_mode"], "responses");
+        assert!(
+            fallback_providers_from_config(&json!({}))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(fallback_providers_from_config(&json!({"fallback_providers":["bad"]})).is_err());
+        assert!(
+            fallback_providers_from_config(&json!({
+                "fallback_providers":[{"provider":"openai","model":7}]
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn fallback_providers_local_read_and_save_are_profile_scoped_and_preserve_route_keys() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fallback config fixture");
+        let address = listener.local_addr().expect("fallback fixture address");
+        let server = thread::spawn(move || {
+            let (mut read_stream, _) = listener.accept().expect("accept fallback config read");
+            let read_request = read_http_fixture_request(&mut read_stream);
+            assert!(
+                read_request.starts_with("GET /api/config?profile=work%20profile HTTP/1.1\r\n")
+            );
+            assert!(
+                read_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n")
+            );
+            let config = json!({"fallback_providers":[{
+                "provider":"custom","model":"glm-fixture","base_url":"http://gw:8080/v1","key_env":"GW_KEY"
+            }]}).to_string();
+            write!(read_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", config.len(), config)
+                .expect("write fallback config response");
+
+            let (mut save_stream, _) = listener.accept().expect("accept fallback config save");
+            let save_request = read_http_fixture_request(&mut save_stream);
+            assert!(
+                save_request.starts_with("PUT /api/config?profile=work%20profile HTTP/1.1\r\n")
+            );
+            assert!(
+                save_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n")
+            );
+            let body = save_request
+                .split_once("\r\n\r\n")
+                .expect("fallback config body")
+                .1;
+            let value: serde_json::Value =
+                serde_json::from_str(body).expect("fallback sparse patch");
+            assert_eq!(
+                value["config"]["fallback_providers"][0]["provider"],
+                "custom"
+            );
+            assert_eq!(
+                value["config"]["fallback_providers"][0]["base_url"],
+                "http://gw:8080/v1"
+            );
+            assert_eq!(
+                value["config"]["fallback_providers"][0]["key_env"],
+                "GW_KEY"
+            );
+            assert!(value["config"]["model"].is_null());
+            let receipt = r#"{"ok":true}"#;
+            write!(save_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", receipt.len(), receipt)
+                .expect("write fallback save receipt");
+        });
+        let api_origin = format!("http://{address}");
+        let routes = read_fallback_providers_local(
+            &api_origin,
+            "fixture-native-http-ticket",
+            "work profile",
+        )
+        .expect("read fallback provider config");
+        assert_eq!(routes[0]["base_url"], "http://gw:8080/v1");
+        let saved = save_fallback_providers_local(
+            &api_origin,
+            "fixture-native-http-ticket",
+            "work profile",
+            &routes,
+        )
+        .expect("save fallback provider config");
+        assert_eq!(saved["ok"], true);
+        server.join().expect("fallback config fixture exits");
+    }
+
+    #[test]
+    fn fallback_providers_remote_save_uses_profile_scope_and_session_token() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind remote fallback fixture");
+        let address = listener
+            .local_addr()
+            .expect("remote fallback fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept remote fallback save");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with("PUT /hermes/api/config?profile=work HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let body = request
+                .split_once("\r\n\r\n")
+                .expect("remote fallback body")
+                .1;
+            let value: serde_json::Value =
+                serde_json::from_str(body).expect("remote fallback patch");
+            assert_eq!(
+                value["config"]["fallback_providers"][0]["api_mode"],
+                "responses"
+            );
+            let receipt = r#"{"ok":true}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", receipt.len(), receipt)
+                .expect("write remote fallback receipt");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "default".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        let routes = vec![json!({
+            "provider":"custom","model":"glm-fixture","api_mode":"responses"
+        })];
+        assert_eq!(
+            save_fallback_providers_http(&endpoint, Some("work"), &routes)
+                .expect("save remote fallback routes"),
+            routes
+        );
+        server.join().expect("remote fallback fixture exits");
+    }
+
+    #[test]
     fn repo_scan_config_defaults_and_filters_malformed_values() {
         assert_eq!(
             repo_scan_policy_from_config(&json!({})),
@@ -19365,7 +19769,7 @@ mod tests {
             let body = json!({
                 "name":"review & plan",
                 "path":"/profile/skills/review/SKILL.md",
-                "content":"---\\nname: review & plan\\n---\\nReview the proposed change."
+                "content":"---\nname: review & plan\n---\nReview the proposed change."
             })
             .to_string();
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)

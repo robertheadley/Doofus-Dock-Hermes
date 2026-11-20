@@ -1,5 +1,5 @@
 {
-  "revision": 78,
+  "revision": 79,
   "schema_version": 1,
   "tasks": [
     {
@@ -7177,7 +7177,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -7186,11 +7186,11 @@
                 "priority": "P1",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-20T18:02:13Z",
+              "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
               "objective": "ui-show-preferred-fallback-route",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -7201,10 +7201,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0220",
               "title": "PAR-0220 Show preferred fallback route",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#model_fallback_settings_render_ordered_routes_and_keep_blank_drafts_local"
+              ]
             },
             {
               "agent_identity": {
@@ -16322,5 +16324,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-20T17:35:46Z"
+  "updated_at": "2026-11-20T18:02:13Z"
 }

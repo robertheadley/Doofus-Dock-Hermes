@@ -3536,3 +3536,30 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Choose-model/provider-settings actions and localization are still missing; no live Gateway or packaged runtime was tested.
 - **follow_up:** Validate package maps, refresh the 175-row scope, publish, and continue chat/tool parity.
+
+
+## PAR-0219 main publication
+
+- **id:** hermes-par0219-main-publication-20261120
+- **timestamp:** 2026-11-20 17:40 UTC
+- **what:** Published error-surface behavior as `b9da9a791722796031cb360b88a50b57be3da90d` and partial evidence/docs as `adc10b644083364e7e6a4564c4b66a314badb762` on `main`.
+- **why:** Keep the main-only repository current with tested model/provider error behavior.
+- **components:** Native transcript error cards, pinned UCM status, scoped progress and task handoff.
+- **type:** Direct main publication.
+- **validation:** PASS push and fresh fetch; local `main` and `origin/main` match exactly at `adc10b644083364e7e6a4564c4b66a314badb762`.
+- **performance:** No performance change measured.
+- **risks:** Error-specific recovery actions and localization remain open; no live Gateway or packaged Windows test was run.
+- **follow_up:** Audit PAR-0220 and continue pinned chat/tool feature coverage.
+
+## PAR-0220 profile-scoped fallback routes
+
+- **id:** hermes-par0220-fallback-routes-20261120
+- **timestamp:** 2026-11-20 18:00 UTC
+- **what:** Added a Model fallbacks Settings view with ordered provider/model rows, blank local drafts, removal, and profile-scoped save. Added authenticated local-ticket and remote-session-token Gateway config reads/writes using sparse patches. Route objects retain custom keys; legacy `provider/model` strings are normalized on read. Scoped progress now includes PAR-0220 as partial.
+- **why:** Let users configure Hermes' ordered fallback chain when their default model fails, without duplicating Hermes runtime routing.
+- **components:** Hermes Native Settings, Gateway HTTP worker, chat/tool scope and progress, pinned capability evidence plan.
+- **type:** Feature, regression coverage, and partial evidence.
+- **validation:** PASS 10 focused fallback-filtered library tests, PASS 477/477 remaining library tests with one unrelated existing retry test skipped, PASS `cargo check -p hermes-native --lib`, PASS rustfmt. The full 478-test run failed only in `retry_failed_turn_reuses_submission_id_and_keeps_one_user_row`; reproduced in isolation.
+- **performance:** No runtime performance change measured.
+- **risks:** Native provider/model fields are free text and lack pinned catalog selectors; full UI save/readback, real fallback execution, live Gateway, packaged Windows and source-paired acceptance remain open. Broad test suite retains the unrelated retry test failure.
+- **follow_up:** Publish code on main, add PAR-0220 partial receipt bound to the implementation commit, validate both UCM packages and task ledger, then continue chat/tool feature coverage.

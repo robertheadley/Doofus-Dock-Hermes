@@ -1729,3 +1729,10 @@ The transcript now recognizes structured `error_surface` entries for `model_not_
 PAR-0219 is mapped partial. The pinned Desktop error card also offers code-specific Choose model and provider-settings actions and localized copy; those actions and localization are not yet implemented natively. Live error-surface Gateway events, packaged Windows behavior, and source-paired acceptance remain open.
 
 Validation: PASS focused rendered egui error-card regression, focused catalog-retry regression, `cargo check -p hermes-native --lib`, rustfmt check, and `git diff --check`.
+
+
+### Revision 283 — Profile-scoped fallback route settings (2026-11-20)
+
+PAR-0220 is in the chat/tool feature scope because this Model > Fallbacks setting controls which model Hermes tries after the active model fails. Native Settings now exposes ordered provider/model route rows for one selected Hermes profile. Gateway config reads use the profile-scoped `/api/config` path and the verified local ticket or remote session-token transport; saves send a sparse `fallback_providers` patch so unrelated config is untouched. Route objects remain JSON through edits and preserve custom fields such as `base_url`, `api_key_ref`, and `api_mode`; legacy `provider/model` strings are normalized on read. Blank add-row drafts stay local and are omitted from the saved list.
+
+Validation: PASS focused `agent-automation` fallback tests (10), PASS `cargo check -p hermes-native --lib`, PASS rustfmt. The full library suite had 477 passing and one independently reproduced unrelated failure in `retry_failed_turn_reuses_submission_id_and_keeps_one_user_row`; the remaining 477 tests pass when that test is skipped. The native editor currently accepts provider/model IDs as text and lacks the pinned catalog selectors and a full UI save/readback fixture. Hermes-owned fallback execution after a default-model failure, live Gateway, packaged Windows and source-paired acceptance remain open.

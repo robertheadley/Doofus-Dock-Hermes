@@ -1179,6 +1179,71 @@ struct PendingModelConfirmation {
     remember_custom_model: bool,
 }
 
+#[derive(Clone, Debug)]
+struct FallbackRouteDraft {
+    /// Retains route-specific keys (for example base_url or api_key_ref) that
+    /// this editor does not own.
+    route: serde_json::Value,
+    provider: String,
+    model: String,
+}
+
+impl FallbackRouteDraft {
+    fn from_value(route: serde_json::Value) -> Self {
+        let (provider, model) = if let Some(object) = route.as_object() {
+            (
+                object
+                    .get("provider")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                object
+                    .get("model")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+            )
+        } else if let Some(value) = route.as_str() {
+            value
+                .split_once('/')
+                .map(|(provider, model)| (provider.to_owned(), model.to_owned()))
+                .unwrap_or_default()
+        } else {
+            (String::new(), String::new())
+        };
+        Self {
+            route,
+            provider,
+            model,
+        }
+    }
+
+    fn to_value(&self) -> serde_json::Value {
+        let mut route = self.route.as_object().cloned().unwrap_or_default();
+        route.insert(
+            "provider".into(),
+            serde_json::Value::String(self.provider.trim().into()),
+        );
+        route.insert(
+            "model".into(),
+            serde_json::Value::String(self.model.trim().into()),
+        );
+        serde_json::Value::Object(route)
+    }
+
+    fn is_complete(&self) -> bool {
+        !self.provider.trim().is_empty() && !self.model.trim().is_empty()
+    }
+}
+
+fn complete_fallback_route_values(routes: &[FallbackRouteDraft]) -> Vec<serde_json::Value> {
+    routes
+        .iter()
+        .filter(|route| route.is_complete())
+        .map(FallbackRouteDraft::to_value)
+        .collect()
+}
+
 fn chat_control_event_matches(
     expected_request: &str,
     expected_session: &str,
@@ -1580,10 +1645,16 @@ pub struct HermesNativeApp {
     repo_scan_completed_policy: Option<(String, RepoScanPolicy)>,
     repo_scan_last_started_at: Option<std::time::Instant>,
     repo_scan_generation: Arc<AtomicU64>,
+    fallback_routes: Option<Vec<FallbackRouteDraft>>,
+    fallback_routes_profile: Option<String>,
+    fallback_routes_request: Option<(String, String)>,
+    fallback_routes_save_request: Option<(String, String, Vec<serde_json::Value>)>,
+    fallback_routes_error: Option<String>,
     keybindings: Option<KeybindingStore>,
     keybindings_error: Option<String>,
     keybindings_panel: KeybindingsPanel,
     settings_keybindings_active: bool,
+    settings_fallbacks_active: bool,
     keybinding_consumed_combos: BTreeSet<String>,
     session_filter: String,
     session_search_changed_at: Option<std::time::Instant>,
@@ -4015,10 +4086,16 @@ fn render_message() -> &'static str {
             repo_scan_completed_policy: None,
             repo_scan_last_started_at: None,
             repo_scan_generation: Arc::new(AtomicU64::new(0)),
+            fallback_routes: None,
+            fallback_routes_profile: None,
+            fallback_routes_request: None,
+            fallback_routes_save_request: None,
+            fallback_routes_error: None,
             keybindings,
             keybindings_error,
             keybindings_panel: KeybindingsPanel::new(),
             settings_keybindings_active: false,
+            settings_fallbacks_active: false,
             keybinding_consumed_combos: BTreeSet::new(),
             session_filter: String::new(),
             session_search_changed_at: None,
@@ -22372,11 +22449,24 @@ fn render_message() -> &'static str {
     fn show_settings(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             if ui
-                .selectable_label(!self.settings_keybindings_active, "Workspace")
+                .selectable_label(
+                    !self.settings_keybindings_active && !self.settings_fallbacks_active,
+                    "Workspace",
+                )
                 .accessible_name("Workspace settings")
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_fallbacks_active = false;
+                self.keybindings_panel.cancel_capture();
+            }
+            if ui
+                .selectable_label(self.settings_fallbacks_active, "Model fallbacks")
+                .accessible_name("Model fallback settings")
+                .clicked()
+            {
+                self.settings_keybindings_active = false;
+                self.settings_fallbacks_active = true;
                 self.keybindings_panel.cancel_capture();
             }
             if ui
@@ -22385,6 +22475,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = true;
+                self.settings_fallbacks_active = false;
             }
         });
         ui.separator();
@@ -22409,8 +22500,204 @@ fn render_message() -> &'static str {
                 self.keybindings_panel
                     .show(ui, store, current_key_platform());
             }
+        } else if self.settings_fallbacks_active {
+            self.show_fallback_routes_settings(ui);
         } else {
             self.show_repo_scan_settings(ui);
+        }
+    }
+
+    fn ensure_fallback_routes_loaded(&mut self) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            return;
+        }
+        if self
+            .fallback_routes_profile
+            .as_deref()
+            .is_some_and(|loaded| loaded != profile)
+        {
+            self.fallback_routes = None;
+            self.fallback_routes_profile = None;
+            self.fallback_routes_error = None;
+        }
+        if self
+            .fallback_routes_request
+            .as_ref()
+            .is_some_and(|(_, pending)| pending != &profile)
+        {
+            self.fallback_routes_request = None;
+        }
+        if self
+            .fallback_routes_save_request
+            .as_ref()
+            .is_some_and(|(_, pending, _)| pending != &profile)
+        {
+            self.fallback_routes_save_request = None;
+            self.fallback_routes = None;
+            self.fallback_routes_profile = None;
+            self.fallback_routes_error = None;
+            self.status = "A fallback settings save may still be settling for the previous profile; reopening Model fallbacks there will confirm its stored value.".into();
+        }
+        if self.fallback_routes_request.is_some()
+            || self.fallback_routes_profile.as_deref() == Some(profile.as_str())
+            || (self.fallback_routes_profile.is_none() && self.fallback_routes_error.is_some())
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        let request_id = operation_id("fallback-providers-config-load");
+        match gateway.load_fallback_providers_config(request_id.clone(), Some(profile.clone())) {
+            Ok(()) => {
+                self.fallback_routes_request = Some((request_id, profile));
+                self.fallback_routes_error = None;
+            }
+            Err(error) => self.fallback_routes_error = Some(error),
+        }
+    }
+
+    fn save_fallback_routes(&mut self) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.fallback_routes_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            self.fallback_routes_error =
+                Some("Model fallback settings require a single Hermes profile".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.fallback_routes_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let routes = self
+            .fallback_routes
+            .as_deref()
+            .map(complete_fallback_route_values)
+            .unwrap_or_default();
+        let request_id = operation_id("fallback-providers-config-save");
+        match gateway.save_fallback_providers_config(
+            request_id.clone(),
+            Some(profile.clone()),
+            routes.clone(),
+        ) {
+            Ok(()) => {
+                self.fallback_routes_save_request = Some((request_id, profile, routes));
+                self.fallback_routes_error = None;
+            }
+            Err(error) => self.fallback_routes_error = Some(error),
+        }
+    }
+
+    fn show_fallback_routes_settings(&mut self, ui: &mut Ui) {
+        self.ensure_fallback_routes_loaded();
+        ui.heading("Model fallback routes");
+        ui.label(RichText::new(
+            "Hermes tries these provider and model pairs in order when the default model fails.",
+        ).color(MUTED));
+        if !self.gateway_connected {
+            ui.label(
+                RichText::new("Connect to Hermes to load model fallback settings.").color(MUTED),
+            );
+            return;
+        }
+        if self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(|endpoint| endpoint.profile_id.eq_ignore_ascii_case("all"))
+        {
+            ui.label(
+                RichText::new("Choose a single Hermes profile to edit model fallback settings.")
+                    .color(MUTED),
+            );
+            return;
+        }
+        if self.fallback_routes_profile.is_none() {
+            if let Some(error) = self.fallback_routes_error.as_deref() {
+                ui.colored_label(Color32::LIGHT_RED, error);
+                if ui.button("Retry model fallback settings").clicked() {
+                    self.fallback_routes_request = None;
+                    self.fallback_routes_error = None;
+                    self.ensure_fallback_routes_loaded();
+                }
+            } else {
+                ui.label(RichText::new("Loading model fallback settings…").color(MUTED));
+            }
+            return;
+        }
+        let saving = self.fallback_routes_save_request.is_some();
+        let mut remove_index = None;
+        ui.add_enabled_ui(!saving, |ui| {
+            let routes = self.fallback_routes.get_or_insert_with(Vec::new);
+            if routes.is_empty() {
+                ui.label(RichText::new("No fallback routes are configured.").color(MUTED));
+            }
+            for (index, route) in routes.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(format!("{}.", index + 1));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut route.provider)
+                            .hint_text("provider ID")
+                            .desired_width(170.0),
+                    )
+                    .accessible_name(format!("Fallback provider {}", index + 1));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut route.model)
+                            .hint_text("model ID")
+                            .desired_width(240.0),
+                    )
+                    .accessible_name(format!("Fallback model {}", index + 1));
+                    if ui
+                        .button(format!("Remove fallback {}", index + 1))
+                        .clicked()
+                    {
+                        remove_index = Some(index);
+                    }
+                });
+            }
+            if let Some(index) = remove_index {
+                routes.remove(index);
+            }
+            if ui.button("Add fallback route").clicked() {
+                routes.push(FallbackRouteDraft::from_value(serde_json::json!({
+                    "provider": "",
+                    "model": ""
+                })));
+            }
+        });
+        let save_enabled = !saving
+            && self.fallback_routes.as_ref().is_some_and(|routes| {
+                routes.iter().all(|route| {
+                    route.is_complete()
+                        || (route.provider.trim().is_empty() && route.model.trim().is_empty())
+                })
+            });
+        if ui
+            .add_enabled(
+                save_enabled,
+                egui::Button::new("Save model fallback routes"),
+            )
+            .clicked()
+        {
+            self.save_fallback_routes();
+        }
+        if saving {
+            ui.label(RichText::new("Saving fallback routes…").color(MUTED));
+        }
+        if let Some(error) = self.fallback_routes_error.as_deref() {
+            ui.colored_label(Color32::LIGHT_RED, error);
         }
     }
 
@@ -28005,6 +28292,92 @@ fn render_message() -> &'static str {
                         Err(error) => self.repo_scan_config_error = Some(error),
                     }
                 }
+                GatewayEvent::FallbackProvidersConfigLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile)) =
+                        self.fallback_routes_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_id != request_id {
+                        continue;
+                    }
+                    let current_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.as_str());
+                    if profile.as_deref() != Some(expected_profile.as_str())
+                        || current_profile != Some(expected_profile.as_str())
+                    {
+                        self.fallback_routes_request = None;
+                        self.fallback_routes = None;
+                        self.fallback_routes_profile = None;
+                        continue;
+                    }
+                    self.fallback_routes_request = None;
+                    match result {
+                        Ok(routes) => {
+                            self.fallback_routes = Some(
+                                routes
+                                    .into_iter()
+                                    .map(FallbackRouteDraft::from_value)
+                                    .collect(),
+                            );
+                            self.fallback_routes_profile = Some(expected_profile);
+                            self.fallback_routes_error = None;
+                        }
+                        Err(error) => {
+                            self.fallback_routes_error = Some(error);
+                            self.fallback_routes_profile = None;
+                        }
+                    }
+                }
+                GatewayEvent::FallbackProvidersConfigSaved {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile, _requested_routes)) =
+                        self.fallback_routes_save_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_id != request_id {
+                        continue;
+                    }
+                    let current_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.as_str());
+                    if profile.as_deref() != Some(expected_profile.as_str())
+                        || current_profile != Some(expected_profile.as_str())
+                    {
+                        self.fallback_routes_save_request = None;
+                        self.fallback_routes = None;
+                        self.fallback_routes_profile = None;
+                        self.fallback_routes_error = None;
+                        self.status = "A model fallback settings save settled for the previous profile; reload that profile to confirm the stored value.".into();
+                        continue;
+                    }
+                    self.fallback_routes_save_request = None;
+                    match result {
+                        Ok(routes) => {
+                            self.fallback_routes = Some(
+                                routes
+                                    .into_iter()
+                                    .map(FallbackRouteDraft::from_value)
+                                    .collect(),
+                            );
+                            self.fallback_routes_profile = Some(expected_profile);
+                            self.fallback_routes_error = None;
+                            self.status = "Model fallback routes saved".into();
+                        }
+                        Err(error) => self.fallback_routes_error = Some(error),
+                    }
+                }
                 GatewayEvent::RepoDiscoveryCompleted {
                     request_id,
                     profile,
@@ -32256,6 +32629,91 @@ mod tests {
                 "settings overlay exposes {label}"
             );
         }
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn fallback_route_edits_preserve_route_specific_config_and_legacy_values() {
+        let route = FallbackRouteDraft::from_value(json!({
+            "provider": "old-provider",
+            "model": "old-model",
+            "base_url": "https://gateway.example/v1",
+            "api_key_ref": "secret-store:alt-provider",
+            "api_mode": "chat_completions"
+        }));
+        let mut edited = route;
+        edited.provider = "new-provider".into();
+        edited.model = "new-model".into();
+        let value = edited.to_value();
+        assert_eq!(value["provider"], "new-provider");
+        assert_eq!(value["model"], "new-model");
+        assert_eq!(value["base_url"], "https://gateway.example/v1");
+        assert_eq!(value["api_key_ref"], "secret-store:alt-provider");
+        assert_eq!(value["api_mode"], "chat_completions");
+
+        let legacy = FallbackRouteDraft::from_value(json!("legacy-provider/legacy-model"));
+        assert_eq!(legacy.provider, "legacy-provider");
+        assert_eq!(legacy.model, "legacy-model");
+        assert_eq!(legacy.to_value()["provider"], "legacy-provider");
+        let blank = FallbackRouteDraft::from_value(json!({
+            "provider": "",
+            "model": ""
+        }));
+        assert_eq!(
+            complete_fallback_route_values(&[edited, blank]),
+            vec![json!({
+                "provider":"new-provider",
+                "model":"new-model",
+                "base_url":"https://gateway.example/v1",
+                "api_key_ref":"secret-store:alt-provider",
+                "api_mode":"chat_completions"
+            })]
+        );
+    }
+
+    #[test]
+    fn model_fallback_settings_render_ordered_routes_and_keep_blank_drafts_local() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.fallback_routes_profile = Some("work".into());
+        app.fallback_routes = Some(vec![FallbackRouteDraft::from_value(json!({
+            "provider": "openrouter",
+            "model": "vendor/model-a",
+            "base_url": "https://custom.example"
+        }))]);
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().show_fallback_routes_settings(ui));
+        assert!(harness.query_by_label("Fallback provider 1").is_some());
+        assert!(harness.query_by_label("Fallback model 1").is_some());
+        harness.get_by_label("Add fallback route").click();
+        harness.run();
+        assert_eq!(app.borrow().fallback_routes.as_ref().map(Vec::len), Some(2));
+        assert!(
+            app.borrow()
+                .fallback_routes
+                .as_ref()
+                .is_some_and(|routes| !routes[1].is_complete())
+        );
+        assert!(
+            harness
+                .query_by_label("Save model fallback routes")
+                .is_some_and(|button| !button.accesskit_node().is_disabled())
+        );
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
