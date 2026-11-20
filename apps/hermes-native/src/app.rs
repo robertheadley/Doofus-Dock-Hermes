@@ -2,10 +2,10 @@ use crate::artifacts::{ArtifactFilter, ArtifactIndexSnapshot, ArtifactKind, Arti
 use crate::files::{FileBrowserState, FilePreviewContent, FilePreviewStore};
 use crate::gateway::{
     ActiveSessionStatus, ActiveSessionStatusKind, AgentPluginAutoUpdateSettings, AgentPluginInfo,
-    AgentPluginInspection, AgentPluginScanFinding, AgentPluginUpdateAllRow,
-    AgentPluginUpdateOutcome, AgentPluginsSnapshot, ArtifactFileDownloadRequest,
-    ArtifactImagePreviewRequest, BotRosterSnapshot, CapabilitiesSnapshot,
-    CommandCenterDebugShareResponse, CommandCenterMaintenanceAction,
+    AgentPluginInspection, AgentPluginScanFinding, AgentPluginSettingField,
+    AgentPluginUpdateAllRow, AgentPluginUpdateOutcome, AgentPluginsSnapshot,
+    ArtifactFileDownloadRequest, ArtifactImagePreviewRequest, BotRosterSnapshot,
+    CapabilitiesSnapshot, CommandCenterDebugShareResponse, CommandCenterMaintenanceAction,
     CommandCenterMaintenanceOperation, CommandCenterMaintenanceResult,
     CommandCenterMaintenanceSnapshot, CommandCenterMemoryResetTarget, CommandCenterSessionSnapshot,
     CommandCenterSystemAction, CommandCenterSystemActionResult, CommandCenterSystemOperation,
@@ -1025,6 +1025,26 @@ struct PendingAgentPluginRemoval {
     profile: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct AgentPluginSettingsDialog {
+    plugin: AgentPluginInfo,
+    profile: String,
+    drafts: BTreeMap<String, String>,
+    secrets: BTreeMap<String, Zeroizing<String>>,
+    error: Option<String>,
+}
+
+#[derive(Debug)]
+struct PendingAgentPluginSettingsSave {
+    request_id: String,
+    key: String,
+    profile: Option<String>,
+    values: serde_json::Value,
+    secrets: VecDeque<(String, Zeroizing<String>)>,
+    active_secret_request: Option<String>,
+    secret_saved: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TelegramSetupRequestKind {
     Start,
@@ -1650,6 +1670,10 @@ pub struct HermesNativeApp {
     fallback_routes_request: Option<(String, String)>,
     fallback_routes_save_request: Option<(String, String, Vec<serde_json::Value>)>,
     fallback_routes_error: Option<String>,
+    fallback_model_options: Option<ModelOptionsSnapshot>,
+    fallback_model_options_profile: Option<String>,
+    fallback_model_options_request: Option<(String, String)>,
+    fallback_model_options_error: Option<String>,
     keybindings: Option<KeybindingStore>,
     keybindings_error: Option<String>,
     keybindings_panel: KeybindingsPanel,
@@ -1815,6 +1839,8 @@ pub struct HermesNativeApp {
     agent_plugin_update_dialog: Option<AgentPluginUpdateDialog>,
     agent_plugin_removal_confirmation: Option<String>,
     pending_agent_plugin_removals: BTreeMap<String, PendingAgentPluginRemoval>,
+    agent_plugin_settings_dialog: Option<AgentPluginSettingsDialog>,
+    pending_agent_plugin_settings_save: Option<PendingAgentPluginSettingsSave>,
     catalog_plugin_install_dialog: Option<CatalogPluginInstallDialog>,
     pending_catalog_plugin_install: Option<PendingCatalogPluginInstall>,
     uncertain_catalog_plugin_installs: BTreeSet<String>,
@@ -4091,6 +4117,10 @@ fn render_message() -> &'static str {
             fallback_routes_request: None,
             fallback_routes_save_request: None,
             fallback_routes_error: None,
+            fallback_model_options: None,
+            fallback_model_options_profile: None,
+            fallback_model_options_request: None,
+            fallback_model_options_error: None,
             keybindings,
             keybindings_error,
             keybindings_panel: KeybindingsPanel::new(),
@@ -4255,6 +4285,8 @@ fn render_message() -> &'static str {
             agent_plugin_update_dialog: None,
             agent_plugin_removal_confirmation: None,
             pending_agent_plugin_removals: BTreeMap::new(),
+            agent_plugin_settings_dialog: None,
+            pending_agent_plugin_settings_save: None,
             catalog_plugin_install_dialog: None,
             pending_catalog_plugin_install: None,
             uncertain_catalog_plugin_installs: BTreeSet::new(),
@@ -11310,6 +11342,27 @@ fn render_message() -> &'static str {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(&plugin.name).strong().color(TEXT));
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    if !plugin.settings_schema.is_empty() {
+                                        let settings = ui
+                                            .add_enabled(
+                                                self.gateway_connected
+                                                    && self.agent_plugins_profile.as_deref()
+                                                        == self.gateway_endpoint.as_ref().map(
+                                                            |endpoint| endpoint.profile_id.as_str(),
+                                                        )
+                                                    && self
+                                                        .pending_agent_plugin_settings_save
+                                                        .is_none(),
+                                                egui::Button::new("Settings"),
+                                            )
+                                            .accessible_name(format!(
+                                                "Configure agent plugin: {}",
+                                                plugin.name
+                                            ));
+                                        if settings.clicked() {
+                                            self.open_agent_plugin_settings(plugin.clone());
+                                        }
+                                    }
                                     let mut enabled = plugin.status == "enabled";
                                     let toggle = ui
                                         .add_enabled(
@@ -20371,6 +20424,269 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
+    fn open_agent_plugin_settings(&mut self, plugin: AgentPluginInfo) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            return;
+        };
+        let drafts = plugin
+            .settings_schema
+            .iter()
+            .filter(|field| field.field_type != "secret")
+            .map(|field| (field.key.clone(), plugin_setting_initial_draft(field)))
+            .collect();
+        let secrets = plugin
+            .settings_schema
+            .iter()
+            .filter(|field| field.field_type == "secret")
+            .map(|field| (field.key.clone(), Zeroizing::new(String::new())))
+            .collect();
+        self.agent_plugin_settings_dialog = Some(AgentPluginSettingsDialog {
+            plugin,
+            profile,
+            drafts,
+            secrets,
+            error: None,
+        });
+    }
+
+    fn show_agent_plugin_settings_dialog(&mut self, ctx: &egui::Context) {
+        let Some(dialog) = self.agent_plugin_settings_dialog.as_mut() else {
+            return;
+        };
+        let profile_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            self.gateway_connected && endpoint.profile_id == dialog.profile
+        });
+        if !profile_matches {
+            self.agent_plugin_settings_dialog = None;
+            return;
+        }
+        let busy = self.pending_agent_plugin_settings_save.is_some();
+        let mut close = false;
+        let mut save = false;
+        let plugin_name = dialog.plugin.name.clone();
+        egui::Window::new(format!("Plugin settings · {plugin_name}"))
+            .id(Id::NULL.with(("agent-plugin-settings", &dialog.plugin.key)))
+            .collapsible(false)
+            .resizable(true)
+            .default_width(520.0)
+            .show(ctx, |ui| {
+                ui.label(RichText::new(format!("Profile: {}", dialog.profile)).color(MUTED));
+                ui.label(RichText::new("Secret values are written directly to the selected profile and are never read back.").color(MUTED));
+                ui.separator();
+                egui::ScrollArea::vertical().max_height(520.0).show(ui, |ui| {
+                    for field in &dialog.plugin.settings_schema {
+                        ui.add_space(4.0);
+                        let required = if field.required { " · required" } else { "" };
+                        ui.label(RichText::new(format!("{}{required}", field.label)).strong());
+                        if !field.description.is_empty() {
+                            ui.label(RichText::new(&field.description).size(11.0).color(MUTED));
+                        }
+                        match field.field_type.as_str() {
+                            "boolean" => {
+                                if let Some(value) = dialog.drafts.get_mut(&field.key) {
+                                    let mut checked = value == "true";
+                                    if ui.add_enabled(!busy, egui::Checkbox::new(&mut checked, "Enabled")).accessible_name(format!("Plugin setting {}", field.key)).changed() {
+                                        *value = checked.to_string();
+                                    }
+                                }
+                            }
+                            "enum" => {
+                                if let Some(value) = dialog.drafts.get_mut(&field.key) {
+                                    let selected_text = if value.is_empty() {
+                                        "Choose an option".to_owned()
+                                    } else {
+                                        value.clone()
+                                    };
+                                    egui::ComboBox::from_id_salt(("plugin-setting", &field.key))
+                                        .selected_text(selected_text)
+                                        .show_ui(ui, |ui| {
+                                            for choice in &field.choices {
+                                                ui.add_enabled_ui(!busy, |ui| {
+                                                    ui.selectable_value(&mut *value, choice.clone(), choice);
+                                                });
+                                            }
+                                        })
+                                        .response
+                                        .accessible_name(format!("Plugin setting {}", field.key));
+                                }
+                            }
+                            "json" => {
+                                if let Some(value) = dialog.drafts.get_mut(&field.key) {
+                                    ui.add_enabled(!busy, egui::TextEdit::multiline(value).desired_rows(4).hint_text("JSON object or array")).accessible_name(format!("Plugin setting {}", field.key));
+                                }
+                            }
+                            "number" => {
+                                if let Some(value) = dialog.drafts.get_mut(&field.key) {
+                                    ui.add_enabled(!busy, egui::TextEdit::singleline(value).hint_text("Number")).accessible_name(format!("Plugin setting {}", field.key));
+                                }
+                            }
+                            "string" => {
+                                if let Some(value) = dialog.drafts.get_mut(&field.key) {
+                                    ui.add_enabled(!busy, egui::TextEdit::singleline(value)).accessible_name(format!("Plugin setting {}", field.key));
+                                }
+                            }
+                            "secret" => {
+                                let env_name = field.env.as_deref().unwrap_or("environment variable");
+                                ui.label(RichText::new(if field.has_value { format!("{env_name} is set · enter a replacement to change it") } else { format!("Set {env_name}") }).size(11.0).color(MUTED));
+                                if let Some(value) = dialog.secrets.get_mut(&field.key) {
+                                    ui.add_enabled(!busy, egui::TextEdit::singleline(&mut **value).password(true).hint_text("Secret value (never displayed again)")).accessible_name(format!("Plugin setting {}", field.key));
+                                }
+                            }
+                            _ => {
+                                ui.label(RichText::new(format!("Unsupported setting type: {}", field.field_type)).color(Color32::LIGHT_RED));
+                            }
+                        }
+                    }
+                });
+                if let Some(error) = dialog.error.as_deref() {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.add_enabled(!busy, egui::Button::new("Save settings")).clicked() { save = true; }
+                    if ui.add_enabled(!busy, egui::Button::new("Close")).clicked() { close = true; }
+                    if busy { ui.label(RichText::new("Saving…").color(MUTED)); }
+                });
+            });
+        if close {
+            self.agent_plugin_settings_dialog = None;
+            return;
+        }
+        if save {
+            self.begin_agent_plugin_settings_save();
+        }
+    }
+
+    fn begin_agent_plugin_settings_save(&mut self) {
+        let Some(dialog) = self.agent_plugin_settings_dialog.as_mut() else {
+            return;
+        };
+        if self.pending_agent_plugin_settings_save.is_some()
+            || self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str())
+                != Some(dialog.profile.as_str())
+        {
+            return;
+        }
+        let mut values = serde_json::Map::new();
+        let mut secrets = VecDeque::new();
+        for field in &dialog.plugin.settings_schema {
+            if field.field_type == "secret" {
+                let Some(secret) = dialog.secrets.get_mut(&field.key) else {
+                    continue;
+                };
+                if secret.is_empty() {
+                    continue;
+                }
+                let Some(env) = field.env.clone() else {
+                    dialog.error = Some(format!(
+                        "{} has no secure environment variable mapping",
+                        field.label
+                    ));
+                    return;
+                };
+                secrets.push_back((env, secret.clone()));
+                continue;
+            }
+            let Some(draft) = dialog.drafts.get(&field.key) else {
+                continue;
+            };
+            let original = plugin_setting_initial_draft(field);
+            if draft == &original {
+                continue;
+            }
+            let parsed = match field.field_type.as_str() {
+                "string" => Ok(serde_json::Value::String(draft.clone())),
+                "boolean" if draft == "true" || draft == "false" => {
+                    Ok(serde_json::Value::Bool(draft == "true"))
+                }
+                "number" => draft
+                    .parse::<serde_json::Number>()
+                    .map(serde_json::Value::Number)
+                    .map_err(|_| "must be a valid number"),
+                "enum" if field.choices.iter().any(|choice| choice == draft) => {
+                    Ok(serde_json::Value::String(draft.clone()))
+                }
+                "json" => serde_json::from_str::<serde_json::Value>(draft)
+                    .ok()
+                    .filter(|value| value.is_object() || value.is_array())
+                    .ok_or("must be a JSON object or array"),
+                "enum" => Err("must match one of the listed choices"),
+                "boolean" => Err("must be true or false"),
+                _ => continue,
+            };
+            match parsed {
+                Ok(value) => {
+                    values.insert(field.key.clone(), value);
+                }
+                Err(error) => {
+                    dialog.error = Some(format!("{} {error}", field.label));
+                    return;
+                }
+            }
+        }
+        let request_id = operation_id("agent-plugin-settings-save");
+        self.pending_agent_plugin_settings_save = Some(PendingAgentPluginSettingsSave {
+            request_id,
+            key: dialog.plugin.key.clone(),
+            profile: Some(dialog.profile.clone()),
+            values: serde_json::Value::Object(values),
+            secrets,
+            active_secret_request: None,
+            secret_saved: false,
+        });
+        dialog.error = None;
+        self.advance_agent_plugin_settings_save();
+    }
+
+    fn advance_agent_plugin_settings_save(&mut self) {
+        let Some(pending) = self.pending_agent_plugin_settings_save.as_mut() else {
+            return;
+        };
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.pending_agent_plugin_settings_save = None;
+            return;
+        };
+        if let Some((env, secret)) = pending.secrets.pop_front() {
+            let request_id = operation_id("agent-plugin-secret-save");
+            match gateway.save_agent_plugin_setting_secret(
+                request_id.clone(),
+                pending.profile.clone(),
+                env,
+                secret,
+            ) {
+                Ok(()) => pending.active_secret_request = Some(request_id),
+                Err(error) => {
+                    if let Some(dialog) = self.agent_plugin_settings_dialog.as_mut() {
+                        dialog.error = Some(error);
+                    }
+                    self.pending_agent_plugin_settings_save = None;
+                }
+            }
+            return;
+        }
+        match gateway.save_agent_plugin_settings(
+            pending.request_id.clone(),
+            pending.key.clone(),
+            pending.values.clone(),
+            pending.profile.clone(),
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                if let Some(dialog) = self.agent_plugin_settings_dialog.as_mut() {
+                    dialog.error = Some(error);
+                }
+                self.pending_agent_plugin_settings_save = None;
+            }
+        }
+    }
+
     fn show_agent_plugin_removal_dialog(&mut self, ctx: &egui::Context) {
         let Some(name) = self.agent_plugin_removal_confirmation.clone() else {
             return;
@@ -22507,6 +22823,46 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn ensure_fallback_model_options_loaded(&mut self, profile: &str) {
+        if self
+            .fallback_model_options_profile
+            .as_deref()
+            .is_some_and(|loaded| loaded != profile)
+        {
+            self.fallback_model_options = None;
+            self.fallback_model_options_profile = None;
+            self.fallback_model_options_error = None;
+        }
+        if self
+            .fallback_model_options_request
+            .as_ref()
+            .is_some_and(|(_, requested)| requested != profile)
+        {
+            self.fallback_model_options_request = None;
+        }
+        if self.fallback_model_options_request.is_some()
+            || self.fallback_model_options_profile.as_deref() == Some(profile)
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.fallback_model_options_profile = Some(profile.to_owned());
+            self.fallback_model_options_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("fallback-model-options-load");
+        match gateway.load_model_options(request_id.clone(), Some(profile.to_owned())) {
+            Ok(()) => {
+                self.fallback_model_options_request = Some((request_id, profile.to_owned()));
+                self.fallback_model_options_error = None;
+            }
+            Err(error) => {
+                self.fallback_model_options_profile = Some(profile.to_owned());
+                self.fallback_model_options_error = Some(error);
+            }
+        }
+    }
+
     fn ensure_fallback_routes_loaded(&mut self) {
         let Some(profile) = self
             .gateway_endpoint
@@ -22518,6 +22874,7 @@ fn render_message() -> &'static str {
         if profile.eq_ignore_ascii_case("all") {
             return;
         }
+        self.ensure_fallback_model_options_loaded(&profile);
         if self
             .fallback_routes_profile
             .as_deref()
@@ -22638,33 +22995,118 @@ fn render_message() -> &'static str {
             return;
         }
         let saving = self.fallback_routes_save_request.is_some();
+        let model_options_loading = self.fallback_model_options_request.is_some();
+        let providers = self
+            .fallback_model_options
+            .as_ref()
+            .map(|snapshot| snapshot.providers.clone())
+            .unwrap_or_default();
         let mut remove_index = None;
+        let mut retry_model_options = false;
         ui.add_enabled_ui(!saving, |ui| {
             let routes = self.fallback_routes.get_or_insert_with(Vec::new);
             if routes.is_empty() {
                 ui.label(RichText::new("No fallback routes are configured.").color(MUTED));
             }
+            if model_options_loading {
+                ui.label(RichText::new("Loading configured providers and models…").color(MUTED));
+            }
+            if let Some(error) = self.fallback_model_options_error.as_deref() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.colored_label(Color32::LIGHT_RED, format!("Model catalog: {error}"));
+                    if ui.button("Retry model catalog").clicked() {
+                        retry_model_options = true;
+                    }
+                });
+            }
+            ui.label(RichText::new(
+                "Choose configured provider/model values or enter custom IDs below. Existing route-specific settings are preserved.",
+            ).color(MUTED));
             for (index, route) in routes.iter_mut().enumerate() {
+                let row = index + 1;
+                let selected_provider_name = providers
+                    .iter()
+                    .find(|provider| provider.slug == route.provider)
+                    .map(|provider| provider.name.clone())
+                    .unwrap_or_else(|| {
+                        if route.provider.trim().is_empty() {
+                            "Choose configured provider".to_owned()
+                        } else {
+                            format!("Custom · {}", route.provider)
+                        }
+                    });
+                let provider_models = providers
+                    .iter()
+                    .find(|provider| provider.slug == route.provider)
+                    .map(|provider| provider.models.clone())
+                    .unwrap_or_default();
+                let selected_model_label = if route.model.trim().is_empty() {
+                    "Choose configured model".to_owned()
+                } else if provider_models.iter().any(|model| model == &route.model) {
+                    route.model.clone()
+                } else {
+                    format!("Custom · {}", route.model)
+                };
+                let mut selected_provider = None;
+                let mut selected_model = None;
                 ui.horizontal(|ui| {
-                    ui.label(format!("{}.", index + 1));
+                    ui.label(format!("{row}."));
+                    egui::ComboBox::new(("fallback-provider", row), "Configured provider")
+                        .selected_text(selected_provider_name)
+                        .show_ui(ui, |ui| {
+                            for provider in &providers {
+                                if ui
+                                    .selectable_label(route.provider == provider.slug, &provider.name)
+                                    .clicked()
+                                {
+                                    selected_provider = Some(provider.slug.clone());
+                                }
+                            }
+                        })
+                        .response
+                        .accessible_name(format!("Select configured fallback provider {row}"));
+                    egui::ComboBox::new(("fallback-model", row), "Configured model")
+                        .selected_text(selected_model_label)
+                        .show_ui(ui, |ui| {
+                            for model in &provider_models {
+                                if ui
+                                    .selectable_label(route.model == *model, model)
+                                    .clicked()
+                                {
+                                    selected_model = Some(model.clone());
+                                }
+                            }
+                            if provider_models.is_empty() {
+                                ui.label("No catalog models for this provider");
+                            }
+                        })
+                        .response
+                        .accessible_name(format!("Select configured fallback model {row}"));
+                    if ui.button(format!("Remove fallback {row}")).clicked() {
+                        remove_index = Some(index);
+                    }
+                });
+                if let Some(provider) = selected_provider {
+                    route.provider = provider;
+                    route.model.clear();
+                }
+                if let Some(model) = selected_model {
+                    route.model = model;
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Custom IDs:");
                     ui.add(
                         egui::TextEdit::singleline(&mut route.provider)
                             .hint_text("provider ID")
                             .desired_width(170.0),
                     )
-                    .accessible_name(format!("Fallback provider {}", index + 1));
+                    .accessible_name(format!("Fallback provider {row}"));
                     ui.add(
                         egui::TextEdit::singleline(&mut route.model)
                             .hint_text("model ID")
                             .desired_width(240.0),
                     )
-                    .accessible_name(format!("Fallback model {}", index + 1));
-                    if ui
-                        .button(format!("Remove fallback {}", index + 1))
-                        .clicked()
-                    {
-                        remove_index = Some(index);
-                    }
+                    .accessible_name(format!("Fallback model {row}"));
                 });
             }
             if let Some(index) = remove_index {
@@ -22677,6 +23119,12 @@ fn render_message() -> &'static str {
                 })));
             }
         });
+        if retry_model_options {
+            self.fallback_model_options = None;
+            self.fallback_model_options_profile = None;
+            self.fallback_model_options_error = None;
+            self.ensure_fallback_routes_loaded();
+        }
         let save_enabled = !saving
             && self.fallback_routes.as_ref().is_some_and(|routes| {
                 routes.iter().all(|route| {
@@ -27429,6 +27877,36 @@ fn render_message() -> &'static str {
                     profile,
                     result,
                 } => {
+                    if let Some((expected_request, expected_profile)) =
+                        self.fallback_model_options_request.clone()
+                        && expected_request == request_id
+                    {
+                        if profile.as_deref() != Some(expected_profile.as_str())
+                            || self
+                                .gateway_endpoint
+                                .as_ref()
+                                .map(|endpoint| endpoint.profile_id.as_str())
+                                != Some(expected_profile.as_str())
+                        {
+                            self.fallback_model_options_request = None;
+                            self.fallback_model_options = None;
+                            self.fallback_model_options_profile = None;
+                            continue;
+                        }
+                        self.fallback_model_options_request = None;
+                        self.fallback_model_options_profile = Some(expected_profile);
+                        match result {
+                            Ok(snapshot) => {
+                                self.fallback_model_options = Some(snapshot);
+                                self.fallback_model_options_error = None;
+                            }
+                            Err(error) => {
+                                self.fallback_model_options = None;
+                                self.fallback_model_options_error = Some(error);
+                            }
+                        }
+                        continue;
+                    }
                     let Some((expected_request, expected_profile)) =
                         self.cron_model_options_request.as_ref()
                     else {
@@ -28828,6 +29306,117 @@ fn render_message() -> &'static str {
                                         self.agent_plugins_error = Some(error)
                                     });
                                 }
+                            }
+                        }
+                    }
+                }
+                GatewayEvent::AgentPluginSettingSecretSaved {
+                    request_id,
+                    profile,
+                    key: _,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_agent_plugin_settings_save.as_mut() else {
+                        continue;
+                    };
+                    if pending.active_secret_request.as_deref() != Some(request_id.as_str()) {
+                        continue;
+                    }
+                    if pending.profile != profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        self.pending_agent_plugin_settings_save = None;
+                        self.agent_plugin_settings_dialog = None;
+                        continue;
+                    }
+                    pending.active_secret_request = None;
+                    match result {
+                        Ok(()) => {
+                            pending.secret_saved = true;
+                            self.advance_agent_plugin_settings_save();
+                        }
+                        Err(error) => {
+                            let partial = pending.secret_saved;
+                            self.pending_agent_plugin_settings_save = None;
+                            if let Some(dialog) = self.agent_plugin_settings_dialog.as_mut() {
+                                dialog.error = Some(if partial {
+                                    format!(
+                                        "{error}. A previous secret may already be saved; remaining settings were not submitted."
+                                    )
+                                } else {
+                                    format!("{error}. Plugin settings were not submitted.")
+                                });
+                            }
+                        }
+                    }
+                }
+                GatewayEvent::AgentPluginSettingsSaved {
+                    request_id,
+                    key,
+                    profile,
+                    result,
+                } => {
+                    let Some(expected) = self.pending_agent_plugin_settings_save.as_ref() else {
+                        continue;
+                    };
+                    if expected.request_id != request_id || expected.key != key {
+                        continue;
+                    }
+                    if expected.profile != profile
+                        || self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                            != profile
+                    {
+                        self.pending_agent_plugin_settings_save = None;
+                        self.agent_plugin_settings_dialog = None;
+                        continue;
+                    }
+                    let pending = self
+                        .pending_agent_plugin_settings_save
+                        .take()
+                        .expect("matching plugin settings save");
+                    match result {
+                        Ok(plugin) => {
+                            let mut refreshed = false;
+                            if self.agent_plugins_profile == profile
+                                && let Some(row) =
+                                    self.agent_plugins.as_mut().and_then(|snapshot| {
+                                        snapshot.plugins.iter_mut().find(|row| row.key == key)
+                                    })
+                            {
+                                *row = plugin.clone();
+                                refreshed = true;
+                            }
+                            if !refreshed {
+                                self.agent_plugins = None;
+                                self.agent_plugins_profile = None;
+                                if self.route == AppRoute::Capabilities
+                                    && self.capabilities_tab == CapabilitiesTab::Plugins
+                                {
+                                    self.load_agent_plugins().unwrap_or_else(|error| {
+                                        self.agent_plugins_error = Some(error)
+                                    });
+                                }
+                            }
+                            self.agent_plugin_settings_dialog = None;
+                            self.status = format!("Saved settings for {}", plugin.name);
+                        }
+                        Err(error) => {
+                            let partial = pending.secret_saved;
+                            if let Some(dialog) = self.agent_plugin_settings_dialog.as_mut() {
+                                dialog.error = Some(if partial {
+                                    format!(
+                                        "{error}. Secret values may already be saved in this profile."
+                                    )
+                                } else {
+                                    error
+                                });
                             }
                         }
                     }
@@ -32719,6 +33308,134 @@ mod tests {
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
+    #[test]
+    fn model_fallback_catalog_selectors_update_route_and_preserve_unknown_fields() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.fallback_routes_profile = Some("work".into());
+        app.fallback_routes = Some(vec![FallbackRouteDraft::from_value(json!({
+            "provider": "old-provider",
+            "model": "old-model",
+            "base_url": "https://custom.example",
+            "api_key_ref": "secret-store:custom"
+        }))]);
+        app.fallback_model_options_profile = Some("work".into());
+        app.fallback_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "anthropic".into(),
+                name: "Anthropic".into(),
+                authenticated: Some(true),
+                models: vec!["claude-test".into()],
+                capabilities: Default::default(),
+            }],
+            model: None,
+            provider: None,
+        });
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().show_fallback_routes_settings(ui));
+
+        harness
+            .get_by_label("Select configured fallback provider 1")
+            .click();
+        harness.run();
+        harness.get_by_label("Anthropic").click();
+        harness.run();
+        assert_eq!(
+            app.borrow().fallback_routes.as_ref().unwrap()[0].provider,
+            "anthropic"
+        );
+        assert!(
+            app.borrow().fallback_routes.as_ref().unwrap()[0]
+                .model
+                .is_empty()
+        );
+
+        harness
+            .get_by_label("Select configured fallback model 1")
+            .click();
+        harness.run();
+        harness.get_by_label("claude-test").click();
+        harness.run();
+        let value = app.borrow().fallback_routes.as_ref().unwrap()[0].to_value();
+        assert_eq!(value["provider"], "anthropic");
+        assert_eq!(value["model"], "claude-test");
+        assert_eq!(value["base_url"], "https://custom.example");
+        assert_eq!(value["api_key_ref"], "secret-store:custom");
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn fallback_model_options_results_are_fenced_by_request_and_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.fallback_model_options_request = Some(("wanted-request".into(), "work".into()));
+        let (discovery, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(discovery);
+
+        events
+            .send(GatewayEvent::ModelOptionsLoaded {
+                request_id: "stale-request".into(),
+                profile: Some("work".into()),
+                result: Ok(ModelOptionsSnapshot {
+                    providers: vec![],
+                    model: None,
+                    provider: None,
+                }),
+            })
+            .expect("queue stale model options event");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.fallback_model_options_request,
+            Some(("wanted-request".into(), "work".into()))
+        );
+        assert!(app.fallback_model_options.is_none());
+
+        events
+            .send(GatewayEvent::ModelOptionsLoaded {
+                request_id: "wanted-request".into(),
+                profile: Some("other-profile".into()),
+                result: Ok(ModelOptionsSnapshot {
+                    providers: vec![],
+                    model: None,
+                    provider: None,
+                }),
+            })
+            .expect("queue wrong-profile model options event");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.fallback_model_options_request.is_none());
+        assert!(app.fallback_model_options.is_none());
+        assert!(app.fallback_model_options_profile.is_none());
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
     #[cfg(feature = "agent-automation")]
     #[test]
     fn settings_route_switches_between_workspace_and_keybindings() {
@@ -35827,6 +36544,256 @@ mod tests {
         );
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_plugin_settings_dialog_renders_typed_controls_and_masks_secret() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        let plugin: AgentPluginInfo = serde_json::from_value(json!({
+            "key":"vendor:sample", "name":"Sample Plugin",
+            "settings_schema":[
+                {"key":"enabled","type":"boolean","label":"Enabled","value":true},
+                {"key":"mode","type":"enum","label":"Mode","choices":["fast","safe"],"value":"safe"},
+                {"key":"config","type":"json","label":"Config","value":{"limit":2}},
+                {"key":"count","type":"number","label":"Count","value":3},
+                {"key":"title","type":"string","label":"Title","value":"hello"},
+                {"key":"token","type":"secret","label":"Token","env":"SAMPLE_TOKEN","has_value":true}
+            ]
+        }))
+        .expect("settings schema fixture");
+        app.open_agent_plugin_settings(plugin);
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(800.0, 900.0))
+            .build_ui(move |ui| {
+                frame_app
+                    .borrow_mut()
+                    .show_agent_plugin_settings_dialog(ui.ctx())
+            });
+        for key in ["enabled", "mode", "config", "count", "title", "token"] {
+            assert!(
+                harness
+                    .query_by_label(&format!("Plugin setting {key}"))
+                    .is_some()
+            );
+        }
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("SAMPLE_TOKEN is set · enter a replacement to change it"))
+                .next()
+                .is_some()
+        );
+        assert!(
+            app.borrow()
+                .agent_plugin_settings_dialog
+                .as_ref()
+                .unwrap()
+                .secrets["token"]
+                .is_empty()
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_plugin_settings_reject_invalid_json_and_omits_unchanged_values() {
+        let field: AgentPluginSettingField = serde_json::from_value(json!({
+            "key":"options","type":"json","label":"Options","value":{"enabled":true}
+        }))
+        .expect("JSON setting fixture");
+        let original = plugin_setting_initial_draft(&field);
+        assert_eq!(original, "{\n  \"enabled\": true\n}");
+        let malformed = "{not json";
+        assert!(serde_json::from_str::<serde_json::Value>(malformed).is_err());
+        assert_eq!(
+            plugin_setting_initial_draft(&field),
+            original,
+            "unchanged values retain their baseline draft"
+        );
+    }
+
+    #[test]
+    fn agent_plugin_secret_failure_stops_settings_rpc_and_reports_partial_save() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.agent_plugin_settings_dialog = Some(AgentPluginSettingsDialog {
+            plugin: AgentPluginInfo {
+                key: "sample".into(),
+                name: "Sample".into(),
+                ..AgentPluginInfo::default()
+            },
+            profile: "work".into(),
+            drafts: BTreeMap::new(),
+            secrets: BTreeMap::new(),
+            error: None,
+        });
+        app.pending_agent_plugin_settings_save = Some(PendingAgentPluginSettingsSave {
+            request_id: "settings-request".into(),
+            key: "sample".into(),
+            profile: Some("work".into()),
+            values: json!({}),
+            secrets: VecDeque::new(),
+            active_secret_request: Some("secret-request".into()),
+            secret_saved: true,
+        });
+        let (discovery, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(discovery);
+        events
+            .send(GatewayEvent::AgentPluginSettingSecretSaved {
+                request_id: "secret-request".into(),
+                profile: Some("work".into()),
+                key: "SAMPLE_SECRET".into(),
+                result: Err("secure environment save failed".into()),
+            })
+            .expect("queue secret error event");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_agent_plugin_settings_save.is_none());
+        assert!(
+            app.agent_plugin_settings_dialog
+                .as_ref()
+                .unwrap()
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("previous secret may already be saved")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_plugin_settings_save_skips_blank_secrets_and_unchanged_fields() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.agent_plugin_settings_dialog = Some(AgentPluginSettingsDialog {
+            plugin: serde_json::from_value(json!({
+                "key":"sample", "name":"Sample",
+                "settings_schema":[
+                    {"key":"title","type":"string","label":"Title","value":"old"},
+                    {"key":"unchanged","type":"number","label":"Unchanged","value":2},
+                    {"key":"token","type":"secret","label":"Token","env":"SAMPLE_TOKEN","has_value":true}
+                ]
+            })).expect("plugin fixture"),
+            profile: "work".into(),
+            drafts: BTreeMap::from([
+                ("title".into(), "new".into()),
+                ("unchanged".into(), "2".into()),
+            ]),
+            secrets: BTreeMap::from([("token".into(), Zeroizing::new(String::new()))]),
+            error: None,
+        });
+        let (discovery, _commands, _events) =
+            GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(discovery);
+        app.begin_agent_plugin_settings_save();
+        let pending = app
+            .pending_agent_plugin_settings_save
+            .as_ref()
+            .expect("settings RPC queued");
+        assert_eq!(pending.values, json!({"title":"new"}));
+        assert!(
+            pending.secrets.is_empty(),
+            "blank secret means keep existing value"
+        );
+        assert!(
+            pending.active_secret_request.is_none(),
+            "secret-free settings RPC is submitted directly"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_plugin_settings_response_is_fenced_to_requested_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.agent_plugin_settings_dialog = Some(AgentPluginSettingsDialog {
+            plugin: AgentPluginInfo {
+                key: "sample".into(),
+                name: "Sample".into(),
+                ..AgentPluginInfo::default()
+            },
+            profile: "work".into(),
+            drafts: BTreeMap::new(),
+            secrets: BTreeMap::new(),
+            error: None,
+        });
+        app.pending_agent_plugin_settings_save = Some(PendingAgentPluginSettingsSave {
+            request_id: "settings-request".into(),
+            key: "sample".into(),
+            profile: Some("work".into()),
+            values: json!({}),
+            secrets: VecDeque::new(),
+            active_secret_request: None,
+            secret_saved: false,
+        });
+        let (discovery, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(discovery);
+        events
+            .send(GatewayEvent::AgentPluginSettingsSaved {
+                request_id: "settings-request".into(),
+                key: "sample".into(),
+                profile: Some("other".into()),
+                result: Ok(AgentPluginInfo {
+                    key: "sample".into(),
+                    name: "Stale".into(),
+                    ..AgentPluginInfo::default()
+                }),
+            })
+            .expect("queue stale profile result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.pending_agent_plugin_settings_save.is_none());
+        assert!(app.agent_plugin_settings_dialog.is_none());
+        assert!(
+            app.agent_plugins.is_none(),
+            "stale plugin receipt does not update inventory"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
@@ -42644,6 +43611,13 @@ mod tests {
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1440.0, 3200.0))
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .unwrap(),
+            crate::gateway::TestGatewayCommand::Other,
+            "initial session render emits a setup gateway command before retry"
+        );
         let retry = harness
             .query_by_label("Retry failed message with original submission ID")
             .expect("retryable failed turn exposes an accessible retry action");
@@ -46267,6 +47241,7 @@ impl HermesNativeApp {
         self.show_first_run_setup(&ctx);
         self.show_catalog_plugin_install_dialog(&ctx);
         self.show_agent_plugin_update_dialog(&ctx);
+        self.show_agent_plugin_settings_dialog(&ctx);
         self.show_agent_plugin_removal_dialog(&ctx);
         self.show_mcp_server_removal_dialog(&ctx);
         self.show_rename_dialog(&ctx);
@@ -46752,6 +47727,40 @@ fn connector_segment_label(segment: ConnectorsSegment) -> &'static str {
         ConnectorsSegment::Connected => "Connected",
         ConnectorsSegment::Available => "Available",
         ConnectorsSegment::Off => "Off",
+    }
+}
+
+fn plugin_setting_initial_draft(field: &AgentPluginSettingField) -> String {
+    match field.field_type.as_str() {
+        "boolean" => {
+            (field.value.as_ref().and_then(serde_json::Value::as_bool) == Some(true)).to_string()
+        }
+        "enum" => field
+            .value
+            .as_ref()
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| field.choices.first().cloned())
+            .unwrap_or_default(),
+        "json" => field
+            .value
+            .as_ref()
+            .filter(|value| !value.is_null())
+            .and_then(|value| serde_json::to_string_pretty(value).ok())
+            .unwrap_or_default(),
+        "number" => field
+            .value
+            .as_ref()
+            .filter(|value| !value.is_null())
+            .map(|value| value.to_string())
+            .unwrap_or_default(),
+        "string" => field
+            .value
+            .as_ref()
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_default(),
+        _ => String::new(),
     }
 }
 

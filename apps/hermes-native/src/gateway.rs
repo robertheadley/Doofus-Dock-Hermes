@@ -1630,6 +1630,28 @@ pub struct AgentPluginServerInfo {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+pub struct AgentPluginSettingField {
+    #[serde(default)]
+    pub key: String,
+    #[serde(default, rename = "type")]
+    pub field_type: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default)]
+    pub value: Option<serde_json::Value>,
+    #[serde(default)]
+    pub choices: Vec<String>,
+    #[serde(default)]
+    pub env: Option<String>,
+    #[serde(default)]
+    pub has_value: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct AgentPluginInfo {
     #[serde(default)]
     pub name: String,
@@ -1663,6 +1685,8 @@ pub struct AgentPluginInfo {
     pub has_desktop_half: bool,
     #[serde(default)]
     pub servers: Vec<AgentPluginServerInfo>,
+    #[serde(default)]
+    pub settings_schema: Vec<AgentPluginSettingField>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -2292,6 +2316,18 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<AgentPluginToggleReceipt, String>,
     },
+    AgentPluginSettingsSaved {
+        request_id: String,
+        key: String,
+        profile: Option<String>,
+        result: Result<AgentPluginInfo, String>,
+    },
+    AgentPluginSettingSecretSaved {
+        request_id: String,
+        profile: Option<String>,
+        key: String,
+        result: Result<(), String>,
+    },
     AgentPluginRemoved {
         request_id: String,
         name: String,
@@ -2460,6 +2496,12 @@ enum GatewayCommand {
         request_id: String,
         key: String,
         enabled: bool,
+        profile: Option<String>,
+    },
+    SaveAgentPluginSettings {
+        request_id: String,
+        key: String,
+        values: serde_json::Value,
         profile: Option<String>,
     },
     RemoveAgentPlugin {
@@ -2823,6 +2865,12 @@ enum GatewayHttpCommand {
         request_id: String,
         profile: Option<String>,
         routes: Vec<serde_json::Value>,
+    },
+    SaveAgentPluginSettingSecret {
+        request_id: String,
+        profile: Option<String>,
+        key: String,
+        value: Zeroizing<String>,
     },
     SetToolsetEnabled {
         request_id: String,
@@ -5031,6 +5079,23 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
 
+    pub fn save_agent_plugin_setting_secret(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        key: String,
+        value: Zeroizing<String>,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::SaveAgentPluginSettingSecret {
+                request_id,
+                profile,
+                key,
+                value,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
     pub fn scan_and_record_repos(
         &self,
         request_id: String,
@@ -5471,6 +5536,23 @@ impl GatewayDiscovery {
                 request_id,
                 key,
                 enabled,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn save_agent_plugin_settings(
+        &self,
+        request_id: String,
+        key: String,
+        values: serde_json::Value,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::SaveAgentPluginSettings {
+                request_id,
+                key,
+                values,
                 profile,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
@@ -6571,15 +6653,12 @@ fn gateway_actor(
                         )
                     })
                     .and_then(|value| {
-                        let plugins = serde_json::from_value(
+                        let plugins = parse_agent_plugin_list(
                             value
                                 .get("plugins")
                                 .cloned()
                                 .unwrap_or_else(|| serde_json::json!([])),
-                        )
-                        .map_err(|_| {
-                            "Hermes returned an invalid plugins.manage list response".to_owned()
-                        })?;
+                        )?;
                         Ok(AgentPluginsSnapshot {
                             plugins,
                             user_count: value
@@ -6694,13 +6773,14 @@ fn gateway_actor(
                                 .unwrap_or("Hermes refused the plugin state change")
                                 .to_owned());
                         }
-                        let plugin: AgentPluginInfo =
+                        let mut plugin: AgentPluginInfo =
                             serde_json::from_value(value.get("plugin").cloned().ok_or_else(
                                 || "Hermes omitted the updated plugin receipt".to_owned(),
                             )?)
                             .map_err(|_| {
                                 "Hermes returned an invalid updated plugin receipt".to_owned()
                             })?;
+                        sanitize_agent_plugin_settings_schema(&mut plugin)?;
                         if plugin.key != key {
                             return Err("Hermes updated a different plugin key".into());
                         }
@@ -6722,6 +6802,36 @@ fn gateway_actor(
                         request_id,
                         key,
                         enabled,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::SaveAgentPluginSettings {
+                request_id,
+                key,
+                values,
+                profile,
+            }) => {
+                let result = agent_plugin_settings_params(&key, values, profile.as_deref())
+                    .and_then(|params| {
+                        rpc_with_events(
+                            socket,
+                            next_request_id,
+                            "plugins.manage",
+                            params,
+                            Some(&events),
+                        )
+                    })
+                    .and_then(|value| parse_agent_plugin_settings_receipt(value, &key));
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentPluginSettingsSaved {
+                        request_id,
+                        key,
                         profile,
                         result,
                     })
@@ -8283,6 +8393,116 @@ fn parse_agent_plugin_auto_update_settings(
     })
 }
 
+fn agent_plugin_settings_params(
+    key: &str,
+    values: serde_json::Value,
+    profile: Option<&str>,
+) -> Result<serde_json::Value, String> {
+    if key.trim().is_empty() || key.len() > 512 || key.chars().any(char::is_control) {
+        return Err("Hermes plugin settings key is invalid".into());
+    }
+    if !values.is_object()
+        || serde_json::to_vec(&values).map_or(true, |encoded| {
+            encoded.len() > GATEWAY_HTTP_RESPONSE_LIMIT as usize
+        })
+    {
+        return Err("Hermes plugin settings values exceed their bounded schema".into());
+    }
+    session_profile_params(
+        serde_json::json!({"action":"settings","key":key,"values":values}),
+        profile,
+    )
+}
+
+fn sanitize_agent_plugin_settings_schema(plugin: &mut AgentPluginInfo) -> Result<(), String> {
+    if plugin.settings_schema.len() > 128 {
+        return Err("Hermes returned too many plugin settings fields".into());
+    }
+    let mut keys = HashSet::new();
+    for field in &mut plugin.settings_schema {
+        if field.key.trim().is_empty()
+            || field.key.len() > 256
+            || field.key.chars().any(char::is_control)
+            || !keys.insert(field.key.as_str())
+            || field.field_type.len() > 64
+            || field.field_type.chars().any(char::is_control)
+            || field.label.len() > 1024
+            || field.description.len() > 4096
+            || field.choices.len() > 256
+            || field
+                .choices
+                .iter()
+                .any(|choice| choice.len() > 1024 || choice.chars().any(char::is_control))
+        {
+            return Err("Hermes returned an invalid plugin settings schema".into());
+        }
+        if field.field_type == "secret" {
+            if field
+                .env
+                .as_deref()
+                .is_some_and(|env| !valid_plugin_setting_env_name(env))
+            {
+                return Err("Hermes returned an invalid plugin secret environment name".into());
+            }
+            // The pinned contract never returns a secret value. Defensively drop any such
+            // payload before it can reach application state or an egui renderer.
+            field.value = None;
+        }
+        if field
+            .env
+            .as_deref()
+            .is_some_and(|env| env.len() > 256 || env.chars().any(char::is_control))
+        {
+            return Err("Hermes returned an invalid plugin settings environment name".into());
+        }
+        if field.value.as_ref().is_some_and(|value| {
+            serde_json::to_vec(value).map_or(true, |encoded| {
+                encoded.len() > GATEWAY_HTTP_RESPONSE_LIMIT as usize
+            })
+        }) {
+            return Err("Hermes returned an oversized plugin setting value".into());
+        }
+    }
+    Ok(())
+}
+
+fn parse_agent_plugin_settings_receipt(
+    value: serde_json::Value,
+    key: &str,
+) -> Result<AgentPluginInfo, String> {
+    if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err(value
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("Hermes refused to save plugin settings")
+            .to_owned());
+    }
+    let mut plugin: AgentPluginInfo = serde_json::from_value(
+        value
+            .get("plugin")
+            .cloned()
+            .ok_or_else(|| "Hermes omitted the refreshed plugin settings receipt".to_owned())?,
+    )
+    .map_err(|_| "Hermes returned an invalid plugin settings receipt".to_owned())?;
+    if plugin.key != key {
+        return Err("Hermes returned settings for a different plugin".into());
+    }
+    sanitize_agent_plugin_settings_schema(&mut plugin)?;
+    Ok(plugin)
+}
+
+fn parse_agent_plugin_list(value: serde_json::Value) -> Result<Vec<AgentPluginInfo>, String> {
+    let mut plugins: Vec<AgentPluginInfo> = serde_json::from_value(value)
+        .map_err(|_| "Hermes returned an invalid plugins.manage list response".to_owned())?;
+    if plugins.len() > 4096 {
+        return Err("Hermes returned too many installed plugins".into());
+    }
+    for plugin in &mut plugins {
+        sanitize_agent_plugin_settings_schema(plugin)?;
+    }
+    Ok(plugins)
+}
+
 fn parse_agent_plugin_update_all(
     value: serde_json::Value,
 ) -> Result<Vec<AgentPluginUpdateAllRow>, String> {
@@ -9769,6 +9989,22 @@ fn gateway_http_actor(
                 request_id,
                 profile: profile.clone(),
                 result: save_fallback_providers_http(&endpoint, profile.as_deref(), &routes),
+            },
+            GatewayHttpCommand::SaveAgentPluginSettingSecret {
+                request_id,
+                profile,
+                key,
+                value,
+            } => GatewayEvent::AgentPluginSettingSecretSaved {
+                request_id,
+                profile: profile.clone(),
+                key: key.clone(),
+                result: save_agent_plugin_setting_secret_http(
+                    &endpoint,
+                    profile.as_deref(),
+                    &key,
+                    value.as_str(),
+                ),
             },
             GatewayHttpCommand::SetToolsetEnabled {
                 request_id,
@@ -13494,6 +13730,84 @@ fn repo_scan_policy_from_config(config: &serde_json::Value) -> RepoScanPolicy {
 }
 
 const FALLBACK_ROUTE_LIMIT: usize = 64;
+
+fn valid_plugin_setting_env_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value.bytes().enumerate().all(|(index, byte)| {
+            byte == b'_' || byte.is_ascii_uppercase() || (index > 0 && byte.is_ascii_digit())
+        })
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_uppercase() || *byte == b'_')
+}
+
+fn save_agent_plugin_setting_secret_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+    key: &str,
+    value: &str,
+) -> Result<(), String> {
+    if !valid_plugin_setting_env_name(key) || value.is_empty() || value.len() > 64 * 1024 {
+        return Err("Plugin secret settings are invalid or exceed their bounded schema".into());
+    }
+    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let url = format!(
+        "{}/api/env{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let body = serde_json::json!({"key": key, "value": value});
+    let response: serde_json::Value = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_mutation(endpoint, "PUT", &url, body)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes plugin secrets require the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        save_plugin_setting_secret_local(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            profile_id,
+            key,
+            value,
+        )?
+    };
+    if response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err("Hermes did not confirm the plugin secret was saved".into());
+    }
+    Ok(())
+}
+
+fn save_plugin_setting_secret_local(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+    key: &str,
+    value: &str,
+) -> Result<serde_json::Value, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err("Hermes plugin secrets require the verified loopback API origin".into());
+    }
+    if !valid_plugin_setting_env_name(key) || value.is_empty() || value.len() > 64 * 1024 {
+        return Err("Plugin secret settings are invalid or exceed their bounded schema".into());
+    }
+    let url = format!(
+        "{}/api/env{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    cron_local_gateway_http_request_with_ticket(
+        api_origin,
+        ticket,
+        "PUT",
+        &url,
+        Some(serde_json::json!({"key": key, "value": value})),
+    )
+}
 
 fn load_fallback_providers_http(
     endpoint: &GatewayEndpoint,
@@ -18870,6 +19184,127 @@ mod tests {
         .expect("read source display config");
         assert!(enabled);
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn agent_plugin_settings_values_are_profile_scoped_and_secret_free() {
+        let params = agent_plugin_settings_params(
+            "vendor:sample",
+            json!({"enabled": true, "limit": 3}),
+            Some("work profile"),
+        )
+        .expect("valid sparse settings params");
+        assert_eq!(params["action"], "settings");
+        assert_eq!(params["key"], "vendor:sample");
+        assert_eq!(params["profile"], "work profile");
+        assert_eq!(params["values"], json!({"enabled": true, "limit": 3}));
+        let secret_only =
+            agent_plugin_settings_params("vendor:sample", json!({}), Some("work profile"))
+                .expect("secret-only settings still submit an empty values object");
+        assert_eq!(secret_only["values"], json!({}));
+        assert!(
+            agent_plugin_settings_params("plugin", json!(["not", "an", "object"]), None).is_err()
+        );
+        assert!(
+            agent_plugin_settings_params("plugin", json!({"x": "a".repeat(1024 * 1024 + 1)}), None)
+                .is_err()
+        );
+
+        let mut plugin: AgentPluginInfo = serde_json::from_value(json!({
+            "key":"vendor:sample",
+            "settings_schema":[
+                {"key":"token","type":"secret","env":"PLUGIN_TOKEN","value":"must-not-survive","has_value":true},
+                {"key":"mode","type":"enum","choices":["a","b"]}
+            ]
+        }))
+        .expect("plugin schema fixture");
+        sanitize_agent_plugin_settings_schema(&mut plugin).expect("safe plugin schema");
+        assert!(plugin.settings_schema[0].value.is_none());
+        assert_eq!(
+            plugin.settings_schema[0].env.as_deref(),
+            Some("PLUGIN_TOKEN")
+        );
+        assert_eq!(plugin.settings_schema[0].has_value, true);
+    }
+
+    #[test]
+    fn agent_plugin_secret_save_uses_local_profile_scoped_env_endpoint() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local secret fixture");
+        let address = listener.local_addr().expect("local secret fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept local secret save");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with("PUT /api/env?profile=work%20profile HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n")
+            );
+            let body: serde_json::Value =
+                serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1)
+                    .expect("secret payload JSON");
+            assert_eq!(body["key"], "PLUGIN_TOKEN");
+            assert_eq!(body["value"], "fixture-secret-value");
+            let receipt = r#"{"ok":true}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", receipt.len(), receipt)
+                .expect("write secret receipt");
+        });
+        let result = save_plugin_setting_secret_local(
+            &format!("http://{address}"),
+            "fixture-native-http-ticket",
+            "work profile",
+            "PLUGIN_TOKEN",
+            "fixture-secret-value",
+        )
+        .expect("save local secret");
+        assert_eq!(result["ok"], true);
+        server.join().expect("local secret fixture exits");
+    }
+
+    #[test]
+    fn agent_plugin_secret_save_uses_remote_profile_scoped_env_endpoint() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind remote secret fixture");
+        let address = listener
+            .local_addr()
+            .expect("remote secret fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept remote secret save");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with("PUT /hermes/api/env?profile=work HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let body: serde_json::Value =
+                serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1)
+                    .expect("remote secret JSON");
+            assert_eq!(body["key"], "PLUGIN_TOKEN");
+            assert_eq!(body["value"], "fixture-secret-value");
+            let receipt = r#"{"ok":true}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", receipt.len(), receipt)
+                .expect("write remote secret receipt");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "default".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        save_agent_plugin_setting_secret_http(
+            &endpoint,
+            Some("work"),
+            "PLUGIN_TOKEN",
+            "fixture-secret-value",
+        )
+        .expect("save remote secret");
+        server.join().expect("remote secret fixture exits");
     }
 
     #[test]
