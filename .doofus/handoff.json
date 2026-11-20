@@ -13,6 +13,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only pinned policy audit completed. Pinned Desktop uses direct paths only when backend filesystem sharing is positively established; native lacks terminal backend and backend cwd facts, so preserve byte-upload default. No edits.",
+      "observed_at": "2026-11-20T19:58:45Z",
+      "pid": null,
+      "process_id": "subagent:attachment-policy-next-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0033..0068 audit completed; identified existing stream/markdown/search/history evidence and image/file attachments as a major code gap. No edits.",
       "observed_at": "2026-11-19T16:57:55Z",
       "pid": null,
@@ -204,30 +214,6 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/docs/PLAN.md",
       "status": " M"
     },
@@ -253,30 +239,6 @@
       "change_type": "modified",
       "owner": "unattributed_preexisting",
       "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/UI_ELEMENT_INVENTORY.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
       "status": " M"
     },
     {
@@ -306,7 +268,7 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0073.json",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0074.json",
       "status": "??"
     }
   ],
@@ -314,8 +276,8 @@
     "command": null,
     "evidence": [],
     "state": "in_progress",
-    "summary": "Added native OS composer drop routing in behavior commit d0ab4eb. Full package suite passes (502 library, 15 protocol, 3 launcher); capability/progress validators pass. PAR-0062 and PAR-0116 remain partial; headless only, no live Gateway/Windows acceptance.",
-    "verified_at": "2026-11-20T19:53:48Z"
+    "summary": "Mixed path/pathless composer drops now fail closed as a whole; full locked feature package suite passes (502 library + 15 protocol + 3 launcher). EV-0074 binds this safety edge to commit 6a21122. Pinned path-vs-bytes policy audit found native lacks backend type/cwd facts, so current byte-upload behavior remains the safe default.",
+    "verified_at": "2026-11-20T20:01:09Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -368,7 +330,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T20:53:48Z",
+    "lease_expires_at": "2026-11-20T21:01:09Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1287,11 +1249,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "df8ae038-5641-45e0-93d0-44339df4630f",
+  "last_event_id": "c0b293e4-815f-4818-87ce-e69d8f4e305a",
   "last_operation": {
-    "request_id": "df8ae038-5641-45e0-93d0-44339df4630f",
+    "request_id": "c0b293e4-815f-4818-87ce-e69d8f4e305a",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1308,7 +1270,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue PAR-0062 pinned path-versus-bytes attachment routing and remaining attachment recovery gaps; preserve main-only publishing and untracked work residue.",
+  "recommended_next_action": "Add profile/session-scoped terminal backend type and cwd facts, then implement attachmentPathNeedsUpload policy and parity tests; next continue attachment recovery and remaining chat/tool scope.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1768,7 +1730,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "80e684351954533a5e5d7a4da4e35347841897ea1f3e471d7f1fa25e94a7d70e",
+    "change_fingerprint": "6b464653db84d7848b5996273fe5e3f1fb6d86130638bae1d23011628baada10",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1776,22 +1738,6 @@
       },
       {
         "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/README.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
         "status": " M"
       },
       {
@@ -1815,22 +1761,6 @@
         "status": " M"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/UI_ELEMENT_INVENTORY.csv",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
-        "status": " M"
-      },
-      {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
       },
@@ -1847,18 +1777,18 @@
         "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0073.json",
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0074.json",
         "status": "??"
       }
     ],
-    "head_commit": "d0ab4eb7cdfd7bf82e5ee505e480fb19e8b9e989",
+    "head_commit": "6a2112277b13627c2f76acd1b3bc9aaae98c52e0",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 505,
+  "revision": 508,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 505,
+  "state_revision": 508,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0062",
   "task_ledger_revision": 84,
@@ -3142,9 +3072,19 @@
       "command": "cargo test --quiet --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked",
       "result": "PASS: 502 library + 15 automation protocol + 3 launcher tests; progress generator 86/499 reviewed (6 implemented, 79 partial, 1 not implemented, 413 unknown); root UCM and pinned package validators pass; rustfmt and diff checks pass.",
       "timestamp": "2026-11-20T19:53:48Z"
+    },
+    {
+      "command": "cargo test --quiet --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --lib composer_drop_accepts_multiple_paths_only_when_released_over_input",
+      "result": "PASS focused drop-path test; cargo check --lib; rustfmt and diff checks pass. Latest full package run before this small test enhancement: 502 library + 15 protocol + 3 launcher tests.",
+      "timestamp": "2026-11-20T19:58:46Z"
+    },
+    {
+      "command": "cargo test --quiet --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked",
+      "result": "PASS: 502 library + 15 automation protocol + 3 launcher; cargo check --lib, rustfmt, diff check; progress 86/499 reviewed; root UCM and pinned app capability validators pass.",
+      "timestamp": "2026-11-20T20:01:09Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T19:55:38Z"
+  "updated_at": "2026-11-20T20:01:09Z"
 }

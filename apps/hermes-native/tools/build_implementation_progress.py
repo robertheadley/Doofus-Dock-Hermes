@@ -1038,6 +1038,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#image_only_prompt_uses_source_default_text_and_image_ref_stays_in_attachment_metadata",
             "apps/hermes-native/src/app.rs#composer_drop_accepts_multiple_paths_only_when_released_over_input",
             "apps/hermes-native/src/app.rs#fn composer_file_drop_paths",
+            "apps/hermes-native/src/app.rs#fn composer_drop_path_list_is_complete",
         ],
         "gaps": ["live Hermes Gateway upload and refusal behavior", "pinned local path versus byte-upload policy", "native OS local-path drop is only a basic route into the existing upload path; previews, clipboard paste, pathless drops, and retry after session recovery remain open", "interrupted image draft restore after app restart", "Windows native picker and side-by-side source acceptance"],
     },
@@ -1050,8 +1051,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#accept_composer_file_drop",
             "apps/hermes-native/src/app.rs#composer_drop_accepts_multiple_paths_only_when_released_over_input",
             "apps/hermes-native/src/app.rs#fn composer_file_drop_paths",
+            "apps/hermes-native/src/app.rs#fn composer_drop_path_list_is_complete",
         ],
-        "gaps": ["only local paths exposed by egui are routed; drops with no local path show a fallback to Attach file", "custom Hermes path references, clipboard images, Gateway outcome matrix, live Windows interaction, and source-paired acceptance remain open"],
+        "gaps": ["only local paths exposed by egui are routed; any drop containing a pathless item is rejected as a whole with a fallback to Attach file", "custom Hermes path references, clipboard images, Gateway outcome matrix, live Windows interaction, and source-paired acceptance remain open"],
     },
     "PAR-0063": {
         "state": "partial",

@@ -3697,3 +3697,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - performance: Push and verification completed in approximately 45 seconds.
 - risks: The separately preserved untracked apps/hermes-native/work/ folder is not part of the published repository. Live Gateway/Windows interaction remains unverified.
 - follow_up: Continue the existing PAR-0062 attachment task; do not treat publication as parity acceptance.
+
+
+### Mixed file-drop guard — 2026-11-20
+
+- id: hermes-par0116-mixed-drop-20261120
+- timestamp: 2026-11-20T20:00:25Z
+- what: Reject a composer drop as a whole if any dropped item lacks a local path, preventing silent loss from mixed readable/pathless lists. Added EV-0074 and updated evidence progress with the fail-closed behavior.
+- why: Preserve the user's entire file selection or clearly request the supported Attach file path; never attach only a silent subset.
+- components: apps/hermes-native/src/app.rs; attachment progress generator and CSV; UCM receipt EV-0074; .doofus active task checkpoint.
+- type: Drop handling correctness fix and partial evidence.
+- validation: PASS full locked package suite (502 library + 15 protocol + 3 launcher); focused regression; cargo check --lib; rustfmt; diff check; task validation; root capability validator and pinned package validator.
+- performance: No performance change measured.
+- risks: Pathless bytes, clipboard, local shared-backend direct paths, live Gateway, physical Windows drop and source-paired acceptance remain open.
+- follow_up: Implement profile/session-scoped backend metadata before considering direct-path attachment; keep byte uploads as the safe default.
