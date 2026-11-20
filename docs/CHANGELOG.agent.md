@@ -3482,3 +3482,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change measured.
 - **risks:** Live Gateway, physical Windows menu interaction and source-paired acceptance remain open.
 - **follow_up:** Continue from checkpoint PAR-0216 custom model selection.
+
+## PAR-0216/0217 custom model and provider selection
+
+- **id:** hermes-par0216-0217-custom-models-20261120
+- **timestamp:** 2026-11-20 16:58 UTC
+- **what:** Added explicit custom model ID entry, catalog duplicate suppression, provider ordering with the active provider first, and provider-scoped persistence after an accepted model mutation. Verified configured `custom:local-ollama` slugs pass through the profile/session options and mutation contracts.
+- **why:** Support user-configured model IDs and providers as part of working chat functionality.
+- **components:** Hermes Native chat composer, Gateway model options/mutations, UI preference persistence and capability evidence.
+- **type:** Feature and regression coverage.
+- **validation:** PASS custom ID validation/persistence tests, profile-scoped fresh-revision model mutation fixture, provider options fixture, rendered editor/candidate test, cargo check and rustfmt. Full progress and package validation run after evidence mapping.
+- **performance:** No runtime performance change measured.
+- **risks:** Candidate selection is not exercised end-to-end from egui through a live Gateway; custom provider endpoint editing is a separate Settings workflow.
+- **follow_up:** Map PAR-0216/0217 partial, validate active and archival packages, publish to main and continue chat/tool feature gaps.

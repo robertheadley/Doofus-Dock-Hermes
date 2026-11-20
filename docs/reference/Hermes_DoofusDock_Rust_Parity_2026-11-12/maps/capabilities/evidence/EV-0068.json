@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0068",
+  "capability_id": "ui-select-custom-provider",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "preserve-configured-custom-provider-slug-through-options-and-model-mutation",
+  "locator": "apps/hermes-native/src/gateway.rs#chat_model_pick_uses_fresh_profile_scoped_revision_and_generation",
+  "date": "2026-11-20",
+  "commit": "9dd19f5e5951be1e98c5386c437becfc988ab5b8",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Loopback WebSocket fixtures verify `custom:local-ollama` survives profile/session-scoped model.options and the fresh-revision session.mutate request/receipt. The headless chat picker renders provider rows from the returned options. cargo check, focused Rust tests, rustfmt and diff checks pass.",
+  "notes": "Partial evidence. The UI test does not activate the custom provider row, and no live authenticated Gateway or source-paired Windows acceptance was performed. Editing custom provider endpoints is separate Settings functionality."
+}

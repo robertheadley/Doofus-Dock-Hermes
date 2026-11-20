@@ -11,6 +11,8 @@ Independent native Rust/egui implementation of the stock upstream Hermes Desktop
 
 The source pin and source tree evidence are recorded in `docs/SOURCE_AUDIT.md`. Parity work targets this downloaded snapshot and does not follow later upstream releases unless the target is explicitly changed. The prior Doofus/Hermes prototype remains in the parent workspace and is not part of this crate.
 
+The active chat composer reads the current session's configured model and provider capabilities, exposes reasoning-effort choices, and applies changes with fresh revision and execution-generation checks through Hermes Gateway. “Add custom model” accepts a provider-specific model ID and remembers it after Hermes accepts the switch; configured custom provider slugs pass through the same scoped mutation. Headless fixtures cover the editor, provider-scoped persistence and Gateway request/receipt contracts. Live Gateway and packaged Windows acceptance remain open.
+
 The active chat composer now reads the current session's configured model and provider capabilities, exposes available reasoning-effort choices, and applies model/reasoning changes with fresh revision and execution-generation checks through Hermes Gateway. The current headless UI fixture verifies the controls render; end-to-end menu interaction and live Gateway acceptance remain open.
 
 For the distinction between partial engineering progress, local/headless evidence and strict pinned-source acceptance, see [docs/COMPLETION_OVERVIEW.md](docs/COMPLETION_OVERVIEW.md) and its [requirement-level progress ledger](docs/status/IMPLEMENTATION_PROGRESS.csv). The 491-row supplemental inventory validator is not a completion score; the fixed parity gate remains 0/499 accepted until source-paired evidence is reviewed.

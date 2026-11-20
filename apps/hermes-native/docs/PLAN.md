@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 279 (implementation in progress).
+- **Working revision:** 280 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1703,3 +1703,11 @@ The active chat composer now reads profile/session-scoped `model.options`, displ
 PAR-0214/0215 remain partial: the isolated app harness does not click a menu selection, and live Gateway, packaged Windows, source-paired acceptance remain open. Custom model/provider management is out of this slice (PAR-0216/0217).
 
 Validation: PASS `cargo check -p hermes-native --lib`; five focused model Gateway tests and one rendered-controls test; `cargo fmt --package hermes-native --check`; task schema validation; implementation/chat progress generation and both package validators are run after evidence mapping. `git diff --check` passes. No live Gateway behavior is claimed.
+
+### Revision 280 — Custom chat model IDs and provider slugs (2026-11-20)
+
+The model menu now has an explicit custom model entry. It trims model IDs, rejects empty/whitespace-containing/control-character values, suppresses IDs already present in any catalog provider, and offers the candidate under configured providers with the active provider first. A custom ID is remembered only after a successful session model mutation receipt, then appears as a normal row on subsequent catalog reads. The provider identifier is the exact Gateway slug, including `custom:<key>` providers; provider configuration/editing remains a broader Settings workflow. Custom IDs are stored globally by provider slug in UI preferences, matching the pinned Desktop custom-model visibility store.
+
+PAR-0216/0217 are mapped partial. Headless interaction opens the custom-model editor and renders a provider candidate; helper tests validate ID rules and catalog duplicates; preference tests validate provider-scoped persistence; loopback Gateway tests verify fresh revision/generation mutation and exact `custom:local-ollama` slugs. The UI fixture does not activate the candidate row or run through a successful UI-to-Gateway receipt; live Gateway, packaged Windows, and source-paired acceptance remain open.
+
+Validation: PASS `cargo check -p hermes-native --lib`; custom-model validation and persistence tests; fresh profile-scoped model mutation and model-options Gateway tests; rendered model/reasoning/custom-entry UI test; rustfmt and diff checks. Progress and both package validators are run after evidence mapping.

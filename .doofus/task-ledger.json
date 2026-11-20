@@ -1,5 +1,5 @@
 {
-  "revision": 74,
+  "revision": 76,
   "schema_version": 1,
   "tasks": [
     {
@@ -7037,7 +7037,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -7046,11 +7046,11 @@
                 "priority": "P1",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-20T17:00:57Z",
+              "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
               "objective": "ui-select-custom-model",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -7061,15 +7061,17 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0216",
               "title": "PAR-0216 Select custom model",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/docs/PLAN.md#Revision 280"
+              ]
             },
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -7078,11 +7080,11 @@
                 "priority": "P1",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-20T17:00:58Z",
+              "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
               "objective": "ui-select-custom-provider",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -7093,10 +7095,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0217",
               "title": "PAR-0217 Select custom provider",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/docs/PLAN.md#Revision 280"
+              ]
             },
             {
               "agent_identity": {
@@ -16310,5 +16314,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-20T16:39:52Z"
+  "updated_at": "2026-11-20T17:00:58Z"
 }

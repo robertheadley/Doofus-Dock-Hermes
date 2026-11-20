@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0067",
+  "capability_id": "ui-select-custom-model",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "enter-provider-specific-custom-model-and-remember-after-accepted-switch",
+  "locator": "apps/hermes-native/src/app.rs#composer_exposes_model_and_reasoning_controls_for_supported_session_model",
+  "date": "2026-11-20",
+  "commit": "9dd19f5e5951be1e98c5386c437becfc988ab5b8",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui test opens the Add custom model editor and renders the candidate under the active provider. Tests validate trimmed non-whitespace IDs, catalog duplicate suppression, provider-scoped preference persistence and a fresh profile-scoped Gateway model mutation. The implementation remembers an ID only after an accepted mutation receipt. cargo check, focused Rust tests, rustfmt and diff checks pass.",
+  "notes": "Partial evidence. The headless test does not activate the candidate row or connect the UI action to a live Gateway. Live authenticated Gateway, packaged Windows behavior and source-paired acceptance remain open."
+}

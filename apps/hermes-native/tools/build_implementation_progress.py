@@ -1259,6 +1259,35 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live authenticated Gateway behavior, packaged Windows interaction and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0216": {
+        "state": "partial",
+        "level": "headless_custom_model_entry_validation_storage_and_catalog_visibility",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 280",
+            "apps/hermes-native/src/app.rs#custom_model_candidate_trims_rejects_whitespace_and_suppresses_catalog_duplicates",
+            "apps/hermes-native/src/app.rs#composer_exposes_model_and_reasoning_controls_for_supported_session_model",
+            "apps/hermes-native/src/layout.rs#custom_model_ids_are_provider_scoped_persisted_and_validated",
+            "apps/hermes-native/src/gateway.rs#chat_model_pick_uses_fresh_profile_scoped_revision_and_generation",
+        ],
+        "gaps": [
+            "headless UI test opens the editor and renders candidates but does not activate a candidate through a successful UI-to-Gateway receipt",
+            "live authenticated Gateway, packaged Windows behavior and source-paired acceptance remain open",
+        ],
+    },
+    "PAR-0217": {
+        "state": "partial",
+        "level": "headless_custom_provider_slug_options_and_mutation_contract",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 280",
+            "apps/hermes-native/src/app.rs#composer_exposes_model_and_reasoning_controls_for_supported_session_model",
+            "apps/hermes-native/src/gateway.rs#chat_model_options_read_uses_profile_session_and_provider_capabilities",
+            "apps/hermes-native/src/gateway.rs#chat_model_pick_uses_fresh_profile_scoped_revision_and_generation",
+        ],
+        "gaps": [
+            "headless fixtures verify exact custom provider slug parsing and mutation but do not activate the provider picker row through egui",
+            "custom provider endpoint configuration, live authenticated Gateway behavior, packaged Windows interaction and source-paired acceptance remain open",
+        ],
+    },
 }
 
 FIELDS = [
