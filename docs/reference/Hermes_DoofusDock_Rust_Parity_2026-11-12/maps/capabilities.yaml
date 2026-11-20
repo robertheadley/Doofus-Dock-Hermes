@@ -2477,7 +2477,7 @@ capabilities:
   name: Drag files into composer
   area: file-browser
   claim: In the new native Rust DoofusDock UI, a user can drag files into composer.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0073",
+  "capability_id": "ui-drag-files-into-composer",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "composer_drop_accepts_multiple_paths_only_when_released_over_input",
+  "locator": "apps/hermes-native/src/app.rs#composer_drop_accepts_multiple_paths_only_when_released_over_input",
+  "date": "2026-11-20",
+  "commit": "d0ab4eb7cdfd7bf82e5ee505e480fb19e8b9e989",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native-egui coverage verifies that multiple local paths are accepted only when release occurs over the composer input; the input presents an OS-drop target and routes accepted paths through the existing attachment pipeline. Full agent-automation package tests and cargo check pass. No live Gateway or physical Windows drag was used.",
+  "notes": "Partial evidence. Byte-only drops, custom Hermes path references, clipboard images, Gateway success/refusal outcomes, physical Windows interaction and source-paired acceptance remain open."
+}

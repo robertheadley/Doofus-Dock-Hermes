@@ -969,6 +969,25 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "zoom and pan gestures, image load retry, live Gateway behavior, installed Windows interaction, and source-paired acceptance remain open",
         ],
     },
+    "PAR-0046": {
+        "state": "partial",
+        "level": "headless_ui_gateway_config_and_stream_reducer",
+        "refs": [
+            "apps/hermes-native/src/reasoning.rs#three_character_frames_preserve_safe_answer_and_extract_reasoning",
+            "apps/hermes-native/src/app.rs#reasoning_stream_is_separate_and_partial_tags_never_enter_answer",
+            "apps/hermes-native/src/app.rs#disabled_reasoning_preference_hides_the_disclosure_and_text",
+            "apps/hermes-native/src/gateway.rs#display_reasoning_config_read_uses_profile_scoped_source_api",
+        ],
+        "gaps": ["native UI control to change display.show_reasoning is not implemented", "live Gateway reasoning delivery and source-paired Windows acceptance remain open"],
+    },
+    "PAR-0047": {
+        "state": "partial",
+        "level": "headless_accessible_ui",
+        "refs": [
+            "apps/hermes-native/src/app.rs#simple_mode_keeps_reasoning_in_a_collapsed_accessible_disclosure",
+        ],
+        "gaps": ["source-paired and packaged Windows acceptance remains open"],
+    },
     "PAR-0057": {
         "state": "partial",
         "level": "headless_older_transcript_page_and_gateway_scope_tests",
@@ -1017,8 +1036,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#prompt_composer_places_gateway_attachment_refs_before_user_text",
             "apps/hermes-native/src/gateway.rs#prompt_submit_includes_source_image_attachment_metadata",
             "apps/hermes-native/src/app.rs#image_only_prompt_uses_source_default_text_and_image_ref_stays_in_attachment_metadata",
+            "apps/hermes-native/src/app.rs#composer_drop_accepts_multiple_paths_only_when_released_over_input",
+            "apps/hermes-native/src/app.rs#fn composer_file_drop_paths",
         ],
-        "gaps": ["live Hermes Gateway upload and refusal behavior", "pinned local path versus byte-upload policy", "attachment preview, paste/drop and retry after session recovery", "interrupted image draft restore after app restart", "Windows native picker and side-by-side source acceptance"],
+        "gaps": ["live Hermes Gateway upload and refusal behavior", "pinned local path versus byte-upload policy", "native OS local-path drop is only a basic route into the existing upload path; previews, clipboard paste, pathless drops, and retry after session recovery remain open", "interrupted image draft restore after app restart", "Windows native picker and side-by-side source acceptance"],
+    },
+    "PAR-0116": {
+        "state": "partial",
+        "level": "headless_native_os_file_drop_routing",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/hooks/use-composer-drop.ts#handleDrop",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/hooks/use-composer-drop.ts#handleInputDrop",
+            "apps/hermes-native/src/app.rs#accept_composer_file_drop",
+            "apps/hermes-native/src/app.rs#composer_drop_accepts_multiple_paths_only_when_released_over_input",
+            "apps/hermes-native/src/app.rs#fn composer_file_drop_paths",
+        ],
+        "gaps": ["only local paths exposed by egui are routed; drops with no local path show a fallback to Attach file", "custom Hermes path references, clipboard images, Gateway outcome matrix, live Windows interaction, and source-paired acceptance remain open"],
     },
     "PAR-0063": {
         "state": "partial",

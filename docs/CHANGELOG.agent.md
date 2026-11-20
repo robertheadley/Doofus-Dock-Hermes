@@ -3669,3 +3669,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Dedicated native preference editing, live Gateway, source-paired acceptance and remaining chat/tool/skills/plugin coverage are open.
 - **follow_up:** Continue the next dependency-ready chat/tool capability from pinned snapshot `8783054ef6cbafd86f10892241436862c1171a66`.
+
+
+### Composer OS file-drop slice — 2026-11-20
+
+- id: hermes-par0116-composer-drop-20261120
+- timestamp: 2026-11-20T19:50:00Z
+- what: Added a visible OS-drop target to the native message composer; multiple local paths released over the input route through the existing attachment upload flow. Drops without exposed local paths report the Attach file fallback. Added a headless path/target regression and partial UCM receipt EV-0073.
+- why: Support the user's requested chat and tool functionality while reducing the gap for file attachments without claiming full pinned-source parity.
+- components: apps/hermes-native/src/app.rs; attachment progress generator and CSV; Hermes Native README, architecture, backlog, plan and completion overview; root capability map/crosswalk/inventory and EV-0073.
+- type: Feature implementation and partial evidence update.
+- validation: PASS 502 library, 15 automation-protocol and 3 launcher tests; cargo check --lib; rustfmt; diff check; progress generator reports 86/499 reviewed (6 implemented, 79 partial, 1 not implemented, 413 unknown); Doofus task schema validator; root capability package validator (565 target behaviors, 15 source inspections, 57 implementation receipts; PyYAML optional parse skipped); pinned-source package validator (491).
+- performance: No performance change measured.
+- risks: Byte-only and clipboard drops, custom Hermes references, pinned path-sharing policy, live Gateway outcomes, physical Windows behavior and source-paired acceptance remain open. No live runtime or GUI was used.
+- follow_up: Continue the next dependency-ready chat/tool feature under the existing Codex lease; keep visual polish deferred until functional scope is complete.
