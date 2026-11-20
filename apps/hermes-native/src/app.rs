@@ -833,6 +833,23 @@ struct PendingMcpCatalogInstallStatus {
     next_poll: Option<std::time::Instant>,
 }
 
+#[derive(Clone, Debug)]
+struct PendingSkillHubInstall {
+    request_id: String,
+    identifier: String,
+    name: String,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+    action_name: Option<String>,
+    status_request_id: Option<String>,
+    attempts: u16,
+    next_poll: Option<std::time::Instant>,
+    lines: Vec<String>,
+    error: Option<String>,
+    completed: Option<bool>,
+}
+
 impl Default for McpServerAddDraft {
     fn default() -> Self {
         Self {
@@ -1664,6 +1681,7 @@ pub struct HermesNativeApp {
     skill_catalog_visible_limit: usize,
     skill_catalog_filter_query: String,
     skill_catalog_filtered_indexes: Vec<usize>,
+    pending_skill_hub_installs: BTreeMap<String, PendingSkillHubInstall>,
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     pending_skill_updates: BTreeMap<String, PendingSkillUpdate>,
     fonts_installed: bool,
@@ -4026,6 +4044,7 @@ fn render_message() -> &'static str {
             skill_catalog_visible_limit: SKILL_CATALOG_PAGE_SIZE,
             skill_catalog_filter_query: String::new(),
             skill_catalog_filtered_indexes: Vec::new(),
+            pending_skill_hub_installs: BTreeMap::new(),
             pending_toolset_updates: BTreeMap::new(),
             pending_skill_updates: BTreeMap::new(),
             fonts_installed: false,
@@ -12680,6 +12699,7 @@ fn render_message() -> &'static str {
         let right_width = (total_width - left_width - divider_width).max(0.0);
         let mut selected_id = self.selected_skill_catalog_id.clone();
         let mut show_more = false;
+        let mut install_selected = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             ui.allocate_ui_with_layout(
@@ -12836,6 +12856,97 @@ fn render_message() -> &'static str {
                                 if entry.repo.starts_with("https://github.com/") {
                                     detail_ui.hyperlink_to("Open repository", &entry.repo);
                                 }
+                                detail_ui.separator();
+                                let install_id = entry.install_identifier.clone();
+                                let install = install_id.as_ref().and_then(|identifier| {
+                                    self.pending_skill_hub_installs.get(identifier)
+                                });
+                                let installed = install
+                                    .is_some_and(|install| install.completed == Some(true))
+                                    || self.skills.as_ref().is_some_and(|skills| {
+                                        skills.iter().any(|skill| {
+                                            skill.name == entry.name
+                                                || skill.name == entry.identifier
+                                        })
+                                    });
+                                if installed {
+                                    detail_ui
+                                        .label(RichText::new("Installed").color(ACCENT).strong());
+                                } else {
+                                    let is_pending =
+                                        install_id.as_ref().is_some_and(|identifier| {
+                                            self.pending_skill_hub_installs
+                                                .get(identifier)
+                                                .is_some_and(|install| install.completed.is_none())
+                                        });
+                                    let mut install_clicked = false;
+                                    detail_ui.horizontal(|detail_ui| {
+                                        install_clicked = detail_ui
+                                            .add_enabled(
+                                                self.gateway_connected
+                                                    && install_id.is_some()
+                                                    && !is_pending,
+                                                egui::Button::new(if is_pending {
+                                                    "Installing…"
+                                                } else {
+                                                    "Install skill"
+                                                }),
+                                            )
+                                            .accessible_name(format!(
+                                                "Install skill {}",
+                                                entry.name
+                                            ))
+                                            .clicked();
+                                        if is_pending {
+                                            detail_ui.spinner();
+                                        }
+                                    });
+                                    if install_clicked {
+                                        install_selected = install_id
+                                            .clone()
+                                            .map(|identifier| (identifier, entry.name.clone()));
+                                    }
+                                }
+                                if let Some(install) = install {
+                                    detail_ui.group(|detail_ui| {
+                                        detail_ui.label(
+                                            RichText::new("Installation activity")
+                                                .strong()
+                                                .color(TEXT),
+                                        );
+                                        if install.completed.is_none() {
+                                            detail_ui.horizontal(|detail_ui| {
+                                                detail_ui.spinner();
+                                                detail_ui.label("Hermes is installing this skill…");
+                                            });
+                                        } else if let Some(error) = &install.error {
+                                            detail_ui.colored_label(Color32::LIGHT_RED, error);
+                                        } else if install.completed == Some(true) {
+                                            detail_ui.label(
+                                                RichText::new("Installation complete")
+                                                    .color(ACCENT),
+                                            );
+                                        }
+                                        egui::ScrollArea::vertical()
+                                            .id_salt(("skill-install-log", &install.identifier))
+                                            .max_height(180.0)
+                                            .show(detail_ui, |detail_ui| {
+                                                for (index, line) in
+                                                    install.lines.iter().enumerate()
+                                                {
+                                                    detail_ui.label(
+                                                        RichText::new(format!(
+                                                            "{} · {line}",
+                                                            index + 1
+                                                        ))
+                                                        .monospace()
+                                                        .size(11.0)
+                                                        .color(MUTED),
+                                                    );
+                                                }
+                                            });
+                                    });
+                                }
                             });
                     }
                 },
@@ -12848,6 +12959,11 @@ fn render_message() -> &'static str {
             self.skill_catalog_visible_limit = self
                 .skill_catalog_visible_limit
                 .saturating_add(SKILL_CATALOG_PAGE_SIZE);
+        }
+        if let Some((identifier, name)) = install_selected
+            && let Err(error) = self.request_skill_hub_install(identifier, name)
+        {
+            self.skill_catalog_error = Some(error);
         }
     }
 
@@ -19804,6 +19920,274 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn request_skill_hub_install(
+        &mut self,
+        identifier: String,
+        name: String,
+    ) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before installing a skill".into());
+        }
+        if identifier.is_empty()
+            || identifier.len() > 2048
+            || identifier.chars().any(char::is_control)
+            || name.is_empty()
+            || name.len() > 512
+            || name.chars().any(char::is_control)
+        {
+            return Err("Skill catalog install target is invalid".into());
+        }
+        if self
+            .pending_skill_hub_installs
+            .get(&identifier)
+            .is_some_and(|install| install.completed.is_none())
+        {
+            return Ok(());
+        }
+        if self
+            .pending_skill_hub_installs
+            .get(&identifier)
+            .is_some_and(|install| install.completed == Some(true))
+        {
+            return Err(
+                "Skill installation already completed; refresh the installed Skills list.".into(),
+            );
+        }
+        let entry = self
+            .skill_catalog
+            .as_ref()
+            .and_then(|entries| {
+                entries.iter().find(|entry| {
+                    entry.name == name && entry.install_identifier.as_deref() == Some(&identifier)
+                })
+            })
+            .ok_or_else(|| "Skill is not an installable entry in the loaded catalog".to_owned())?;
+        if self.skills.as_ref().is_some_and(|skills| {
+            skills
+                .iter()
+                .any(|skill| skill.name == entry.name || skill.name == identifier)
+        }) {
+            return Err("Skill is already installed".into());
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        let request_id = operation_id("skill-hub-install");
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes Skills hub installer is unavailable".to_owned())?;
+        if self.pending_skill_hub_installs.len() >= 32 {
+            self.pending_skill_hub_installs
+                .retain(|_, install| install.completed.is_none());
+        }
+        if self.pending_skill_hub_installs.len() >= 32 {
+            return Err("Too many skill installs are active".into());
+        }
+        gateway.install_skill_hub(
+            request_id.clone(),
+            identifier.clone(),
+            endpoint.profile_id.clone(),
+            endpoint.instance_id.clone(),
+            endpoint.authority_epoch,
+        )?;
+        self.pending_skill_hub_installs.insert(
+            identifier.clone(),
+            PendingSkillHubInstall {
+                request_id,
+                identifier,
+                name: name.clone(),
+                profile_id: endpoint.profile_id.clone(),
+                instance_id: endpoint.instance_id.clone(),
+                authority_epoch: endpoint.authority_epoch,
+                action_name: None,
+                status_request_id: None,
+                attempts: 0,
+                next_poll: None,
+                lines: vec!["Starting Hermes skill installation…".into()],
+                error: None,
+                completed: None,
+            },
+        );
+        self.status = format!("Installing skill {name}");
+        Ok(())
+    }
+
+    fn poll_skill_hub_install_actions(&mut self, ctx: &egui::Context) {
+        let now = std::time::Instant::now();
+        let due = self
+            .pending_skill_hub_installs
+            .iter()
+            .filter_map(|(identifier, install)| {
+                (install.completed.is_none()
+                    && install.action_name.is_some()
+                    && install.status_request_id.is_none()
+                    && install.next_poll.is_none_or(|deadline| deadline <= now))
+                .then(|| {
+                    (
+                        identifier.clone(),
+                        install.action_name.clone().unwrap_or_default(),
+                        install.profile_id.clone(),
+                        install.instance_id.clone(),
+                        install.authority_epoch,
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        for (identifier, action_name, profile_id, instance_id, authority_epoch) in due {
+            let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+                continue;
+            };
+            if !self.gateway_connected
+                || endpoint.profile_id != profile_id
+                || endpoint.instance_id != instance_id
+                || endpoint.authority_epoch != authority_epoch
+            {
+                if let Some(install) = self.pending_skill_hub_installs.get_mut(&identifier) {
+                    install.error = Some(
+                        "Skill install belongs to a different Gateway connection; refresh Skills before retrying."
+                            .into(),
+                    );
+                    install.completed = Some(false);
+                }
+                continue;
+            }
+            let Some(gateway) = self.gateway_discovery.as_ref() else {
+                continue;
+            };
+            let request_id = operation_id("skill-hub-install-status");
+            match gateway.load_gateway_action_status(
+                request_id.clone(),
+                action_name,
+                Some(profile_id),
+            ) {
+                Ok(()) => {
+                    if let Some(install) = self.pending_skill_hub_installs.get_mut(&identifier) {
+                        install.status_request_id = Some(request_id);
+                        install.next_poll = None;
+                    }
+                    ctx.request_repaint_after(std::time::Duration::from_millis(1200));
+                }
+                Err(error) => {
+                    if let Some(install) = self.pending_skill_hub_installs.get_mut(&identifier) {
+                        install.attempts = install.attempts.saturating_add(1);
+                        if install.attempts >= 400 {
+                            install.error = Some(format!(
+                                "Could not poll skill install action: {}",
+                                bounded_status_text(&error, 1024)
+                            ));
+                            install.completed = Some(false);
+                        } else {
+                            install.next_poll = Some(now + std::time::Duration::from_millis(1200));
+                        }
+                    }
+                    ctx.request_repaint_after(std::time::Duration::from_millis(1200));
+                }
+            }
+        }
+    }
+
+    fn settle_skill_hub_action_status(
+        &mut self,
+        request_id: &str,
+        profile: &Option<String>,
+        action_name: &str,
+        result: Result<GatewayActionStatus, String>,
+        ctx: &egui::Context,
+    ) -> bool {
+        let Some(identifier) =
+            self.pending_skill_hub_installs
+                .iter()
+                .find_map(|(identifier, install)| {
+                    (install.status_request_id.as_deref() == Some(request_id))
+                        .then(|| identifier.clone())
+                })
+        else {
+            return false;
+        };
+        let Some(install) = self.pending_skill_hub_installs.get_mut(&identifier) else {
+            return true;
+        };
+        if install.action_name.as_deref() != Some(action_name)
+            || profile.as_deref() != Some(install.profile_id.as_str())
+            || !self.gateway_connected
+            || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                endpoint.profile_id != install.profile_id
+                    || endpoint.instance_id != install.instance_id
+                    || endpoint.authority_epoch != install.authority_epoch
+            })
+        {
+            install.status_request_id = None;
+            install.error = Some("Skill install status belonged to a stale Gateway owner.".into());
+            install.completed = Some(false);
+            return true;
+        }
+        install.status_request_id = None;
+        install.attempts = install.attempts.saturating_add(1);
+        match result {
+            Ok(status) if status.name == action_name => {
+                install.lines = status
+                    .lines
+                    .into_iter()
+                    .take(200)
+                    .map(|line| bounded_status_text(&line, 2048))
+                    .collect();
+                if status.running || status.exit_code.is_none() {
+                    if install.attempts >= 400 {
+                        install.error =
+                            Some("Timed out waiting for the skill install action.".into());
+                        install.completed = Some(false);
+                    } else {
+                        install.next_poll = Some(
+                            std::time::Instant::now() + std::time::Duration::from_millis(1200),
+                        );
+                    }
+                } else if status.exit_code == Some(0) {
+                    install.completed = Some(true);
+                    install.error = None;
+                    let name = install.name.clone();
+                    self.status = format!("Installed skill {name}");
+                    if let Err(error) = self.load_capabilities() {
+                        self.capabilities_error = Some(error);
+                    }
+                    ctx.request_repaint();
+                } else {
+                    let detail = install
+                        .lines
+                        .iter()
+                        .rev()
+                        .take(3)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    install.error = Some(if detail.is_empty() {
+                        format!(
+                            "Skill installation failed with exit code {}.",
+                            status.exit_code.unwrap_or_default()
+                        )
+                    } else {
+                        detail
+                    });
+                    install.completed = Some(false);
+                }
+            }
+            Ok(_) => {
+                install.error =
+                    Some("Hermes returned mismatched skill install action status.".into());
+                install.completed = Some(false);
+            }
+            Err(error) => {
+                install.error = Some(bounded_status_text(&error, 1024));
+                install.completed = Some(false);
+            }
+        }
+        true
+    }
+
     fn set_toolset_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
         if !self.gateway_connected {
             return Err("Connect to Hermes before changing a Toolset".into());
@@ -25063,6 +25447,15 @@ fn render_message() -> &'static str {
                     action_name,
                     result,
                 } => {
+                    if self.settle_skill_hub_action_status(
+                        &request_id,
+                        &profile,
+                        &action_name,
+                        result.clone(),
+                        ctx,
+                    ) {
+                        continue;
+                    }
                     let Some(state) = self.messaging_gateway_restart.as_ref() else {
                         continue;
                     };
@@ -26913,6 +27306,59 @@ fn render_message() -> &'static str {
                         Err(error) => self.mcp_catalog_error = Some(error),
                     }
                 }
+                GatewayEvent::SkillHubInstallStarted {
+                    request_id,
+                    identifier,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(install) = self.pending_skill_hub_installs.get_mut(&identifier) else {
+                        continue;
+                    };
+                    if install.request_id != request_id {
+                        continue;
+                    }
+                    if install.profile_id != profile_id
+                        || install.instance_id != instance_id
+                        || install.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        install.error =
+                            Some("Skill install receipt belonged to a stale Gateway owner.".into());
+                        install.completed = Some(false);
+                        continue;
+                    }
+                    match result {
+                        Ok(action_name)
+                            if !action_name.is_empty()
+                                && action_name.len() <= 256
+                                && !action_name.chars().any(char::is_control) =>
+                        {
+                            install.action_name = Some(action_name);
+                            install
+                                .lines
+                                .push("Hermes accepted the installation action.".into());
+                            install.next_poll = Some(std::time::Instant::now());
+                            self.poll_skill_hub_install_actions(ctx);
+                        }
+                        Ok(_) => {
+                            install.error = Some(
+                                "Hermes returned an invalid skill install action name.".into(),
+                            );
+                            install.completed = Some(false);
+                        }
+                        Err(error) => {
+                            install.error = Some(bounded_status_text(&error, 1024));
+                            install.completed = Some(false);
+                        }
+                    }
+                }
                 GatewayEvent::McpCatalogInstallCompleted {
                     request_id,
                     name,
@@ -27421,6 +27867,7 @@ fn render_message() -> &'static str {
         }
         self.sync_display_timestamps_config();
         self.poll_mcp_catalog_install_status(ctx);
+        self.poll_skill_hub_install_actions(ctx);
         if load_archived_after_connect {
             self.load_archived_sessions();
         }
@@ -28039,6 +28486,22 @@ fn transcript_search_matches(messages: &[serde_json::Value], query: &str) -> Vec
 fn render_transcript_markdown(ui: &mut Ui, cache: &mut CommonMarkCache, markdown: &str) {
     CommonMarkViewer::new().show(ui, cache, markdown);
 }
+
+fn bounded_status_text(value: &str, max_bytes: usize) -> String {
+    let mut sanitized = value
+        .chars()
+        .filter(|character| !character.is_control() || *character == '\t')
+        .collect::<String>();
+    if sanitized.len() > max_bytes {
+        let mut end = max_bytes;
+        while !sanitized.is_char_boundary(end) {
+            end -= 1;
+        }
+        sanitized.truncate(end);
+    }
+    sanitized
+}
+
 fn bounded_transcript_value(value: &serde_json::Value, max_chars: usize) -> String {
     let text = value.as_str().map(str::to_owned).unwrap_or_else(|| {
         serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
@@ -40021,6 +40484,7 @@ mod tests {
                 author: "Hermes".into(),
                 tags: vec!["first".into()],
                 repo: "https://github.com/nousresearch/hermes-agent".into(),
+                install_identifier: Some("fixture-one".into()),
                 platforms: vec![],
                 requirements: vec![],
                 tools: vec![],
@@ -40046,6 +40510,7 @@ mod tests {
                 author: "Fixture author".into(),
                 tags: vec!["second".into()],
                 repo: String::new(),
+                install_identifier: Some("fixture-two".into()),
                 platforms: vec![],
                 requirements: vec![],
                 tools: vec![],
@@ -40062,6 +40527,57 @@ mod tests {
             },
         ]);
         app.skill_catalog_filter_query = "\0".into();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "fixture-profile".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.pending_skill_hub_installs.insert(
+            "fixture-one".into(),
+            PendingSkillHubInstall {
+                request_id: "install-request-1".into(),
+                identifier: "fixture-one".into(),
+                name: "First fixture skill".into(),
+                profile_id: "fixture-profile".into(),
+                instance_id: "fixture-gateway".into(),
+                authority_epoch: 1,
+                action_name: Some("skills-install-first-00000001".into()),
+                status_request_id: Some("install-status-1".into()),
+                attempts: 1,
+                next_poll: None,
+                lines: vec!["Cloning skill repository".into()],
+                error: None,
+                completed: None,
+            },
+        );
+        assert!(app.settle_skill_hub_action_status(
+            "install-status-1",
+            &Some("fixture-profile".into()),
+            "skills-install-first-00000001",
+            Ok(GatewayActionStatus {
+                exit_code: Some(0),
+                lines: vec![
+                    "Cloning skill repository".into(),
+                    "Installed First fixture skill".into(),
+                ],
+                name: "skills-install-first-00000001".into(),
+                pid: None,
+                running: false,
+            }),
+            &egui::Context::default(),
+        ));
+        assert_eq!(
+            app.pending_skill_hub_installs
+                .get("fixture-one")
+                .and_then(|install| install.completed),
+            Some(true)
+        );
         let app = Rc::new(RefCell::new(app));
         let frame_app = Rc::clone(&app);
         let mut harness = egui_kittest::Harness::builder()
@@ -40069,6 +40585,13 @@ mod tests {
             .build_ui(move |ui| frame_app.borrow_mut().draw_skill_hub_catalog(ui));
 
         assert!(harness.query_by_label("First fixture overview").is_some());
+        assert!(harness.query_by_label("Installation activity").is_some());
+        assert!(harness.query_by_label("Installed").is_some());
+        assert!(
+            harness
+                .query_by_label("1 · Cloning skill repository")
+                .is_some()
+        );
         harness
             .get_by_label("Skill hub result: Second fixture skill")
             .click();

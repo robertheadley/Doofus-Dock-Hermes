@@ -1601,3 +1601,11 @@ PAR-0256 now fetches the pinned public skills.json catalog on a background worke
 This is partial implementation evidence: the pinned CatalogBrowser also merges installed rows, displays discovery shelves and featured picks, supports category/source/tag facets, sort options and a card/list preference. Live feed and Gateway behavior, Windows interaction, and source-paired acceptance remain unverified.
 
 Validation: full locked feature suite passed (442 library, 15 automation protocol, 3 launcher tests); locked workspace/all-target check, rustfmt, both progress generators, task schema validation and pinned package validation passed. The UCM validator skipped YAML parsing because PyYAML is unavailable; its other checks passed.
+
+### Revision 267 — Profile-scoped Skills hub install and live log (2026-11-20)
+
+PAR-0257 now resolves the pinned skill install identifier rules (explicit install ID, optional/built-in fallback, and ClawHub namespace), posts a profile-scoped install request through the Hermes Gateway, validates its bounded action receipt, and polls the returned action status. The selected catalog detail shows live action lines, spinner, completion, and bounded failure text. Results are fenced by profile, gateway instance, authority epoch, action name, and request ID; a completed successful install refreshes the installed Skills inventory.
+
+This remains partial. Hermes live logs are polled and rendered, but the pinned security-scan View scan action, exact retry behavior after scan refusal, live Gateway/Windows checks, and source-paired acceptance remain open. PAR-0256 Browse still lacks installed/catalog merging, discovery shelves, facets, sorting, and the card/list preference.
+
+Validation: full locked feature suite passed (445 library, 15 automation protocol, 3 launcher tests); locked workspace/all-target check, rustfmt, both progress generators, task schema and pinned package validation pass. Strict live/source-paired acceptance remains pending.

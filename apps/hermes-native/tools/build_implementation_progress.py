@@ -578,6 +578,27 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live catalog feed, live Gateway profile, installed Windows interaction and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0257": {
+        "state": "partial",
+        "level": "headless_profile_scoped_skill_install_and_live_log",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/skill-catalog.tsx#install",
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/skills.ts#installSkillFromHub",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/hub-actions.ts#runHubAction",
+            ".staging/hermes-pinned-878305/hermes_cli/web_routers/skills.py#install_skill_hub",
+            "apps/hermes-native/src/skill_catalog.rs#skill_catalog_install_identifier",
+            "apps/hermes-native/src/gateway.rs#install_skill_hub_http",
+            "apps/hermes-native/src/gateway.rs#skill_hub_install_posts_profile_scoped_identifier_and_returns_action_name",
+            "apps/hermes-native/src/app.rs#request_skill_hub_install",
+            "apps/hermes-native/src/app.rs#settle_skill_hub_action_status",
+            "apps/hermes-native/src/app.rs#skill_hub_detail_selection_persists_across_frames",
+            "apps/hermes-native/docs/PLAN.md#Revision 267",
+        ],
+        "gaps": [
+            "security scan details do not yet open the pinned View scan route; retries after a blocked scan need matched confirmation behavior",
+            "live Gateway, Windows interaction, install process cancellation, and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",

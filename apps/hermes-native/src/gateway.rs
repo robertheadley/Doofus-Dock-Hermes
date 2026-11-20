@@ -1557,6 +1557,15 @@ pub struct McpCatalogInstallReceipt {
     pub background: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct SkillHubInstallReceipt {
+    pub name: String,
+    pub ok: bool,
+    pub pid: u32,
+    #[serde(default)]
+    pub action_id: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct McpServerTestTool {
     pub name: String,
@@ -2116,6 +2125,14 @@ pub enum GatewayEvent {
         authority_epoch: u64,
         result: Result<McpCatalogInstallReceipt, String>,
     },
+    SkillHubInstallStarted {
+        request_id: String,
+        identifier: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<String, String>,
+    },
     McpCatalogInstallStatusLoaded {
         request_id: String,
         action_name: String,
@@ -2537,6 +2554,13 @@ enum GatewayHttpCommand {
         request_id: String,
         name: String,
         env: BTreeMap<String, Zeroizing<String>>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    InstallSkillHubEntry {
+        request_id: String,
+        identifier: String,
         profile_id: String,
         instance_id: String,
         authority_epoch: u64,
@@ -4830,6 +4854,25 @@ impl GatewayDiscovery {
                 authority_epoch,
             })
             .map_err(|_| "Hermes MCP catalog installer has closed".to_owned())
+    }
+
+    pub fn install_skill_hub(
+        &self,
+        request_id: String,
+        identifier: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::InstallSkillHubEntry {
+                request_id,
+                identifier,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes Skill Hub installer has closed".to_owned())
     }
 
     pub fn load_mcp_catalog_install_status(
@@ -8552,6 +8595,53 @@ fn gateway_http_actor(
             }
             continue;
         }
+        if let GatewayHttpCommand::InstallSkillHubEntry {
+            request_id,
+            identifier,
+            profile_id,
+            instance_id,
+            authority_epoch,
+        } = command
+        {
+            let endpoint = endpoint.clone();
+            let events = events.clone();
+            let failed_events = events.clone();
+            let failed_request_id = request_id.clone();
+            let failed_identifier = identifier.clone();
+            let failed_profile_id = profile_id.clone();
+            let failed_instance_id = instance_id.clone();
+            let worker = thread::Builder::new()
+                .name("hermes-skill-hub-install".into())
+                .spawn(move || {
+                    let result = if endpoint.profile_id != profile_id
+                        || endpoint.instance_id != instance_id
+                        || endpoint.authority_epoch != authority_epoch
+                    {
+                        Err("Hermes Skill Hub install belongs to a stale connection".into())
+                    } else {
+                        install_skill_hub_http(&endpoint, &identifier).map(|receipt| receipt.name)
+                    };
+                    let _ = events.send(GatewayEvent::SkillHubInstallStarted {
+                        request_id,
+                        identifier,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                        result,
+                    });
+                });
+            if worker.is_err() {
+                let _ = failed_events.send(GatewayEvent::SkillHubInstallStarted {
+                    request_id: failed_request_id,
+                    identifier: failed_identifier,
+                    profile_id: failed_profile_id,
+                    instance_id: failed_instance_id,
+                    authority_epoch,
+                    result: Err("Could not start the Hermes Skill Hub install worker".into()),
+                });
+            }
+            continue;
+        }
         // Preserve FIFO and never coalesce a write. Search is already debounced
         // by the UI; each accepted mutation must produce its own receipt.
         let event = match command {
@@ -8701,6 +8791,9 @@ fn gateway_http_actor(
             },
             GatewayHttpCommand::InstallMcpCatalogEntry { .. } => {
                 unreachable!("MCP catalog installs are dispatched to their bounded worker")
+            }
+            GatewayHttpCommand::InstallSkillHubEntry { .. } => {
+                unreachable!("Skill Hub installs are dispatched to their bounded worker")
             }
             GatewayHttpCommand::TestMcpServer { .. } => {
                 unreachable!("MCP server tests are dispatched to their bounded UI request worker")
@@ -11882,6 +11975,44 @@ fn load_skill_content_http(
         || response.content.len() > GATEWAY_HTTP_RESPONSE_LIMIT as usize
     {
         return Err("Hermes returned invalid or oversized Skill detail content".into());
+    }
+    Ok(response)
+}
+
+fn install_skill_hub_http(
+    endpoint: &GatewayEndpoint,
+    identifier: &str,
+) -> Result<SkillHubInstallReceipt, String> {
+    if identifier.trim().is_empty()
+        || identifier.trim() != identifier
+        || identifier.len() > 2_048
+        || identifier.chars().any(char::is_control)
+        || endpoint.profile_id.is_empty()
+        || endpoint.profile_id.len() > 128
+        || endpoint.profile_id.chars().any(char::is_control)
+    {
+        return Err("Hermes Skill Hub install request is invalid or oversized".into());
+    }
+    let url = format!(
+        "{}/api/skills/hub/install{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(&endpoint.profile_id)
+    );
+    let response: SkillHubInstallReceipt = profile_scoped_gateway_http_request(
+        endpoint,
+        "POST",
+        &url,
+        Some(serde_json::json!({ "identifier": identifier })),
+    )?;
+    if !response.ok
+        || response.pid == 0
+        || response.name.len() > 512
+        || validate_action_name(&response.name).is_err()
+        || response.action_id.as_deref().is_some_and(|action_id| {
+            action_id.is_empty() || action_id.len() > 512 || action_id.chars().any(char::is_control)
+        })
+    {
+        return Err("Hermes did not confirm the requested Skill Hub install".into());
     }
     Ok(response)
 }
@@ -18625,6 +18756,130 @@ mod tests {
         assert_eq!(content.path, "/profile/skills/review/SKILL.md");
         assert!(content.content.contains("Review the proposed change."));
         server.join().expect("Skill content fixture exits");
+    }
+
+    #[test]
+    fn skill_hub_install_posts_profile_scoped_identifier_and_returns_action_name() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind Skill Hub install fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept Skill Hub install");
+            let request = read_http_fixture_request(&mut stream);
+            let (headers, body) = request.split_once("\r\n\r\n").expect("request body");
+            assert!(
+                headers
+                    .to_ascii_lowercase()
+                    .starts_with("post /hermes/api/skills/hub/install?profile=work http/1.1\r\n")
+            );
+            assert!(
+                headers
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: skill-hub-fixture-token\r\n")
+            );
+            assert!(
+                headers
+                    .to_ascii_lowercase()
+                    .contains("content-type: application/json"),
+                "captured request headers: {headers:?}"
+            );
+            assert!(!headers.to_ascii_lowercase().contains("cookie:"));
+            let body: serde_json::Value = serde_json::from_str(body).expect("install body JSON");
+            assert_eq!(body, json!({"identifier":"official/research/arxiv"}));
+            let response = json!({
+                "name":"skills-install-arxiv-00000001",
+                "ok":true,
+                "pid":4242,
+                "action_id":"install-run-0001"
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response)
+                .expect("write Skill Hub install response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "skill-hub-instance".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "skill-hub-fixture-token".into(),
+            ))),
+        };
+        let receipt = install_skill_hub_http(&endpoint, "official/research/arxiv")
+            .expect("profile-scoped Skill Hub install starts");
+        assert!(receipt.ok);
+        assert_eq!(receipt.pid, 4242);
+        assert_eq!(receipt.name, "skills-install-arxiv-00000001");
+        assert_eq!(receipt.action_id.as_deref(), Some("install-run-0001"));
+        server.join().expect("Skill Hub install fixture exits");
+    }
+
+    #[test]
+    fn skill_hub_install_rejects_unconfirmed_or_oversized_responses() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind rejected install fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept Skill Hub install");
+            let _request = read_http_fixture_request(&mut stream);
+            let response = json!({"name":"skills-install-nope","ok":false,"pid":0}).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response)
+                .expect("write refused install response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "skill-hub-instance".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "skill-hub-fixture-token".into(),
+            ))),
+        };
+        assert!(
+            install_skill_hub_http(&endpoint, "official/research/arxiv")
+                .unwrap_err()
+                .contains("did not confirm")
+        );
+        server.join().expect("rejected install fixture exits");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind oversized install fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let oversized = json!({
+            "name":"skills-install-too-large",
+            "ok":true,
+            "pid":4242,
+            "padding":"x".repeat(GATEWAY_HTTP_RESPONSE_LIMIT as usize)
+        })
+        .to_string();
+        assert!(oversized.len() > GATEWAY_HTTP_RESPONSE_LIMIT as usize);
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept oversized install");
+            let _request = read_http_fixture_request(&mut stream);
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", oversized.len(), oversized)
+                .expect("write oversized install response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "skill-hub-instance".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "skill-hub-fixture-token".into(),
+            ))),
+        };
+        assert!(
+            install_skill_hub_http(&endpoint, "official/research/arxiv")
+                .unwrap_err()
+                .contains("512 KiB")
+        );
+        server.join().expect("oversized install fixture exits");
     }
 
     #[test]

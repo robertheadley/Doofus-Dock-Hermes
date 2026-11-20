@@ -19,6 +19,19 @@
 - Fresh fetch confirmed local HEAD equals origin/main at 4159dcea2d3c3aa9a7cdab9c3190be98e1e632b7.
 - Strict source acceptance remains pending; this release is functional progress for the user to evaluate before visual customization, not a feature-parity completion claim.
 
+## PAR-0257 — Profile-scoped skill install with live log — 2026-11-20
+
+- **id:** PAR-0257
+- **timestamp:** 2026-11-20T01:07:41Z
+- **what:** Added pinned install-identifier mapping, a profile and connection-fenced Skills Hub install request, Gateway action polling, and an accessible live log in the selected skill detail. Successful installs refresh the installed Skills inventory; failure text remains visible and retry is available.
+- **why:** Skills are in the user's required chat/tool functionality scope; the pinned Desktop installation flow must be usable before visual customization.
+- **components:** apps/hermes-native/src/skill_catalog.rs, src/gateway.rs, src/app.rs, implementation progress generator, capability maps, README, architecture, backlog, completion overview, PLAN, test evidence.
+- **type:** feature, transport, headless tests, parity evidence and documentation.
+- **validation:** Full locked suite passed (445 library + 15 automation protocol + 3 launcher); locked workspace/all-target check, rustfmt, progress generators, task validator and pinned package validator passed. Source acceptance and live Gateway verification remain pending.
+- **performance:** Uses bounded Gateway HTTP responses and 1.2-second action status polling; action logs are capped to 200 lines with each display line bounded to 2048 bytes.
+- **risks:** Security-scan refusal currently surfaces the returned bounded error/log but does not navigate to the pinned View scan screen; retry after scan refusal still needs source-matched behavior.
+- **follow_up:** Validate profile-switch and failure/retry behavior, add View scan handling, then return to missing Browse hub discovery, merging, facets, sort and card/list behavior.
+
 ## HUR-001-176/177 — 2026-11-16
 
 - **id:** HUR-001-176-177

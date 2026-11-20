@@ -46,6 +46,7 @@ The first shell passed compile and two layout-policy tests and was opened on Win
 ## Stage 2 — gateway and core UI
 
 - [ ] PAR-0256 Skills hub browse is partially implemented: the pinned public feed loads off-thread with bounded parsing and successful-response caching, then supports local search, selectable details, retry/error states and 60-row paging. Finish upstream installed/catalog merging, discovery shelves, category/source/tag facets, sort modes, and the card/list preference; then record live and source-paired evidence.
+- [ ] PAR-0257 skill installation is partially implemented: install IDs follow the pinned source rule, the native app starts profile-scoped Gateway installation and polls visible action logs in the selected detail. Add pinned security scan inspection and retry behavior; validate live profile changes and source-paired acceptance.
 
 - [x] Implement credential-free `gateway ensure --json` discovery and reject non-ready, non-loopback, wrong-protocol or non-authority endpoints.
 - [x] Mint one-use Windows interactive tickets through the installed Hermes Python bridge; keep credentials out of URLs, logs and persisted state.

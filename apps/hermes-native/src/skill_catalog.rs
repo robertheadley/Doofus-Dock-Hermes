@@ -42,6 +42,7 @@ pub struct SkillCatalogEntry {
     pub category: String,
     pub category_label: String,
     pub source: String,
+    pub install_identifier: Option<String>,
     pub author: String,
     pub tags: Vec<String>,
     pub repo: String,
@@ -169,13 +170,18 @@ fn parse_skill_catalog_with_limit(
         if raw_name.is_empty() {
             continue;
         }
-        let Some(identifier) = optional_bounded_field(row, "identifier", MAX_IDENTIFIER_BYTES)
+        let Some(raw_identifier) = optional_bounded_field(row, "identifier", MAX_IDENTIFIER_BYTES)
         else {
             continue;
         };
-        let identifier = identifier.unwrap_or_else(|| raw_name.clone());
+        let Some(explicit_install_identifier) =
+            optional_bounded_field(row, "installIdentifier", MAX_IDENTIFIER_BYTES)
+        else {
+            continue;
+        };
+        let identifier = raw_identifier.clone().unwrap_or_else(|| raw_name.clone());
         let name = if raw_name.chars().any(char::is_alphanumeric) {
-            raw_name
+            raw_name.clone()
         } else {
             identifier.clone()
         };
@@ -201,6 +207,12 @@ fn parse_skill_catalog_with_limit(
         let Some(source) = bounded_field(row, "source", MAX_SOURCE_BYTES) else {
             continue;
         };
+        let install_identifier = skill_catalog_install_identifier(
+            &raw_name,
+            &source,
+            raw_identifier.as_deref(),
+            explicit_install_identifier.as_deref(),
+        );
         let author_field = if row.get("maintainer").is_some_and(|value| !value.is_null()) {
             "maintainer"
         } else {
@@ -294,6 +306,7 @@ fn parse_skill_catalog_with_limit(
             category,
             category_label,
             source,
+            install_identifier,
             author,
             tags,
             repo,
@@ -328,6 +341,31 @@ fn bounded_field(row: &Map<String, Value>, name: &str, max_bytes: usize) -> Opti
         return Some(String::new());
     };
     (value.len() <= max_bytes).then(|| value.to_owned())
+}
+
+fn skill_catalog_install_identifier(
+    name: &str,
+    source: &str,
+    identifier: Option<&str>,
+    explicit_install_identifier: Option<&str>,
+) -> Option<String> {
+    if let Some(explicit) = explicit_install_identifier.filter(|value| !value.is_empty()) {
+        return Some(explicit.to_owned());
+    }
+    let Some(identifier) = identifier.filter(|value| !value.is_empty()) else {
+        return match source {
+            "built-in" => None,
+            "optional" => Some(format!("official/{name}")),
+            _ => Some(name.to_owned()),
+        };
+    };
+    Some(
+        if source.eq_ignore_ascii_case("clawhub") && !identifier.starts_with("clawhub/") {
+            format!("clawhub/{identifier}")
+        } else {
+            identifier.to_owned()
+        },
+    )
 }
 
 fn optional_bounded_field(
@@ -520,6 +558,37 @@ mod tests {
         let entries = parse_skill_catalog(rows.to_string().as_bytes()).expect("bounded fixture");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "valid");
+    }
+
+    #[test]
+    fn parser_resolves_pinned_install_identifier_fallbacks() {
+        let entries = parse_skill_catalog(
+            br#"[
+              {"name":"optional-skill","source":"optional"},
+              {"name":"bundled-skill","source":"built-in"},
+              {"name":"claw-skill","source":"ClawHub","identifier":"org/claw-skill"},
+              {"name":"explicit-skill","source":"clawhub","identifier":"org/old","installIdentifier":"official/curated/new"},
+              {"name":"plain-skill","source":"official"}
+            ]"#,
+        )
+        .expect("install identifier fixture parses");
+        assert_eq!(
+            entries[0].install_identifier.as_deref(),
+            Some("official/optional-skill")
+        );
+        assert_eq!(entries[1].install_identifier, None);
+        assert_eq!(
+            entries[2].install_identifier.as_deref(),
+            Some("clawhub/org/claw-skill")
+        );
+        assert_eq!(
+            entries[3].install_identifier.as_deref(),
+            Some("official/curated/new")
+        );
+        assert_eq!(
+            entries[4].install_identifier.as_deref(),
+            Some("plain-skill")
+        );
     }
 
     #[test]
