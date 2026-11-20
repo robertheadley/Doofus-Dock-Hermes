@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0052",
+  "capability_id": "ui-browse-skill-hub",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "public-skills-hub-fetch-search-paging-and-detail-selection",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "bbc4c3770ca75b9125512295ef25fc738b83da92",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui unit tests with local HTTP fixtures. No live catalog, Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0256 loads the pinned public skills.json catalog off the UI thread, bounds response size and row/field parsing, refuses redirects, and caches successful results for 30 minutes. The Skills tab supports loading and retry/error states, local search, 60-row paging, selectable result details, tags, and safe GitHub repository links. Catalog parser tests pass (6); the headless selection regression test confirms selection persists across frames. Full locked suite passed 442 library, 15 automation-protocol, and 3 launcher tests; locked workspace/all-target check, rustfmt, progress generators, task validation and the pinned package validator passed. Installed/catalog merging, discovery shelves and featured picks, category/source/tag facets, sort modes, card/list preference, live catalog/Gateway behavior, installed Windows interaction and source-paired acceptance remain open; capability status is partial."
+}
