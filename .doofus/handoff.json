@@ -92,6 +92,90 @@
       "status": " M"
     },
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/UI_ELEMENT_INVENTORY.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -114,16 +198,20 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "codex",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0056.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": null,
-    "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0055.json#EV-0055"
-    ],
-    "state": "tested",
-    "summary": "PAR-0258 profile-scoped installed Skills batch update is tested, evidenced as EV-0055, and published. Behavior and evidence commits are reachable from main; exact remote SHA was verified. PAR-0253 is selected next.",
-    "verified_at": "2026-11-20T02:00:34Z"
+    "command": "task select",
+    "evidence": [],
+    "state": "unknown",
+    "summary": "PAR-0253 category filtering is headless-tested as partial evidence. Continue the requested chat/tool/skills/plugin/MCP scope with the next ready Toolsets inventory task.",
+    "verified_at": "2026-11-20T02:15:47Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -141,6 +229,7 @@
     "hermes-par-0074",
     "hermes-par-0251",
     "hermes-par-0252",
+    "hermes-par-0253",
     "hermes-par-0254",
     "hermes-par-0255",
     "hermes-par-0256",
@@ -160,7 +249,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T03:00:34Z",
+    "lease_expires_at": "2026-11-20T03:15:41Z",
     "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
     "model": null,
     "ownership_state": "active",
@@ -826,11 +915,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "d90f4098-7c37-4544-88dd-a70b92e164e2",
+  "last_event_id": "hermes-par0259-selected-20261120",
   "last_operation": {
-    "request_id": "d90f4098-7c37-4544-88dd-a70b92e164e2",
+    "request_id": "hermes-par0259-selected-20261120",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "task.selected"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -847,7 +936,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned PAR-0253 Skills category-filter behavior and implement the next bounded native Skills workflow.",
+  "recommended_next_action": "Inspect pinned PAR-0259 Toolsets inventory contract and implement its native profile-scoped behavior with focused tests.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1088,7 +1177,6 @@
     "hermes-par-0248",
     "hermes-par-0249",
     "hermes-par-0250",
-    "hermes-par-0253",
     "hermes-par-0259",
     "hermes-par-0260",
     "hermes-par-0261",
@@ -1323,7 +1411,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "cf98d39b39932dc8d91bb649d7101748c0b701147505ec0132fd05ee7cadd495",
+    "change_fingerprint": "064d64496ce122d1484b6a0363b807e4c7ebe5aee1580f518c936ab822f4bbf9",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1331,6 +1419,62 @@
       },
       {
         "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/UI_ELEMENT_INVENTORY.csv",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
         "status": " M"
       },
       {
@@ -1348,19 +1492,23 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0056.json",
+        "status": "??"
       }
     ],
-    "head_commit": "4562e53419cfd9025915beb8463bd54e0dbb1f78",
+    "head_commit": "430e42f94b2a36540c5e0b99d19ecff92f84a7bf",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 381,
+  "revision": 385,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 381,
+  "state_revision": 385,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0253",
-  "task_ledger_revision": 59,
+  "task_id": "hermes-par-0259",
+  "task_ledger_revision": 60,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2516,9 +2664,14 @@
       "command": "git push origin main; git fetch origin main; compare rev-parse HEAD with origin/main",
       "result": "PASS origin/main equals local HEAD 4562e53419cfd9025915beb8463bd54e0dbb1f78.",
       "timestamp": "2026-11-20T02:00:34Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked",
+      "result": "PASS 453 library + 15 automation protocol + 3 launcher; workspace/all-target check; rustfmt; progress generators; task validator; UCM package validator (565 behaviors, 565 UI items, 14 source receipts, 41 implementation receipts; YAML parse skipped because PyYAML is unavailable); git diff --check.",
+      "timestamp": "2026-11-20T02:15:41Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T02:00:34Z"
+  "updated_at": "2026-11-20T02:15:47Z"
 }

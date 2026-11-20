@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 264 (implementation in progress).
+- **Working revision:** 270 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1625,3 +1625,11 @@ PAR-0258 now exposes the pinned “Update installed” action on the installed S
 This remains partial: the pinned catalog has separate update-check and per-skill update workflows; they are not implemented by the batch “Update installed” action. Live Gateway update, packaged Windows interaction, cancellation, uncertain-start reconciliation, and source-paired/formal acceptance remain open.
 
 Validation: PASS full locked feature suite (453 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, both progress generators (68/499 overall reviewed; 36/173 chat/tool evidence-mapped), task schema validator, pinned package validator (565 behaviors/items, 14 source receipts, 39 implementation receipts; YAML parse skipped because PyYAML is unavailable), and diff check. Live Gateway, Windows and source-paired validation remain open.
+
+### Revision 270 — Skill Hub category facet (2026-11-20)
+
+PAR-0253 adds category filtering to the native Skill Hub catalog. Category options are derived from the loaded catalog, sorted alphabetically with Other last, and support multi-select OR semantics; the All control clears the selection. Category filtering composes with the existing text search, resets the current detail selection and paging limit when changed, and uses accessible category names. A headless egui regression verifies Research excludes the Productivity result and All restores it.
+
+This remains partial because live Gateway, packaged Windows interaction, and source-paired/formal acceptance have not been performed. The installed Skills list remains text-search based. The broader Hub still lacks installed/catalog merging, discovery shelves, source/tag facets, sort modes, and the card/list preference.
+
+Validation: PASS full locked feature suite (453 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt and diff checks. Focused headless category/search composition regression passes. Evidence review coverage and chat/tool mapped counts are regenerated in the progress overlay; live/source-paired acceptance remains open.

@@ -3262,3 +3262,15 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0258 remains partial; live Gateway, packaged Windows, and source-paired acceptance remain open.
 - **follow_up:** Continue PAR-0253 category filtering, then remaining Skills, plugins/MCP and chat/tool features before visual tuning.
+# Hermes Native Skill Hub category facet
+
+- **id:** hermes-par0253-category-facet-20261120
+- **timestamp:** 2026-11-20 02:13 UTC
+- **what:** Added a counted category facet to the native Skill Hub catalog, including alphabetic ordering with Other last, multi-select filtering, All/reset, accessibility names, and composition with text search. Selecting every category returns to All. Added a headless egui regression and partial UCM receipt EV-0056. Behavior commit: `dcc4837330fc1bb80311f943df681a68668cc213`.
+- **why:** Fill the pinned Skill Hub category-filter behavior before the user begins visual tuning.
+- **components:** Native Hermes Capabilities/Skills Hub, progress generator, source inventory and capability evidence, task ledger and handoff state.
+- **type:** Native UI behavior and partial capability evidence.
+- **validation:** PASS focused regression, full locked feature suite (453 library, 15 automation-protocol, 3 launcher tests), workspace/all-target check, rustfmt, progress generation, task validator, JSON validation and UCM package validator (565 behaviors/items, 14 source receipts, 41 implementation receipts; YAML parse skipped because PyYAML is unavailable). Live Gateway, packaged Windows interaction and source-paired acceptance were not run.
+- **performance:** Category facet computation is linear in loaded catalog entries and is re-evaluated during egui rendering, matching the pinned catalog’s derived-facet behavior; no benchmark change.
+- **risks:** Live/source-paired behavior remains unverified. The Skill Hub still lacks source/tag facets, installed/catalog merging, discovery shelves, sorting and card/list preference.
+- **follow_up:** Validate UCM and task records, publish evidence/docs to main, then continue remaining chat/tool, Skills, plugins and MCP functional gaps before visual redesign.

@@ -631,6 +631,23 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "pinned per-skill update checks and individual update workflows remain separate from the batch Update installed action",
         ],
     },
+    "PAR-0253": {
+        "state": "partial",
+        "level": "headless_skill_hub_category_facet_and_search_test",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/catalog-browser.tsx#CatalogFilterBar",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/catalog-filter-bar.tsx#onSelect",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/catalog-query.ts#catalogCategories",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/catalog-query.ts#filterCatalog",
+            "apps/hermes-native/src/app.rs#draw_skill_hub_catalog",
+            "apps/hermes-native/src/app.rs#skill_hub_detail_selection_persists_across_frames",
+            "apps/hermes-native/docs/PLAN.md#Revision 270",
+        ],
+        "gaps": [
+            "live Gateway, packaged Windows interaction, and source-paired/formal acceptance remain unverified",
+            "catalog/source/tag facets, installed-row merging, discovery shelves, sort modes, and card/list preference remain open",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",

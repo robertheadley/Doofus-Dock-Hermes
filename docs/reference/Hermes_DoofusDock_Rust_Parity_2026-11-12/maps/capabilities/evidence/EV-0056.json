@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0056",
+  "capability_id": "ui-filter-skills-by-category",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "skill-hub-category-facet-composes-with-search-and-all-reset",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "dcc4837330fc1bb80311f943df681a68668cc213",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui regression using synthetic catalog entries. No live Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0253 adds a counted category facet to the native Skill Hub catalog. Categories sort alphabetically with Other last, support multi-select OR filtering and an All/reset control, compose with text search, and reset detail selection and paging. Selecting every available category also returns to All, matching the pinned interaction. The headless test selects Research, confirms the Productivity result is filtered out, clears the facet and confirms the result returns, then selects all categories and verifies both results return. Pinned contract references are catalog-browser.tsx#CatalogFilterBar, catalog-filter-bar.tsx#onSelect, and catalog-query.ts#catalogCategories/filterCatalog. Full locked suite passed 453 library, 15 automation-protocol, and 3 launcher tests; workspace/all-target check, rustfmt and diff checks passed. Live Gateway, packaged Windows behavior, source-paired acceptance, source/tag facets, installed/catalog merging, discovery shelves, sorting and card/list preference remain open; capability status is partial."
+}
