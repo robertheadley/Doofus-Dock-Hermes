@@ -14352,6 +14352,12 @@ fn render_message() -> &'static str {
         self.slash_completion_due = None;
     }
 
+    fn retry_chat_model_options(&mut self) {
+        // The retry affordance only invalidates the cache owner. The composer draft,
+        // attachments, session scope, and selected policy remain user-owned state.
+        self.chat_model_options_owner = None;
+    }
+
     fn request_chat_model_options(&mut self) {
         let Some(session_id) = self.active_runtime_session_id.clone() else {
             return;
@@ -14607,6 +14613,7 @@ fn render_message() -> &'static str {
                 .unwrap_or(true);
             let mut selected_model: Option<(String, String, bool)> = None;
             let mut selected_effort = None;
+            let mut retry_model_options = false;
             ui.horizontal_wrapped(|ui| {
                 let label = if current_provider.is_empty() {
                     current_model.clone()
@@ -14646,15 +14653,17 @@ fn render_message() -> &'static str {
                         }
                         if let Some(error) = &self.chat_model_options_error {
                             ui.colored_label(Color32::LIGHT_RED, error);
-                            if ui.button("Retry model list").clicked() {
-                                self.chat_model_options_owner = None;
-                                ui.close();
-                            }
                         }
                     })
                 })
                 .response
                 .accessible_name("Choose model for this chat session");
+                if let Some(error) = &self.chat_model_options_error {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                    if ui.button("Retry model list").clicked() {
+                        retry_model_options = true;
+                    }
+                }
                 ui.add_enabled_ui(!mutation_pending, |ui| {
                     ui.menu_button("Add custom model…", |ui| {
                         ui.label("Enter a model ID supported by a configured provider");
@@ -14738,6 +14747,9 @@ fn render_message() -> &'static str {
                     }
                 }
             });
+            if retry_model_options {
+                self.retry_chat_model_options();
+            }
             if let Some((model, provider, custom)) = selected_model {
                 self.mutate_chat_policy(
                     "model",
@@ -31717,6 +31729,60 @@ mod tests {
             custom_model_candidate_native("LLAMA3.2:LATEST", &providers),
             None
         );
+    }
+
+    #[test]
+    fn retrying_chat_model_catalog_preserves_draft_and_attachments_on_failure() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "unfinished request".into();
+        app.composer_attachments.push(ComposerAttachment {
+            path: "attachments/brief.pdf".into(),
+            source_path: "C:/brief.pdf".into(),
+            name: "brief.pdf".into(),
+            is_image: false,
+            mime: "application/pdf".into(),
+            attached_session_id: Some("runtime-session".into()),
+            ref_text: Some("@file:attachments/brief.pdf".into()),
+            request_id: None,
+            error: None,
+        });
+        app.chat_model_options_owner = Some((
+            "runtime-session".into(),
+            Some("work".into()),
+            app.active_gateway_connection_id().to_owned(),
+        ));
+        app.chat_model_options_error = Some("catalog request failed".into());
+
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 620.0))
+            .build_ui(move |ui| frame_app.borrow_mut().composer(ui));
+        harness.run_steps(2);
+        assert!(harness.query_by_label("catalog request failed").is_some());
+        harness.get_by_label("Retry model list").click();
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Hermes Gateway is unavailable")
+                .is_some()
+        );
+
+        let app = app.borrow();
+        assert_eq!(app.draft, "unfinished request");
+        assert_eq!(app.composer_attachments.len(), 1);
+        assert_eq!(app.composer_attachments[0].name, "brief.pdf");
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-session")
+        );
+        assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+        drop(app);
+        drop(harness);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
