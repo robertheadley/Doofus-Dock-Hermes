@@ -3739,3 +3739,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - performance: No performance change measured.
 - risks: This is evidence coverage only. It is not a total completion percentage or an ETA; live Gateway, installed runtime, and formal/source-paired validation remain open.
 - follow_up: Continue the existing attachment work and scoped chat/tool gaps; defer visual-presentation work until functional parity.
+
+
+### Chat/tool progress publication — 2026-11-20T20:03:44Z
+
+- id: hermes-chat-tool-progress-publish-main-20261120
+- timestamp: 2026-11-20T20:03:44Z
+- what: Published chat/tool progress ledger and completion overview at 2eff1132712dec5ee27d14b95e4583b2e3bd4294.
+- why: Keep the main branch status current for the user's feature-only scope.
+- components: main branch progress ledger and completion overview.
+- type: Publication record.
+- validation: PASS fresh fetch confirmed exact local/remote SHA equality.
+- performance: Publication and verification completed in approximately 30 seconds.
+- risks: Evidence coverage is not product completion; all 176 remain live-runtime and source-pair pending.
+- follow_up: Continue feature implementation under the active Hermes Native task.
