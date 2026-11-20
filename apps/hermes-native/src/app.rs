@@ -31398,6 +31398,14 @@ mod tests {
                 name: "discord".into(),
                 tools: vec!["discord_send".into()],
             },
+            ToolsetInfo {
+                configured: false,
+                description: "Search saved conversations".into(),
+                enabled: true,
+                label: "Memory".into(),
+                name: "memory".into(),
+                tools: vec!["memory_search".into()],
+            },
         ]);
         let frame_app = Rc::new(RefCell::new(app));
         let draw_app = Rc::clone(&frame_app);
@@ -31405,9 +31413,12 @@ mod tests {
             .with_size(egui::vec2(1100.0, 760.0))
             .build_ui(move |ui| draw_app.borrow_mut().capabilities_content(ui));
 
-        assert!(harness.query_by_label("Toolsets · 1").is_some());
+        assert!(harness.query_by_label("Toolsets · 2").is_some());
         assert!(harness.query_by_label("Web Search").is_some());
         assert!(harness.query_by_label("web_search · web_extract").is_some());
+        assert!(harness.query_by_label("Memory").is_some());
+        assert!(harness.query_by_label("Configured").is_some());
+        assert!(harness.query_by_label("Needs setup").is_some());
         assert!(harness.query_by_label("Discord").is_none());
         assert!(harness.query_by_label("discord_send").is_none());
 
