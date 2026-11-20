@@ -3627,3 +3627,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change measured; the pinned behavior also reprocesses accumulated stream content on each frame.
 - **risks:** Profile-level `display.show_reasoning` loading, live Gateway delivery, packaged Windows behavior and source-paired acceptance remain open. The two parity rows remain partial.
 - **follow_up:** Implement profile reasoning preference loading and continue the remaining chat/tool, skills, MCP and plugin gaps before visual redesign.
+
+
+## 2026-11-20 — Reasoning evidence published
+
+- **id:** hermes-par0046-main-publication-20261120
+- **timestamp:** 2026-11-20 19:22 UTC
+- **what:** Published the reasoning stream implementation, partial parity receipts, task checkpoint and project documentation as commits `259fbf21f25bd89b1968fea30a5bf989f9ef6814` and `01231317666f0e76c0c655302334e8135df84d85`; fresh fetch confirmed local `main` equals `origin/main`.
+- **why:** Keep the user-designated main repository current with the validated chat feature slice and its evidence.
+- **components:** Native chat transcript, reasoning stream module, progress overlay, capability evidence, task state and project docs.
+- **type:** Direct main publication.
+- **validation:** PASS 498/498 native library tests, cargo check, rustfmt, task validation, root and archival UCM package validators, push and exact post-push fetch comparison.
+- **performance:** No runtime performance change measured.
+- **risks:** PAR-0046/PAR-0047 remain partial; profile-level reasoning preference loading and live/source-paired acceptance remain open.
+- **follow_up:** Implement `display.show_reasoning` profile preference loading, then continue the dependency-ready chat/tool, skills, MCP and plugin gaps.
