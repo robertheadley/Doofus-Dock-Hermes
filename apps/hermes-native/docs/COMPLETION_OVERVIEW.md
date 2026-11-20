@@ -1,12 +1,12 @@
 # Hermes Native completion overview
 
-Snapshot: 2026-11-18. Target: downloaded Hermes Desktop source snapshot `8783054ef6cbafd86f10892241436862c1171a66`.
+Snapshot: 2026-11-20. Target: downloaded Hermes Desktop source snapshot `8783054ef6cbafd86f10892241436862c1171a66`.
 
 ## Current goal scope — 2026-11-19
 
-The user narrowed the goal from whole-desktop replacement to complete chat, tool, skill, MCP integration, and plugin functionality against the same pinned Hermes snapshot. Feature parity is required; pixel matching is not. Use the separate explicit 173-row [chat/tool scope](status/CHAT_TOOL_SCOPE.csv) and its generated [progress overlay](status/CHAT_TOOL_PROGRESS.csv); keep the original 499-row matrix as the full source inventory.
+The goal is complete, verified chat and tool functionality, including skills, MCP integrations, and plugins, against the same pinned Hermes snapshot. Feature parity is required; pixel matching is not. Use the separate explicit 173-row [chat/tool scope](status/CHAT_TOOL_SCOPE.csv) and its generated [progress overlay](status/CHAT_TOOL_PROGRESS.csv), plus the scoped capability tasks in the full 499-row source inventory. Exclude unrelated full-desktop administration unless a scoped workflow depends on it.
 
-Current chat/tool measures: **1 implemented, 31 partial, 141 unknown**; **32/173** chat/tool requirements have mapped evidence; **0/173** have live-runtime verification, source-paired acceptance, or visual pairs. Skills, MCP and plugin workflows are also part of the user's requested feature scope and are tracked separately in the 499-row source inventory, so 173 is not the denominator for the whole goal. The broad implementation overlay has **64/499 reviewed** (6 implemented, 58 partial, 435 unknown); this is evidence-review coverage, not product completion. Standalone Files, Terminal, Review, Messaging, Scheduled Jobs, broad catalog/quota, maintenance, layout-profile and unrelated administration workflows remain outside this goal unless required by chat/tool/skills/MCP/plugin workflows. Hermes continues to own runtime/tool loops; DoofusDock provides the UI host. The Doofus Hermes backport follows scoped parity.
+Current chat/tool measures: **1 implemented, 33 partial, 139 unknown**; **34/173** chat/tool requirements have mapped evidence; **0/173** have live-runtime verification, source-paired acceptance, or visual pairs. The explicit skill hub browse slice PAR-0256 now has headless implementation evidence, while catalog filters, ranking/discovery, install and live/source-paired acceptance remain open. The broad implementation overlay has **66/499 reviewed** (6 implemented, 60 partial, 433 unknown); this is evidence-review coverage, not product completion. Standalone Files, Terminal, Review, Messaging, Scheduled Jobs, broad catalog/quota, maintenance, layout-profile and unrelated administration workflows remain outside this goal unless required by chat/tool/skills/MCP/plugin workflows. Hermes continues to own runtime/tool loops; DoofusDock provides the UI host. The Doofus Hermes backport follows scoped parity.
 
 ## Historical whole-desktop status snapshot (2026-11-18)
 

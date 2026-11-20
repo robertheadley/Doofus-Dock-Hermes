@@ -560,6 +560,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "skill edit, lock, archive and hub install or update flows are separate capabilities and remain open",
         ],
     },
+    "PAR-0256": {
+        "state": "partial",
+        "level": "headless_public_skill_catalog_search_list_and_detail",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/catalog-data.ts#fetchCatalog",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/catalog-browser.tsx#CatalogBrowser",
+            "apps/hermes-native/src/skill_catalog.rs#parse_skill_catalog",
+            "apps/hermes-native/src/skill_catalog.rs#parser_normalizes_rows_ignores_malformed_entries_and_preserves_source_identity",
+            "apps/hermes-native/src/skill_catalog.rs#http_reader_fails_closed_on_redirect",
+            "apps/hermes-native/src/app.rs#draw_skill_hub_catalog",
+            "apps/hermes-native/src/app.rs#skill_hub_detail_selection_persists_across_frames",
+            "apps/hermes-native/docs/PLAN.md#Revision 266",
+        ],
+        "gaps": [
+            "pinned installed/catalog merge, discovery shelves, facet filters, sort modes and card/list preference remain open",
+            "live catalog feed, live Gateway profile, installed Windows interaction and source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",

@@ -38,6 +38,7 @@ use crate::remote_probe::{
 use crate::repo_discovery::RepoScanPolicy;
 use crate::routes::AppRoute;
 use crate::session_peer_sync::{PeerEvent, SessionPeerSync};
+use crate::skill_catalog::{SkillCatalogEntry, SkillCatalogWorker};
 use doofusdock_core::{
     CommandId, DragSession, Node, NodeId, NodeKind, Operation, Orientation, PanelId,
 };
@@ -1301,6 +1302,7 @@ fn mcp_catalog_cache_is_stale(loaded_at: Option<std::time::Instant>) -> bool {
     loaded_at.is_none_or(|loaded_at| loaded_at.elapsed() >= MCP_CATALOG_STALE_AFTER)
 }
 const PLUGIN_CATALOG_PAGE_SIZE: usize = 60;
+const SKILL_CATALOG_PAGE_SIZE: usize = 60;
 
 #[derive(Clone, Debug)]
 struct RecentSessionSwitcher {
@@ -1652,6 +1654,16 @@ pub struct HermesNativeApp {
     plugin_catalog_facets: PluginCatalogFacets,
     plugin_catalog_facet_group: PluginCatalogFacetGroup,
     plugin_catalog_sort: PluginCatalogSort,
+    skill_catalog_worker: SkillCatalogWorker,
+    skill_catalog: Option<Vec<SkillCatalogEntry>>,
+    skill_catalog_request_id: Option<String>,
+    skill_catalog_pending: bool,
+    skill_catalog_error: Option<String>,
+    skill_hub_open: bool,
+    selected_skill_catalog_id: Option<String>,
+    skill_catalog_visible_limit: usize,
+    skill_catalog_filter_query: String,
+    skill_catalog_filtered_indexes: Vec<usize>,
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     pending_skill_updates: BTreeMap<String, PendingSkillUpdate>,
     fonts_installed: bool,
@@ -4004,6 +4016,16 @@ fn render_message() -> &'static str {
             plugin_catalog_facets: PluginCatalogFacets::default(),
             plugin_catalog_facet_group: PluginCatalogFacetGroup::default(),
             plugin_catalog_sort: PluginCatalogSort::default(),
+            skill_catalog_worker: SkillCatalogWorker::start(),
+            skill_catalog: None,
+            skill_catalog_request_id: None,
+            skill_catalog_pending: false,
+            skill_catalog_error: None,
+            skill_hub_open: false,
+            selected_skill_catalog_id: None,
+            skill_catalog_visible_limit: SKILL_CATALOG_PAGE_SIZE,
+            skill_catalog_filter_query: String::new(),
+            skill_catalog_filtered_indexes: Vec::new(),
             pending_toolset_updates: BTreeMap::new(),
             pending_skill_updates: BTreeMap::new(),
             fonts_installed: false,
@@ -10317,6 +10339,8 @@ fn render_message() -> &'static str {
     }
 
     fn capabilities_content(&mut self, ui: &mut egui::Ui) {
+        let mut open_skill_hub = false;
+        let mut close_skill_hub = false;
         ui.horizontal(|ui| {
             for (tab, label) in [
                 (CapabilitiesTab::Skills, "Skills"),
@@ -10338,6 +10362,22 @@ fn render_message() -> &'static str {
                             self.capabilities_error = Some(error)
                         }
                     });
+                }
+            }
+            if self.capabilities_tab == CapabilitiesTab::Skills {
+                if self.skill_hub_open {
+                    close_skill_hub = ui
+                        .button("Installed Skills")
+                        .accessible_name("Return to installed Skills")
+                        .clicked();
+                } else {
+                    open_skill_hub = ui
+                        .add_enabled(
+                            self.gateway_connected,
+                            egui::Button::new("Browse skill hub"),
+                        )
+                        .accessible_name("Browse skill hub")
+                        .clicked();
                 }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -10364,6 +10404,18 @@ fn render_message() -> &'static str {
                 }
             });
         });
+        if open_skill_hub {
+            self.skill_hub_open = true;
+            self.capabilities_query.clear();
+            self.selected_skill_catalog_id = None;
+            self.skill_catalog_visible_limit = SKILL_CATALOG_PAGE_SIZE;
+            if let Err(error) = self.load_skill_catalog() {
+                self.skill_catalog_error = Some(error);
+            }
+        } else if close_skill_hub {
+            self.skill_hub_open = false;
+            self.capabilities_query.clear();
+        }
         ui.separator();
         if matches!(
             self.capabilities_tab,
@@ -10374,26 +10426,40 @@ fn render_message() -> &'static str {
         ) {
             let search = ui.add(
                 egui::TextEdit::singleline(&mut self.capabilities_query)
-                    .hint_text(if self.capabilities_tab == CapabilitiesTab::Plugins {
-                        "Search plugins"
-                    } else if self.capabilities_tab == CapabilitiesTab::Connectors {
-                        "Search connectors"
-                    } else {
-                        "Search capabilities"
-                    })
+                    .hint_text(
+                        if self.capabilities_tab == CapabilitiesTab::Skills && self.skill_hub_open {
+                            "Search skill hub"
+                        } else if self.capabilities_tab == CapabilitiesTab::Plugins {
+                            "Search plugins"
+                        } else if self.capabilities_tab == CapabilitiesTab::Connectors {
+                            "Search connectors"
+                        } else {
+                            "Search capabilities"
+                        },
+                    )
                     .desired_width(ui.available_width()),
             );
-            if search.changed() && self.capabilities_tab == CapabilitiesTab::Plugins {
-                self.selected_plugin_id = None;
-                self.plugin_catalog_visible_limit = PLUGIN_CATALOG_PAGE_SIZE;
+            if search.changed() {
+                if self.capabilities_tab == CapabilitiesTab::Plugins {
+                    self.selected_plugin_id = None;
+                    self.plugin_catalog_visible_limit = PLUGIN_CATALOG_PAGE_SIZE;
+                } else if self.capabilities_tab == CapabilitiesTab::Skills && self.skill_hub_open {
+                    self.selected_skill_catalog_id = None;
+                    self.skill_catalog_visible_limit = SKILL_CATALOG_PAGE_SIZE;
+                    self.skill_catalog_filter_query = "\0".into();
+                }
             }
-            search.accessible_name(if self.capabilities_tab == CapabilitiesTab::Plugins {
-                "Search plugins"
-            } else if self.capabilities_tab == CapabilitiesTab::Connectors {
-                "Search connectors"
-            } else {
-                "Search capabilities"
-            });
+            search.accessible_name(
+                if self.capabilities_tab == CapabilitiesTab::Skills && self.skill_hub_open {
+                    "Search skill hub"
+                } else if self.capabilities_tab == CapabilitiesTab::Plugins {
+                    "Search plugins"
+                } else if self.capabilities_tab == CapabilitiesTab::Connectors {
+                    "Search connectors"
+                } else {
+                    "Search capabilities"
+                },
+            );
         } else {
             ui.add_space(28.0);
         }
@@ -10434,6 +10500,10 @@ fn render_message() -> &'static str {
         }
         match self.capabilities_tab {
             CapabilitiesTab::Skills => {
+                if self.skill_hub_open {
+                    self.draw_skill_hub_catalog(ui);
+                    return;
+                }
                 let Some(skills) = &self.skills else {
                     self.route_unavailable(ui, "Connect to Hermes to browse installed Skills.");
                     return;
@@ -12492,7 +12562,296 @@ fn render_message() -> &'static str {
         }
     }
 
-    fn new_chat_content(&mut self, ui: &mut egui::Ui) {
+    fn draw_skill_hub_catalog(&mut self, ui: &mut Ui) {
+        let Some(entries) = self.skill_catalog.as_ref() else {
+            if self.skill_catalog_pending {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Loading skill hub catalog…");
+                });
+            } else if let Some(error) = &self.skill_catalog_error {
+                ui.label(
+                    RichText::new(format!("Skill hub could not be loaded: {error}"))
+                        .color(Color32::LIGHT_RED),
+                );
+                if ui.button("Retry skill hub load").clicked()
+                    && let Err(error) = self.load_skill_catalog()
+                {
+                    self.skill_catalog_error = Some(error);
+                }
+            } else {
+                ui.label("Skill hub catalog is not loaded.");
+                if ui.button("Load skill hub").clicked()
+                    && let Err(error) = self.load_skill_catalog()
+                {
+                    self.skill_catalog_error = Some(error);
+                }
+            }
+            return;
+        };
+
+        let query = self.capabilities_query.trim().to_lowercase();
+        if self.skill_catalog_filter_query != query {
+            self.skill_catalog_filter_query.clone_from(&query);
+            self.skill_catalog_filtered_indexes = entries
+                .iter()
+                .enumerate()
+                .filter_map(|(index, entry)| entry.search.contains(&query).then_some(index))
+                .collect();
+            self.selected_skill_catalog_id = None;
+            self.skill_catalog_visible_limit = SKILL_CATALOG_PAGE_SIZE;
+            self.skill_catalog_filter_query = query.clone();
+        }
+        let filtered_indexes = &self.skill_catalog_filtered_indexes;
+        if self
+            .selected_skill_catalog_id
+            .as_ref()
+            .is_none_or(|selected| {
+                !filtered_indexes.iter().any(|index| {
+                    entries
+                        .get(*index)
+                        .is_some_and(|entry| &entry.id == selected)
+                })
+            })
+        {
+            self.selected_skill_catalog_id = filtered_indexes
+                .first()
+                .and_then(|index| entries.get(*index))
+                .map(|entry| entry.id.clone());
+        }
+
+        let total = filtered_indexes.len();
+        let visible_indexes = filtered_indexes
+            .iter()
+            .take(self.skill_catalog_visible_limit)
+            .copied()
+            .collect::<Vec<_>>();
+        let visible_count = visible_indexes.len();
+        let visible = visible_indexes
+            .iter()
+            .filter_map(|index| entries.get(*index))
+            .cloned()
+            .collect::<Vec<_>>();
+        let selected = visible
+            .iter()
+            .find(|entry| self.selected_skill_catalog_id.as_deref() == Some(&entry.id))
+            .cloned()
+            .or_else(|| {
+                filtered_indexes
+                    .iter()
+                    .filter_map(|index| entries.get(*index))
+                    .find(|entry| self.selected_skill_catalog_id.as_deref() == Some(&entry.id))
+                    .cloned()
+            });
+
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!("Skill hub · {total} of {}", entries.len()))
+                    .strong()
+                    .color(TEXT),
+            );
+            if self.skill_catalog_pending {
+                ui.spinner();
+            }
+            if let Some(error) = &self.skill_catalog_error {
+                ui.label(RichText::new(error).size(11.0).color(Color32::LIGHT_RED));
+            }
+        });
+        if total == 0 {
+            self.empty_panel(
+                ui,
+                if query.is_empty() {
+                    "No skills in the catalog"
+                } else {
+                    "No matching skills"
+                },
+            );
+            return;
+        }
+
+        let total_width = ui.available_width();
+        let content_height = ui.available_height().max(1.0);
+        let default_left = default_master_detail_left_width(total_width);
+        let saved_left = self
+            .workspace
+            .master_detail_width_override(MASTER_DETAIL_RESIZE_ID);
+        let left_width = saved_left.unwrap_or(default_left).min(total_width.max(0.0));
+        let divider_width = 8.0;
+        let right_width = (total_width - left_width - divider_width).max(0.0);
+        let mut selected_id = self.selected_skill_catalog_id.clone();
+        let mut show_more = false;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.allocate_ui_with_layout(
+                Vec2::new(left_width, content_height),
+                Layout::top_down(Align::Min),
+                |list_ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("skills-hub-list")
+                        .show(list_ui, |list_ui| {
+                            for entry in &visible {
+                                let selected = selected_id.as_deref() == Some(&entry.id);
+                                let row = list_ui
+                                    .selectable_label(
+                                        selected,
+                                        RichText::new(&entry.name).strong().color(TEXT),
+                                    )
+                                    .accessible_name(format!("Skill hub result: {}", entry.name));
+                                if row.clicked() {
+                                    selected_id = Some(entry.id.clone());
+                                }
+                                list_ui.horizontal_wrapped(|list_ui| {
+                                    list_ui.label(
+                                        RichText::new(&entry.category_label)
+                                            .size(10.0)
+                                            .color(ACCENT),
+                                    );
+                                    if !entry.source.is_empty() {
+                                        list_ui.label(
+                                            RichText::new(&entry.source).size(10.0).color(MUTED),
+                                        );
+                                    }
+                                });
+                                if !entry.description.is_empty() {
+                                    list_ui.label(
+                                        RichText::new(&entry.description).size(11.0).color(MUTED),
+                                    );
+                                }
+                                list_ui.separator();
+                            }
+                            if visible_count < total
+                                && list_ui
+                                    .button(format!(
+                                        "Show more skills · {} remaining",
+                                        total.saturating_sub(visible_count)
+                                    ))
+                                    .clicked()
+                            {
+                                show_more = true;
+                            }
+                        });
+                },
+            );
+
+            let handle_response = ui
+                .allocate_response(
+                    Vec2::new(divider_width, content_height),
+                    egui::Sense::click_and_drag(),
+                )
+                .accessible_name("Resize skill catalog list and details");
+            let handle_color = if handle_response.dragged() {
+                Color32::from_rgb(132, 184, 255)
+            } else if handle_response.hovered() {
+                ACCENT
+            } else {
+                BORDER
+            };
+            ui.painter().line_segment(
+                [
+                    egui::pos2(handle_response.rect.center().x, handle_response.rect.top()),
+                    egui::pos2(
+                        handle_response.rect.center().x,
+                        handle_response.rect.bottom(),
+                    ),
+                ],
+                Stroke::new(1.0, handle_color),
+            );
+            if handle_response.drag_started()
+                && let Some(pointer) = handle_response.interact_pointer_pos()
+            {
+                self.master_detail_resize = Some(MasterDetailResizeSession {
+                    resize_id: MASTER_DETAIL_RESIZE_ID,
+                    start_x: pointer.x - handle_response.drag_delta().x,
+                    start_width: left_width,
+                    available_width: total_width,
+                });
+            }
+            if handle_response.dragged()
+                && let (Some(resize), Some(pointer)) = (
+                    self.master_detail_resize.as_ref(),
+                    handle_response.interact_pointer_pos(),
+                )
+            {
+                let width = clamp_master_detail_left_width(
+                    resize.start_width + pointer.x - resize.start_x,
+                    resize.available_width,
+                );
+                if let Err(error) = self
+                    .workspace
+                    .set_master_detail_width_override(resize.resize_id, Some(width))
+                {
+                    self.status = format!("Could not save skill catalog pane width: {error}");
+                }
+            }
+            if handle_response.drag_stopped() {
+                self.master_detail_resize = None;
+            }
+            if handle_response.double_clicked() {
+                self.master_detail_resize = None;
+                if let Err(error) = self
+                    .workspace
+                    .set_master_detail_width_override(MASTER_DETAIL_RESIZE_ID, None)
+                {
+                    self.status = format!("Could not reset skill catalog pane width: {error}");
+                }
+            }
+            ui.allocate_ui_with_layout(
+                Vec2::new(right_width, content_height),
+                Layout::top_down(Align::Min),
+                |detail_ui| {
+                    if let Some(entry) = &selected {
+                        egui::ScrollArea::vertical()
+                            .id_salt(("skill-hub-detail", &entry.id))
+                            .show(detail_ui, |detail_ui| {
+                                detail_ui.heading(&entry.name);
+                                detail_ui.horizontal_wrapped(|detail_ui| {
+                                    detail_ui.label(
+                                        RichText::new(&entry.category_label)
+                                            .size(11.0)
+                                            .color(ACCENT),
+                                    );
+                                    detail_ui.label(
+                                        RichText::new(&entry.source).size(11.0).color(MUTED),
+                                    );
+                                    if !entry.author.is_empty() {
+                                        detail_ui.label(
+                                            RichText::new(format!("by {}", entry.author))
+                                                .size(11.0)
+                                                .color(MUTED),
+                                        );
+                                    }
+                                });
+                                if !entry.description.is_empty() {
+                                    detail_ui.label(&entry.description);
+                                }
+                                if !entry.overview.is_empty() {
+                                    detail_ui.separator();
+                                    detail_ui.label(&entry.overview);
+                                }
+                                if !entry.tags.is_empty() {
+                                    detail_ui.separator();
+                                    detail_ui.label(RichText::new("Tags").strong());
+                                    detail_ui.label(entry.tags.join(" · "));
+                                }
+                                if entry.repo.starts_with("https://github.com/") {
+                                    detail_ui.hyperlink_to("Open repository", &entry.repo);
+                                }
+                            });
+                    }
+                },
+            );
+        });
+        if let Some(selected_id) = selected_id {
+            self.selected_skill_catalog_id = Some(selected_id);
+        }
+        if show_more {
+            self.skill_catalog_visible_limit = self
+                .skill_catalog_visible_limit
+                .saturating_add(SKILL_CATALOG_PAGE_SIZE);
+        }
+    }
+
+    fn new_chat_content(&mut self, ui: &mut Ui) {
         ui.vertical_centered(|ui| {
             ui.add_space((ui.available_height() * 0.15).max(8.0));
             ui.label(
@@ -19410,6 +19769,37 @@ fn render_message() -> &'static str {
                     self.plugin_catalog_error = None;
                 }
                 Err(error) => self.plugin_catalog_error = Some(error),
+            }
+        }
+    }
+
+    fn load_skill_catalog(&mut self) -> Result<(), String> {
+        if self.skill_catalog_pending || self.skill_catalog.is_some() {
+            return Ok(());
+        }
+        let request_id = operation_id("skill-catalog");
+        self.skill_catalog_worker.fetch(request_id.clone())?;
+        self.skill_catalog_request_id = Some(request_id);
+        self.skill_catalog_pending = true;
+        self.skill_catalog_error = None;
+        Ok(())
+    }
+
+    fn poll_skill_catalog(&mut self) {
+        while let Some(result) = self.skill_catalog_worker.poll() {
+            if self.skill_catalog_request_id.as_deref() != Some(&result.request_id) {
+                continue;
+            }
+            self.skill_catalog_request_id = None;
+            self.skill_catalog_pending = false;
+            match result.result {
+                Ok(entries) => {
+                    self.skill_catalog = Some(entries);
+                    self.skill_catalog_error = None;
+                    self.skill_catalog_visible_limit = SKILL_CATALOG_PAGE_SIZE;
+                    self.skill_catalog_filter_query = "\0".into();
+                }
+                Err(error) => self.skill_catalog_error = Some(error),
             }
         }
     }
@@ -39616,6 +40006,93 @@ mod tests {
     }
 
     #[test]
+    fn skill_hub_detail_selection_persists_across_frames() {
+        let (mut app, profile_dir) = isolated_app();
+        app.skill_catalog = Some(vec![
+            SkillCatalogEntry {
+                id: "official:fixture-one".into(),
+                identifier: "fixture-one".into(),
+                name: "First fixture skill".into(),
+                description: "First catalog row".into(),
+                overview: "First fixture overview".into(),
+                category: "research".into(),
+                category_label: "Research".into(),
+                source: "official".into(),
+                author: "Hermes".into(),
+                tags: vec!["first".into()],
+                repo: "https://github.com/nousresearch/hermes-agent".into(),
+                platforms: vec![],
+                requirements: vec![],
+                tools: vec![],
+                hooks: vec![],
+                middleware: vec![],
+                commands: vec![],
+                added_at: None,
+                updated_at: None,
+                stars: None,
+                featured: None,
+                search: "first fixture skill first catalog row first fixture overview research"
+                    .into(),
+            },
+            SkillCatalogEntry {
+                id: "community:fixture-two".into(),
+                identifier: "fixture-two".into(),
+                name: "Second fixture skill".into(),
+                description: "Second catalog row".into(),
+                overview: "Second fixture overview".into(),
+                category: "productivity".into(),
+                category_label: "Productivity".into(),
+                source: "community".into(),
+                author: "Fixture author".into(),
+                tags: vec!["second".into()],
+                repo: String::new(),
+                platforms: vec![],
+                requirements: vec![],
+                tools: vec![],
+                hooks: vec![],
+                middleware: vec![],
+                commands: vec![],
+                added_at: None,
+                updated_at: None,
+                stars: None,
+                featured: None,
+                search:
+                    "second fixture skill second catalog row second fixture overview productivity"
+                        .into(),
+            },
+        ]);
+        app.skill_catalog_filter_query = "\0".into();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw_skill_hub_catalog(ui));
+
+        assert!(harness.query_by_label("First fixture overview").is_some());
+        harness
+            .get_by_label("Skill hub result: Second fixture skill")
+            .click();
+        harness.run();
+        assert_eq!(
+            app.borrow().selected_skill_catalog_id.as_deref(),
+            Some("community:fixture-two")
+        );
+        assert!(harness.query_by_label("Second fixture overview").is_some());
+
+        harness.run();
+        assert_eq!(
+            app.borrow().selected_skill_catalog_id.as_deref(),
+            Some("community:fixture-two"),
+            "the selected detail must not reset during the next frame"
+        );
+        assert!(harness.query_by_label("Second fixture overview").is_some());
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn skill_toggle_is_profile_fenced_optimistic_and_rolls_back_on_denial() {
         let (mut app, profile_dir) = isolated_app();
         let (gateway, requests, events) = GatewayDiscovery::for_test_skill_enabled();
@@ -41632,6 +42109,7 @@ impl HermesNativeApp {
             self.fonts_installed = true;
         }
         self.poll_plugin_catalog();
+        self.poll_skill_catalog();
         self.update_gateway_discovery(&ctx);
         let mut visuals = egui::Visuals::dark();
         visuals.window_fill = BG;

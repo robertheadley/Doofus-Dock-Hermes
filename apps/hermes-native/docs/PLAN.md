@@ -1593,3 +1593,11 @@ PAR-0255 now adds a profile-scoped native detail view for the selected installed
 PAR-0255 remains partial: live/local/remote Gateway responses, installed Windows interaction, and source-paired acceptance remain unverified; edit, lock, archive, and hub installation/update are separate workflows. The broad evidence overlay now records this behavior; its counts are evidence coverage only and must not be described as completion.
 
 Validation: focused `skill_detail_load_is_profile_fenced_and_keeps_source_path` passes. Full feature suite, workspace check, progress generation, UCM package validation, task ledger, and publication remain in progress.
+
+### Revision 266 — Public Skills hub browse slice (2026-11-20)
+
+PAR-0256 now fetches the pinned public skills.json catalog on a background worker, parses bounded rows and metadata, caches successful results for 30 minutes, and renders a native search/list/detail view with retry/error states and 60-result paging. A regression test verifies that selecting a result keeps its detail pane selected across successive egui frames. The installed Skills view remains profile-scoped and separate.
+
+This is partial implementation evidence: the pinned CatalogBrowser also merges installed rows, displays discovery shelves and featured picks, supports category/source/tag facets, sort options and a card/list preference. Live feed and Gateway behavior, Windows interaction, and source-paired acceptance remain unverified.
+
+Validation: full locked feature suite passed (442 library, 15 automation protocol, 3 launcher tests); locked workspace/all-target check, rustfmt, both progress generators, task schema validation and pinned package validation passed. The UCM validator skipped YAML parsing because PyYAML is unavailable; its other checks passed.

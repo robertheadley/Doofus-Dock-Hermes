@@ -1,5 +1,18 @@
 # Agent change journal
 
+## PAR-0256 — Skills hub browse slice — 2026-11-20
+
+- **id:** PAR-0256
+- **timestamp:** 2026-11-20T00:39:46Z
+- **what:** Added a bounded background loader/parser for the pinned public Skills catalog and a native Skills hub screen with retry/error/loading states, local search, 60-result paging, selectable detail, tags and repository links. Kept the installed Skills screen separate and fixed result selection resetting on each frame.
+- **why:** Add real capability browsing against the downloaded Hermes snapshot so the user can move toward functional parity before visual customization.
+- **components:** apps/hermes-native/src/skill_catalog.rs, src/app.rs, src/lib.rs, progress generator and implementation ledger, README, architecture, backlog, completion overview, execution log.
+- **type:** feature, headless regression tests, progress evidence and documentation.
+- **validation:** Full cargo test -p hermes-native --features agent-automation --locked passed (442 library, 15 automation protocol, 3 launcher tests); cargo check --workspace --all-targets --locked, rustfmt, diff check, task validation, both progress generators, and pinned capability-package validator passed. Strict source acceptance stays pending.
+- **performance:** Network fetch runs off the UI thread, bounds response size to 128 MiB and rows to 100,000, uses a 60-second timeout, disables redirects, and caches successful data for 30 minutes.
+- **risks:** PAR-0256 remains partial. Installed/catalog merging, discovery shelves, facets, sort modes, card/list preference, live feed/Gateway verification, physical Windows interaction, and source-paired review remain open.
+- **follow_up:** Continue scoped Skills workflows with PAR-0257 installation and return to missing hub-browser behavior before claiming feature parity.
+
 ## HUR-001-176/177 — 2026-11-16
 
 - **id:** HUR-001-176-177
