@@ -188,3 +188,5 @@ Installed Skills search now sorts matches by usage descending and then skill nam
 
 
 Installed Skills can now be enabled or disabled individually with Gateway confirmation and denial rollback. Selecting Details reads the pinned skill content endpoint and shows the source path, with request/profile/instance/authority fencing. Bulk controls, edit/lock/archive, hub lifecycle, live Gateway and rendered Windows acceptance remain open.
+
+The installed Skills page also exposes Hermes' profile-scoped “Update installed” action. It polls the background action, shows bounded log output, fences results to the initiating Gateway owner, and reloads Skills after success. Live Gateway update and packaged Windows behavior, per-skill update checks, cancellation and source-paired acceptance remain open.

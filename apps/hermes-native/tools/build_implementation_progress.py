@@ -610,6 +610,27 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "the retry uses the pinned ordinary install action and never overrides a Hermes security refusal",
         ],
     },
+    "PAR-0258": {
+        "state": "partial",
+        "level": "headless_profile_scoped_skill_update_and_live_log",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/catalog/update-skills-button.tsx#UpdateSkillsButton",
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/skills.ts#updateSkillsFromHub",
+            ".staging/hermes-pinned-878305/hermes_cli/web_routers/skills.py#update_skills_hub",
+            "apps/hermes-native/src/gateway.rs#update_skill_hub_skills_http",
+            "apps/hermes-native/src/gateway.rs#skill_hub_update_posts_once_to_explicit_profile_and_validates_receipt",
+            "apps/hermes-native/src/gateway.rs#skill_hub_update_rejects_mismatched_or_unconfirmed_receipts",
+            "apps/hermes-native/src/app.rs#start_skill_hub_update",
+            "apps/hermes-native/src/app.rs#settle_skill_hub_update_status",
+            "apps/hermes-native/src/app.rs#installed_skills_page_exposes_update_action_and_action_log",
+            "apps/hermes-native/src/app.rs#skill_hub_update_status_is_profile_fenced_and_settles_on_success",
+            "apps/hermes-native/docs/PLAN.md#Revision 269",
+        ],
+        "gaps": [
+            "live Gateway update, packaged Windows interaction, cancellation, uncertain-start reconciliation, and source-paired/formal acceptance remain unverified",
+            "pinned per-skill update checks and individual update workflows remain separate from the batch Update installed action",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",

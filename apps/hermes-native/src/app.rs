@@ -855,6 +855,22 @@ struct PendingSkillHubInstall {
     scan_error: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct PendingSkillHubUpdate {
+    request_id: String,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+    action_name: Option<String>,
+    action_pid: Option<u32>,
+    status_request_id: Option<String>,
+    attempts: u16,
+    next_poll: Option<std::time::Instant>,
+    lines: Vec<String>,
+    error: Option<String>,
+    completed: bool,
+}
+
 impl Default for McpServerAddDraft {
     fn default() -> Self {
         Self {
@@ -1687,6 +1703,7 @@ pub struct HermesNativeApp {
     skill_catalog_filter_query: String,
     skill_catalog_filtered_indexes: Vec<usize>,
     pending_skill_hub_installs: BTreeMap<String, PendingSkillHubInstall>,
+    pending_skill_hub_update: Option<PendingSkillHubUpdate>,
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     pending_skill_updates: BTreeMap<String, PendingSkillUpdate>,
     fonts_installed: bool,
@@ -4050,6 +4067,7 @@ fn render_message() -> &'static str {
             skill_catalog_filter_query: String::new(),
             skill_catalog_filtered_indexes: Vec::new(),
             pending_skill_hub_installs: BTreeMap::new(),
+            pending_skill_hub_update: None,
             pending_toolset_updates: BTreeMap::new(),
             pending_skill_updates: BTreeMap::new(),
             fonts_installed: false,
@@ -10395,6 +10413,33 @@ fn render_message() -> &'static str {
                         .accessible_name("Return to installed Skills")
                         .clicked();
                 } else {
+                    let update_running =
+                        self.pending_skill_hub_update
+                            .as_ref()
+                            .is_some_and(|update| {
+                                !update.completed
+                                    && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                                        endpoint.profile_id == update.profile_id
+                                            && endpoint.instance_id == update.instance_id
+                                            && endpoint.authority_epoch == update.authority_epoch
+                                    })
+                            });
+                    if ui
+                        .add_enabled(
+                            self.gateway_connected && !update_running,
+                            egui::Button::new(if update_running {
+                                "Updating…"
+                            } else {
+                                "Update installed"
+                            }),
+                        )
+                        .accessible_name("Update installed Skills")
+                        .clicked()
+                    {
+                        if let Err(error) = self.start_skill_hub_update() {
+                            self.capabilities_error = Some(error);
+                        }
+                    }
                     open_skill_hub = ui
                         .add_enabled(
                             self.gateway_connected,
@@ -10540,6 +10585,39 @@ fn render_message() -> &'static str {
                         .strong()
                         .color(TEXT),
                 );
+                if let Some(update) = self.pending_skill_hub_update.as_ref().filter(|update| {
+                    self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                        endpoint.profile_id == update.profile_id
+                            && endpoint.instance_id == update.instance_id
+                            && endpoint.authority_epoch == update.authority_epoch
+                    })
+                }) {
+                    ui.horizontal(|ui| {
+                        if !update.completed {
+                            ui.spinner();
+                            ui.label("Updating installed Skills…");
+                        } else if let Some(error) = &update.error {
+                            ui.label(
+                                RichText::new(format!("Skill update failed: {error}"))
+                                    .color(Color32::LIGHT_RED),
+                            );
+                        } else {
+                            ui.label(RichText::new("Skill update finished.").color(MUTED));
+                        }
+                    });
+                    if !update.lines.is_empty() {
+                        egui::ScrollArea::vertical()
+                            .id_salt("skill-hub-update-log")
+                            .max_height(150.0)
+                            .show(ui, |ui| {
+                                for line in update.lines.iter().rev().take(12).rev() {
+                                    ui.label(
+                                        RichText::new(line).monospace().size(10.0).color(MUTED),
+                                    );
+                                }
+                            });
+                    }
+                }
                 if visible.is_empty() {
                     self.empty_panel(
                         ui,
@@ -20119,6 +20197,222 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
+    fn start_skill_hub_update(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before updating installed Skills".into());
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        if endpoint.profile_id.eq_ignore_ascii_case("all") {
+            return Err("Skill updates require one explicit Hermes profile".into());
+        }
+        if self
+            .pending_skill_hub_update
+            .as_ref()
+            .is_some_and(|update| {
+                !update.completed
+                    && update.profile_id == endpoint.profile_id
+                    && update.instance_id == endpoint.instance_id
+                    && update.authority_epoch == endpoint.authority_epoch
+            })
+        {
+            return Ok(());
+        }
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes Skills updater is unavailable".to_owned())?;
+        let request_id = operation_id("skill-hub-update");
+        let profile_id = endpoint.profile_id.clone();
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        gateway.update_skill_hub_skills(
+            request_id.clone(),
+            profile_id.clone(),
+            instance_id.clone(),
+            authority_epoch,
+        )?;
+        self.pending_skill_hub_update = Some(PendingSkillHubUpdate {
+            request_id,
+            profile_id,
+            instance_id,
+            authority_epoch,
+            action_name: None,
+            action_pid: None,
+            status_request_id: None,
+            attempts: 0,
+            next_poll: None,
+            lines: vec!["Starting Hermes installed Skills update…".into()],
+            error: None,
+            completed: false,
+        });
+        self.status = "Updating installed Skills".into();
+        Ok(())
+    }
+
+    fn poll_skill_hub_update_action(&mut self, ctx: &egui::Context) {
+        let now = std::time::Instant::now();
+        let Some(update) = self.pending_skill_hub_update.as_ref() else {
+            return;
+        };
+        if update.completed
+            || update.action_name.is_none()
+            || update.status_request_id.is_some()
+            || update.next_poll.is_some_and(|deadline| deadline > now)
+        {
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        if !self.gateway_connected
+            || endpoint.profile_id != update.profile_id
+            || endpoint.instance_id != update.instance_id
+            || endpoint.authority_epoch != update.authority_epoch
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        let request_id = operation_id("skill-hub-update-status");
+        let action_name = update.action_name.clone().unwrap_or_default();
+        let profile_id = update.profile_id.clone();
+        match gateway.load_gateway_action_status(request_id.clone(), action_name, Some(profile_id))
+        {
+            Ok(()) => {
+                if let Some(update) = self.pending_skill_hub_update.as_mut() {
+                    update.status_request_id = Some(request_id);
+                    update.next_poll = None;
+                }
+                ctx.request_repaint_after(std::time::Duration::from_millis(1200));
+            }
+            Err(error) => {
+                if let Some(update) = self.pending_skill_hub_update.as_mut() {
+                    update.attempts = update.attempts.saturating_add(1);
+                    if update.attempts >= 400 {
+                        update.error = Some(format!(
+                            "Could not poll Skill update action: {}",
+                            bounded_status_text(&error, 1024)
+                        ));
+                        update.completed = true;
+                    } else {
+                        update.next_poll = Some(now + std::time::Duration::from_millis(1200));
+                    }
+                }
+                ctx.request_repaint_after(std::time::Duration::from_millis(1200));
+            }
+        }
+    }
+
+    fn settle_skill_hub_update_status(
+        &mut self,
+        request_id: &str,
+        profile: &Option<String>,
+        action_name: &str,
+        result: Result<GatewayActionStatus, String>,
+        ctx: &egui::Context,
+    ) -> bool {
+        let Some(update) = self.pending_skill_hub_update.as_mut() else {
+            return false;
+        };
+        if update.status_request_id.as_deref() != Some(request_id) {
+            return false;
+        }
+        let current_owner = self.gateway_connected
+            && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                endpoint.profile_id == update.profile_id
+                    && endpoint.instance_id == update.instance_id
+                    && endpoint.authority_epoch == update.authority_epoch
+            });
+        if update.action_name.as_deref() != Some(action_name)
+            || profile.as_deref() != Some(update.profile_id.as_str())
+            || !current_owner
+        {
+            update.status_request_id = None;
+            update.error = Some("Skill update status belonged to a stale Gateway owner.".into());
+            update.completed = true;
+            return true;
+        }
+        update.status_request_id = None;
+        update.attempts = update.attempts.saturating_add(1);
+        let mut refresh = false;
+        match result {
+            Ok(status)
+                if status.name == action_name
+                    && update.action_pid.is_none_or(|pid| status.pid == Some(pid))
+                    && status.lines.len() <= 200
+                    && status
+                        .lines
+                        .iter()
+                        .all(|line| line.len() <= 8192 && !line.contains('\0')) =>
+            {
+                update.lines = status
+                    .lines
+                    .into_iter()
+                    .take(200)
+                    .map(|line| bounded_status_text(&line, 2048))
+                    .collect();
+                if status.running || status.exit_code.is_none() {
+                    if update.attempts >= 400 {
+                        update.error =
+                            Some("Timed out waiting for the Skill update action.".into());
+                        update.completed = true;
+                    } else {
+                        update.next_poll = Some(
+                            std::time::Instant::now() + std::time::Duration::from_millis(1200),
+                        );
+                    }
+                } else {
+                    update.completed = true;
+                    if status.exit_code == Some(0) {
+                        update.error = None;
+                        self.status = "Installed Skills updated".into();
+                        refresh = true;
+                    } else {
+                        let detail = update
+                            .lines
+                            .iter()
+                            .rev()
+                            .take(3)
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        update.error = Some(if detail.is_empty() {
+                            format!(
+                                "Skill update failed with exit code {}.",
+                                status.exit_code.unwrap_or_default()
+                            )
+                        } else {
+                            detail
+                        });
+                    }
+                }
+            }
+            Ok(_) => {
+                update.error =
+                    Some("Hermes returned mismatched or invalid Skill update status.".into());
+                update.completed = true;
+            }
+            Err(error) => {
+                update.error = Some(bounded_status_text(&error, 1024));
+                update.completed = true;
+            }
+        }
+        if refresh {
+            if let Err(error) = self.load_capabilities() {
+                self.capabilities_error = Some(error);
+            }
+            ctx.request_repaint();
+        }
+        true
+    }
+
     fn request_skill_hub_scan(&mut self, identifier: &str) -> Result<(), String> {
         let blocked_install =
             self.pending_skill_hub_installs
@@ -25609,6 +25903,15 @@ fn render_message() -> &'static str {
                     ) {
                         continue;
                     }
+                    if self.settle_skill_hub_update_status(
+                        &request_id,
+                        &profile,
+                        &action_name,
+                        result.clone(),
+                        ctx,
+                    ) {
+                        continue;
+                    }
                     let Some(state) = self.messaging_gateway_restart.as_ref() else {
                         continue;
                     };
@@ -27512,6 +27815,63 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::SkillHubUpdateStarted {
+                    request_id,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(update) = self.pending_skill_hub_update.as_mut() else {
+                        continue;
+                    };
+                    if update.request_id != request_id {
+                        continue;
+                    }
+                    if update.profile_id != profile_id
+                        || update.instance_id != instance_id
+                        || update.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        update.error =
+                            Some("Skill update receipt belonged to a stale Gateway owner.".into());
+                        update.completed = true;
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt)
+                            if receipt.ok
+                                && receipt.name == "skills-update"
+                                && receipt.pid.is_some_and(|pid| pid > 0) =>
+                        {
+                            update.action_name = Some(receipt.name);
+                            update.action_pid = receipt.pid;
+                            update.attempts = 0;
+                            update.next_poll = Some(std::time::Instant::now());
+                            update.error = None;
+                            update.lines =
+                                vec!["Hermes accepted the installed Skills update.".into()];
+                            ctx.request_repaint();
+                        }
+                        Ok(_) => {
+                            update.error = Some(
+                                "Hermes returned an invalid Skill update receipt; refresh the action log before retrying.".into(),
+                            );
+                            update.completed = true;
+                        }
+                        Err(error) => {
+                            update.error = Some(format!(
+                                "Could not confirm the Skill update request; check the Hermes action log before retrying. {}",
+                                bounded_status_text(&error, 512)
+                            ));
+                            update.completed = true;
+                        }
+                    }
+                }
                 GatewayEvent::SkillHubScanLoaded {
                     request_id,
                     identifier,
@@ -28064,6 +28424,7 @@ fn render_message() -> &'static str {
         self.sync_display_timestamps_config();
         self.poll_mcp_catalog_install_status(ctx);
         self.poll_skill_hub_install_actions(ctx);
+        self.poll_skill_hub_update_action(ctx);
         if load_archived_after_connect {
             self.load_archived_sessions();
         }
@@ -40662,6 +41023,108 @@ mod tests {
             ["api-research", "web-research", "notes-index"],
             "usage sorts descending, then equal-usage skill names sort ascending"
         );
+    }
+
+    #[test]
+    fn installed_skills_page_exposes_update_action_and_action_log() {
+        let (mut app, profile_dir) = isolated_app();
+        app.capabilities_pending = false;
+        app.skills = Some(Vec::new());
+        app.capabilities_tab = CapabilitiesTab::Skills;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "fixture-profile".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 2,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.pending_skill_hub_update = Some(PendingSkillHubUpdate {
+            request_id: "skill-update-request".into(),
+            profile_id: "fixture-profile".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 2,
+            action_name: Some("skills-update".into()),
+            action_pid: Some(4242),
+            status_request_id: None,
+            attempts: 1,
+            next_poll: None,
+            lines: vec!["Updated 2 Skills".into()],
+            error: None,
+            completed: true,
+        });
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 800.0))
+            .build_ui(|ui| app.capabilities_content(ui));
+        assert!(harness.query_by_label("Update installed Skills").is_some());
+        assert!(harness.query_by_label("Updated 2 Skills").is_some());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn skill_hub_update_status_is_profile_fenced_and_settles_on_success() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "fixture-profile".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 2,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.pending_skill_hub_update = Some(PendingSkillHubUpdate {
+            request_id: "skill-update-request".into(),
+            profile_id: "fixture-profile".into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 2,
+            action_name: Some("skills-update".into()),
+            action_pid: Some(4242),
+            status_request_id: Some("skill-update-status".into()),
+            attempts: 0,
+            next_poll: None,
+            lines: vec![],
+            error: None,
+            completed: false,
+        });
+        assert!(!app.settle_skill_hub_update_status(
+            "stale-request",
+            &Some("fixture-profile".into()),
+            "skills-update",
+            Ok(GatewayActionStatus {
+                exit_code: Some(0),
+                lines: vec![],
+                name: "skills-update".into(),
+                pid: Some(4242),
+                running: false,
+            }),
+            &egui::Context::default(),
+        ));
+        assert!(app.settle_skill_hub_update_status(
+            "skill-update-status",
+            &Some("fixture-profile".into()),
+            "skills-update",
+            Ok(GatewayActionStatus {
+                exit_code: Some(0),
+                lines: vec!["Updated 2 Skills".into()],
+                name: "skills-update".into(),
+                pid: Some(4242),
+                running: false,
+            }),
+            &egui::Context::default(),
+        ));
+        let update = app.pending_skill_hub_update.as_ref().unwrap();
+        assert!(update.completed);
+        assert_eq!(update.lines, ["Updated 2 Skills"]);
+        assert!(update.error.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

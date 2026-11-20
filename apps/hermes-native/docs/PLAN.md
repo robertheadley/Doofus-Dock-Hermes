@@ -1617,3 +1617,11 @@ PAR-0257 now recognizes the pinned Desktop's current and legacy install-block me
 This remains partial: exact live Gateway behavior, Windows interaction, process cancellation and source-paired acceptance are open. PAR-0256 installed/catalog merging, discovery shelves, facets, sort modes and card/list preference also remain open.
 
 Validation: PASS full locked feature suite (449 library, 15 automation protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, both progress generators, task schema validation, UCM package validation (565 behaviors/items, 14 source receipts, 38 implementation receipts; YAML parse skipped because PyYAML is unavailable), and diff check. Live Gateway, Windows and source-paired validation remain open.
+
+### Revision 269 — Installed Skills update action (2026-11-20)
+
+PAR-0258 now exposes the pinned “Update installed” action on the installed Skills page. The native Gateway adapter sends one profile-scoped POST to `/api/skills/hub/update`, validates the `skills-update` receipt, polls the corresponding bounded action-status endpoint, and shows live log output and success/failure state. Request and status results are fenced by profile, Gateway instance, authority epoch, request/action identity, and receipt PID. On successful completion the Skills inventory reloads. The start request is never automatically replayed; if its receipt cannot be confirmed, the UI tells the user to check the action log before retrying.
+
+This remains partial: the pinned catalog has separate update-check and per-skill update workflows; they are not implemented by the batch “Update installed” action. Live Gateway update, packaged Windows interaction, cancellation, uncertain-start reconciliation, and source-paired/formal acceptance remain open.
+
+Validation: PASS full locked feature suite (453 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, both progress generators (68/499 overall reviewed; 36/173 chat/tool evidence-mapped), task schema validator, pinned package validator (565 behaviors/items, 14 source receipts, 39 implementation receipts; YAML parse skipped because PyYAML is unavailable), and diff check. Live Gateway, Windows and source-paired validation remain open.

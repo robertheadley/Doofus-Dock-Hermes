@@ -2134,6 +2134,13 @@ pub enum GatewayEvent {
         authority_epoch: u64,
         result: Result<String, String>,
     },
+    SkillHubUpdateStarted {
+        request_id: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<GatewayActionReceipt, String>,
+    },
     SkillHubScanLoaded {
         request_id: String,
         identifier: String,
@@ -2570,6 +2577,12 @@ enum GatewayHttpCommand {
     InstallSkillHubEntry {
         request_id: String,
         identifier: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    UpdateSkillHubSkills {
+        request_id: String,
         profile_id: String,
         instance_id: String,
         authority_epoch: u64,
@@ -4889,6 +4902,23 @@ impl GatewayDiscovery {
                 authority_epoch,
             })
             .map_err(|_| "Hermes Skill Hub installer has closed".to_owned())
+    }
+
+    pub fn update_skill_hub_skills(
+        &self,
+        request_id: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::UpdateSkillHubSkills {
+                request_id,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes Skill Hub updater has closed".to_owned())
     }
 
     pub fn load_skill_hub_scan(
@@ -8677,6 +8707,49 @@ fn gateway_http_actor(
             }
             continue;
         }
+        if let GatewayHttpCommand::UpdateSkillHubSkills {
+            request_id,
+            profile_id,
+            instance_id,
+            authority_epoch,
+        } = command
+        {
+            let endpoint = endpoint.clone();
+            let events = events.clone();
+            let failed_events = events.clone();
+            let failed_request_id = request_id.clone();
+            let failed_profile_id = profile_id.clone();
+            let failed_instance_id = instance_id.clone();
+            let worker = thread::Builder::new()
+                .name("hermes-skill-hub-update".into())
+                .spawn(move || {
+                    let result = if endpoint.profile_id != profile_id
+                        || endpoint.instance_id != instance_id
+                        || endpoint.authority_epoch != authority_epoch
+                    {
+                        Err("Hermes Skill Hub update belongs to a stale connection".into())
+                    } else {
+                        update_skill_hub_skills_http(&endpoint)
+                    };
+                    let _ = events.send(GatewayEvent::SkillHubUpdateStarted {
+                        request_id,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                        result,
+                    });
+                });
+            if worker.is_err() {
+                let _ = failed_events.send(GatewayEvent::SkillHubUpdateStarted {
+                    request_id: failed_request_id,
+                    profile_id: failed_profile_id,
+                    instance_id: failed_instance_id,
+                    authority_epoch,
+                    result: Err("Could not start the Hermes Skill Hub update worker".into()),
+                });
+            }
+            continue;
+        }
         if let GatewayHttpCommand::LoadSkillHubScan {
             request_id,
             identifier,
@@ -8876,6 +8949,9 @@ fn gateway_http_actor(
             }
             GatewayHttpCommand::InstallSkillHubEntry { .. } => {
                 unreachable!("Skill Hub installs are dispatched to their bounded worker")
+            }
+            GatewayHttpCommand::UpdateSkillHubSkills { .. } => {
+                unreachable!("Skill Hub updates are dispatched to their bounded worker")
             }
             GatewayHttpCommand::LoadSkillHubScan { .. } => {
                 unreachable!("Skill Hub scans are dispatched to their bounded worker")
@@ -12098,6 +12174,29 @@ fn install_skill_hub_http(
         })
     {
         return Err("Hermes did not confirm the requested Skill Hub install".into());
+    }
+    Ok(response)
+}
+
+fn update_skill_hub_skills_http(
+    endpoint: &GatewayEndpoint,
+) -> Result<GatewayActionReceipt, String> {
+    if endpoint.profile_id.is_empty()
+        || endpoint.profile_id.len() > 128
+        || endpoint.profile_id.chars().any(char::is_control)
+    {
+        return Err("Hermes Skill Hub update profile is invalid".into());
+    }
+    let url = format!(
+        "{}/api/skills/hub/update{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(&endpoint.profile_id)
+    );
+    let response: GatewayActionReceipt =
+        profile_scoped_gateway_http_request(endpoint, "POST", &url, Some(serde_json::json!({})))?;
+    if !response.ok || response.name != "skills-update" || !response.pid.is_some_and(|pid| pid > 0)
+    {
+        return Err("Hermes did not confirm the requested Skill Hub update".into());
     }
     Ok(response)
 }
@@ -18925,6 +19024,87 @@ mod tests {
         assert_eq!(receipt.name, "skills-install-arxiv-00000001");
         assert_eq!(receipt.action_id.as_deref(), Some("install-run-0001"));
         server.join().expect("Skill Hub install fixture exits");
+    }
+
+    #[test]
+    fn skill_hub_update_posts_once_to_explicit_profile_and_validates_receipt() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind Skill Hub update fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept Skill Hub update");
+            let request = read_http_fixture_request(&mut stream);
+            let (headers, body) = request.split_once("\r\n\r\n").expect("request body");
+            assert!(headers.to_ascii_lowercase().starts_with(
+                "post /hermes/api/skills/hub/update?profile=work%20profile http/1.1\r\n"
+            ));
+            assert!(
+                headers
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: skill-update-fixture-token\r\n")
+            );
+            assert!(!headers.to_ascii_lowercase().contains("cookie:"));
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(body).unwrap(),
+                json!({})
+            );
+            let response = json!({ "name":"skills-update", "ok":true, "pid":4242 }).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response)
+                .expect("write Skill Hub update receipt");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work profile".into(),
+            instance_id: "skill-update-instance".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "skill-update-fixture-token".into(),
+            ))),
+        };
+        let receipt = update_skill_hub_skills_http(&endpoint)
+            .expect("profile-scoped Skill Hub update starts");
+        assert!(receipt.ok);
+        assert_eq!(receipt.name, "skills-update");
+        assert_eq!(receipt.pid, Some(4242));
+        server.join().expect("Skill Hub update fixture exits");
+    }
+
+    #[test]
+    fn skill_hub_update_rejects_mismatched_or_unconfirmed_receipts() {
+        for response in [
+            json!({ "name":"other-action", "ok":true, "pid":42 }),
+            json!({ "name":"skills-update", "ok":false, "pid":42 }),
+            json!({ "name":"skills-update", "ok":true, "pid":0 }),
+            json!({ "name":"skills-update", "ok":true }),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind invalid update fixture");
+            let address = listener.local_addr().expect("fixture address");
+            let response = response.to_string();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().expect("accept Skill Hub update");
+                let _request = read_http_fixture_request(&mut stream);
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", response.len(), response)
+                    .expect("write invalid update receipt");
+            });
+            let endpoint = GatewayEndpoint {
+                profile_id: "work".into(),
+                instance_id: "skill-update-instance".into(),
+                authority_epoch: 9,
+                runtime_protocol: 1,
+                api_origin: format!("http://{address}"),
+                capabilities: vec![],
+                control_home: None,
+                remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                    "skill-update-fixture-token".into(),
+                ))),
+            };
+            assert!(update_skill_hub_skills_http(&endpoint).is_err());
+            server
+                .join()
+                .expect("invalid Skill Hub update fixture exits");
+        }
     }
 
     #[test]

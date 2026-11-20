@@ -279,3 +279,5 @@ MCP server enable/disable uses the pinned `PUT /api/mcp/servers/{name}/enabled` 
 ## Skill detail reads
 
 The Skills view reads selected skill content from the pinned profile-scoped `/api/skills/content` endpoint. Content requests use the bounded Gateway HTTP worker and validate the response name, source path, and body size before display. UI receipts are accepted only for the same request, profile, Gateway instance, authority epoch, and selected skill; switching owners cannot show the prior profile's content.
+
+The installed Skills view exposes Hermes' batch “Update installed” action through profile-scoped `POST /api/skills/hub/update`. Its receipt must identify the pinned `skills-update` action, after which the UI tails bounded `/api/actions/{name}/status` output and reloads the inventory on a successful exit. Status results are bound to the request, profile, Gateway instance, authority epoch and receipt PID. A failed or uncertain start is surfaced without automatically replaying the mutation; live Gateway, Windows and cancellation/reconciliation behavior remain open.
