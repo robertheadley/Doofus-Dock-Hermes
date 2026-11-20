@@ -143,6 +143,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only pinned-source/native audit completed; confirmed PAR-0219 error-surface gap and returned implementation guidance. No edits were made by the audit agent.",
+      "observed_at": "2026-11-20T17:35:57Z",
+      "pid": null,
+      "process_id": "subagent:par0219_contract",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0069..0094 audit completed; identified broad existing partial support, no session branch/fork command, and mapped owner/reconnect gaps. No edits.",
       "observed_at": "2026-11-19T16:57:56Z",
       "pid": null,
@@ -159,6 +169,24 @@
   },
   "blockers": [],
   "changed_files": [
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "doofus/events.jsonl",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
@@ -185,13 +213,11 @@
     }
   ],
   "checkpoint": {
-    "command": "git status --short --branch; git fetch origin main; compare git rev-parse HEAD with origin/main; doofus_task status/validate/progress",
-    "evidence": [
-      "docs/AGENT_HANDOFF.md#Startup procedure for every provider"
-    ],
-    "state": "in_progress",
-    "summary": "Same-owner startup reconciliation: inspected main status and task records, fetched origin/main, confirmed local/remote equality at 233b737df149195232ffe46b0ae0808c8879c141. The only untracked files are the preserved operator-owned apps/hermes-native/work/ residue. Existing lease remains active; no takeover was performed.",
-    "verified_at": "2026-11-20T17:05:13Z"
+    "command": "task select",
+    "evidence": [],
+    "state": "unknown",
+    "summary": "Continue the fixed-snapshot model-controls workflow after PAR-0218; audit and implement provider/model warnings and unavailable-model compatibility states.",
+    "verified_at": "2026-11-20T17:27:37Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -215,6 +241,7 @@
     "hermes-par-0216",
     "hermes-par-0217",
     "hermes-par-0218",
+    "hermes-par-0219",
     "hermes-par-0251",
     "hermes-par-0252",
     "hermes-par-0253",
@@ -240,7 +267,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T18:05:13Z",
+    "lease_expires_at": "2026-11-20T18:26:25Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1076,11 +1103,25 @@
       "state": "succeeded"
     },
     {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0218-catalog-retry-20261120"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed PAR-0218 implementation 93bb161 and evidence/docs 47da501; fresh fetch confirms exact local/origin main SHA equality at 47da5010ce103ffed17633e63a14ab124de187bf.",
+      "observed_at": "2026-11-20T17:25:46Z",
+      "operation_id": "par0218-publish-main-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
       "evidence": [],
       "kind": "git_push_main",
-      "note": "Publish tested PAR-0218 code commit 93bb161 and partial evidence/docs; confirm fresh origin/main SHA equality. Operator work residue is excluded.",
-      "observed_at": "2026-11-20T17:25:02Z",
-      "operation_id": "par0218-publish-main-20261120",
+      "note": "Publish PAR-0219 code commit b9da9a7 and partial evidence/docs; fresh-fetch origin/main SHA equality after push. Preserve apps/hermes-native/work operator data.",
+      "observed_at": "2026-11-20T17:40:38Z",
+      "operation_id": "par0219-publish-main-20261120",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -1097,9 +1138,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0218-publish-20261120",
+  "last_event_id": "hermes-par0219-publish-start-20261120",
   "last_operation": {
-    "request_id": "hermes-par0218-publish-20261120",
+    "request_id": "hermes-par0219-publish-start-20261120",
     "state": "committed",
     "type": "external_operation.state_changed"
   },
@@ -1118,7 +1159,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned catalog error/retry behavior and implement/test PAR-0218 while preserving the current chat draft.",
+  "recommended_next_action": "Port pinned ModelOptionProvider.warning and unavailable_models semantics into typed Gateway data and the visible model picker; add parsed-contract and rendered-disabled-row/error tests.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1319,7 +1360,6 @@
     "hermes-par-0211",
     "hermes-par-0212",
     "hermes-par-0213",
-    "hermes-par-0219",
     "hermes-par-0220",
     "hermes-par-0221",
     "hermes-par-0222",
@@ -1582,8 +1622,20 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "8cc2132dbab530046b1306fd95103a5dd84eaa886819f920afb1708285cf2b02",
+    "change_fingerprint": "d74a10d49de9284b2050cd48ec9239c2c627659fbfa9da962d6bdb8549fca05f",
     "changed_files": [
+      {
+        "path": "doofus/events.jsonl",
+        "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -1601,17 +1653,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "233b737df149195232ffe46b0ae0808c8879c141",
+    "head_commit": "47da5010ce103ffed17633e63a14ab124de187bf",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 463,
+  "revision": 469,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 463,
+  "state_revision": 469,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0218",
-  "task_ledger_revision": 77,
+  "task_id": "hermes-par-0219",
+  "task_ledger_revision": 78,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2827,9 +2879,24 @@
       "command": "python apps/hermes-native/tools/doofus_task.py validate",
       "result": "PASS; state schema consistent, no unresolved external operations/processes, active task PAR-0218, checkpoint reconciles actual repository snapshot.",
       "timestamp": "2026-11-20T17:05:13Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --lib",
+      "result": "PASS focused rendered retry regression; PASS cargo check, rustfmt, diff check, task schema, generators and both package validators; 49/174 mapped, 0 live runtime, 0 source-paired.",
+      "timestamp": "2026-11-20T17:26:25Z"
+    },
+    {
+      "command": "cargo fmt --package hermes-native --check; git diff --check",
+      "result": "PASS focused rendered retry regression; PASS cargo check, rustfmt, diff check, task schema, generators and both package validators; 49/174 mapped, 0 live runtime, 0 source-paired.",
+      "timestamp": "2026-11-20T17:26:25Z"
+    },
+    {
+      "command": "both active and archival UCM package validators",
+      "result": "PASS focused rendered retry regression; PASS cargo check, rustfmt, diff check, task schema, generators and both package validators; 49/174 mapped, 0 live runtime, 0 source-paired.",
+      "timestamp": "2026-11-20T17:26:25Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T17:25:02Z"
+  "updated_at": "2026-11-20T17:40:38Z"
 }

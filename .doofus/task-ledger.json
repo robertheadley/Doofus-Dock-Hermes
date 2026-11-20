@@ -1,5 +1,5 @@
 {
-  "revision": 77,
+  "revision": 78,
   "schema_version": 1,
   "tasks": [
     {
@@ -7141,7 +7141,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -7150,12 +7150,13 @@
                 "priority": "P1",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-20T17:35:46Z",
+              "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
               "objective": "ui-show-model-and-provider-compatibility-errors",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "06-agent-workflow",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -7165,10 +7166,13 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0219",
               "title": "PAR-0219 Show model and provider compatibility errors",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#structured_provider_error_presentation",
+                "apps/hermes-native/src/app.rs#structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details"
+              ]
             },
             {
               "agent_identity": {
@@ -16318,5 +16322,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-20T17:18:58Z"
+  "updated_at": "2026-11-20T17:35:46Z"
 }

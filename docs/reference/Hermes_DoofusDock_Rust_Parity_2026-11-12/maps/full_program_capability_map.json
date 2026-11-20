@@ -4176,7 +4176,7 @@
       "primitives": "tree-table; multiselect-filter; sorted-grid; quota-bar; capability-chip; dropdown",
       "dock_support": "layout shell only; domain widgets application-owned",
       "source_confidence": "upstream-documented+code-index",
-      "target_status": "not_implemented",
+      "target_status": "partial",
       "priority": "P1",
       "acceptance": "With target scope active, a user can show model and provider compatibility errors; side-by-side behavior and failure case are recorded.",
       "test_id": "PAR-0219",

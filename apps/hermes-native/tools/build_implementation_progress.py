@@ -1302,6 +1302,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "headless test covers retry while the Gateway is unavailable; live Gateway recovery, packaged Windows behavior and source-paired acceptance remain open",
         ],
     },
+    "PAR-0219": {
+        "state": "partial",
+        "level": "headless_structured_model_provider_error_cards",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 282",
+            "apps/hermes-native/src/app.rs#structured_provider_error_presentation",
+            "apps/hermes-native/src/app.rs#structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details",
+            ".staging/hermes-pinned-878305/apps/desktop/src/lib/error-surface-copy.ts#errorCardText",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.tsx#const ErrorCard",
+        ],
+        "gaps": [
+            "headless rendering covers model-not-found and provider-policy copy, provider/model identity, partial response and structured error details; cause-specific recovery actions and localization are not implemented",
+            "live error-surface Gateway events, packaged Windows behavior and source-paired acceptance remain open",
+        ],
+    },
 }
 
 FIELDS = [

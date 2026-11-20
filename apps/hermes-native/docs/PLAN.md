@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 281 (implementation in progress).
+- **Working revision:** 282 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -11,7 +11,7 @@
 
 ## Completion and runtime boundary
 
-Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 174-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
+Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 175-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
 
 ## Downloaded parity source snapshot
 
@@ -1720,3 +1720,12 @@ The chat composer now presents an error-only **Retry model list** action beside 
 PAR-0218 is mapped partial. The pinned Hermes Desktop picker presents a catalog error but has no manual retry button; this native recovery control is an intentional recovery enhancement requested by the acceptance row. The failure regression covers an unavailable Gateway; live catalog error recovery, packaged Windows interaction, and source-paired acceptance remain open.
 
 Validation: PASS focused rendered retry regression, `cargo check -p hermes-native --lib`, `cargo fmt --package hermes-native --check`, and `git diff --check`.
+
+
+### Revision 282 — Explain structured model/provider errors (2026-11-20)
+
+The transcript now recognizes structured `error_surface` entries for `model_not_found`, `provider_policy_blocked`, and provider-layer failures. It presents cause-specific accessible explanations using the captured provider/model identity, keeps the provider's raw message behind a collapsed Details disclosure, and continues to show partial assistant output. Legacy errors keep their existing raw-text behavior.
+
+PAR-0219 is mapped partial. The pinned Desktop error card also offers code-specific Choose model and provider-settings actions and localized copy; those actions and localization are not yet implemented natively. Live error-surface Gateway events, packaged Windows behavior, and source-paired acceptance remain open.
+
+Validation: PASS focused rendered egui error-card regression, focused catalog-retry regression, `cargo check -p hermes-native --lib`, rustfmt check, and `git diff --check`.

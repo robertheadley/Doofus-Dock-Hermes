@@ -3522,3 +3522,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Pinned Desktop has no manual retry control; the native affordance is a recovery enhancement. Authenticated live Gateway and packaged Windows behavior remain unverified.
 - **follow_up:** Validate active/archival UCM packages, refresh progress, publish evidence/docs and continue scoped chat/tool requirements.
+
+
+## PAR-0219 structured model/provider error cards
+
+- **id:** hermes-par0219-error-surface-20261120
+- **timestamp:** 2026-11-20 17:35 UTC
+- **what:** Added model-not-found, provider-policy and generic provider-layer explanations from the structured Gateway error surface. Provider/model identity is shown, raw provider text is collapsible, and partial assistant output remains visible. Mapped PAR-0219 partial with EV-0062.
+- **why:** Let users distinguish model/provider compatibility failures from opaque transport errors while retaining the underlying diagnosis.
+- **components:** Hermes Native transcript rendering, Gateway error-surface projection and pinned capability evidence.
+- **type:** Feature, regression coverage and partial evidence.
+- **validation:** PASS focused rendered egui error-card regression, focused PAR-0218 retry regression, cargo check, rustfmt and diff checks; package validators/progress generators run after mapping.
+- **performance:** No runtime performance change measured.
+- **risks:** Choose-model/provider-settings actions and localization are still missing; no live Gateway or packaged runtime was tested.
+- **follow_up:** Validate package maps, refresh the 175-row scope, publish, and continue chat/tool parity.
