@@ -3759,3 +3759,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 PAR-0062 now caches `session.info` cwd and terminal backend values per connection/profile/runtime session. Late events from another connection and metadata for a different stored session cannot overwrite the selected session view.
 
 Validation: PASS focused owner-fencing regression; full locked `agent-automation` package suite (503 library + 15 protocol + 3 launcher); `cargo check -p hermes-native --lib`; rustfmt; `git diff --check`. EV-0075 records partial prerequisite evidence. Direct path-versus-bytes routing, live Gateway and packaged Windows behavior remain open.
+
+### Owner-scoped backend metadata publication - 2026-11-20T20:53:08Z
+
+- id: hermes-par0062-publish-main-20261120
+- timestamp: 2026-11-20T20:53:08Z
+- what: Published tested PAR-0062 owner-scoped cwd/terminal-backend caching and EV-0075 to main at 9decbef493a131922261723be26ce82b1dd04ce3.
+- why: Keep the canonical repository current as implementation slices are completed.
+- components: native Gateway event ownership, chat session metadata, progress/evidence documentation.
+- type: Publication record.
+- validation: PASS fresh fetch confirmed exact local/remote main SHA equality.
+- performance: Push and verification completed in 12 seconds.
+- risks: Attachment metadata is not yet used for path-versus-bytes routing; byte upload remains the default.
+- follow_up: Implement and test pinned attachment path policy with a safe byte fallback.
