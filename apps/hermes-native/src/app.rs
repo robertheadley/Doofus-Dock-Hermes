@@ -14376,6 +14376,24 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn accept_composer_file_drop(&mut self, paths: Vec<std::path::PathBuf>) {
+        if paths.is_empty() {
+            return;
+        }
+        if !self.gateway_connected {
+            self.status = "Connect to Hermes before attaching files".into();
+            return;
+        }
+        if let Some(session_id) = self.active_runtime_session_id.clone() {
+            self.attach_composer_paths(session_id, paths);
+        } else if self.pending_create.is_some() {
+            self.status = "Wait for the new Hermes session to finish opening".into();
+        } else {
+            self.pending_composer_paths = Some(paths);
+            self.begin_create_session(String::new());
+        }
+    }
+
     fn handle_composer_attachment_attached(
         &mut self,
         request_id: String,
@@ -14955,6 +14973,8 @@ fn render_message() -> &'static str {
                 );
             }
         }
+        let mut dropped_composer_paths = Vec::new();
+        let mut composer_drop_requires_path = false;
         ui.horizontal(|ui| {
             let input = ui
                 .add_enabled(
@@ -14970,8 +14990,56 @@ fn render_message() -> &'static str {
                         }),
                 )
                 .accessible_name("Message composer");
+            let input_rect = input.rect;
             let changed = input.changed();
-            input.on_hover_text("Type a message to Hermes");
+            let (pointer_position, has_hovered_files, dropped_paths, dropped_file_count) = ui
+                .input(|input| {
+                    (
+                        input.pointer.hover_pos(),
+                        !input.raw.hovered_files.is_empty(),
+                        input
+                            .raw
+                            .dropped_files
+                            .iter()
+                            .map(|file| file.path())
+                            .filter(|path| !path.as_os_str().is_empty())
+                            .map(std::path::Path::to_path_buf)
+                            .collect::<Vec<_>>(),
+                        input.raw.dropped_files.len(),
+                    )
+                });
+            let drop_target_active = has_hovered_files
+                && pointer_position.is_some_and(|position| input_rect.contains(position));
+            if drop_target_active {
+                ui.painter().rect_filled(
+                    input_rect,
+                    2.0,
+                    Color32::from_rgba_unmultiplied(69, 118, 184, 44),
+                );
+                ui.painter().rect_stroke(
+                    input_rect,
+                    2.0,
+                    Stroke::new(2.0, ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+                ui.painter().text(
+                    input_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "Drop files or images to attach",
+                    egui::FontId::proportional(14.0),
+                    ACCENT,
+                );
+            }
+            let drop_landed_on_composer = dropped_file_count > 0
+                && pointer_position.is_some_and(|position| input_rect.contains(position));
+            composer_drop_requires_path = drop_landed_on_composer && dropped_paths.is_empty();
+            dropped_composer_paths =
+                composer_file_drop_paths(dropped_paths, pointer_position, input_rect);
+            input.on_hover_text(if drop_target_active {
+                "Release to attach files or images"
+            } else {
+                "Type a message or drop files and images here"
+            });
             if changed {
                 self.persist_active_prepared_image_draft();
                 self.save_active_chat_view();
@@ -15020,7 +15088,7 @@ fn render_message() -> &'static str {
                     egui::Button::new("Send"),
                 );
                 if button.clicked() {
-                    if let Some(session_id) = session_id {
+                    if let Some(session_id) = session_id.clone() {
                         self.submit_prompt(session_id);
                     } else {
                         self.create_session_from_draft();
@@ -15028,6 +15096,12 @@ fn render_message() -> &'static str {
                 }
             }
         });
+        if !dropped_composer_paths.is_empty() {
+            self.accept_composer_file_drop(dropped_composer_paths);
+        } else if composer_drop_requires_path {
+            self.status =
+                "This drop did not expose local file paths. Use Attach file instead.".into();
+        }
         if waiting_for_this_session || waiting_for_new_session {
             ui.label(RichText::new("Waiting for Hermes…").size(11.0).color(MUTED));
         }
@@ -31318,6 +31392,18 @@ fn render_transcript_markdown(ui: &mut Ui, cache: &mut CommonMarkCache, markdown
     CommonMarkViewer::new().show(ui, cache, markdown);
 }
 
+fn composer_file_drop_paths(
+    paths: Vec<std::path::PathBuf>,
+    pointer_position: Option<egui::Pos2>,
+    composer_rect: Rect,
+) -> Vec<std::path::PathBuf> {
+    if pointer_position.is_some_and(|position| composer_rect.contains(position)) {
+        paths
+    } else {
+        Vec::new()
+    }
+}
+
 fn bounded_status_text(value: &str, max_bytes: usize) -> String {
     let mut sanitized = value
         .chars()
@@ -36609,6 +36695,35 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn composer_drop_accepts_multiple_paths_only_when_released_over_input() {
+        let paths = vec![
+            std::path::PathBuf::from("C:/temp/one.png"),
+            std::path::PathBuf::from("C:/temp/two.pdf"),
+        ];
+        let rect = Rect::from_min_size(egui::pos2(20.0, 30.0), egui::vec2(400.0, 80.0));
+        assert_eq!(
+            composer_file_drop_paths(paths.clone(), Some(egui::pos2(200.0, 60.0)), rect),
+            paths
+        );
+        assert!(
+            composer_file_drop_paths(
+                vec![std::path::PathBuf::from("C:/temp/outside.txt")],
+                Some(egui::pos2(500.0, 60.0)),
+                rect
+            )
+            .is_empty()
+        );
+        assert!(
+            composer_file_drop_paths(
+                vec![std::path::PathBuf::from("C:/temp/no-pointer.txt")],
+                None,
+                rect
+            )
+            .is_empty()
+        );
     }
 
     #[test]
