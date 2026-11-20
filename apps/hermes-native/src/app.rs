@@ -15032,9 +15032,13 @@ fn render_message() -> &'static str {
             }
             let drop_landed_on_composer = dropped_file_count > 0
                 && pointer_position.is_some_and(|position| input_rect.contains(position));
-            composer_drop_requires_path = drop_landed_on_composer && dropped_paths.is_empty();
-            dropped_composer_paths =
-                composer_file_drop_paths(dropped_paths, pointer_position, input_rect);
+            composer_drop_requires_path = drop_landed_on_composer
+                && !composer_drop_path_list_is_complete(dropped_file_count, dropped_paths.len());
+            dropped_composer_paths = if composer_drop_requires_path {
+                Vec::new()
+            } else {
+                composer_file_drop_paths(dropped_paths, pointer_position, input_rect)
+            };
             input.on_hover_text(if drop_target_active {
                 "Release to attach files or images"
             } else {
@@ -15099,8 +15103,7 @@ fn render_message() -> &'static str {
         if !dropped_composer_paths.is_empty() {
             self.accept_composer_file_drop(dropped_composer_paths);
         } else if composer_drop_requires_path {
-            self.status =
-                "This drop did not expose local file paths. Use Attach file instead.".into();
+            self.status = "Some dropped files have no local path. Use Attach file instead.".into();
         }
         if waiting_for_this_session || waiting_for_new_session {
             ui.label(RichText::new("Waiting for Hermes…").size(11.0).color(MUTED));
@@ -31404,6 +31407,10 @@ fn composer_file_drop_paths(
     }
 }
 
+fn composer_drop_path_list_is_complete(dropped_file_count: usize, local_path_count: usize) -> bool {
+    dropped_file_count == local_path_count
+}
+
 fn bounded_status_text(value: &str, max_bytes: usize) -> String {
     let mut sanitized = value
         .chars()
@@ -36723,6 +36730,11 @@ mod tests {
                 rect
             )
             .is_empty()
+        );
+        assert!(composer_drop_path_list_is_complete(2, 2));
+        assert!(
+            !composer_drop_path_list_is_complete(2, 1),
+            "a mixed path/pathless drop must not silently discard one of the files"
         );
     }
 
