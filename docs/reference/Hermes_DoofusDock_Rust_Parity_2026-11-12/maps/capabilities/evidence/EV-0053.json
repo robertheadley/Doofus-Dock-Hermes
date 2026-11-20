@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0053",
+  "capability_id": "ui-install-new-skill-with-live-log",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-skill-install-action-and-visible-live-log",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "d207fd423445a6f84a5bacea68060740308b2b1d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui UI test and local HTTP fixture. No live Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0257 maps install identifiers using the pinned public catalog rules and sends a profile-scoped POST /api/skills/hub/install request through the current Hermes Gateway. The returned action name starts bounded status polling; log lines, running state, completion and failure render accessibly in the selected skill detail. Profile, instance, authority epoch, action name and request ID fence late results. The full locked suite passed 445 library, 15 automation-protocol and 3 launcher tests; workspace/all-target check, rustfmt, progress generation, task validation and pinned package validation passed. Security-scan View scan behavior, exact retry after scan refusal, live Gateway, installed Windows and source-paired acceptance remain open; capability status is partial."
+}
