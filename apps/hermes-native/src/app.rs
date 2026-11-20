@@ -17503,6 +17503,7 @@ fn render_message() -> &'static str {
                 | "tool.progress"
                 | "message.start"
                 | "message.delta"
+                | "message.interim"
                 | "message.complete"
                 | "error"
         ) {
@@ -17592,6 +17593,7 @@ fn render_message() -> &'static str {
             event_type,
             "message.start"
                 | "message.delta"
+                | "message.interim"
                 | "message.complete"
                 | "tool.start"
                 | "tool.complete"
@@ -17900,7 +17902,7 @@ fn render_message() -> &'static str {
                 }
             }
             "tool.start" | "tool.complete" | "tool.progress" | "message.start"
-            | "message.delta" | "message.complete" => {
+            | "message.delta" | "message.interim" | "message.complete" => {
                 apply_stream_event_to_transcript(
                     &mut self.transcript,
                     event_type,
@@ -28825,6 +28827,24 @@ fn apply_stream_event_to_transcript(
 ) {
     match event_type {
         "tool.start" | "tool.complete" => {
+            if event_type == "tool.start"
+                && let Some(message) = transcript.iter_mut().rev().find(|message| {
+                    message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                        && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+                })
+            {
+                // A tool call ends this assistant response segment. Keep the
+                // narration as its own transcript row so text after the tool
+                // belongs to a new response bubble.
+                message["streaming"] = serde_json::Value::Bool(false);
+                message["interim"] = serde_json::Value::Bool(true);
+                message["completedAt"] = serde_json::json!(
+                    payload
+                        .get("timestamp")
+                        .and_then(json_epoch_seconds)
+                        .unwrap_or_else(unix_now_seconds)
+                );
+            }
             if event_type == "tool.complete"
                 && let Some(tool_id) = payload.get("tool_id").and_then(|value| value.as_str())
             {
@@ -28853,6 +28873,79 @@ fn apply_stream_event_to_transcript(
                     "streaming":true,
                     "timestamp":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
                 }));
+            }
+        }
+        "message.interim" => {
+            let text = payload
+                .get("text")
+                .and_then(|value| value.as_str())
+                .filter(|text| !text.trim().is_empty());
+            if let Some(message) = transcript.iter_mut().rev().find(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                    && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
+            }) {
+                if let Some(text) = text {
+                    message["content"] = serde_json::Value::String(text.to_owned());
+                }
+                message["streaming"] = serde_json::Value::Bool(false);
+                message["interim"] = serde_json::Value::Bool(true);
+                message["completedAt"] = serde_json::json!(
+                    payload
+                        .get("timestamp")
+                        .and_then(json_epoch_seconds)
+                        .unwrap_or_else(unix_now_seconds)
+                );
+            } else if let Some(text) = text {
+                // A tool.start may already have sealed the streamed bubble
+                // before the matching message.interim frame arrives. Update
+                // that same bubble when the frame confirms or extends it.
+                let after_last_user = transcript
+                    .iter()
+                    .rposition(|message| {
+                        message.get("role").and_then(|value| value.as_str()) == Some("user")
+                    })
+                    .map_or(0, |index| index.saturating_add(1));
+                let prior_interim_index = transcript
+                    .iter()
+                    .enumerate()
+                    .skip(after_last_user)
+                    .rev()
+                    .find(|(_, message)| {
+                        message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                            && message.get("interim").and_then(|value| value.as_bool())
+                                == Some(true)
+                    })
+                    .map(|(index, _)| index);
+                let prior_interim_text = prior_interim_index
+                    .and_then(|index| transcript.get(index))
+                    .and_then(|message| message.get("content"))
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned);
+                if let (Some(index), Some(existing)) = (prior_interim_index, prior_interim_text) {
+                    if text.starts_with(&existing) {
+                        let message = &mut transcript[index];
+                        message["content"] = serde_json::Value::String(text.to_owned());
+                    }
+                    if !existing.starts_with(text) && !text.starts_with(&existing) {
+                        transcript.push(serde_json::json!({
+                            "role":"assistant",
+                            "content":text,
+                            "streaming":false,
+                            "interim":true,
+                            "timestamp":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
+                            "completedAt":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
+                        }));
+                    }
+                } else {
+                    transcript.push(serde_json::json!({
+                        "role":"assistant",
+                        "content":text,
+                        "streaming":false,
+                        "interim":true,
+                        "timestamp":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
+                        "completedAt":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
+                    }));
+                }
             }
         }
         "message.delta" => {
@@ -28904,10 +28997,35 @@ fn apply_stream_event_to_transcript(
                             == Some(true)
                 });
                 let index = streaming.or(pending_error);
+                let prior_interim_text = streaming
+                    .map(|index| {
+                        let last_user = transcript[..index].iter().rposition(|message| {
+                            message.get("role").and_then(|value| value.as_str()) == Some("user")
+                        });
+                        let start = last_user.map_or(0, |index| index.saturating_add(1));
+                        transcript[start.min(index)..index]
+                            .iter()
+                            .filter(|message| {
+                                message.get("role").and_then(|value| value.as_str())
+                                    == Some("assistant")
+                                    && message.get("interim").and_then(|value| value.as_bool())
+                                        == Some(true)
+                            })
+                            .filter_map(|message| {
+                                message.get("content").and_then(|value| value.as_str())
+                            })
+                            .collect::<String>()
+                    })
+                    .unwrap_or_default();
                 if let Some(message) = index.and_then(|index| transcript.get_mut(index)) {
                     if payload.get("partial").and_then(|value| value.as_bool()) == Some(true) {
-                        if let Some(text) = final_text {
-                            message["content"] = serde_json::Value::String(text.to_owned());
+                        if let Some(text) = final_text.filter(|text| !text.trim().is_empty()) {
+                            let response_text = text
+                                .strip_prefix(&prior_interim_text)
+                                .filter(|_| !prior_interim_text.is_empty())
+                                .unwrap_or(text);
+                            message["content"] =
+                                serde_json::Value::String(response_text.to_owned());
                         }
                     } else {
                         message["content"] = serde_json::Value::String(String::new());
@@ -28941,27 +29059,70 @@ fn apply_stream_event_to_transcript(
                 }
                 return;
             }
-            if let Some(message) = transcript.iter_mut().rev().find(|message| {
+            let streaming_index = transcript.iter().rposition(|message| {
                 message.get("role").and_then(|value| value.as_str()) == Some("assistant")
                     && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
-            }) {
-                if let Some(text) = final_text.filter(|text| !text.is_empty()) {
+            });
+            let completed_at = payload
+                .get("timestamp")
+                .and_then(json_epoch_seconds)
+                .unwrap_or_else(unix_now_seconds);
+            let final_text = final_text.filter(|text| !text.trim().is_empty());
+            let last_user_index = streaming_index
+                .and_then(|index| {
+                    transcript[..index].iter().rposition(|message| {
+                        message.get("role").and_then(|value| value.as_str()) == Some("user")
+                    })
+                })
+                .or_else(|| {
+                    transcript.iter().rposition(|message| {
+                        message.get("role").and_then(|value| value.as_str()) == Some("user")
+                    })
+                });
+            let prefix_end = streaming_index.unwrap_or(transcript.len());
+            let prefix_start = last_user_index.map_or(0, |index| index.saturating_add(1));
+            let earlier_interim_text = transcript[prefix_start.min(prefix_end)..prefix_end]
+                .iter()
+                .filter(|message| {
+                    message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+                        && message.get("interim").and_then(|value| value.as_bool()) == Some(true)
+                })
+                .filter_map(|message| message.get("content").and_then(|value| value.as_str()))
+                .collect::<String>();
+            let cumulative_final = final_text.is_some_and(|text| {
+                !earlier_interim_text.is_empty() && text.starts_with(&earlier_interim_text)
+            });
+            let response_text = final_text.map(|text| {
+                if cumulative_final {
+                    &text[earlier_interim_text.len()..]
+                } else {
+                    text
+                }
+            });
+
+            if let Some(index) = streaming_index {
+                if cumulative_final && response_text.is_some_and(str::is_empty) {
+                    // The authoritative terminal frame ended exactly at the
+                    // already sealed interim prefix. The open draft is not a
+                    // second response and must not remain as an empty bubble.
+                    transcript.remove(index);
+                    return;
+                }
+                let message = &mut transcript[index];
+                if let Some(text) = response_text {
                     message["content"] = serde_json::Value::String(text.to_owned());
                 }
                 message["streaming"] = serde_json::Value::Bool(false);
                 message["error_event_pending"] = serde_json::Value::Bool(false);
-                message["completedAt"] = serde_json::json!(
-                    payload
-                        .get("timestamp")
-                        .and_then(json_epoch_seconds)
-                        .unwrap_or_else(unix_now_seconds)
-                );
-            } else if let Some(text) = final_text.filter(|text| !text.is_empty()) {
+                message["interim"] = serde_json::Value::Bool(false);
+                message["completedAt"] = serde_json::json!(completed_at);
+            } else if let Some(text) = response_text.filter(|text| !text.is_empty()) {
                 transcript.push(serde_json::json!({
                     "role":"assistant",
                     "content":text,
+                    "interim":false,
                     "timestamp":payload.get("started_at").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds),
-                    "completedAt":payload.get("timestamp").and_then(json_epoch_seconds).unwrap_or_else(unix_now_seconds)
+                    "completedAt":completed_at
                 }));
             }
         }
@@ -40716,6 +40877,195 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn interim_assistant_event_seals_one_bubble_and_final_text_opens_the_next() {
+        let mut transcript = vec![serde_json::json!({"role":"user","content":"Investigate"})];
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.start",
+            &serde_json::json!({}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &serde_json::json!({"text":"Checking the config."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.interim",
+            &serde_json::json!({"text":"Checking the config."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "tool.start",
+            &serde_json::json!({"tool_id":"read-1","name":"read_file"}),
+            Some(1),
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.interim",
+            &serde_json::json!({"text":"Checking the config."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &serde_json::json!({"text":"The final answer is 42."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.complete",
+            &serde_json::json!({"text":"The final answer is 42.","status":"complete"}),
+            None,
+        );
+
+        let assistants = transcript
+            .iter()
+            .filter(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(assistants.len(), 2);
+        assert_eq!(assistants[0]["content"], "Checking the config.");
+        assert_eq!(assistants[0]["interim"], true);
+        assert_eq!(assistants[0]["streaming"], false);
+        assert_eq!(assistants[1]["content"], "The final answer is 42.");
+        assert_eq!(assistants[1]["interim"], false);
+        assert_eq!(assistants[1]["streaming"], false);
+        assert!(transcript.iter().any(|message| {
+            message.get("type").and_then(|value| value.as_str()) == Some("tool_call")
+        }));
+    }
+
+    #[test]
+    fn cumulative_terminal_text_is_scoped_after_a_tool_delimited_interim() {
+        let mut transcript = vec![serde_json::json!({"role":"user","content":"Investigate"})];
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.start",
+            &serde_json::json!({}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &serde_json::json!({"text":"Earlier update."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "tool.start",
+            &serde_json::json!({"tool_id":"read-2","name":"read_file"}),
+            Some(1),
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &serde_json::json!({"text":"Draft"}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.complete",
+            &serde_json::json!({"text":"Earlier update.Final answer.","status":"complete"}),
+            None,
+        );
+
+        let assistants = transcript
+            .iter()
+            .filter(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(assistants.len(), 2);
+        assert_eq!(assistants[0]["content"], "Earlier update.");
+        assert_eq!(assistants[0]["interim"], true);
+        assert_eq!(assistants[1]["content"], "Final answer.");
+        assert_eq!(assistants[1]["streaming"], false);
+    }
+
+    #[test]
+    fn whitespace_only_terminal_text_preserves_the_streamed_assistant_reply() {
+        let mut transcript = vec![serde_json::json!({"role":"user","content":"Answer"})];
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.start",
+            &serde_json::json!({}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &serde_json::json!({"text":"Streamed answer."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.complete",
+            &serde_json::json!({"text":"  \n ","status":"complete"}),
+            None,
+        );
+
+        assert_eq!(transcript.len(), 2);
+        assert_eq!(transcript[1]["content"], "Streamed answer.");
+        assert_eq!(transcript[1]["streaming"], false);
+    }
+
+    #[test]
+    fn partial_error_terminal_text_does_not_repeat_an_interim_prefix() {
+        let mut transcript = vec![serde_json::json!({"role":"user","content":"Investigate"})];
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.start",
+            &serde_json::json!({}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &serde_json::json!({"text":"Checking the config."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.interim",
+            &serde_json::json!({"text":"Checking the config."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.delta",
+            &serde_json::json!({"text":"Partial final answer."}),
+            None,
+        );
+        apply_stream_event_to_transcript(
+            &mut transcript,
+            "message.complete",
+            &serde_json::json!({
+                "text":"Checking the config.Partial final answer.",
+                "status":"error",
+                "partial":true,
+                "error":"connection interrupted"
+            }),
+            None,
+        );
+
+        let assistants = transcript
+            .iter()
+            .filter(|message| {
+                message.get("role").and_then(|value| value.as_str()) == Some("assistant")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(assistants.len(), 2);
+        assert_eq!(assistants[0]["content"], "Checking the config.");
+        assert_eq!(assistants[1]["content"], "Partial final answer.");
+        assert_eq!(assistants[1]["error"], "connection interrupted");
     }
 
     #[test]
