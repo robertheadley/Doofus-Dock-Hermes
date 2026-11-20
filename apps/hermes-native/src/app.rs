@@ -6981,6 +6981,7 @@ fn render_message() -> &'static str {
             let markdown_cache = &mut self.markdown_cache;
             let mut open_tool_image = None;
             let mut request_tool_image_previews = Vec::new();
+            let mut continue_cut_off_reply = false;
             egui::ScrollArea::vertical()
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
@@ -7051,6 +7052,17 @@ fn render_message() -> &'static str {
                                 if let Some(partial) = &partial_content {
                                     ui.label(RichText::new("Partial response").strong());
                                     render_transcript_markdown(ui, markdown_cache, partial);
+                                }
+                                if message
+                                    .pointer("/error_surface/code")
+                                    .and_then(serde_json::Value::as_str)
+                                    == Some("truncated")
+                                    && ui
+                                        .button("Continue")
+                                        .accessible_name("Continue cut-off response")
+                                        .clicked()
+                                {
+                                    continue_cut_off_reply = true;
                                 }
                             } else {
                                 render_transcript_markdown(ui, markdown_cache, &body);
@@ -7231,6 +7243,9 @@ fn render_message() -> &'static str {
             }
             if let Some(submission_id) = retry_failed_submission {
                 self.retry_failed_submission(&submission_id);
+            }
+            if continue_cut_off_reply {
+                self.continue_cut_off_reply();
             }
         }
     }
@@ -17330,6 +17345,31 @@ fn render_message() -> &'static str {
         );
         self.draft.clear();
         self.status = "Sending message to Hermes…".into();
+    }
+
+    fn continue_cut_off_reply(&mut self) {
+        let ready_to_submit = self.gateway_connected
+            && self.draft.trim().is_empty()
+            && self.composer_attachments.is_empty()
+            && self
+                .active_runtime_session_id
+                .as_deref()
+                .is_some_and(|session_id| {
+                    let key = self
+                        .session_identity_key(session_id, self.active_session_profile.as_deref());
+                    !self.pending_submissions.contains_key(&key)
+                });
+        if ready_to_submit && let Some(session_id) = self.active_runtime_session_id.clone() {
+            self.draft = "continue".into();
+            self.submit_prompt(session_id);
+            return;
+        }
+
+        if !self.draft.chars().last().is_some_and(char::is_whitespace) {
+            self.draft.push_str("\n\n");
+        }
+        self.draft.push_str("continue");
+        self.save_active_chat_view();
     }
 
     fn retry_failed_submission(&mut self, submission_id: &str) {
@@ -33326,6 +33366,10 @@ mod tests {
                 "role":"assistant","error":"blocked by provider privacy policy",
                 "error_surface":{"layer":"provider","code":"provider_policy_blocked","retryable":false,"provider":"openrouter","model":"vendor/private-model"}
             }),
+            serde_json::json!({
+                "role":"assistant","error":"Maximum output length reached",
+                "error_surface":{"layer":"provider","code":"truncated","retryable":true,"provider":"openrouter","model":"vendor/long-output"}
+            }),
         ];
         let app = Rc::new(RefCell::new(app));
         let frame_app = app.clone();
@@ -33350,8 +33394,59 @@ mod tests {
                 .is_some()
         );
         assert!(harness.query_by_label("Partial response").is_some());
+        assert!(
+            harness
+                .query_by_label("Continue cut-off response")
+                .is_some()
+        );
 
         drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn truncated_reply_continue_submits_through_the_existing_session_when_idle() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        app.continue_cut_off_reply();
+
+        assert_eq!(app.draft, "");
+        assert_eq!(app.transcript.last().unwrap()["content"], "continue");
+        let command = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("continue prompt command");
+        assert!(matches!(
+            command,
+            TestGatewayCommand::SubmitPrompt {
+                session_id,
+                profile: Some(profile),
+                text,
+                ..
+            } if session_id == "runtime-session" && profile == "work" && text == "continue"
+        ));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn truncated_reply_continue_preserves_existing_draft_when_submit_is_unavailable() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "finish the explanation".into();
+
+        app.continue_cut_off_reply();
+
+        assert_eq!(app.draft, "finish the explanation\n\ncontinue");
+        assert!(app.transcript.is_empty(), "fallback does not submit");
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
