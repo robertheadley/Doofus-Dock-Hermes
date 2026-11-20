@@ -3169,3 +3169,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** Skill body and source path use existing bounded Gateway response limits; no benchmark change.
 - **risks:** Live/local/remote Gateway, installed Windows, and source-paired acceptance remain unverified. Edit, lock, archive, install and update are separate open features.
 - **follow_up:** Commit implementation and record EV-0051, publish to main, confirm exact remote SHA, then continue with the next feature in the task ledger.
+
+- **id:** hermes-par0255-main-publish
+- **timestamp:** 2026-11-20T00:16:00Z
+- **what:** Published PAR-0255 behavior commit `50c408483bbf0cbed0c34ba958f7377bd5b078e2` and EV-0051 evidence commit `7f555180bcdbea3296d07272f48cc17c20ba2f37` to `main`; fresh fetch verified exact local and remote equality. Selected PAR-0256 as the next skill workflow.
+- **why:** Keep the user's main-only repository current with implemented code, honest partial evidence, and a ready continuation task.
+- **components:** Hermes Native Skills UI, Gateway content reader, EV-0051, UCM implementation projection, Doofus task ledger.
+- **type:** main publication and task continuity.
+- **validation:** PASS both commits pushed; fresh `git fetch origin main` confirmed `HEAD == origin/main` at `7f555180bcdbea3296d07272f48cc17c20ba2f37`; UCM package validator passes with 36 implementation receipts; task selection for PAR-0256 recorded.
+- **performance:** No benchmark change.
+- **risks:** PAR-0255 remains partial pending live Gateway, Windows UI and source-paired acceptance. The skill edit/lock/archive and hub install/update workflows are still separate tasks.
+- **follow_up:** Continue PAR-0256 Browse skill hub against the pinned source snapshot.
