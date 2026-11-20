@@ -3250,3 +3250,15 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change; update and status HTTP work stays off the UI thread and status output is bounded.
 - **risks:** A network error after POST may leave admission uncertain; the UI does not replay automatically and instructs the user to check the action log before retrying. Update checks, per-skill updates, cancellation and source-paired acceptance remain open.
 - **follow_up:** Publish the behavior and EV-0055 to main, then resume the next dependency-ready chat/tool/skills/plugins/MCP capability; preserve the user's visual-tuning boundary until functional scope is ready.
+## PAR-0258 main publication
+
+- **id:** hermes-par0258-main-publish-20261120
+- **timestamp:** 2026-11-20 02:00 UTC
+- **what:** Pushed behavior commit 9cdee421e47cc2555f560cb14cc18b69bbf9c9ae and EV-0055 evidence commit 4562e53419cfd9025915beb8463bd54e0dbb1f78 directly to main; fresh fetch verified exact local and remote SHA equality.
+- **why:** Keep the user's main-only repository current with validated native behavior and its partial evidence receipt.
+- **components:** Skills update UI/Gateway flow, EV-0055, progress/UCM maps, task ledger.
+- **type:** direct main publication.
+- **validation:** PASS push, fresh fetch, exact SHA equality, task validator.
+- **performance:** No benchmark change.
+- **risks:** PAR-0258 remains partial; live Gateway, packaged Windows, and source-paired acceptance remain open.
+- **follow_up:** Continue PAR-0253 category filtering, then remaining Skills, plugins/MCP and chat/tool features before visual tuning.
