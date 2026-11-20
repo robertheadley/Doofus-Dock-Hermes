@@ -3772,3 +3772,42 @@ Validation: PASS focused owner-fencing regression; full locked `agent-automation
 - performance: Push and verification completed in 12 seconds.
 - risks: Attachment metadata is not yet used for path-versus-bytes routing; byte upload remains the default.
 - follow_up: Implement and test pinned attachment path policy with a safe byte fallback.
+
+### Agent-focused first-version goal - 2026-11-20
+
+- id: hermes-goal-agent-workflow-reset-20261120
+- timestamp: 2026-11-20T20:55:00Z
+- what: Replaced the deleted 1:1 desktop replacement goal with a first usable Hermes agent-workflow UI target.
+- why: The user wants agent capabilities working soon so visual presentation can be changed afterward.
+- components: Goal state, README, Hermes Native backlog, completion overview, portable handoff and parent task objective.
+- type: Scope correction.
+- validation: PASS task schema and progress validation pending after update.
+- performance: Documentation/state update only.
+- risks: The feature ledger still has unknown and partial capabilities; it is not an overall completion percentage.
+- follow_up: Continue core agent workflow gaps, starting with attachment routing policy.
+
+### Owner-aware attachment route and goal correction - 2026-11-20
+
+- id: hermes-agent-goal-and-attachment-policy-20261120
+- timestamp: 2026-11-20T21:27:02Z
+- what: Replaced the deleted 1:1 goal with a first-version agent workflow objective; routed non-image files to inline @file references only for proven local shared path context, preserving byte upload for images and uncertain ownership.
+- why: Align scope to agent capability so the user can begin visual changes after core workflows work, while preserving existing functional behavior.
+- components: goal, parent task/handoff, README, Hermes Native attachment state, Gateway endpoint classification, completion overview, backlog and evidence.
+- type: Scope correction and functional change.
+- validation: PASS 505 library + 15 automation protocol + 3 launcher tests; cargo check; rustfmt; diff check; task schema.
+- performance: No benchmark requested or applicable.
+- risks: Live Gateway path resolution and packaged Windows interaction remain unverified; fallback stays byte-based for all uncertain cases.
+- follow_up: Publish the tested checkpoint, then continue the remaining agent-focused model/provider, tool, skill, plugin and MCP gaps.
+
+### Goal scope validation follow-up - 2026-11-20
+
+- id: hermes-goal-agent-workflow-reset-validation-20261120
+- timestamp: 2026-11-20T21:27:02Z
+- what: Confirmed the first-version agent-workflow wording in the README, backlog, completion overview and portable task records.
+- why: Close the validation item recorded when the goal correction was first written.
+- components: README, Hermes Native docs, .doofus handoff and task ledger.
+- type: Validation follow-up.
+- validation: PASS `python apps/hermes-native/tools/doofus_task.py validate`; 176-row progress generator reports 53 evidence-mapped rows and 0 live/source acceptances, with these counts explicitly described as evidence coverage.
+- performance: Documentation-only validation.
+- risks: Unknown and partial workflow rows remain; the evidence counts are not an overall completion percentage.
+- follow_up: Continue implementation under the active agent-focused goal.

@@ -202,19 +202,19 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "doofus/events.jsonl",
+      "path": "doofus/handoff.json",
       "status": "M "
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
+      "path": ".doofus/task-ledger.json",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
+      "path": "README.md",
       "status": " M"
     },
     {
@@ -227,12 +227,6 @@
       "change_type": "modified",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
       "status": " M"
     },
     {
@@ -270,22 +264,17 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0075.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
     "command": "cargo test -p hermes-native --features agent-automation",
     "evidence": [
-      "apps/hermes-native/src/app.rs#session_info_backend_metadata_is_fenced_to_connection_profile_and_stored_session"
+      "apps/hermes-native/src/app.rs#composer_attachment_upload_policy_requires_proven_local_shared_paths",
+      "apps/hermes-native/src/app.rs#composer_attachment_uses_inline_path_only_for_exact_local_session_context"
     ],
     "state": "in_progress",
-    "summary": "PAR-0062 now caches cwd and terminal_backend from session.info behind connection/profile/runtime/stored-session owner checks. Owner-fencing test passes; full locked package passes 503+15+3 and cargo check. Byte upload remains default; metadata consumption and direct-path policy remain open.",
-    "verified_at": "2026-11-20T20:48:39Z"
+    "summary": "User deleted the old 1:1 goal and approved a first-version agent workflow scope. Durable goal/handoff now cover model/provider connection, chat, tools, skills, plugins/MCP, and required context/attachments, with visual polish and unrelated admin deferred. PAR-0062 now caches exact-owner backend metadata and routes non-image local files by proven shared local context; images, remote, container, unknown, or mismatched paths retain byte upload. Full suite passes 505+15+3.",
+    "verified_at": "2026-11-20T21:25:32Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -338,7 +327,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T21:48:39Z",
+    "lease_expires_at": "2026-11-20T22:25:32Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1299,11 +1288,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "39927edb-887d-4fb3-911d-cd02215ee381",
+  "last_event_id": "f15a38c3-9499-4d59-a768-8bbcf7c0c1d9",
   "last_operation": {
-    "request_id": "39927edb-887d-4fb3-911d-cd02215ee381",
+    "request_id": "f15a38c3-9499-4d59-a768-8bbcf7c0c1d9",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1320,7 +1309,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Implement pinned path-versus-bytes attachment routing using the cached owner-scoped backend cwd and terminal backend, with safe byte fallback and focused policy tests.",
+  "recommended_next_action": "Update progress/docs for the agent-focused first-version scope, publish the completed attachment routing slice, then continue high-value model/provider/tool/skills/plugin/MCP gaps without removing existing functional work.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1780,18 +1769,18 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "9d23b08529f3bb1534ef3a58c09370471156c558cfbb9908278c254be9961115",
+    "change_fingerprint": "cf6250d13a61981ac240168db3b82ce97a1d3be7a6f100bc53f3e162ff388633",
     "changed_files": [
       {
-        "path": "doofus/events.jsonl",
+        "path": "doofus/handoff.json",
         "status": "M "
       },
       {
-        "path": ".doofus/handoff.json",
+        "path": ".doofus/task-ledger.json",
         "status": " M"
       },
       {
-        "path": ".doofus/task-ledger.json",
+        "path": "README.md",
         "status": " M"
       },
       {
@@ -1800,10 +1789,6 @@
       },
       {
         "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/PLAN.md",
         "status": " M"
       },
       {
@@ -1829,21 +1814,17 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0075.json",
-        "status": "??"
       }
     ],
-    "head_commit": "fcbb38a161e8a8285f1dd121ad87fd3f2320ea48",
+    "head_commit": "6708d4a162e0518c5703fea469141d171741f9c1",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 514,
+  "revision": 515,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 514,
-  "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
+  "state_revision": 515,
+  "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0062",
   "task_ledger_revision": 85,
   "tests_executed": [
@@ -3145,5 +3126,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T20:53:50Z"
+  "updated_at": "2026-11-20T21:25:32Z"
 }

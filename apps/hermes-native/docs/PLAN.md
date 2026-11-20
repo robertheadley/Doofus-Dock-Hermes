@@ -1777,3 +1777,10 @@ Validation: PASS focused profile HTTP and precedence fixtures, disabled-preferen
 PAR-0062 now captures `session.info` `cwd` and `terminal_backend` per connection/profile/runtime session. Raw Gateway events receive their stable connection ID when polled; the app rejects stale-connection updates and only mutates a uniquely matching stored-session view. Active chat state is saved before its metadata is updated, so a later session switch retains the values.
 
 Validation: PASS focused owner-fencing regression and full locked `agent-automation` package suite (503 library + 15 protocol + 3 launcher), `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. EV-0075 records partial prerequisite evidence. The metadata is not yet consumed by path-versus-bytes routing, so byte uploads remain the default; live Gateway and packaged Windows behavior remain unverified.
+
+
+### Revision 289 — Owner-aware path-versus-bytes attachment policy (2026-11-20)
+
+PAR-0062 now uses the cached owner-scoped backend metadata when staging non-image composer paths. Hermes gets an inline `@file:` reference only when the active session view uniquely matches the runtime/profile/stored-session owner, the endpoint is an unauthenticated loopback gateway, the terminal backend is `local`, and the host path and backend cwd are both absolute with the same path style. Images, remote/authenticated endpoints, containers, unknown backend state, missing cwd, and Windows/POSIX path mismatches keep the existing byte-upload RPC. The existing upload limit, request fencing, and failure behavior are unchanged. EV-0076 records partial evidence.
+
+Validation: PASS focused policy and rendered flow tests; full locked `agent-automation` package suite (505 library + 15 protocol + 3 launcher), `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. Live Gateway outcomes, direct file-reference execution and packaged Windows behavior remain unverified.

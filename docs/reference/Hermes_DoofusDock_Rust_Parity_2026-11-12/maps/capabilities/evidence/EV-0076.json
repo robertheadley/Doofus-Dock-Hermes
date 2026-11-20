@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0076",
+  "capability_id": "ui-attach-image-or-file-to-prompt",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "composer_uses_direct_file_reference_only_with_matching_local_backend_context",
+  "locator": "apps/hermes-native/src/app.rs#composer_attachment_uses_inline_path_only_for_exact_local_session_context",
+  "date": "2026-11-20",
+  "commit": "6708d4a162e0518c5703fea469141d171741f9c1",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless tests verify direct @file reference for a non-image path only with exact session metadata, local loopback gateway, local terminal backend, and matching Windows path style. Mismatched Windows/POSIX paths, remote gateways, containers, and missing backend metadata require byte upload. Full locked agent-automation suite passes (505 library, 15 protocol, 3 launcher), cargo check, rustfmt and diff checks pass. No live Gateway or physical Windows interaction was used.",
+  "notes": "Partial PAR-0062 evidence. Images and uncertain filesystem ownership retain the existing byte-upload path. Live Gateway outcomes, file-reference execution, and packaged Windows acceptance remain open."
+}

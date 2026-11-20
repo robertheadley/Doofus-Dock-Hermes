@@ -16255,11 +16255,12 @@
           "dependencies": [],
           "estimated_remaining_effort": null,
           "inputs": {
-            "acceptance_matrix": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/planning/ACCEPTANCE_MATRIX.csv"
+            "feature_scope": "apps/hermes-native/docs/status/CHAT_TOOL_SCOPE.csv",
+            "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
           },
           "last_updated_at": "2026-11-17T01:04:31Z",
           "lease_id": "ddc67c5d-2bd0-46e0-acd4-5a9a695abafd",
-          "objective": "Complete the fixed 499-row UI replacement scope for pinned source 8783054ef6cbafd86f10892241436862c1171a66.",
+          "objective": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
           "outputs": [],
           "owner": "codex",
           "parent_task_id": "hermes-native-project",
@@ -16270,7 +16271,7 @@
           "started_at": null,
           "state": "in_progress",
           "task_id": "hermes-native-ui-parity",
-          "title": "Hermes Native 1:1 UI parity",
+          "title": "Hermes Native agent workflow first version",
           "verification_evidence": []
         },
         {
