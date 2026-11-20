@@ -2138,6 +2138,11 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<bool, String>,
     },
+    DisplayReasoningLoaded {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<bool, String>,
+    },
     RepoScanConfigLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2845,6 +2850,10 @@ enum GatewayHttpCommand {
         operation: CommandCenterMaintenanceOperation,
     },
     LoadDisplayTimestamps {
+        request_id: String,
+        profile: Option<String>,
+    },
+    LoadDisplayReasoning {
         request_id: String,
         profile: Option<String>,
     },
@@ -5017,6 +5026,19 @@ impl GatewayDiscovery {
     ) -> Result<(), String> {
         self.http_sender
             .send(GatewayHttpCommand::LoadDisplayTimestamps {
+                request_id,
+                profile,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn load_display_reasoning(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadDisplayReasoning {
                 request_id,
                 profile,
             })
@@ -9956,6 +9978,14 @@ fn gateway_http_actor(
                 profile: profile.clone(),
                 result: load_display_timestamps_http(&endpoint, profile.as_deref()),
             },
+            GatewayHttpCommand::LoadDisplayReasoning {
+                request_id,
+                profile,
+            } => GatewayEvent::DisplayReasoningLoaded {
+                request_id,
+                profile: profile.clone(),
+                result: load_display_reasoning_http(&endpoint, profile.as_deref()),
+            },
             GatewayHttpCommand::LoadRepoScanConfig {
                 request_id,
                 profile,
@@ -13585,6 +13615,33 @@ fn load_display_timestamps_http(
     )
 }
 
+fn load_display_reasoning_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+) -> Result<bool, String> {
+    if endpoint.remote_auth.is_some() {
+        let url = format!(
+            "{}/api/config{}",
+            endpoint.api_origin.trim_end_matches('/'),
+            session_profile_suffix(profile.unwrap_or(&endpoint.profile_id))
+        );
+        let config: serde_json::Value = request_remote_gateway_json(endpoint, &url)?;
+        return Ok(display_reasoning_enabled(&config));
+    }
+    if !is_bare_loopback_origin(&endpoint.api_origin) {
+        return Err(
+            "Hermes display configuration requires the verified loopback API origin".into(),
+        );
+    }
+    let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+    validate_http_ticket(&ticket)?;
+    read_display_reasoning(
+        &endpoint.api_origin,
+        ticket.as_str(),
+        profile.unwrap_or(&endpoint.profile_id),
+    )
+}
+
 fn load_repo_scan_config_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
@@ -14011,6 +14068,33 @@ fn read_display_timestamps(
     let config: DisplayTimestampsConfig = request_gateway_json(api_origin, ticket, &url)?;
     let value = config.display.and_then(|display| display.timestamps);
     Ok(value.as_ref().is_some_and(display_timestamps_enabled))
+}
+
+fn read_display_reasoning(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+) -> Result<bool, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err(
+            "Hermes display configuration requires the verified loopback API origin".into(),
+        );
+    }
+    let url = format!(
+        "{}/api/config{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let config: serde_json::Value = request_gateway_json(api_origin, ticket, &url)?;
+    Ok(display_reasoning_enabled(&config))
+}
+
+fn display_reasoning_enabled(config: &serde_json::Value) -> bool {
+    let value = config
+        .pointer("/display/platforms/cli/show_reasoning")
+        .or_else(|| config.pointer("/display/show_reasoning"));
+    value.is_some_and(display_timestamps_enabled)
 }
 
 fn display_timestamps_enabled(value: &serde_json::Value) -> bool {
@@ -19187,6 +19271,36 @@ mod tests {
     }
 
     #[test]
+    fn display_reasoning_config_read_uses_profile_scoped_source_api() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind display-config fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept display-config request");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with("GET /api/config?profile=work%20profile HTTP/1.1\r\n"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n")
+            );
+            let body = json!({
+                "display":{"show_reasoning":true,"platforms":{"cli":{"show_reasoning":false}}}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write display-config fixture response");
+        });
+        let enabled = read_display_reasoning(
+            &format!("http://{address}"),
+            "fixture-native-http-ticket",
+            "work profile",
+        )
+        .expect("read source display config");
+        assert!(!enabled, "the CLI override wins over the global setting");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
     fn agent_plugin_settings_values_are_profile_scoped_and_secret_free() {
         let params = agent_plugin_settings_params(
             "vendor:sample",
@@ -20367,6 +20481,20 @@ mod tests {
                 .join()
                 .expect("invalid Skill Hub update fixture exits");
         }
+    }
+
+    #[test]
+    fn display_reasoning_config_prefers_cli_override_and_defaults_off() {
+        assert!(display_reasoning_enabled(&json!({
+            "display":{"show_reasoning":true}
+        })));
+        assert!(!display_reasoning_enabled(&json!({
+            "display":{"show_reasoning":true,"platforms":{"cli":{"show_reasoning":"false"}}}
+        })));
+        assert!(display_reasoning_enabled(&json!({
+            "display":{"show_reasoning":false,"platforms":{"cli":{"show_reasoning":true}}}
+        })));
+        assert!(!display_reasoning_enabled(&json!({"display":{}})));
     }
 
     #[test]

@@ -1653,6 +1653,9 @@ pub struct HermesNativeApp {
     timestamps_override: Option<bool>,
     timestamps_config_request: Option<(String, String)>,
     timestamps_config_profile: Option<String>,
+    reasoning_enabled: bool,
+    reasoning_config_request: Option<(String, String)>,
+    reasoning_config_profile: Option<String>,
     repo_scan_config: Option<RepoScanPolicy>,
     repo_scan_config_profile: Option<String>,
     repo_scan_config_request: Option<(String, String)>,
@@ -4100,6 +4103,9 @@ fn render_message() -> &'static str {
             timestamps_override: None,
             timestamps_config_request: None,
             timestamps_config_profile: None,
+            reasoning_enabled: false,
+            reasoning_config_request: None,
+            reasoning_config_profile: None,
             repo_scan_config: None,
             repo_scan_config_profile: None,
             repo_scan_config_request: None,
@@ -7014,12 +7020,7 @@ fn render_message() -> &'static str {
                                 .get("reasoning")
                                 .and_then(serde_json::Value::as_str)
                                 .filter(|reasoning| !reasoning.trim().is_empty())
-                                .filter(|_| {
-                                    message
-                                        .get("reasoning_enabled")
-                                        .and_then(serde_json::Value::as_bool)
-                                        == Some(true)
-                                })
+                                .filter(|_| self.reasoning_enabled)
                             {
                                 let simple_mode =
                                     self.workspace.preferences.mode == InterfaceMode::Simple;
@@ -19807,6 +19808,39 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn sync_display_reasoning_config(&mut self) {
+        if !self.gateway_connected {
+            return;
+        }
+        let Some(profile) = self.active_session_profile.clone().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        }) else {
+            return;
+        };
+        if self.reasoning_config_profile.as_deref() != Some(profile.as_str()) {
+            self.reasoning_enabled = false;
+        }
+        if self.reasoning_config_request.is_some()
+            || self.reasoning_config_profile.as_deref() == Some(profile.as_str())
+        {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            return;
+        };
+        let request_id = operation_id("display-reasoning-config");
+        if gateway
+            .load_display_reasoning(request_id.clone(), Some(profile.clone()))
+            .is_ok()
+        {
+            self.reasoning_config_request = Some((request_id, profile));
+        } else {
+            self.reasoning_config_profile = Some(profile);
+        }
+    }
+
     fn load_connectors(&mut self) -> Result<(), String> {
         if !self.gateway_connected {
             return Err("Connect to Hermes before loading Connectors".into());
@@ -28714,6 +28748,34 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::DisplayReasoningLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile)) =
+                        self.reasoning_config_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_id != &request_id || profile.as_deref() != Some(expected_profile) {
+                        continue;
+                    }
+                    let expected_profile = expected_profile.clone();
+                    let active_profile = self.active_session_profile.as_deref().or_else(|| {
+                        self.gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.as_str())
+                    });
+                    if active_profile != Some(expected_profile.as_str()) {
+                        self.reasoning_config_request = None;
+                        continue;
+                    }
+                    let loaded_profile = expected_profile;
+                    self.reasoning_config_request = None;
+                    self.reasoning_config_profile = Some(loaded_profile);
+                    self.reasoning_enabled = result.unwrap_or(false);
+                }
                 GatewayEvent::RepoScanConfigLoaded {
                     request_id,
                     profile,
@@ -30323,6 +30385,7 @@ fn render_message() -> &'static str {
             self.request_active_session_statuses();
         }
         self.sync_display_timestamps_config();
+        self.sync_display_reasoning_config();
         self.poll_mcp_catalog_install_status(ctx);
         self.poll_skill_hub_install_actions(ctx);
         self.poll_skill_hub_update_action(ctx);
@@ -30697,13 +30760,11 @@ fn apply_stream_event_to_transcript(
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or_default();
                 message["reasoning"] = serde_json::Value::String(format!("{reasoning}{delta}"));
-                message["reasoning_enabled"] = serde_json::Value::Bool(true);
             } else {
                 transcript.push(serde_json::json!({
                     "role":"assistant",
                     "content":"",
                     "reasoning":delta,
-                    "reasoning_enabled":true,
                     "streaming":true
                 }));
             }
@@ -36476,11 +36537,11 @@ mod tests {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());
         app.workspace.preferences.mode = InterfaceMode::Simple;
+        app.reasoning_enabled = true;
         app.transcript = vec![json!({
             "role":"assistant",
             "content":"Visible answer.",
             "reasoning":"Private thought details.",
-            "reasoning_enabled":true,
             "streaming":true
         })];
 
@@ -36510,6 +36571,39 @@ mod tests {
                 .next()
                 .is_some(),
             "the accessible disclosure must expose reasoning when expanded"
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn disabled_reasoning_preference_hides_the_disclosure_and_text() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.transcript = vec![json!({
+            "role":"assistant",
+            "content":"Visible answer.",
+            "reasoning":"Private thought details.",
+            "streaming":true
+        })];
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| { node.label().is_some_and(|label| label == "Thinking") })
+                .next()
+                .is_none(),
+            "disabled reasoning preference must hide its disclosure"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref() == Some("Private thought details."))
+                .next()
+                .is_none()
         );
 
         drop(harness);
