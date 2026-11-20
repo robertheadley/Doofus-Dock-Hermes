@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0054",
+  "capability_id": "ui-install-new-skill-with-live-log",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-skill-install-security-scan-review-and-policy-preserving-retry",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "a0e2428e1af3f6d2e1f796da9b7e78d7189c3f8a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui UI tests and local authenticated Gateway HTTP fixture. No live Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0257 detects the pinned Desktop's current and legacy scan-block messages and exposes View security scan after a blocked install. The GET uses the active profile, validates the identifier, policy, field bounds and finding count, and the result is fenced by request, profile, Gateway instance and authority epoch. The detail shows verdict, policy, summary, reason and findings. The normal Install skill action remains available for retry; no policy override is sent. The complete locked suite passed 449 library, 15 automation-protocol and 3 launcher tests; workspace/all-target check, rustfmt, progress generators, task validation and UCM package validation passed. Live Gateway, Windows interaction and source-paired acceptance remain open; capability status is partial."
+}

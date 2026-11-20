@@ -879,11 +879,11 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "84e8c8ab-53e8-4362-9b8e-18421fadf5de",
+  "last_event_id": "fad924ae-579c-4b1d-b001-a09fd4c6883e",
   "last_operation": {
-    "request_id": "84e8c8ab-53e8-4362-9b8e-18421fadf5de",
+    "request_id": "fad924ae-579c-4b1d-b001-a09fd4c6883e",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "task.state_updated"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1464,13 +1464,13 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 368,
+  "revision": 369,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 368,
+  "state_revision": 369,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0257",
-  "task_ledger_revision": 57,
+  "task_ledger_revision": 58,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2610,5 +2610,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T01:31:05Z"
+  "updated_at": "2026-11-20T01:32:57Z"
 }
