@@ -793,6 +793,20 @@
     },
     {
       "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0116-publish-main-20261120"
+      ],
+      "kind": "git_push_main",
+      "note": "Published behavior commit d0ab4eb and evidence/docs commit b72ee45 to origin/main. Fresh fetch confirms local main equals origin/main at b72ee45006d45c5e70f2dff08f1d3c4b96e14677. Preserved untracked apps/hermes-native/work/.",
+      "observed_at": "2026-11-20T19:55:38Z",
+      "operation_id": "hermes-par0116-publish-main-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0065.json#EV-0065"
       ],
       "kind": "git_push",
@@ -1273,11 +1287,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "71ddb504-3566-41b0-b9a0-80ca2cf43e19",
+  "last_event_id": "df8ae038-5641-45e0-93d0-44339df4630f",
   "last_operation": {
-    "request_id": "71ddb504-3566-41b0-b9a0-80ca2cf43e19",
+    "request_id": "df8ae038-5641-45e0-93d0-44339df4630f",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "external_operation.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1841,10 +1855,10 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 504,
+  "revision": 505,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 504,
+  "state_revision": 505,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0062",
   "task_ledger_revision": 84,
@@ -3132,5 +3146,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T19:53:48Z"
+  "updated_at": "2026-11-20T19:55:38Z"
 }

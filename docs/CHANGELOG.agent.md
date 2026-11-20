@@ -3683,3 +3683,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - performance: No performance change measured.
 - risks: Byte-only and clipboard drops, custom Hermes references, pinned path-sharing policy, live Gateway outcomes, physical Windows behavior and source-paired acceptance remain open. No live runtime or GUI was used.
 - follow_up: Continue the next dependency-ready chat/tool feature under the existing Codex lease; keep visual polish deferred until functional scope is complete.
+
+
+### Composer drop publication — 2026-11-20T19:55:03Z
+
+- id: hermes-par0116-publish-main-20261120
+- timestamp: 2026-11-20T19:55:03Z
+- what: Published implementation commit d0ab4eb7cdfd7bf82e5ee505e480fb19e8b9e989 and partial progress/evidence commit b72ee45006d45c5e70f2dff08f1d3c4b96e14677 to origin/main.
+- why: Keep the user's main-only repository current with validated progress.
+- components: origin/main; composer file drop implementation; progress ledger; UCM partial receipt EV-0073; task checkpoint and execution records.
+- type: Publication and repository synchronization.
+- validation: PASS fetched origin/main before push (local was 2 commits ahead); push succeeded; fresh fetch confirmed exact SHA equality at b72ee45006d45c5e70f2dff08f1d3c4b96e14677.
+- performance: Push and verification completed in approximately 45 seconds.
+- risks: The separately preserved untracked apps/hermes-native/work/ folder is not part of the published repository. Live Gateway/Windows interaction remains unverified.
+- follow_up: Continue the existing PAR-0062 attachment task; do not treat publication as parity acceptance.
