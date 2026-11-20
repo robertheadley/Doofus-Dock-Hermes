@@ -3161,7 +3161,7 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 
 - **id:** hermes-par0255-skill-detail-source
 - **timestamp:** 2026-11-20T00:12:00Z
-- **what:** Added the native Skills detail view and profile-scoped `/api/skills/content` reader, showing the selected skill instructions and source path. PAR-0255 now has headless partial evidence, and the generated implementation overlay advances to 65/499 reviewed (6 implemented, 59 partial, 434 unknown).
+- **what:** Added the native Skills detail view and profile-scoped `/api/skills/content` reader, showing the selected skill instructions and source path. PAR-0255 now has headless partial evidence; generated overlays show 65/499 broad requirements and 33/173 chat/tool requirements with mapped evidence.
 - **why:** Support the user's requested skills/plugin functionality while keeping skill content fenced to the active Hermes profile and connection.
 - **components:** Hermes Native Skills UI, Gateway HTTP reader, task ledger, implementation progress overlay, UCM capability maps, completion overview, architecture, backlog, README.
 - **type:** native feature implementation and partial progress evidence.

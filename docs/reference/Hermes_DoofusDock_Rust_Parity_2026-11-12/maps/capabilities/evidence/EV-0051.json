@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0051",
+  "capability_id": "ui-open-skill-detail-and-source",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-skill-detail-content-and-source-path",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "50c408483bbf0cbed0c34ba958f7377bd5b078e2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui unit tests and an HTTP Gateway fixture. No live Gateway, installed desktop runtime, physical Windows interaction, or pinned-source visual pair used.",
+  "notes": "PAR-0255 reads the pinned GET /api/skills/content?name=...&profile=... contract and shows skill content and source path. Headless tests cover encoded skill names, explicit profile query scope, owner fencing across request/profile/instance/authority epoch, and retaining the source path. Full locked suite passed 435 library, 15 automation-protocol, and 3 launcher tests; locked workspace/all-target check, rustfmt, progress generation, UCM package validation, task validation, and diff check passed. Live Gateway behavior, installed Windows behavior, skill edit/lock/archive and hub install/update, and source-paired acceptance remain open; capability status is partial."
+}
