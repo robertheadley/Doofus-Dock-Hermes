@@ -40635,6 +40635,90 @@ mod tests {
     }
 
     #[test]
+    fn incremental_assistant_delta_is_visible_before_terminal_message_complete() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        seed_pending_submission(
+            &mut app,
+            "submission-stream",
+            Some("admission-stream"),
+            false,
+        );
+        app.handle_server_event(serde_json::json!({
+            "type":"message.start","session_id":"runtime-session","profile":"work",
+            "payload":{"turn_id":"turn-stream"}
+        }));
+        app.handle_server_event(serde_json::json!({
+            "type":"message.delta","session_id":"runtime-session","profile":"work",
+            "payload":{"text":"First streamed chunk"}
+        }));
+
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        assert_eq!(
+            app.borrow().transcript[0]["content"],
+            "First streamed chunk",
+            "the reducer must hold the live text before the UI is inspected"
+        );
+        let accessible_text = harness
+            .query_all_by(|_| true)
+            .map(|node| format!("{:?}", node.accesskit_node().label()))
+            .collect::<Vec<_>>();
+        assert!(
+            harness
+                .query_all_by(
+                    |node| node.label().as_deref() == Some("assistant: First streamed chunk")
+                )
+                .next()
+                .is_some(),
+            "the live assistant delta is rendered before message.complete; accessible text: {accessible_text:?}"
+        );
+        assert_eq!(app.borrow().transcript[0]["streaming"], true);
+        assert!(harness.query_by_label("Stop response").is_some());
+
+        app.borrow_mut().handle_server_event(serde_json::json!({
+            "type":"message.delta","session_id":"runtime-session","profile":"work",
+            "payload":{"text":" and another chunk"}
+        }));
+        harness.run();
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref()
+                    == Some("assistant: First streamed chunk and another chunk"))
+                .next()
+                .is_some(),
+            "the visible assistant bubble grows with each delta"
+        );
+
+        app.borrow_mut().handle_server_event(serde_json::json!({
+            "type":"message.complete","session_id":"runtime-session","profile":"work",
+            "payload":{"admission_id":"admission-stream","text":"First streamed chunk and another chunk.","status":"complete"}
+        }));
+        harness.run();
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref()
+                    == Some("assistant: First streamed chunk and another chunk."))
+                .next()
+                .is_some(),
+            "the final text replaces the live bubble without duplication"
+        );
+        assert_eq!(app.borrow().transcript.len(), 1);
+        assert_eq!(app.borrow().transcript[0]["streaming"], false);
+        assert!(app.borrow().pending_submissions.is_empty());
+        assert!(harness.query_by_label("Stop response").is_none());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn failed_turn_events_keep_user_row_merge_in_either_order_and_release_busy_state() {
         let (mut app, profile_dir) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());

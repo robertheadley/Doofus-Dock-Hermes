@@ -53,10 +53,40 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Audit complete: pinned streaming.test.tsx asserts first chunk before completion, later chunk after producer release, and loading indicator; native reducer exists but lacked rendered incremental coverage; Markdown preprocessing still has separate gaps.",
+      "observed_at": "2026-11-20T15:27:51Z",
+      "pid": null,
+      "process_id": "subagent:par0034-0043-render-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Audit complete: native attachment upload and no-send recovery have tested partial support; pinned path-vs-bytes policy, paste/drop and stale-session resume/retry remain gaps. PAR-0066 terminal-selection-to-composer and PAR-0068 preview selection are absent; recommended useful slice is attachment recovery on session-not-found.",
+      "observed_at": "2026-11-20T15:27:53Z",
+      "pid": null,
+      "process_id": "subagent:par0062-0068-attachments-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0064 source contract completed; identified event-order-independent deduplicated assistant error bubble as next slice. No repository edits.",
       "observed_at": "2026-11-19T18:03:02Z",
       "pid": null,
       "process_id": "subagent:par0064-contract",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Audit complete: native agent plugin catalog/install/update/remove is distinct from pinned Desktop renderer-plugin host and per-origin consent; PAR-0269 stays not implemented. Quick slice: rendered installed-Skills/search regression PAR-0251/0252.",
+      "observed_at": "2026-11-20T15:27:52Z",
+      "pid": null,
+      "process_id": "subagent:par0210-plugin-skills-audit",
       "provider": "codex",
       "state": "stopped"
     },
@@ -198,12 +228,13 @@
     "command": "task select",
     "evidence": [],
     "state": "unknown",
-    "summary": "Continue the highest-priority core flow: user clicks Send from New Chat, native client creates session through Hermes Gateway, then submits draft using returned runtime session id. Add UI-level regression around existing app state-machine path.",
-    "verified_at": "2026-11-20T15:08:52Z"
+    "summary": "PAR-0033 fresh-chat success path is now headlessly tested and mapped partial. Continue sequentially into incremental assistant text because it is a required core chat behavior; inspect pinned contract and existing implementation for the next real gap.",
+    "verified_at": "2026-11-20T15:22:15Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
     "hermes-par-0033",
+    "hermes-par-0034",
     "hermes-par-0040",
     "hermes-par-0041",
     "hermes-par-0042",
@@ -985,13 +1016,49 @@
         "provider": "codex"
       },
       "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_test",
+      "note": "Initial PAR-0034 test confirmed compilation but could not find the expected assistant AccessKit group label; diagnostics now assert reducer content and collect accessible labels/values to distinguish route/render setup from a naming mismatch.",
+      "observed_at": "2026-11-20T15:26:03Z",
+      "operation_id": "par0034-rendered-stream-regression-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_test",
+      "note": "The test diagnostic proved the first live bubble is present; expected AccessKit group label used uppercase Assistant while source returns lowercase assistant. Updated expected labels and added Stop response visibility/clear assertions.",
+      "observed_at": "2026-11-20T15:27:29Z",
+      "operation_id": "par0034-rendered-stream-regression-retry1-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_test",
+      "note": "Focused full-app egui regression passes: live assistant text is accessible before completion, a second delta updates the same bubble, Stop response is visible while pending, and completion replaces text without duplication and clears busy state.",
+      "observed_at": "2026-11-20T15:28:18Z",
+      "operation_id": "par0034-rendered-stream-regression-retry2-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
     }
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "6c3f38cd-ac01-46e6-ac67-f145f4ca129b",
+  "last_event_id": "2ed04c1d-ec27-4cd2-87e3-aa4e463196fa",
   "last_operation": {
-    "request_id": "6c3f38cd-ac01-46e6-ac67-f145f4ca129b",
+    "request_id": "2ed04c1d-ec27-4cd2-87e3-aa4e463196fa",
     "state": "committed",
     "type": "task.state_updated"
   },
@@ -1010,7 +1077,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Fix the egui harness to draw the complete app, run focused PAR-0033 test, then record evidence.",
+  "recommended_next_action": "Audit pinned PAR-0034 event and rendering contract, then implement or test the highest-value unresolved behavior.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1045,7 +1112,6 @@
     "hermes-par-0030",
     "hermes-par-0031",
     "hermes-par-0032",
-    "hermes-par-0034",
     "hermes-par-0035",
     "hermes-par-0036",
     "hermes-par-0037",
@@ -1512,13 +1578,13 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 413,
+  "revision": 428,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 413,
+  "state_revision": 428,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0033",
-  "task_ledger_revision": 66,
+  "task_id": "hermes-par-0034",
+  "task_ledger_revision": 68,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2708,5 +2774,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T15:14:42Z"
+  "updated_at": "2026-11-20T15:28:19Z"
 }
