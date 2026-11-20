@@ -1,5 +1,5 @@
 {
-  "revision": 53,
+  "revision": 54,
   "schema_version": 1,
   "tasks": [
     {
@@ -8275,7 +8275,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -8284,11 +8284,11 @@
                 "priority": "P2",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-20T00:12:41Z",
+              "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
               "objective": "ui-open-skill-detail-and-source",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -8299,10 +8299,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0255",
               "title": "PAR-0255 Open skill detail and source",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#skill_detail_load_is_profile_fenced_and_keeps_source_path"
+              ]
             },
             {
               "agent_identity": {
@@ -16267,5 +16269,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-19T23:51:09Z"
+  "updated_at": "2026-11-20T00:12:41Z"
 }

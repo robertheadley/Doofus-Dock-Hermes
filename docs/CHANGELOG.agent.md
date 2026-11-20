@@ -3158,3 +3158,14 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** Live Gateway, installed Windows, remote full-resolution, data URL, zoom/pan, and source-paired acceptance remain open.
 - **follow_up:** Continue PAR-0255 skill detail/source workflow; preserve the separate chat/tool and skill/plugin scope evidence dimensions.
+
+- **id:** hermes-par0255-skill-detail-source
+- **timestamp:** 2026-11-20T00:12:00Z
+- **what:** Added the native Skills detail view and profile-scoped `/api/skills/content` reader, showing the selected skill instructions and source path. PAR-0255 now has headless partial evidence, and the generated implementation overlay advances to 65/499 reviewed (6 implemented, 59 partial, 434 unknown).
+- **why:** Support the user's requested skills/plugin functionality while keeping skill content fenced to the active Hermes profile and connection.
+- **components:** Hermes Native Skills UI, Gateway HTTP reader, task ledger, implementation progress overlay, UCM capability maps, completion overview, architecture, backlog, README.
+- **type:** native feature implementation and partial progress evidence.
+- **validation:** PASS 435 library, 15 automation-protocol and 3 launcher tests; PASS locked workspace/all-target check; PASS formatting, implementation/chat-tool progress generation, task and UCM package validation, and diff check. A test exposed and drove correction of a malformed profile query separator before final PASS.
+- **performance:** Skill body and source path use existing bounded Gateway response limits; no benchmark change.
+- **risks:** Live/local/remote Gateway, installed Windows, and source-paired acceptance remain unverified. Edit, lock, archive, install and update are separate open features.
+- **follow_up:** Commit implementation and record EV-0051, publish to main, confirm exact remote SHA, then continue with the next feature in the task ledger.

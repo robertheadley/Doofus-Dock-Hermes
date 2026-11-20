@@ -543,6 +543,23 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "rendered toggle interaction, profile-switch in-flight behavior, live Gateway, installed Windows and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0255": {
+        "state": "partial",
+        "level": "headless_profile_scoped_skill_detail_and_source_view",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/skills.ts#getSkillContent",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/skills/skill-detail.tsx#SkillDetail",
+            "apps/hermes-native/src/gateway.rs#load_skill_content_http",
+            "apps/hermes-native/src/gateway.rs#skill_content_read_uses_encoded_name_and_explicit_profile_scope",
+            "apps/hermes-native/src/app.rs#open_skill_detail",
+            "apps/hermes-native/src/app.rs#skill_detail_load_is_profile_fenced_and_keeps_source_path",
+            "apps/hermes-native/docs/PLAN.md#Revision 265",
+        ],
+        "gaps": [
+            "live Gateway, remote authenticated profile, installed Windows interaction and source-paired acceptance remain unverified",
+            "skill edit, lock, archive and hub install or update flows are separate capabilities and remain open",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",

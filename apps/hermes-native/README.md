@@ -187,4 +187,4 @@ Installed Skills are loaded from Hermes Gateway and searched across name, catego
 Installed Skills search now sorts matches by usage descending and then skill name, matching the pinned ordering for ordinary English identifiers. Locale-sensitive name ties and rendered search interaction remain open.
 
 
-Installed Skills can now be enabled or disabled individually with Gateway confirmation and denial rollback. Bulk controls, detail/edit/lock, hub lifecycle, live Gateway and rendered Windows acceptance remain open.
+Installed Skills can now be enabled or disabled individually with Gateway confirmation and denial rollback. Selecting Details reads the pinned skill content endpoint and shows the source path, with request/profile/instance/authority fencing. Bulk controls, edit/lock/archive, hub lifecycle, live Gateway and rendered Windows acceptance remain open.

@@ -201,3 +201,7 @@ Evidence: real-row egui regression plus stale-result/snapshot assertions; loopba
 ### Native keybindings — 2026-11-19
 
 Settings now exposes persisted overrides for ten native actions with working handlers. Focused evidence: real Settings route 1/1; persisted override dispatch 1/1; panel tests 5/5, including search, capture, Escape cancel, clear/reset, conflict notice and reset-all; bare-key typing in a focused composer remains text input (1/1); existing palette, transcript-find and session-cycle shortcuts pass (1/1 each). This is partial implementation only: physical Windows input, full rebound-action matrix, pinned conflict behavior comparison, source-paired visuals and formal acceptance remain open. No 499-row progress count or acceptance state was changed.
+
+### Skill detail and source — 2026-11-20
+
+PAR-0255 is now **partial and headlessly verified**. From the installed Skills list, a user can request a skill's instructions and see its source path. The request and displayed content are fenced to the current profile, Gateway instance and authority epoch. Edit, lock, archive, hub install/update, live Gateway behavior, packaged Windows behavior, and source-paired acceptance remain open. Current coverage counts are generated from the matrix and are not a product-completion percentage.

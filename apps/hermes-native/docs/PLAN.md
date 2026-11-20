@@ -1585,3 +1585,11 @@ Validation: PASS focused payload tests; full locked feature suite, workspace/all
 PAR-0044 now recognizes image candidates on tool transcript rows, renders local image previews through the bounded asynchronous file preview store, and renders remote previews through the existing authenticated Gateway reader scoped to the originating profile and session. An accessible “Open tool image” action opens a resizable image window. Focused headless tests cover result/argument candidate precedence, image filtering, and opening the accessible enlarge action. The capability remains partial: remote images use the existing 512×384 preview, data URLs and zoom/pan are not supported, retry behavior is absent, and live Gateway, installed Windows, and source-paired acceptance remain open.
 
 Validation: PASS focused PAR-0044 tests and `cargo check -p hermes-native --locked --features agent-automation`; full-suite and package/task/progress validation are recorded in the execution log. Evidence review counts are generated from the fixed source overlay and are not a completion percentage.
+
+### Revision 265 — Skill detail content and source path (2026-11-20)
+
+PAR-0255 now adds a profile-scoped native detail view for the selected installed skill. The Gateway reader follows the pinned `GET /api/skills/content?name=...` contract, validates the returned name/path/content bounds, and fences pending results by request, profile, connection instance, and authority epoch. The Skills view shows the source path and skill instructions, with an explicit reload when the active profile changes. Headless coverage verifies the loaded content and source path remain associated with the active owner.
+
+PAR-0255 remains partial: live/local/remote Gateway responses, installed Windows interaction, and source-paired acceptance remain unverified; edit, lock, archive, and hub installation/update are separate workflows. The broad evidence overlay now records this behavior; its counts are evidence coverage only and must not be described as completion.
+
+Validation: focused `skill_detail_load_is_profile_fenced_and_keeps_source_path` passes. Full feature suite, workspace check, progress generation, UCM package validation, task ledger, and publication remain in progress.

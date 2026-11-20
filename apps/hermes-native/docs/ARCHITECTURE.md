@@ -271,3 +271,7 @@ A skill row dispatches a profile-bound Gateway HTTP mutation. The current skill 
 The Connectors view also reads the pinned Hermes MCP inventory from `GET /api/mcp/servers` through the bounded HTTP worker. Requests include the selected profile, use a one-use native ticket on verified local loopback, and use configured authentication for remote Gateways. Rows expose transport, command or URL, enabled state, and any known tool count; MCP mutations remain separate work.
 
 MCP server enable/disable uses the pinned `PUT /api/mcp/servers/{name}/enabled` contract and an `{enabled}` payload. Local writes require a verified loopback origin and one-use ticket; remote writes use configured Gateway authentication. The row updates optimistically, then confirms or rolls back on the `{ok}` response. Request, profile, connection instance and authority epoch fence UI state.
+
+## Skill detail reads
+
+The Skills view reads selected skill content from the pinned profile-scoped `/api/skills/content` endpoint. Content requests use the bounded Gateway HTTP worker and validate the response name, source path, and body size before display. UI receipts are accepted only for the same request, profile, Gateway instance, authority epoch, and selected skill; switching owners cannot show the prior profile's content.

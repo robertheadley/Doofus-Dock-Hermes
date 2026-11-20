@@ -17,8 +17,8 @@ use crate::gateway::{
     MessagingPlatformInfo, MessagingPlatformUpdate, MessagingPlatformsSnapshot,
     ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
     ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
-    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillInfo,
-    SlashCompletionItem, SlashCompletionResult, TelegramOnboardingApplyReceipt,
+    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillContent,
+    SkillInfo, SlashCompletionItem, SlashCompletionResult, TelegramOnboardingApplyReceipt,
     TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
 };
 use crate::keybindings::{KeyPlatform, KeybindingStore};
@@ -723,6 +723,15 @@ struct PendingToolsetUpdate {
 struct PendingSkillUpdate {
     request_id: String,
     previous_enabled: bool,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingSkillContent {
+    request_id: String,
+    name: String,
     profile_id: String,
     instance_id: String,
     authority_epoch: u64,
@@ -1583,6 +1592,11 @@ pub struct HermesNativeApp {
     capabilities_pending: bool,
     capabilities_error: Option<String>,
     skills: Option<Vec<SkillInfo>>,
+    selected_skill: Option<String>,
+    skill_content: Option<SkillContent>,
+    skill_content_owner: Option<(String, String, u64)>,
+    pending_skill_content: Option<PendingSkillContent>,
+    skill_content_error: Option<String>,
     toolsets: Option<Vec<ToolsetInfo>>,
     connectors: Option<ConnectorsSnapshot>,
     connectors_request_id: Option<String>,
@@ -3930,6 +3944,11 @@ fn render_message() -> &'static str {
             capabilities_pending: false,
             capabilities_error: None,
             skills: None,
+            selected_skill: None,
+            skill_content: None,
+            skill_content_owner: None,
+            pending_skill_content: None,
+            skill_content_error: None,
             toolsets: None,
             connectors: None,
             connectors_request_id: None,
@@ -10419,8 +10438,9 @@ fn render_message() -> &'static str {
                     self.route_unavailable(ui, "Connect to Hermes to browse installed Skills.");
                     return;
                 };
+                let available_skills = skills.clone();
                 let has_query = !self.capabilities_query.trim().is_empty();
-                let visible = filter_installed_skills(skills, &self.capabilities_query);
+                let visible = filter_installed_skills(&available_skills, &self.capabilities_query);
                 ui.label(
                     RichText::new(format!("Installed Skills · {}", visible.len()))
                         .strong()
@@ -10437,6 +10457,7 @@ fn render_message() -> &'static str {
                     );
                     return;
                 }
+                let mut skill_to_open = None;
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for skill in visible {
                         ui.group(|ui| {
@@ -10464,6 +10485,13 @@ fn render_message() -> &'static str {
                             }
                             if !skill.description.is_empty() {
                                 ui.label(RichText::new(&skill.description).size(12.0).color(MUTED));
+                            }
+                            if ui
+                                .add_enabled(self.gateway_connected, egui::Button::new("Details"))
+                                .accessible_name(format!("Open details for Skill {}", skill.name))
+                                .clicked()
+                            {
+                                skill_to_open = Some(skill.name.clone());
                             }
                             let update_pending =
                                 self.pending_skill_updates.contains_key(&skill.name);
@@ -10495,6 +10523,60 @@ fn render_message() -> &'static str {
                         ui.add_space(6.0);
                     }
                 });
+                if let Some(name) = skill_to_open {
+                    self.open_skill_detail(name)
+                        .unwrap_or_else(|error| self.skill_content_error = Some(error));
+                }
+                if let Some(name) = self.selected_skill.clone()
+                    && available_skills.iter().any(|skill| skill.name == name)
+                {
+                    ui.separator();
+                    ui.heading(format!("Skill · {name}"));
+                    let current_owner = self.gateway_endpoint.as_ref().map(|endpoint| {
+                        (
+                            endpoint.profile_id.clone(),
+                            endpoint.instance_id.clone(),
+                            endpoint.authority_epoch,
+                        )
+                    });
+                    if let Some(error) = &self.skill_content_error {
+                        ui.label(
+                            RichText::new(format!("Skill details unavailable: {error}"))
+                                .color(Color32::LIGHT_RED),
+                        );
+                    } else if self.skill_content_owner == current_owner
+                        && let Some(content) = &self.skill_content
+                    {
+                        ui.label(RichText::new(format!("Source · {}", content.path)).color(MUTED));
+                        egui::ScrollArea::vertical()
+                            .id_salt(("skill-detail-content", &content.name))
+                            .max_height(360.0)
+                            .show(ui, |ui| {
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(&content.content).monospace().size(11.0),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+                    } else if self.pending_skill_content.is_some() {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Loading Skill details…");
+                        });
+                    } else if self.skill_content_owner.is_some()
+                        && self.skill_content_owner != current_owner
+                    {
+                        if ui
+                            .button("Load details for active profile")
+                            .accessible_name(format!("Reload Skill details for {name}"))
+                            .clicked()
+                        {
+                            self.open_skill_detail(name.clone())
+                                .unwrap_or_else(|error| self.skill_content_error = Some(error));
+                        }
+                    }
+                }
             }
             CapabilitiesTab::Toolsets => {
                 let Some(toolsets) = &self.toolsets else {
@@ -19386,6 +19468,62 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
+    fn open_skill_detail(&mut self, name: String) -> Result<(), String> {
+        if name.trim().is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+            return Err("Skill name is invalid".into());
+        }
+        if !self
+            .skills
+            .as_ref()
+            .is_some_and(|skills| skills.iter().any(|skill| skill.name == name))
+        {
+            return Err(format!("Skill {name:?} is not in the loaded inventory"));
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before opening Skill details".into());
+        }
+        if self.pending_skill_content.as_ref().is_some_and(|pending| {
+            pending.name == name
+                && pending.profile_id == endpoint.profile_id
+                && pending.instance_id == endpoint.instance_id
+                && pending.authority_epoch == endpoint.authority_epoch
+        }) {
+            self.selected_skill = Some(name);
+            return Ok(());
+        }
+        let request_id = operation_id("skill-content");
+        let profile_id = endpoint.profile_id.clone();
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes capability reader is unavailable".to_owned())?;
+        gateway.load_skill_content(
+            request_id.clone(),
+            name.clone(),
+            profile_id.clone(),
+            instance_id.clone(),
+            authority_epoch,
+        )?;
+        self.selected_skill = Some(name.clone());
+        self.skill_content = None;
+        self.skill_content_owner = None;
+        self.skill_content_error = None;
+        self.pending_skill_content = Some(PendingSkillContent {
+            request_id,
+            name,
+            profile_id,
+            instance_id,
+            authority_epoch,
+        });
+        Ok(())
+    }
+
     fn set_skill_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
         if !self.gateway_connected {
             return Err("Connect to Hermes before changing a Skill".into());
@@ -25575,6 +25713,57 @@ fn render_message() -> &'static str {
                         }
                         Err(error) => {
                             self.capabilities_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::SkillContentLoaded {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_skill_content.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.name != name
+                        || pending.profile_id != profile_id
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                    {
+                        continue;
+                    }
+                    let pending = self
+                        .pending_skill_content
+                        .take()
+                        .expect("pending Skill detail checked");
+                    let owner_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                        endpoint.profile_id == profile_id
+                            && endpoint.instance_id == instance_id
+                            && endpoint.authority_epoch == authority_epoch
+                    });
+                    if !owner_matches || self.selected_skill.as_deref() != Some(&name) {
+                        continue;
+                    }
+                    match result {
+                        Ok(content) if content.name == pending.name => {
+                            self.skill_content = Some(content);
+                            self.skill_content_owner =
+                                Some((profile_id, instance_id, authority_epoch));
+                            self.skill_content_error = None;
+                        }
+                        Ok(_) => {
+                            self.skill_content = None;
+                            self.skill_content_owner = None;
+                            self.skill_content_error =
+                                Some("Hermes returned a different Skill".into());
+                        }
+                        Err(error) => {
+                            self.skill_content = None;
+                            self.skill_content_owner = None;
+                            self.skill_content_error = Some(error);
                         }
                     }
                 }
@@ -39503,6 +39692,91 @@ mod tests {
         assert!(!app.skills.as_ref().unwrap()[0].enabled);
         assert!(app.pending_skill_updates.is_empty());
         assert_eq!(app.status, "Disabled Skill web-research");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn skill_detail_load_is_profile_fenced_and_keeps_source_path() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_skill_content();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Skills;
+        app.skills = Some(vec![SkillInfo {
+            category: "research".into(),
+            description: "Research sources".into(),
+            enabled: true,
+            name: "web-research".into(),
+            usage: Some(2),
+            provenance: Some("hub".into()),
+        }]);
+
+        app.open_skill_detail("web-research".into())
+            .expect("request selected Skill details");
+        let (request_id, name, profile_id, instance_id, authority_epoch) = requests
+            .recv_timeout(Duration::from_secs(1))
+            .expect("profile-scoped worker receives detail request");
+        assert_eq!(name, "web-research");
+        assert_eq!(profile_id, "research");
+        assert_eq!(instance_id, "gateway-research");
+        assert_eq!(authority_epoch, 7);
+
+        events
+            .send(GatewayEvent::SkillContentLoaded {
+                request_id: request_id.clone(),
+                name: name.clone(),
+                profile_id: "other-profile".into(),
+                instance_id: instance_id.clone(),
+                authority_epoch,
+                result: Ok(SkillContent {
+                    content: "Must not cross profiles.".into(),
+                    name: name.clone(),
+                    path: "/other-profile/SKILL.md".into(),
+                }),
+            })
+            .expect("deliver deliberately mismatched profile result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.skill_content.is_none(), "mismatched profile is ignored");
+        assert!(
+            app.pending_skill_content.is_some(),
+            "request remains pending"
+        );
+
+        events
+            .send(GatewayEvent::SkillContentLoaded {
+                request_id,
+                name,
+                profile_id,
+                instance_id,
+                authority_epoch,
+                result: Ok(SkillContent {
+                    content: "Review sources and cite claims.".into(),
+                    name: "web-research".into(),
+                    path: "/skills/web-research/SKILL.md".into(),
+                }),
+            })
+            .expect("deliver profile-scoped Skill content");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        let content = app.skill_content.as_ref().expect("Skill content is loaded");
+        assert_eq!(content.content, "Review sources and cite claims.");
+        assert_eq!(content.path, "/skills/web-research/SKILL.md");
+        assert_eq!(
+            app.skill_content_owner,
+            Some(("research".into(), "gateway-research".into(), 7))
+        );
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

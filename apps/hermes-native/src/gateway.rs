@@ -645,6 +645,13 @@ pub struct SkillInfo {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct SkillContent {
+    pub content: String,
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct ToolsetInfo {
     #[serde(default)]
     pub configured: bool,
@@ -1891,6 +1898,14 @@ pub enum GatewayEvent {
         request_id: String,
         result: Result<CapabilitiesSnapshot, String>,
     },
+    SkillContentLoaded {
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<SkillContent, String>,
+    },
     MessagingPlatformsLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2501,6 +2516,13 @@ enum GatewayHttpCommand {
     },
     LoadCapabilities {
         request_id: String,
+    },
+    LoadSkillContent {
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
     },
     LoadMcpServers {
         request_id: String,
@@ -3267,6 +3289,59 @@ impl GatewayDiscovery {
                     enabled,
                 } = command
                     && request_sender.send((request_id, name, enabled)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_skill_content() -> (
+        Self,
+        Receiver<(String, String, String, String, u64)>,
+        mpsc::Sender<GatewayEvent>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::LoadSkillContent {
+                    request_id,
+                    name,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                } = command
+                    && request_sender
+                        .send((request_id, name, profile_id, instance_id, authority_epoch))
+                        .is_err()
                 {
                     break;
                 }
@@ -4178,6 +4253,25 @@ impl GatewayDiscovery {
     pub fn load_capabilities(&self, request_id: String) -> Result<(), String> {
         self.http_sender
             .send(GatewayHttpCommand::LoadCapabilities { request_id })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn load_skill_content(
+        &self,
+        request_id: String,
+        name: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadSkillContent {
+                request_id,
+                name,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
 
@@ -8526,6 +8620,27 @@ fn gateway_http_actor(
                     result: load_capabilities_http(&endpoint),
                 }
             }
+            GatewayHttpCommand::LoadSkillContent {
+                request_id,
+                name,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            } => GatewayEvent::SkillContentLoaded {
+                request_id,
+                name: name.clone(),
+                profile_id: profile_id.clone(),
+                instance_id: instance_id.clone(),
+                authority_epoch,
+                result: if endpoint.profile_id != profile_id
+                    || endpoint.instance_id != instance_id
+                    || endpoint.authority_epoch != authority_epoch
+                {
+                    Err("Hermes Skill detail request belongs to a stale connection".into())
+                } else {
+                    load_skill_content_http(&endpoint, &name, &profile_id)
+                },
+            },
             GatewayHttpCommand::LoadMcpServers { request_id } => GatewayEvent::McpServersLoaded {
                 request_id,
                 profile_id: endpoint.profile_id.clone(),
@@ -11720,6 +11835,55 @@ fn load_capabilities_http(endpoint: &GatewayEndpoint) -> Result<CapabilitiesSnap
         skills_ticket.as_str(),
         toolsets_ticket.as_str(),
     )
+}
+
+fn load_skill_content_http(
+    endpoint: &GatewayEndpoint,
+    name: &str,
+    profile: &str,
+) -> Result<SkillContent, String> {
+    if name.trim().is_empty()
+        || name.len() > 128
+        || name.chars().any(char::is_control)
+        || profile.is_empty()
+        || profile.len() > 128
+        || profile.chars().any(char::is_control)
+    {
+        return Err("Hermes Skill detail request has an invalid scope".into());
+    }
+    let url = format!(
+        "{}/api/skills/content?name={}&profile={}",
+        endpoint.api_origin.trim_end_matches('/'),
+        encode_query_component(name),
+        encode_query_component(profile)
+    );
+    if !api_url_is_within_origin(&endpoint.api_origin, &url) {
+        return Err("Hermes Skill detail target is outside the configured Gateway".into());
+    }
+    let response: SkillContent = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json_with_limit(endpoint, &url, GATEWAY_HTTP_RESPONSE_LIMIT)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes Skill detail requires the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        request_gateway_json_with_limit(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            &url,
+            GATEWAY_HTTP_RESPONSE_LIMIT,
+        )?
+    };
+    if response.name != name
+        || response.path.trim().is_empty()
+        || response.path.len() > 16_384
+        || response.path.chars().any(char::is_control)
+        || response.content.len() > GATEWAY_HTTP_RESPONSE_LIMIT as usize
+    {
+        return Err("Hermes returned invalid or oversized Skill detail content".into());
+    }
+    Ok(response)
 }
 
 fn load_mcp_servers_http(endpoint: &GatewayEndpoint) -> Result<McpServersSnapshot, String> {
@@ -18421,6 +18585,46 @@ mod tests {
         assert_eq!(results[0].last_active, Some(1_731_543_892.75));
         assert_eq!(results[0].snippet, "before >>>needle<<< after");
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn skill_content_read_uses_encoded_name_and_explicit_profile_scope() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind Skill content fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept Skill content request");
+            let request = read_http_fixture_request(&mut stream).to_ascii_lowercase();
+            assert!(request.starts_with(
+                "get /hermes/api/skills/content?name=review%20%26%20plan&profile=work http/1.1\r\n"
+            ), "unexpected Skill content request: {request:?}");
+            assert!(request.contains("x-hermes-session-token: skill-content-fixture-token\r\n"));
+            let body = json!({
+                "name":"review & plan",
+                "path":"/profile/skills/review/SKILL.md",
+                "content":"---\\nname: review & plan\\n---\\nReview the proposed change."
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write Skill content response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "skill-content-instance".into(),
+            authority_epoch: 3,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "skill-content-fixture-token".into(),
+            ))),
+        };
+        let content = load_skill_content_http(&endpoint, "review & plan", "work")
+            .expect("load profile-scoped Skill content");
+        assert_eq!(content.name, "review & plan");
+        assert_eq!(content.path, "/profile/skills/review/SKILL.md");
+        assert!(content.content.contains("Review the proposed change."));
+        server.join().expect("Skill content fixture exits");
     }
 
     #[test]
