@@ -3841,3 +3841,17 @@ Validation: PASS focused owner-fencing regression; full locked `agent-automation
 
 
 PAR-0050 validation follow-up: both current and archival UCM package validators pass; durable task state validates at revision 519 and ledger revision 87; `git diff --check` passes. The current validator skipped YAML parsing because optional PyYAML is unavailable. No live Gateway or packaged Windows acceptance is claimed.
+
+
+## hermes-par0050-main-publication-20261120
+
+- **id:** hermes-par0050-main-publication-20261120
+- **timestamp:** 2026-11-20T22:26:12Z
+- **what:** Published the PAR-0050 continuation implementation as `d8c8364` and its evidence, progress maps, docs and task receipt as `3619bf1`; fresh fetch confirmed local `main` equals `origin/main` at `3619bf1f7caa4214cb494401a3479d1ebdbe8759`.
+- **why:** Keep the user's main branch current with verified agent-workflow progress.
+- **components:** Native assistant continuation, evidence ledger, generated progress and durable handoff state.
+- **type:** Direct main publication.
+- **validation:** Both UCM package validators, task-state validator, diff check and progress generators pass; full `agent-automation` suite passed for the implementation commit (507 library + 15 protocol + 3 launcher). Live Gateway and packaged Windows checks remain open.
+- **performance:** No performance changes measured.
+- **risks:** Partial evidence only; live and packaged acceptance are still pending.
+- **follow_up:** Continue the agent-focused feature backlog while preserving all functional work.
