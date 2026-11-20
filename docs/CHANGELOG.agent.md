@@ -3711,3 +3711,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - performance: No performance change measured.
 - risks: Pathless bytes, clipboard, local shared-backend direct paths, live Gateway, physical Windows drop and source-paired acceptance remain open.
 - follow_up: Implement profile/session-scoped backend metadata before considering direct-path attachment; keep byte uploads as the safe default.
+
+
+### Mixed-drop guard publication — 2026-11-20T20:01:36Z
+
+- id: hermes-par0116-mixed-drop-publish-main-20261120
+- timestamp: 2026-11-20T20:01:36Z
+- what: Published behavior commit 6a2112277b13627c2f76acd1b3bc9aaae98c52e0 and evidence/docs commit be53c56ff20510f5c742198760b44fa8432e2c0a to origin/main.
+- why: Keep the authorized main branch current with the validated drop-safety correction.
+- components: origin/main; native composer drop guard; PAR-0116 evidence EV-0074; task handoff records.
+- type: Publication and repository synchronization.
+- validation: PASS fresh fetch before push confirmed local main was two commits ahead; push succeeded; post-push fetch confirmed exact SHA equality at be53c56ff20510f5c742198760b44fa8432e2c0a.
+- performance: Push and verification completed in approximately 45 seconds.
+- risks: Local-path-only OS drops remain partial; live Gateway, Windows interaction and source-paired acceptance are open.
+- follow_up: Continue the attachment backend-metadata prerequisite and other scoped chat/tool functionality.
