@@ -198,11 +198,12 @@
     "command": "task select",
     "evidence": [],
     "state": "unknown",
-    "summary": "PAR-0269 is documented as a separate native plugin-host gap. Continue with high-priority chat creation and prompt submission, which is central to the user's requested functional parity and uses the existing Hermes Gateway.",
-    "verified_at": "2026-11-20T03:11:21Z"
+    "summary": "Continue the highest-priority core flow: user clicks Send from New Chat, native client creates session through Hermes Gateway, then submits draft using returned runtime session id. Add UI-level regression around existing app state-machine path.",
+    "verified_at": "2026-11-20T15:08:52Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
+    "hermes-par-0033",
     "hermes-par-0040",
     "hermes-par-0041",
     "hermes-par-0042",
@@ -240,8 +241,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T04:11:20Z",
-    "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
+    "lease_expires_at": "2026-11-20T16:08:24Z",
+    "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -958,15 +959,41 @@
         "provider": "codex"
       },
       "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id"
+      ],
+      "kind": "cargo_test",
+      "note": "The full-app test reached the fake gateway receiver but its first observed command was an unrelated gateway command collapsed to TestGatewayCommand::Other; test fixture needs to filter unrelated commands before asserting create-session.",
+      "observed_at": "2026-11-20T15:12:37Z",
+      "operation_id": "par0033-focused-ui-regression-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_test",
+      "note": "Focused full-app egui regression passes: New Chat Send triggers session.create, SessionCreated causes prompt.submit on runtime_session_id, and app navigates by stored_session_id while retaining transcript and pending receipt.",
+      "observed_at": "2026-11-20T15:14:41Z",
+      "operation_id": "par0033-focused-ui-regression-retry1-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
     }
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "hermes-par0033-selected-20261120",
+  "last_event_id": "6c3f38cd-ac01-46e6-ac67-f145f4ca129b",
   "last_operation": {
-    "request_id": "hermes-par0033-selected-20261120",
+    "request_id": "6c3f38cd-ac01-46e6-ac67-f145f4ca129b",
     "state": "committed",
-    "type": "task.selected"
+    "type": "task.state_updated"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -980,10 +1007,10 @@
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
-    "provider": null
+    "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned PAR-0033 chat creation and prompt submission; implement the highest-value missing behavior within the existing Gateway architecture.",
+  "recommended_next_action": "Fix the egui harness to draw the complete app, run focused PAR-0033 test, then record evidence.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1018,7 +1045,6 @@
     "hermes-par-0030",
     "hermes-par-0031",
     "hermes-par-0032",
-    "hermes-par-0033",
     "hermes-par-0034",
     "hermes-par-0035",
     "hermes-par-0036",
@@ -1455,62 +1481,14 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "cd0d274316d781602caa0103197a0aabb1fb6e5d73ec70404e499215eb0c28e2",
+    "change_fingerprint": "f88e5ea27992cfb3e62bee842b2f6b2d6aa292f0d131a6eb1b1b3f204c317fee",
     "changed_files": [
       {
-        "path": "doofus/events.jsonl",
+        "path": "pps/hermes-native/src/app.rs",
         "status": "M "
       },
       {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/README.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/tools/build_implementation_progress.py",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "path": "apps/hermes-native/src/gateway.rs",
         "status": " M"
       },
       {
@@ -1528,23 +1506,19 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0060.json",
-        "status": "??"
       }
     ],
-    "head_commit": "85e534df157f864fb7da1c6e1d5b4e7241828280",
+    "head_commit": "426dc3e483aa0a3ebe660307b7476d3f86db0a5b",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 405,
+  "revision": 413,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 405,
+  "state_revision": 413,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0033",
-  "task_ledger_revision": 64,
+  "task_ledger_revision": 66,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2734,5 +2708,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T03:11:21Z"
+  "updated_at": "2026-11-20T15:14:42Z"
 }

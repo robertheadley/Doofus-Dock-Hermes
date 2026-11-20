@@ -30849,6 +30849,7 @@ fn panel_drop_operation(source: PanelId, target: PanelDropTarget) -> Operation {
 #[cfg(all(test, feature = "agent-automation"))]
 mod tests {
     use super::*;
+    use crate::gateway::{CreatedSession, TestGatewayCommand};
     use egui_kittest::kittest::{NodeT, Queryable};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -37704,6 +37705,101 @@ mod tests {
                 .contains_key(&session_identity_key("runtime-busy", Some("work")))
         );
         drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn new_chat_send_creates_session_then_submits_draft_on_runtime_id() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::NewChat;
+        app.draft = "hello Hermes".into();
+
+        let frame_app = Rc::new(RefCell::new(app));
+        let draw_app = Rc::clone(&frame_app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| draw_app.borrow_mut().draw(ui));
+
+        harness.get_by_label("Send").click();
+        harness.run();
+        let TestGatewayCommand::CreateSession { request_id, params } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("New Chat sends session.create")
+        else {
+            panic!("expected session.create command");
+        };
+        assert_eq!(params["profile"], "research");
+        assert_eq!(params["source"], "desktop");
+        events
+            .send(GatewayEvent::SessionCreated(Ok(CreatedSession {
+                request_id,
+                runtime_session_id: "runtime-created".into(),
+                stored_session_id: "stored-created".into(),
+            })))
+            .expect("deliver created session receipt");
+        frame_app
+            .borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+
+        let TestGatewayCommand::SubmitPrompt {
+            session_id,
+            profile,
+            submission_id,
+            text,
+            attachments,
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("created session submits the original draft")
+        else {
+            panic!("expected prompt.submit command");
+        };
+        assert_eq!(session_id, "runtime-created");
+        assert_eq!(profile.as_deref(), Some("research"));
+        assert_eq!(text, "hello Hermes");
+        assert!(attachments.is_empty());
+        events
+            .send(GatewayEvent::PromptSubmitted {
+                session_id: session_id.clone(),
+                submission_id: submission_id.clone(),
+                result: Ok(PromptSubmitReceipt::Admitted {
+                    admission_id: "admission-created".into(),
+                    status: "started".into(),
+                    execution_generation: Some(1),
+                }),
+            })
+            .expect("deliver prompt admission receipt");
+        frame_app
+            .borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+
+        let app = frame_app.borrow();
+        assert_eq!(app.route, AppRoute::Session("stored-created".into()));
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-created")
+        );
+        assert_eq!(app.active_session_profile.as_deref(), Some("research"));
+        assert!(app.draft.is_empty());
+        assert_eq!(app.transcript[0]["role"], "user");
+        assert_eq!(app.transcript[0]["content"], "hello Hermes");
+        assert_eq!(app.pending_submissions.len(), 1);
+        assert_eq!(app.status, "Message accepted by Hermes");
+        drop(app);
+        drop(harness);
+        drop(frame_app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
