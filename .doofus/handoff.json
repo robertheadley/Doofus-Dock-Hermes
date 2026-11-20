@@ -123,6 +123,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Agent is inspecting pinned chat reasoning/model control contracts and native Gateway wiring for PAR-0214/0215 implementation; owned work is limited to model-control code and focused tests.",
+      "observed_at": "2026-11-20T16:03:37Z",
+      "pid": null,
+      "process_id": "subagent:par0214-0215-model-controls",
+      "provider": "codex",
+      "state": "running"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0069..0094 audit completed; identified broad existing partial support, no session branch/fork command, and mapped owner/reconnect gaps. No edits.",
       "observed_at": "2026-11-19T16:57:56Z",
       "pid": null,
@@ -291,15 +301,11 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation <six focused filters> -- --nocapture",
-    "evidence": [
-      "apps/hermes-native/src/app.rs#interim_assistant_event_seals_one_bubble_and_final_text_opens_the_next",
-      "apps/hermes-native/src/app.rs#partial_error_terminal_text_does_not_repeat_an_interim_prefix",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0064.json#EV-0064"
-    ],
-    "state": "in_progress",
-    "summary": "PAR-0035 now passes six focused reducer tests for interim and tool-delimited bubble boundaries, cumulative terminal-prefix removal, empty success preservation, and partial-error de-duplication. It remains partial because structured reasoning/tool parts, reasoning disclosure, live Gateway, and source-paired acceptance remain open. Local source commit 88d246d; evidence/docs validated; three completed audit records stopped.",
-    "verified_at": "2026-11-20T16:00:49Z"
+    "command": "task select",
+    "evidence": [],
+    "state": "unknown",
+    "summary": "Start the next central chat-control slice identified in the PAR-0095..0250 audit: reasoning and running-session model controls.",
+    "verified_at": "2026-11-20T16:03:25Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -676,6 +682,20 @@
       "note": "Pushed commits 7216408, e6b35b5 and 1334070 to origin/main; fresh fetch verified local HEAD equals origin/main at 133407016e18ea87779642c646fdd0a5aa14f356.",
       "observed_at": "2026-11-20T15:32:35Z",
       "operation_id": "hermes-par0033-0034-evidence-publish-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0064.json#EV-0064"
+      ],
+      "kind": "git_push",
+      "note": "Published source commit 88d246d396b41187605e6eb57223ca71da768c65 and evidence/docs commit e4a538065f14f265e208799bedff2dac434ed098 to main; fresh fetch confirms local HEAD and origin/main match exactly.",
+      "observed_at": "2026-11-20T16:02:24Z",
+      "operation_id": "hermes-par0035-main-publish-20261120",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -1146,11 +1166,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0035-checkpoint-20261120",
+  "last_event_id": "par0214-0215-agent-start-20261120",
   "last_operation": {
-    "request_id": "hermes-par0035-checkpoint-20261120",
+    "request_id": "par0214-0215-agent-start-20261120",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "process.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1160,14 +1180,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "03-chat",
+  "phase": "06-agent-workflow",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit and publish the validated PAR-0035 evidence/maps/docs to main, verify origin/main, then continue the next high-value chat/model/delegation/skills/MCP/plugin behavior from pinned source.",
+  "recommended_next_action": "Inspect pinned model-control contracts and existing profile-scoped Gateway options/mutations, then implement and test PAR-0214 and PAR-0215 together where their state and APIs permit.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1743,13 +1763,13 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 442,
+  "revision": 446,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 442,
+  "state_revision": 446,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
-  "task_id": "hermes-par-0035",
-  "task_ledger_revision": 71,
+  "task_id": "hermes-par-0214",
+  "task_ledger_revision": 72,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2954,5 +2974,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T16:00:49Z"
+  "updated_at": "2026-11-20T16:03:37Z"
 }

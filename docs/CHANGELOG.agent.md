@@ -3443,3 +3443,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Native still uses string transcript rows and does not preserve the full structured text/reasoning/tool parts or reasoning disclosure. Live Gateway and source-paired acceptance remain open.
 - **follow_up:** Continue with the remaining chat/model/worker/skills/MCP/plugin behaviors; keep PAR-0035 partial.
+
+## PAR-0035 main publication
+
+- **id:** hermes-par0035-stream-boundaries-publication-20261120
+- **timestamp:** 2026-11-20 16:00 UTC
+- **what:** Published the PAR-0035 reducer change and EV-0064 evidence/docs to `main` as commits `88d246d396b41187605e6eb57223ca71da768c65` and `e4a538065f14f265e208799bedff2dac434ed098`.
+- **why:** Keep the user's main-only repository current with verified chat behavior and its explicit partial-parity boundary.
+- **components:** Hermes Native transcript reducer, capability maps, progress overlay, task ledger and project docs.
+- **type:** Direct main publication.
+- **validation:** PASS `git push origin main`; fresh `git fetch origin main` confirms local `HEAD` and `origin/main` are both `e4a538065f14f265e208799bedff2dac434ed098`.
+- **performance:** No performance change measured.
+- **risks:** Full structured reasoning/tool parts, live Gateway behavior and source-paired acceptance remain open.
+- **follow_up:** Continue the selected PAR-0214/0215 chat model/reasoning controls slice.
