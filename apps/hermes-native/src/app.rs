@@ -10761,14 +10761,15 @@ fn render_message() -> &'static str {
                 let visible = toolsets
                     .iter()
                     .filter(|toolset| {
-                        query.is_empty()
-                            || toolset.name.to_lowercase().contains(&query)
-                            || toolset.label.to_lowercase().contains(&query)
-                            || toolset.description.to_lowercase().contains(&query)
-                            || toolset
-                                .tools
-                                .iter()
-                                .any(|tool| tool.to_lowercase().contains(&query))
+                        desktop_toolset_visible(&toolset.name)
+                            && (query.is_empty()
+                                || toolset.name.to_lowercase().contains(&query)
+                                || toolset.label.to_lowercase().contains(&query)
+                                || toolset.description.to_lowercase().contains(&query)
+                                || toolset
+                                    .tools
+                                    .iter()
+                                    .any(|tool| tool.to_lowercase().contains(&query)))
                     })
                     .cloned()
                     .collect::<Vec<_>>();
@@ -28588,6 +28589,13 @@ fn pdf_preview_fixture_bytes_for_pages(page_count: usize) -> Vec<u8> {
     bytes
 }
 
+fn desktop_toolset_visible(name: &str) -> bool {
+    !matches!(
+        name,
+        "discord" | "discord_admin" | "yuanbao" | "context_engine" | "moa"
+    )
+}
+
 fn filter_installed_skills(skills: &[SkillInfo], query: &str) -> Vec<SkillInfo> {
     let query = query.trim().to_lowercase();
     let mut filtered = skills
@@ -31228,6 +31236,58 @@ mod tests {
         assert_eq!(clamp_master_detail_left_width(100.0, 1400.0), 180.0);
         assert_eq!(clamp_master_detail_left_width(1300.0, 1400.0), 1080.0);
         assert_eq!(clamp_master_detail_left_width(900.0, 1000.0), 680.0);
+    }
+
+    #[test]
+    fn toolsets_catalog_renders_included_tools_and_hides_desktop_internal_rows() {
+        for hidden in [
+            "discord",
+            "discord_admin",
+            "yuanbao",
+            "context_engine",
+            "moa",
+        ] {
+            assert!(
+                !desktop_toolset_visible(hidden),
+                "{hidden} must stay hidden"
+            );
+        }
+        assert!(desktop_toolset_visible("web"));
+        let (mut app, profile_dir) = isolated_app();
+        app.capabilities_tab = CapabilitiesTab::Toolsets;
+        app.toolsets = Some(vec![
+            ToolsetInfo {
+                configured: true,
+                description: "Search and retrieve web pages".into(),
+                enabled: true,
+                label: "Web Search".into(),
+                name: "web".into(),
+                tools: vec!["web_search".into(), "web_extract".into()],
+            },
+            ToolsetInfo {
+                configured: true,
+                description: "Platform adapter internals".into(),
+                enabled: true,
+                label: "Discord".into(),
+                name: "discord".into(),
+                tools: vec!["discord_send".into()],
+            },
+        ]);
+        let frame_app = Rc::new(RefCell::new(app));
+        let draw_app = Rc::clone(&frame_app);
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| draw_app.borrow_mut().capabilities_content(ui));
+
+        assert!(harness.query_by_label("Toolsets · 1").is_some());
+        assert!(harness.query_by_label("Web Search").is_some());
+        assert!(harness.query_by_label("web_search · web_extract").is_some());
+        assert!(harness.query_by_label("Discord").is_none());
+        assert!(harness.query_by_label("discord_send").is_none());
+
+        drop(harness);
+        drop(frame_app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
