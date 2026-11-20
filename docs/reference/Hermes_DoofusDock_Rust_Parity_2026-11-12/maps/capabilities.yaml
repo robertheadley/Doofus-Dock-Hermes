@@ -4459,7 +4459,7 @@ capabilities:
   name: Show preferred fallback route
   area: models-quota
   claim: In the new native Rust DoofusDock UI, a user can show preferred fallback route.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -4471,9 +4471,12 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0069.json
 - id: ui-display-active-planner-model-configuration
   name: Display active planner model configuration
   area: models-quota

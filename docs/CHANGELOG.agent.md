@@ -3563,3 +3563,15 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Native provider/model fields are free text and lack pinned catalog selectors; full UI save/readback, real fallback execution, live Gateway, packaged Windows and source-paired acceptance remain open. Broad test suite retains the unrelated retry test failure.
 - **follow_up:** Publish code on main, add PAR-0220 partial receipt bound to the implementation commit, validate both UCM packages and task ledger, then continue chat/tool feature coverage.
+## PAR-0220 evidence mapping
+
+- **id:** hermes-par0220-evidence-20261120
+- **timestamp:** 2026-11-20 18:05 UTC
+- **what:** Added EV-0069 bound to implementation commit `24470c4f8ddbd3403cece9fe65fceca3cb2a2a93`; updated the active UCM status and regenerated the scoped progress overlays. PAR-0220 is partial; no live-runtime or source-paired acceptance is claimed.
+- **why:** Keep capability state tied to concrete rendered UI and Gateway fixture evidence, with remaining gaps visible.
+- **components:** Active Hermes parity UCM, requirements scope and progress ledgers.
+- **type:** Evidence mapping and documentation.
+- **validation:** PASS root UCM validator (565 target behaviors, 53 implementation receipts; YAML parse skipped because PyYAML is unavailable), PASS archival validator (491 pending), PASS task schema and progress generators, PASS `git diff --check`.
+- **performance:** No runtime performance change measured.
+- **risks:** The native editor uses free-text provider/model IDs; fallback execution against a live Gateway remains unverified.
+- **follow_up:** Publish evidence/maps to main and continue the next chat/tool capability slice.
