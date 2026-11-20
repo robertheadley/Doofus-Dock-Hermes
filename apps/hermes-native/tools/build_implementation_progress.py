@@ -462,6 +462,20 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live stream and source loading-status behavior remain unverified", "source-paired acceptance remains open"],
     },
+    "PAR-0035": {
+        "state": "partial",
+        "level": "headless_interim_and_terminal_assistant_text_reconciliation",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/lib/chat-messages/parts.ts#Merge the final assistant text into a message's parts",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/gateway-event/message-stream.ts#message.interim",
+            "apps/hermes-native/src/app.rs#interim_assistant_event_seals_one_bubble_and_final_text_opens_the_next",
+            "apps/hermes-native/src/app.rs#cumulative_terminal_text_is_scoped_after_a_tool_delimited_interim",
+            "apps/hermes-native/src/app.rs#whitespace_only_terminal_text_preserves_the_streamed_assistant_reply",
+            "apps/hermes-native/src/app.rs#partial_error_terminal_text_does_not_repeat_an_interim_prefix",
+            "apps/hermes-native/src/app.rs#message_stream_events_project_into_the_active_runtime_transcript",
+        ],
+        "gaps": ["native transcript still lacks Hermes' structured assistant text/reasoning/tool part model and reasoning disclosure", "live Gateway and source-paired acceptance remain open"],
+    },
     "PAR-0003": {
         "state": "partial",
         "level": "headless_ui_and_dock_behavior",

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0063",
+  "capability_id": "ui-merge-final-assistant-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "merge-final-assistant-text-into-streamed-message-without-duplicate-row",
+  "locator": "apps/hermes-native/src/app.rs#message_stream_events_project_into_the_active_runtime_transcript",
+  "date": "2026-11-20",
+  "commit": "45acc050890494280007c51d71b5a88e73ebb5c5",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless reducer test sends message.start, two assistant deltas and message.complete with authoritative final text. It verifies the final response replaces the streamed draft, closes the streaming state and leaves a single assistant row. No live Gateway was used.",
+  "notes": "Partial evidence. The pinned mergeFinalAssistantText preserves tool-delimited response parts, reasoning boundaries and other parts, and treats an empty final as non-authoritative. Native uses a simpler string transcript and those semantics are not fully matched; live behavior and source-paired acceptance remain open."
+}

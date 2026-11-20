@@ -3417,3 +3417,29 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change measured.
 - **risks:** Both requirements remain partial; Gateway runtime and source-paired acceptance are still open.
 - **follow_up:** Continue PAR-0035 and remaining chat/tool/Skills/MCP/plugin behavior against the pinned snapshot.
+
+## PAR-0035 final assistant merge evidence
+
+- **id:** hermes-par0035-final-text-merge-20261120
+- **timestamp:** 2026-11-20 15:32 UTC
+- **what:** Added EV-0063 and mapped the existing multi-delta-to-final-text reducer test as partial evidence for final assistant message merging.
+- **why:** The pinned source has explicit final-text merge semantics; the native success path is covered, while part-level tool/reasoning behavior remains a gap.
+- **components:** Native stream reducer, PAR-0035 progress and capability maps.
+- **type:** Evidence/status update.
+- **validation:** PASS progress generators and task validation; package validation and diff check are run before publication.
+- **performance:** No performance change measured.
+- **risks:** Native transcript uses a simpler string model and does not fully preserve the pinned tool-delimited assistant parts.
+- **follow_up:** Audit the pinned Markdown/code path and then continue substantive chat/tool gaps; keep PAR-0035 partial.
+
+## PAR-0035 interim and tool-delimited stream reconciliation
+
+- **id:** hermes-par0035-stream-boundaries-20261120
+- **timestamp:** 2026-11-20 15:54 UTC
+- **what:** Implemented `message.interim` transcript handling, assistant bubble boundaries at tool starts, exact cumulative final-text prefix removal, and empty/whitespace final preservation. Partial-error final text also avoids repeating a displayed interim prefix. Added EV-0064 and refreshed the progress overlay and crosswalk state.
+- **why:** The pinned Hermes Desktop seals interim assistant bubbles around tool work and reconciles terminal text without duplicating already displayed content.
+- **components:** Hermes Native transcript reducer, PAR-0035 evidence, progress generator, completion overview, backlog and task ledger.
+- **type:** Behavior, regression tests and evidence update.
+- **validation:** PASS six focused Rust tests; `cargo fmt --check`; task schema validation; both progress generators; root and pinned UCM package validators; `git diff --check`. No live Gateway or source-paired UI run was performed.
+- **performance:** No runtime performance change measured.
+- **risks:** Native still uses string transcript rows and does not preserve the full structured text/reasoning/tool parts or reasoning disclosure. Live Gateway and source-paired acceptance remain open.
+- **follow_up:** Continue with the remaining chat/model/worker/skills/MCP/plugin behaviors; keep PAR-0035 partial.

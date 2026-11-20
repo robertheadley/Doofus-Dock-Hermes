@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0064",
+  "capability_id": "ui-merge-final-assistant-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "preserve-assistant-interim-boundaries-and-merge-terminal-text",
+  "locator": "apps/hermes-native/src/app.rs#interim_assistant_event_seals_one_bubble_and_final_text_opens_the_next",
+  "date": "2026-11-20",
+  "commit": "88d246d396b41187605e6eb57223ca71da768c65",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused headless Rust reducer tests cover message.interim bubble sealing, tool-call boundaries, exact cumulative terminal-prefix removal, whitespace-only successful final preservation, and cumulative partial-error text. Six focused tests pass; cargo fmt --check and git diff --check pass. No live Gateway or source-paired UI run was used.",
+  "notes": "Partial evidence. Native now preserves text bubbles across interim/tool boundaries and avoids duplicate cumulative terminal text. It still uses string transcript rows rather than the pinned structured text/reasoning/tool part model; reasoning disclosure, live Gateway behavior, and source-paired acceptance remain open."
+}

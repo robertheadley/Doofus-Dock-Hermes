@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 274 (implementation in progress).
+- **Working revision:** 278 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1681,3 +1681,17 @@ PAR-0034 is now evidence-mapped as partial. A staged headless egui test follows 
 The native stream reducer already handled these events; this slice closes the missing user-visible regression. Authenticated live stream behavior, the pinned loading-status semantics, and source-paired acceptance remain open.
 
 Validation: PASS focused regression `incremental_assistant_delta_is_visible_before_terminal_message_complete`; PASS rustfmt and diff check. The package and progress validators are run after evidence-map updates.
+
+### Revision 277 — Final assistant text merge evidence (2026-11-20)
+
+PAR-0035 is evidence-mapped as partial. The existing `message_stream_events_project_into_the_active_runtime_transcript` regression proves that multiple deltas are settled into one final assistant row without duplication. The pinned `mergeFinalAssistantText` contract also preserves tool-delimited text/reasoning parts and ignores empty terminal text; Hermes Native's string-based transcript does not fully reproduce those part semantics.
+
+Validation: PASS task evidence update and progress generators; UCM package validation and documentation checks are run before publication. Live Gateway and source-paired acceptance remain open.
+
+### Revision 278 — Interim and tool-delimited assistant stream boundaries (2026-11-20)
+
+PAR-0035 now seals streamed assistant bubbles on `message.interim` and tool-call boundaries, opens a separate response bubble after tool work, removes an exact cumulative interim prefix from terminal text, and preserves streamed text when a successful terminal frame is empty or whitespace-only. Partial-error terminal text also removes an already displayed interim prefix. Headless reducer regressions exercise each case.
+
+This remains partial: native transcript rows still use a string body instead of Hermes' structured text, reasoning, and tool parts. Reasoning disclosure, live Gateway behavior, and source-paired acceptance remain open.
+
+Validation: PASS six focused Rust tests covering interim/tool boundaries, cumulative success/error terminal text, empty terminal text, standard stream settlement, and error settlement; PASS `cargo fmt --check`, task schema validation, both progress generators, root and pinned UCM package validation, and `git diff --check`. No live Gateway or paired Windows UI run was used.

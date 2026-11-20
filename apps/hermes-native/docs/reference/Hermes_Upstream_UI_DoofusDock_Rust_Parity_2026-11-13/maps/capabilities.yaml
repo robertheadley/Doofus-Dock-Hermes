@@ -859,7 +859,7 @@ capabilities:
   name: Merge final assistant message
   area: chat-transcript
   claim: 'The desktop user can: merge final assistant message'
-  status: not_implemented
+  status: partial
   tags:
   - rust-ui
   - hermes-upstream
@@ -869,9 +869,14 @@ capabilities:
   - type: spec
     locator: Hermes desktop.md / Programmatic Integration
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0063.json
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0064.json
   verification:
     scenarios:
     - id: success

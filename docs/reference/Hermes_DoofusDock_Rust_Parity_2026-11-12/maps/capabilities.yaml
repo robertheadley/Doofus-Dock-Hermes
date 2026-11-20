@@ -897,7 +897,7 @@ capabilities:
   name: Merge final assistant message
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can merge final assistant message.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -909,9 +909,14 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0063.json
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0064.json
 - id: ui-render-markdown-and-code-fences
   name: Render Markdown and code fences
   area: chat-transcript
