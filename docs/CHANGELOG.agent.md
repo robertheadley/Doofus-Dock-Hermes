@@ -3339,3 +3339,29 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0260 remains partial; live Gateway, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** PAR-0261 Toolset prerequisite display is selected next.
+
+## PAR-0261 Toolsets prerequisite state
+
+- **id:** hermes-par0261-prerequisite-state-20261120
+- **timestamp:** 2026-11-20 02:56 UTC
+- **what:** Added headless coverage for the existing Configured/Needs setup Toolsets row state and recorded EV-0059 as partial evidence.
+- **why:** Confirm the current user-visible readiness summary against the pinned detail warning without claiming specific missing-key details that the Gateway response does not provide.
+- **components:** Toolsets inventory regression, PAR-0261 progress map, UCM capability maps, plan, architecture, backlog, README and completion overview.
+- **type:** Evidence-backed behavior coverage.
+- **validation:** PASS focused rendered test, task validation, progress generators, UCM package validator (565 rows, 14 source receipts, 44 implementation receipts), rustfmt and diff check. The package validator initially caught a shifted UI inventory CSV field; corrected before the passing run.
+- **performance:** No performance change measured.
+- **risks:** The API exposes only a configured boolean; live Gateway, packaged Windows, exact missing-key display and source-paired acceptance remain open.
+- **follow_up:** Continue the next scoped capability; keep PAR-0261 partial until richer live prerequisite evidence is available.
+
+## PAR-0261 main publication
+
+- **id:** hermes-par0261-main-publish-20261120
+- **timestamp:** 2026-11-20 02:58 UTC
+- **what:** Published PAR-0261 rendered coverage, EV-0059 and its progress/docs updates to `main` alongside the prior Toolsets test commit.
+- **why:** Keep the user's main-only repository current with the tested readiness indicator evidence.
+- **components:** Toolsets readiness state, EV-0059, capability maps and parity progress.
+- **type:** Direct main publication.
+- **validation:** PASS focused rendered test, task validation, progress generation, package validator and clean remote SHA check after push.
+- **performance:** No benchmark change.
+- **risks:** PAR-0261 remains partial; specific prerequisites, live Gateway, Windows and source-paired acceptance remain open.
+- **follow_up:** Inspect PAR-0269 linked-plugin permission disclosure.

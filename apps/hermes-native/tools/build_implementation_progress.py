@@ -684,6 +684,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "Toolsets themes/featured ranking, tool-call usage counts, and toolset detail/configuration views remain open",
         ],
     },
+    "PAR-0261": {
+        "state": "partial",
+        "level": "headless_toolsets_prerequisite_readiness_indicator_test",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/capabilities/toolsets/toolset-detail.tsx#DetailHeader",
+            ".staging/hermes-pinned-878305/apps/desktop/src/types/hermes.ts#ToolsetInfo",
+            "apps/hermes-native/src/gateway.rs#ToolsetInfo",
+            "apps/hermes-native/src/app.rs#capabilities_content",
+            "apps/hermes-native/src/app.rs#toolsets_catalog_renders_included_tools_and_hides_desktop_internal_rows",
+            "apps/hermes-native/docs/PLAN.md#Revision 273",
+        ],
+        "gaps": [
+            "the current API exposes only a configured boolean; individual required environment keys/providers are not shown",
+            "live Gateway, packaged Windows interaction, and source-paired/formal acceptance remain unverified",
+        ],
+    },
     "PAR-0262": {
         "state": "partial",
         "level": "headless_mcp_inventory_profile_scoped_http_and_accessible_ui_test",

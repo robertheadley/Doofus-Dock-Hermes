@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 272 (implementation in progress).
+- **Working revision:** 273 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -1649,3 +1649,11 @@ PAR-0260 adds the accessible All switch over the full Desktop-visible Toolsets i
 This remains partial: live Gateway behavior, packaged Windows interaction, and source-paired/formal acceptance are open. Toolset theme/featured ranking, usage counts, and detailed configuration views remain separate gaps.
 
 Validation: PASS focused headless egui/UI-worker regression for search-independent scope, hidden rows, serialized requests, denial rollback/stop, and disconnect uncertainty; PASS full locked suite (455 library, 15 automation-protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, progress generation, task validation, pinned package checks, and diff check.
+
+### Revision 273 — Toolsets prerequisite readiness state (2026-11-20)
+
+PAR-0261 confirms that native Toolsets already displays whether each visible item is “Configured” or “Needs setup”. The headless inventory regression now exercises both states, while the pinned Desktop detail view's warning pill and `ToolsetInfo.configured` field are recorded in the evidence map.
+
+This remains partial: the current Gateway schema provides only a configured boolean, so the native screen cannot name individual missing keys/providers. Live Gateway, packaged Windows interaction, and source-paired/formal acceptance remain open.
+
+Validation: PASS focused `toolsets_catalog_renders_included_tools_and_hides_desktop_internal_rows`; progress generators, task validation, and UCM package validation pass. The full locked suite and workspace check passed immediately before this test-only addition.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0059",
+  "capability_id": "ui-show-toolset-prerequisites",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "toolset-configured-and-needs-setup-status-renders-in-visible-inventory",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "7e2f0dcb747498ae45ac644bb07af457d156bb14",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui test using synthetic ToolsetInfo values. No live Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0261 maps existing readiness presentation and adds a headless regression that renders both Configured and Needs setup states while confirming visible toolsets and included tools. The pinned detail view shows a Needs Keys warning when configured is false. This is partial because the current ToolsetInfo API exposes only a configured boolean; individual required keys/providers and live or source-paired behavior are not shown or verified."
+}

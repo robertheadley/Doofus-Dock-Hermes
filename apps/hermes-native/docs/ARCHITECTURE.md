@@ -287,3 +287,5 @@ The installed Skills view exposes Hermes' batch “Update installed” action th
 ## Toolsets bulk enable/disable
 
 The Toolsets All switch targets every Desktop-visible toolset, independent of search filtering, and excludes the pinned platform/internal rows. Native requests are sequential to avoid overlapping Gateway configuration read-modify-write operations. Each row is optimistic until its response arrives; denial restores its prior confirmed value and stops the remaining batch. Disconnect clears in-flight state, restores the last confirmed local value and marks the result unknown until refresh. Live Gateway and packaged Windows behavior remain unverified.
+
+Toolsets inventory rows also expose Hermes' configured boolean as “Configured” or “Needs setup”. This matches the pinned detail warning at a summary level. The current API does not include per-toolset missing-key/provider details, so this indicator cannot name the specific prerequisite.
