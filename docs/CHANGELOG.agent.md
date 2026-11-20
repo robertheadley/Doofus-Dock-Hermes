@@ -3824,3 +3824,20 @@ Validation: PASS focused owner-fencing regression; full locked `agent-automation
 - performance: Push and verification completed in 18 seconds.
 - risks: Live Gateway and packaged Windows behavior remain unverified; incomplete features remain.
 - follow_up: Continue model/provider, tool, skill, plugin and MCP capabilities under the corrected scope.
+
+
+## hermes-par0050 — 2026-11-20
+
+- **id:** hermes-par0050-continue-preservation-20261120
+- **timestamp:** 2026-11-20T22:18:31Z
+- **what:** Added partial progress mapping and EV-0077 for the truncated-response Continue action; refreshed the completion overview and pinned capability maps.
+- **why:** Keep the agent-focused scope and functional work visible while accurately separating headless implementation from live acceptance.
+- **components:** Native assistant error card/composer, progress overlays, pinned capability maps and project progress docs.
+- **type:** Feature evidence and progress documentation.
+- **validation:** Both progress generators pass; package validators and task-state checks are next. Headless package suite had passed for code commit d8c8364; no live Gateway or packaged Windows behavior claimed.
+- **performance:** No runtime performance change measured or expected.
+- **risks:** The action is verified only with headless fixtures; live Gateway and packaged Windows behavior remain open.
+- **follow_up:** Publish evidence/docs to main, validate remote equality, and continue scoped agent-workflow gaps. Preserve all functional work supporting the new goal.
+
+
+PAR-0050 validation follow-up: both current and archival UCM package validators pass; durable task state validates at revision 519 and ledger revision 87; `git diff --check` passes. The current validator skipped YAML parsing because optional PyYAML is unavailable. No live Gateway or packaged Windows acceptance is claimed.

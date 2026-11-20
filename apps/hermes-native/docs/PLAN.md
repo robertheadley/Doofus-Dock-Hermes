@@ -1784,3 +1784,10 @@ Validation: PASS focused owner-fencing regression and full locked `agent-automat
 PAR-0062 now uses the cached owner-scoped backend metadata when staging non-image composer paths. Hermes gets an inline `@file:` reference only when the active session view uniquely matches the runtime/profile/stored-session owner, the endpoint is an unauthenticated loopback gateway, the terminal backend is `local`, and the host path and backend cwd are both absolute with the same path style. Images, remote/authenticated endpoints, containers, unknown backend state, missing cwd, and Windows/POSIX path mismatches keep the existing byte-upload RPC. The existing upload limit, request fencing, and failure behavior are unchanged. EV-0076 records partial evidence.
 
 Validation: PASS focused policy and rendered flow tests; full locked `agent-automation` package suite (505 library + 15 protocol + 3 launcher), `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. Live Gateway outcomes, direct file-reference execution and packaged Windows behavior remain unverified.
+
+
+### Revision 290 — Continue a cut-off assistant response (2026-11-20)
+
+When a structured assistant error identifies Hermes' `truncated` condition, the transcript now offers an accessible Continue action. It sends `continue` through the existing chat session when the composer can submit safely; otherwise it preserves the user's draft and inserts the continuation prompt into the input. Other error codes do not show this action.
+
+Validation: PASS rendered action and full-app headless tests for active-session submission and draft fallback; full locked `agent-automation` package suite (507 library + 15 protocol + 3 launcher), `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. EV-0077 records partial PAR-0050 evidence. Live Gateway, packaged Windows interaction and source-paired acceptance remain open.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0077",
+  "capability_id": "ui-ask-the-agent-to-continue-a-paused-turn",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "truncated_assistant_reply_continue_action_submits_or_preserves_draft",
+  "locator": "apps/hermes-native/src/app.rs#truncated_reply_continue_submits_through_the_existing_session_when_idle",
+  "date": "2026-11-20",
+  "commit": "d8c8364af034001fac5debaa5aca64c6ca52999e",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui tests verify the Continue action is rendered only for the pinned truncated-response error, submits \"continue\" through the existing active session when the composer is otherwise idle, and preserves/inserts it into the draft when submission is unavailable. Full locked agent-automation suite passes (507 library, 15 protocol, 3 launcher); cargo check, rustfmt and diff checks pass. No live Gateway or packaged Windows interaction was used.",
+  "notes": "Partial PAR-0050 evidence. Live Gateway continuation, packaged Windows interaction, and source-paired acceptance remain open."
+}

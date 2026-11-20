@@ -202,19 +202,19 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "doofus/handoff.json",
+      "path": "doofus/events.jsonl",
       "status": "M "
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
+      "path": ".doofus/handoff.json",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "README.md",
+      "path": ".doofus/task-ledger.json",
       "status": " M"
     },
     {
@@ -232,6 +232,30 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
@@ -239,6 +263,30 @@
       "change_type": "modified",
       "owner": "unattributed_preexisting",
       "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/UI_ELEMENT_INVENTORY.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
       "status": " M"
     },
     {
@@ -264,17 +312,22 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0077.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation",
+    "command": "python apps/hermes-native/tools/build_implementation_progress.py; python apps/hermes-native/tools/build_chat_tool_progress.py",
     "evidence": [
-      "apps/hermes-native/src/app.rs#composer_attachment_upload_policy_requires_proven_local_shared_paths",
-      "apps/hermes-native/src/app.rs#composer_attachment_uses_inline_path_only_for_exact_local_session_context"
+      "apps/hermes-native/docs/PLAN.md#Revision 290"
     ],
     "state": "in_progress",
-    "summary": "User deleted the old 1:1 goal and approved a first-version agent workflow scope. Durable goal/handoff now cover model/provider connection, chat, tools, skills, plugins/MCP, and required context/attachments, with visual polish and unrelated admin deferred. PAR-0062 now caches exact-owner backend metadata and routes non-image local files by proven shared local context; images, remote, container, unknown, or mismatched paths retain byte upload. Full suite passes 505+15+3.",
-    "verified_at": "2026-11-20T21:25:32Z"
+    "summary": "Preserved existing functional work. PAR-0062 attachment policy and PAR-0050 truncated-response Continue both have headless test evidence; EV-0076 and EV-0077 map partial behavior. PAR-0050 code is committed locally as d8c8364; progress/docs evidence refreshed to 54/176 scoped rows and 87/499 broad rows reviewed. Existing untracked apps/hermes-native/work residue remains untouched.",
+    "verified_at": "2026-11-20T22:24:41Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -288,8 +341,10 @@
     "hermes-par-0044",
     "hermes-par-0046",
     "hermes-par-0047",
+    "hermes-par-0050",
     "hermes-par-0057",
     "hermes-par-0058",
+    "hermes-par-0062",
     "hermes-par-0063",
     "hermes-par-0064",
     "hermes-par-0065",
@@ -327,7 +382,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T22:25:32Z",
+    "lease_expires_at": "2026-11-20T23:24:41Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1302,11 +1357,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "064984c0-1d17-4734-b5e7-02ba5a52efbe",
+  "last_event_id": "hermes-agent-goal-checkpoint-20261120",
   "last_operation": {
-    "request_id": "064984c0-1d17-4734-b5e7-02ba5a52efbe",
+    "request_id": "hermes-agent-goal-checkpoint-20261120",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1323,7 +1378,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Update progress/docs for the agent-focused first-version scope, publish the completed attachment routing slice, then continue high-value model/provider/tool/skills/plugin/MCP gaps without removing existing functional work.",
+  "recommended_next_action": "Validate UCM packages and task state, publish documentation/evidence to main, then continue remaining agent-focused model/provider/tool/skills/plugin/MCP gaps without removing functional work.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1365,7 +1420,6 @@
     "hermes-par-0045",
     "hermes-par-0048",
     "hermes-par-0049",
-    "hermes-par-0050",
     "hermes-par-0051",
     "hermes-par-0052",
     "hermes-par-0053",
@@ -1375,7 +1429,6 @@
     "hermes-par-0059",
     "hermes-par-0060",
     "hermes-par-0061",
-    "hermes-par-0062",
     "hermes-par-0066",
     "hermes-par-0068",
     "hermes-par-0069",
@@ -1783,18 +1836,18 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "cf6250d13a61981ac240168db3b82ce97a1d3be7a6f100bc53f3e162ff388633",
+    "change_fingerprint": "caced0c5bf92a68e5d38e57bfd16155f81dc812709d78a565402f500255e56ae",
     "changed_files": [
       {
-        "path": "doofus/handoff.json",
+        "path": "doofus/events.jsonl",
         "status": "M "
       },
       {
-        "path": ".doofus/task-ledger.json",
+        "path": ".doofus/handoff.json",
         "status": " M"
       },
       {
-        "path": "README.md",
+        "path": ".doofus/task-ledger.json",
         "status": " M"
       },
       {
@@ -1806,11 +1859,43 @@
         "status": " M"
       },
       {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
         "path": "docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
         "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/UI_ELEMENT_INVENTORY.csv",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
         "status": " M"
       },
       {
@@ -1828,19 +1913,23 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0077.json",
+        "status": "??"
       }
     ],
-    "head_commit": "6708d4a162e0518c5703fea469141d171741f9c1",
+    "head_commit": "d8c8364af034001fac5debaa5aca64c6ca52999e",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 516,
+  "revision": 519,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 516,
+  "state_revision": 519,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0062",
-  "task_ledger_revision": 85,
+  "task_ledger_revision": 87,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3140,5 +3229,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T21:31:50Z"
+  "updated_at": "2026-11-20T22:24:41Z"
 }

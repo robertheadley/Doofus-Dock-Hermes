@@ -988,6 +988,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["source-paired and packaged Windows acceptance remains open"],
     },
+    "PAR-0050": {
+        "state": "partial",
+        "level": "headless_truncated_reply_continue_action_and_submit_fallback",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 290",
+            "apps/hermes-native/src/app.rs#structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details",
+            "apps/hermes-native/src/app.rs#truncated_reply_continue_submits_through_the_existing_session_when_idle",
+            "apps/hermes-native/src/app.rs#truncated_reply_continue_preserves_existing_draft_when_submit_is_unavailable",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.tsx#continueCutOffReply",
+        ],
+        "gaps": [
+            "live Gateway turn continuation and packaged Windows interaction remain unverified",
+            "source-paired acceptance is pending",
+        ],
+    },
     "PAR-0057": {
         "state": "partial",
         "level": "headless_older_transcript_page_and_gateway_scope_tests",
