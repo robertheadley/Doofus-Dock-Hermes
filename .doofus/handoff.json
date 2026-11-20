@@ -202,31 +202,13 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "doofus/events.jsonl",
+      "path": "pps/hermes-native/docs/COMPLETION_OVERVIEW.md",
       "status": "M "
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
       "status": " M"
     },
     {
@@ -264,20 +246,14 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0074.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
     "command": null,
     "evidence": [],
     "state": "in_progress",
-    "summary": "Mixed path/pathless composer drops now fail closed as a whole; full locked feature package suite passes (502 library + 15 protocol + 3 launcher). EV-0074 binds this safety edge to commit 6a21122. Pinned path-vs-bytes policy audit found native lacks backend type/cwd facts, so current byte-upload behavior remains the safe default.",
-    "verified_at": "2026-11-20T20:01:09Z"
+    "summary": "Latest published main is 5d6cc21. OS file-drop and mixed/pathless safeguards are shipped; full 502+15+3 package suite passes. Current 176 chat/tool scope has 53 rows with mapped evidence: 1 implemented, 51 partial, 1 not implemented, 123 unknown; all runtime/source acceptance remain unverified. This is not total completion.",
+    "verified_at": "2026-11-20T20:03:23Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -330,7 +306,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T21:01:09Z",
+    "lease_expires_at": "2026-11-20T21:03:23Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1263,11 +1239,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "0c6a83d0-e5da-4454-87be-80b61b488d48",
+  "last_event_id": "3aef4502-07a7-44be-817e-5684d08fd9b3",
   "last_operation": {
-    "request_id": "0c6a83d0-e5da-4454-87be-80b61b488d48",
+    "request_id": "3aef4502-07a7-44be-817e-5684d08fd9b3",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1284,7 +1260,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Add profile/session-scoped terminal backend type and cwd facts, then implement attachmentPathNeedsUpload policy and parity tests; next continue attachment recovery and remaining chat/tool scope.",
+  "recommended_next_action": "Continue PAR-0062: add profile/session-scoped backend type and cwd metadata so pinned path-vs-bytes policy can be implemented safely; continue remaining chat/tool/skills/MCP/plugin scope.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1744,26 +1720,14 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "6b464653db84d7848b5996273fe5e3f1fb6d86130638bae1d23011628baada10",
+    "change_fingerprint": "6412c515b43a0cb0a9811b5f07193e68dfed9734d811c667ce47bed61b38b64f",
     "changed_files": [
       {
-        "path": "doofus/events.jsonl",
+        "path": "pps/hermes-native/docs/COMPLETION_OVERVIEW.md",
         "status": "M "
       },
       {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
         "status": " M"
       },
       {
@@ -1789,20 +1753,16 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0074.json",
-        "status": "??"
       }
     ],
-    "head_commit": "6a2112277b13627c2f76acd1b3bc9aaae98c52e0",
+    "head_commit": "5d6cc21c326fe2be0d7965a1872e3cf9407f768d",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 509,
+  "revision": 510,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 509,
+  "state_revision": 510,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0062",
   "task_ledger_revision": 84,
@@ -3096,9 +3056,14 @@
       "command": "cargo test --quiet --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --locked",
       "result": "PASS: 502 library + 15 automation protocol + 3 launcher; cargo check --lib, rustfmt, diff check; progress 86/499 reviewed; root UCM and pinned app capability validators pass.",
       "timestamp": "2026-11-20T20:01:09Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/build_chat_tool_progress.py",
+      "result": "PASS: 176-row ledger reports 53 with mapped evidence (1 implemented, 51 partial, 1 not implemented, 123 unknown); all 176 live-runtime and source-pair states pending.",
+      "timestamp": "2026-11-20T20:03:23Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T20:02:02Z"
+  "updated_at": "2026-11-20T20:03:23Z"
 }

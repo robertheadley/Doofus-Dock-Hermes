@@ -3725,3 +3725,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - performance: Push and verification completed in approximately 45 seconds.
 - risks: Local-path-only OS drops remain partial; live Gateway, Windows interaction and source-paired acceptance are open.
 - follow_up: Continue the attachment backend-metadata prerequisite and other scoped chat/tool functionality.
+
+
+### Chat/tool evidence overview refresh — 2026-11-20T20:02:53Z
+
+- id: hermes-chat-tool-progress-snapshot-20261120
+- timestamp: 2026-11-20T20:02:53Z
+- what: Refreshed the generated 176-row chat/tool status and completion overview to include the current reasoning and file-drop evidence. The view now shows 1 implemented, 51 partial, 1 not implemented and 123 unknown, with mapped evidence on 53 rows.
+- why: Keep the user's stated functional scope visible separately from the 499-row whole-desktop inventory; avoid treating review coverage as total completion.
+- components: apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv; apps/hermes-native/docs/COMPLETION_OVERVIEW.md.
+- type: Progress evidence reconciliation.
+- validation: PASS chat/tool progress generator; all 176 remain unverified live and source-pair pending.
+- performance: No performance change measured.
+- risks: This is evidence coverage only. It is not a total completion percentage or an ETA; live Gateway, installed runtime, and formal/source-paired validation remain open.
+- follow_up: Continue the existing attachment work and scoped chat/tool gaps; defer visual-presentation work until functional parity.
