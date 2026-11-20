@@ -14330,6 +14330,13 @@ fn render_message() -> &'static str {
             return;
         };
         let profile = self.active_session_profile.clone();
+        let gateway_is_local = self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(GatewayEndpoint::uses_local_loopback_gateway);
+        let (backend_cwd, terminal_backend) = self
+            .active_backend_attachment_metadata(&session_id)
+            .unwrap_or_default();
         for path in paths {
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
                 self.status = "Could not attach a file with an invalid name".into();
@@ -14347,6 +14354,27 @@ fn render_message() -> &'static str {
             );
             let request_id = operation_id("composer-attachment");
             let path = path.to_string_lossy().into_owned();
+            if !is_image
+                && !composer_attachment_needs_upload(
+                    &path,
+                    backend_cwd.as_deref(),
+                    terminal_backend.as_deref(),
+                    !gateway_is_local,
+                )
+            {
+                self.composer_attachments.push(ComposerAttachment {
+                    path: path.clone(),
+                    source_path: path.clone(),
+                    name: name.clone(),
+                    is_image: false,
+                    mime: crate::gateway::composer_attachment_mime(&name).to_owned(),
+                    attached_session_id: Some(session_id.clone()),
+                    ref_text: Some(format!("@file:{}", format_composer_ref_value(&path))),
+                    request_id: None,
+                    error: None,
+                });
+                continue;
+            }
             let attachment = ComposerAttachment {
                 path: path.clone(),
                 source_path: path.clone(),
@@ -14376,6 +14404,23 @@ fn render_message() -> &'static str {
                 self.status = error;
             }
         }
+    }
+
+    fn active_backend_attachment_metadata(
+        &self,
+        runtime_session_id: &str,
+    ) -> Option<(Option<String>, Option<String>)> {
+        let key = self.session_identity_key(
+            match &self.route {
+                AppRoute::Session(stored_session_id) => stored_session_id,
+                _ => return None,
+            },
+            self.active_session_profile.as_deref(),
+        );
+        let view = self.session_chat_views.get(&key)?;
+        (view.runtime_session_id.as_deref() == Some(runtime_session_id)
+            && view.profile == self.active_session_profile)
+            .then(|| (view.backend_cwd.clone(), view.terminal_backend.clone()))
     }
 
     fn accept_composer_file_drop(&mut self, paths: Vec<std::path::PathBuf>) {
@@ -32283,6 +32328,62 @@ fn move_session_id(order: &mut Vec<String>, source: &str, target: &str) -> bool 
     true
 }
 
+fn composer_attachment_needs_upload(
+    path: &str,
+    backend_cwd: Option<&str>,
+    terminal_backend: Option<&str>,
+    remote: bool,
+) -> bool {
+    if remote {
+        return true;
+    }
+    let Some(terminal_backend) = terminal_backend else {
+        return true;
+    };
+    if !terminal_backend.trim().eq_ignore_ascii_case("local") {
+        return true;
+    }
+    let Some(backend_cwd) = backend_cwd.map(str::trim).filter(|value| !value.is_empty()) else {
+        return true;
+    };
+    let path_is_windows = is_windows_absolute_path(path);
+    let cwd_is_windows = is_windows_absolute_path(backend_cwd);
+    let path_is_posix = is_posix_absolute_path(path);
+    let cwd_is_posix = is_posix_absolute_path(backend_cwd);
+    !((path_is_windows && cwd_is_windows) || (path_is_posix && cwd_is_posix))
+}
+
+fn is_windows_absolute_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/')
+}
+
+fn is_posix_absolute_path(path: &str) -> bool {
+    path.starts_with('/') && !path.starts_with("//")
+}
+
+fn format_composer_ref_value(value: &str) -> String {
+    let needs_quoting = value
+        .chars()
+        .any(|character| character.is_whitespace() || "()[]{}<>\"'`".contains(character));
+    if !needs_quoting {
+        return value.to_owned();
+    }
+    if !value.contains('`') {
+        return format!("`{value}`");
+    }
+    if !value.contains('"') {
+        return format!("\"{value}\"");
+    }
+    if !value.contains('\'') {
+        return format!("'{value}'");
+    }
+    value.to_owned()
+}
+
 fn compose_prompt_with_attachments(
     attachments: &[ComposerAttachment],
     session_id: &str,
@@ -42050,6 +42151,120 @@ mod tests {
         assert_eq!(personal.backend_cwd, None);
         assert_eq!(personal.terminal_backend, None);
         let _ = std::fs::remove_dir_all(profile_dir);
+    }
+
+    #[test]
+    fn composer_attachment_upload_policy_requires_proven_local_shared_paths() {
+        assert!(!composer_attachment_needs_upload(
+            r"C:\projects\report.pdf",
+            Some(r"C:\projects\agent"),
+            Some("local"),
+            false,
+        ));
+        assert!(composer_attachment_needs_upload(
+            r"C:\projects\report.pdf",
+            Some("/workspace/agent"),
+            Some("local"),
+            false,
+        ));
+        assert!(composer_attachment_needs_upload(
+            "/home/agent/report.pdf",
+            Some("/home/agent"),
+            Some("docker"),
+            false,
+        ));
+        assert!(composer_attachment_needs_upload(
+            r"C:\projects\report.pdf",
+            Some(r"C:\projects\agent"),
+            Some("local"),
+            true,
+        ));
+        assert!(composer_attachment_needs_upload(
+            r"C:\projects\report.pdf",
+            None,
+            Some("local"),
+            false,
+        ));
+        assert!(composer_attachment_needs_upload(
+            r"C:\projects\report.pdf",
+            Some(r"C:\projects\agent"),
+            None,
+            false,
+        ));
+        assert_eq!(
+            format_composer_ref_value(r"C:\My Projects\report.pdf"),
+            "`C:\\My Projects\\report.pdf`"
+        );
+    }
+
+    #[test]
+    fn composer_attachment_uses_inline_path_only_for_exact_local_session_context() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = "local-connection";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-local".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let key = app.session_identity_key_for_connection(
+            Some(connection_id),
+            "stored-session",
+            Some("work"),
+        );
+        app.session_chat_views.insert(
+            key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-session".into()),
+                backend_cwd: Some(r"C:\projects\agent".into()),
+                terminal_backend: Some("local".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.attach_composer_paths(
+            "runtime-session".into(),
+            vec![std::path::PathBuf::from(r"C:\projects\report.pdf")],
+        );
+        assert_eq!(app.composer_attachments.len(), 1);
+        assert_eq!(
+            app.composer_attachments[0].ref_text.as_deref(),
+            Some("@file:C:\\projects\\report.pdf")
+        );
+        assert_eq!(
+            app.composer_attachments[0].attached_session_id.as_deref(),
+            Some("runtime-session")
+        );
+        assert!(matches!(
+            commands.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+        app.session_chat_views
+            .get_mut(&key)
+            .expect("session view")
+            .terminal_backend = Some("docker".into());
+        app.attach_composer_paths(
+            "runtime-session".into(),
+            vec![std::path::PathBuf::from(r"C:\projects\second.pdf")],
+        );
+        assert!(app.composer_attachments[1].request_id.is_some());
+        assert_eq!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(TestGatewayCommand::Other)
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

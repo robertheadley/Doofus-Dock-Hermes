@@ -55,6 +55,14 @@ pub struct GatewayEndpoint {
     pub(crate) remote_auth: Option<RemoteGatewayAuth>,
 }
 
+impl GatewayEndpoint {
+    /// Whether paths selected by the native desktop can be read by this gateway.
+    /// Remote authentication or any non-loopback origin crosses a filesystem boundary.
+    pub fn uses_local_loopback_gateway(&self) -> bool {
+        self.remote_auth.is_none() && is_bare_loopback_origin(&self.api_origin)
+    }
+}
+
 #[derive(Clone)]
 pub(crate) enum RemoteGatewayAuth {
     Token(Zeroizing<String>),
