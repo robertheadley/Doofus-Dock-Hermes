@@ -3655,3 +3655,17 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change measured.
 - **risks:** The Gateway setting can be read but not changed from a dedicated native control; live server and packaged Windows behavior remain unverified.
 - **follow_up:** Continue remaining chat/tool and skills/plugin parity work; consider the native reasoning setting control with the remaining preference surfaces.
+
+
+## 2026-11-20 — Profile preference published
+
+- **id:** hermes-par0046-profile-preference-publication-20261120
+- **timestamp:** 2026-11-20 19:34 UTC
+- **what:** Published profile-scoped reasoning preference code (`d357cefb1dc481978723c55de448b5edbcad0021`) and its task/evidence/doc checkpoint (`c54a2579634df3b26b917efa0884a4d71d945be8`) to `main`; fresh fetch verified local/remote equality.
+- **why:** Keep the user-designated repository branch current with validated chat support and source-specific partial evidence.
+- **components:** Gateway display config, native transcript rendering, PAR-0046/PAR-0047 progress and task records.
+- **type:** Direct main publication.
+- **validation:** PASS 501/501 tests, root and archival package validators, task validator, push and exact SHA comparison.
+- **performance:** No runtime performance change measured.
+- **risks:** Dedicated native preference editing, live Gateway, source-paired acceptance and remaining chat/tool/skills/plugin coverage are open.
+- **follow_up:** Continue the next dependency-ready chat/tool capability from pinned snapshot `8783054ef6cbafd86f10892241436862c1171a66`.
