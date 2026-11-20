@@ -205,13 +205,14 @@
     }
   ],
   "checkpoint": {
-    "command": null,
+    "command": "git push origin main; git fetch origin main; verify exact HEAD equality",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0069.json#EV-0069"
+      "apps/hermes-native/src/app.rs#fallback_model_options_results_are_fenced_by_request_and_profile",
+      "apps/hermes-native/src/app.rs#agent_plugin_settings_dialog_renders_typed_controls_and_masks_secret"
     ],
-    "state": "tested",
-    "summary": "PAR-0220 fallback route editor and Gateway config support are published on main. Publication journal commit 8ba44eaf532658eef8fe7121a3cc1d287ab7804d matches origin/main. EV-0069 records partial evidence; scoped map is 51/176 with zero live/source-paired acceptance.",
-    "verified_at": "2026-11-20T18:07:50Z"
+    "state": "in_progress",
+    "summary": "Implemented profile-scoped model catalog selectors for PAR-0220 and manifest-backed Agent Plugin settings; 488 locked library tests pass; code/evidence/docs published to main; no live Gateway or packaged Windows acceptance.",
+    "verified_at": "2026-11-20T18:52:15Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -262,7 +263,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T19:07:50Z",
+    "lease_expires_at": "2026-11-20T19:52:15Z",
     "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
     "model": null,
     "ownership_state": "active",
@@ -1167,11 +1168,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "66e5e025-f9b9-4927-ad02-0dc7d3cb1736",
+  "last_event_id": "20d7f58b-af88-460f-babb-fd55a8ee3bba",
   "last_operation": {
-    "request_id": "66e5e025-f9b9-4927-ad02-0dc7d3cb1736",
+    "request_id": "20d7f58b-af88-460f-babb-fd55a8ee3bba",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1188,7 +1189,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue with the next dependency-ready chat/tool capability and preserve the known full-suite retry test failure in validation reporting. Operator-owned apps/hermes-native/work residue remains untouched.",
+  "recommended_next_action": "Continue next dependency-ready chat/tool capability, prioritizing remaining chat/tool, skills, MCP and Agent Plugin functionality; keep visual redesign deferred until feature scope is ready.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1650,7 +1651,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "c44ee5182a84e43d885de501ac26b4fcc133fd3caf698d1f6feef8b2f97a0518",
+    "change_fingerprint": "b6afe651671c9e03f820539fe8f0d3123aafda2b33278b389e0033c7ca50409a",
     "changed_files": [
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -1669,14 +1670,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "8ba44eaf532658eef8fe7121a3cc1d287ab7804d",
+    "head_commit": "7da4cf637d5f7455492d73523454e0f0f3210940",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 491,
+  "revision": 492,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 491,
+  "state_revision": 492,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0220",
   "task_ledger_revision": 81,
@@ -2930,9 +2931,14 @@
       "command": "git fetch origin main; compare local main SHA to origin/main; doofus_task.py validate; root and archival UCM validators",
       "result": "PASS exact main SHA equality at 8ba44eaf532658eef8fe7121a3cc1d287ab7804d; task schema and both UCM validators passed.",
       "timestamp": "2026-11-20T18:07:50Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked --lib",
+      "result": "PASS 488 passed, 0 failed; cargo check, rustfmt, progress generators, root and archival UCM validators, task validation passed.",
+      "timestamp": "2026-11-20T18:52:15Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T18:50:41Z"
+  "updated_at": "2026-11-20T18:52:15Z"
 }
