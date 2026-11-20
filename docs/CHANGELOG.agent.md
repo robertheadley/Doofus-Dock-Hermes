@@ -3300,3 +3300,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change; filtering is a small fixed-name predicate before the existing search.
 - **risks:** Live Gateway, packaged Windows and source-paired behavior remain unverified; Toolsets themes/ranking/detail configuration remain separate gaps.
 - **follow_up:** Finish evidence validation and publish to main, then continue the next chat/tool/Skills/plugins/MCP task.
+
+## PAR-0259 main publication
+
+- **id:** hermes-par0259-main-publish-20261120
+- **timestamp:** 2026-11-20 02:33 UTC
+- **what:** Pushed Toolsets visibility behavior commit `ed362576f8d599b5e9cdfc20bfa3c8024173fe9a` and EV-0057/docs commit `9791d17bff33a5b35efc2f83a725570ded1986d6` directly to `origin/main`; a fresh fetch verified exact SHA equality.
+- **why:** Keep the user's main-only repository current with tested behavior and its partial evidence receipt.
+- **components:** Toolsets inventory, EV-0057, progress/UCM maps, task ledger.
+- **type:** Direct main publication.
+- **validation:** PASS push, fresh fetch and exact local/remote SHA equality.
+- **performance:** No benchmark change.
+- **risks:** PAR-0259 remains partial; live Gateway, packaged Windows and source-paired behavior remain unverified.
+- **follow_up:** Continue PAR-0260 Toolset enable/disable, then remaining chat/tool, Skills, plugins and MCP gaps.
