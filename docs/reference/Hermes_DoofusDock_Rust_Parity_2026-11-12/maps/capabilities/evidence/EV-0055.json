@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0055",
+  "capability_id": "ui-update-installed-skills",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "profile-scoped-installed-skill-update-action-with-live-log",
+  "locator": "../../../../apps/hermes-native/src/app.rs",
+  "date": "2026-11-20",
+  "commit": "9cdee421e47cc2555f560cb14cc18b69bbf9c9ae",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native egui tests and a local authenticated Gateway HTTP fixture. No live Gateway, installed desktop runtime, physical Windows interaction, or source-paired visual comparison used.",
+  "notes": "PAR-0258 exposes Update installed on the native Skills page, sends one explicit-profile POST to /api/skills/hub/update, requires the skills-update action receipt and nonzero PID, polls bounded live action output, fences status by request/profile/Gateway instance/authority epoch/action/PID, and reloads the Skills inventory after successful completion. The start mutation is not automatically replayed when its receipt is uncertain. Tests cover the exact profile-scoped POST/auth header/body, valid and invalid receipts, accessible action and visible log, stale request rejection, and successful status settlement. Full locked feature suite passed 453 library, 15 automation-protocol, and 3 launcher tests; workspace/all-target check, rustfmt, progress generators, task validator, package validator and diff check passed. Live Gateway update, packaged Windows behavior, cancellation/reconciliation, per-skill update workflows and source-paired acceptance remain open; capability status is partial."
+}

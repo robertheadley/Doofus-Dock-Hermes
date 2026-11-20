@@ -3238,3 +3238,15 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0257 remains partial; live Gateway, Windows behavior and source-paired acceptance remain open.
 - **follow_up:** Continue PAR-0256 catalog merging, discovery, facets, sort and card/list behavior, then the remaining scoped chat/tool, skills, plugins and MCP work.
+## PAR-0258 installed Skills update
+
+- **id:** hermes-par0258-update-installed-skills
+- **timestamp:** 2026-11-20 01:57:08 UTC
+- **what:** Added the native “Update installed” Skills action with profile-scoped Gateway POST, validated action receipt/PID, bounded live logs, owner-fenced polling and inventory refresh after success. Added headless HTTP/UI coverage, progress/UCM evidence and project documentation. Behavior commit: 9cdee421e47cc2555f560cb14cc18b69bbf9c9ae; evidence: EV-0055.
+- **why:** Implement the pinned Hermes batch skill-update behavior as part of chat/tool capability parity before visual tuning.
+- **components:** Hermes Native Capabilities/Skills view, Gateway HTTP actor, progress generator, UCM capability evidence, task ledger.
+- **type:** native UI/Gateway implementation and partial capability progress.
+- **validation:** PASS full locked suite (453 library, 15 automation-protocol, 3 launcher tests); workspace/all-target check; rustfmt; progress generators; task validation; UCM package checks (YAML parsing skipped because PyYAML is unavailable). Live Gateway, installed Windows and source-paired acceptance were not run.
+- **performance:** No benchmark change; update and status HTTP work stays off the UI thread and status output is bounded.
+- **risks:** A network error after POST may leave admission uncertain; the UI does not replay automatically and instructs the user to check the action log before retrying. Update checks, per-skill updates, cancellation and source-paired acceptance remain open.
+- **follow_up:** Publish the behavior and EV-0055 to main, then resume the next dependency-ready chat/tool/skills/plugins/MCP capability; preserve the user's visual-tuning boundary until functional scope is ready.

@@ -94,6 +94,12 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
@@ -102,14 +108,46 @@
       "owner": "unattributed_preexisting",
       "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/work/.hermes-update-in-progress",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/work/cache/uv/.seeded",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/.prepare.lock",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0055.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
     "command": null,
-    "evidence": [],
-    "state": "in_progress",
-    "summary": "PAR-0257 scan review is published and recorded; selected PAR-0258 to continue installed Skills workflow.",
-    "verified_at": "2026-11-20T01:35:57Z"
+    "evidence": [
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0055.json#EV-0055"
+    ],
+    "state": "tested",
+    "summary": "PAR-0258 profile-scoped installed Skills update behavior passed full locked validation and EV-0055 records partial evidence. Behavior commit 9cdee421e47cc2555f560cb14cc18b69bbf9c9ae is ready to publish; existing runtime residue is preserved and excluded.",
+    "verified_at": "2026-11-20T01:59:45Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -131,6 +169,7 @@
     "hermes-par-0255",
     "hermes-par-0256",
     "hermes-par-0257",
+    "hermes-par-0258",
     "hermes-par-0262",
     "hermes-par-0263",
     "hermes-par-0264",
@@ -145,7 +184,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-20T02:35:57Z",
+    "lease_expires_at": "2026-11-20T02:59:45Z",
     "lease_id": "0e82e44f-5e06-4580-aff3-a4b6a3f8a3ae",
     "model": null,
     "ownership_state": "active",
@@ -656,6 +695,20 @@
     },
     {
       "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0055.json#EV-0055"
+      ],
+      "kind": "git_push_main",
+      "note": "Publishing tested PAR-0258 behavior commit 9cdee421e47cc2555f560cb14cc18b69bbf9c9ae and EV-0055 evidence to origin/main after full locked feature/workspace validation.",
+      "observed_at": "2026-11-20T01:59:44Z",
+      "operation_id": "hermes-par0258-main-publish-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
+    },
+    {
+      "evidence": [
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0040.json#EV-0040"
       ],
       "kind": "git_push_main",
@@ -797,9 +850,9 @@
   ],
   "intended_recipient": null,
   "known_failures": [],
-  "last_event_id": "07daa412-0c93-4db9-9a6d-5b7e54438b60",
+  "last_event_id": "7488cd7c-8217-4154-8b5f-4565157ce390",
   "last_operation": {
-    "request_id": "07daa412-0c93-4db9-9a6d-5b7e54438b60",
+    "request_id": "7488cd7c-8217-4154-8b5f-4565157ce390",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -818,7 +871,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect pinned update semantics and implement profile-scoped installed Skills update behavior, covering scan, consent, errors and action logs.",
+  "recommended_next_action": "Commit EV-0055 and project execution/change records, publish to origin/main, verify exact SHA, then select next dependency-ready parity task.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1060,7 +1113,6 @@
     "hermes-par-0249",
     "hermes-par-0250",
     "hermes-par-0253",
-    "hermes-par-0258",
     "hermes-par-0259",
     "hermes-par-0260",
     "hermes-par-0261",
@@ -1295,7 +1347,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "74eacbee6e53c57736f6c89c300d98c745bed716484e442bb8ba919645a9d142",
+    "change_fingerprint": "817a9e349db8cde326f203af2ea1cb7deeb1ae32250ff38428e1f8d8a1792f10",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1306,25 +1358,49 @@
         "status": " M"
       },
       {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
         "path": "docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
         "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/work/.hermes-update-in-progress",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/work/cache/uv/.seeded",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/.prepare.lock",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
+        "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0055.json",
+        "status": "??"
       }
     ],
-    "head_commit": "7373ab491dcdf9c6f2cc2b4f9674a776343a433e",
+    "head_commit": "9cdee421e47cc2555f560cb14cc18b69bbf9c9ae",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 374,
+  "revision": 378,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 374,
+  "state_revision": 378,
   "task_description": "Continue the pinned Hermes Desktop 1:1 Rust/DoofusDock UI migration; finish and validate provider-independent task continuity, then resume parity work.",
   "task_id": "hermes-par-0258",
-  "task_ledger_revision": 58,
+  "task_ledger_revision": 59,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -2470,9 +2546,14 @@
       "command": "python apps/hermes-native/tools/doofus_task.py validate",
       "result": "PASS task validator; PAR-0257 publication verified at 7373ab491dcdf9c6f2cc2b4f9674a776343a433e.",
       "timestamp": "2026-11-20T01:35:57Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked",
+      "result": "PASS 453 library + 15 automation protocol + 3 launcher tests; workspace/all-target check, rustfmt, both progress generators, task validation, package validation and diff check pass.",
+      "timestamp": "2026-11-20T01:59:45Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-20T01:35:57Z"
+  "updated_at": "2026-11-20T01:59:45Z"
 }
