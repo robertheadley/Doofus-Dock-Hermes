@@ -3495,3 +3495,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** Candidate selection is not exercised end-to-end from egui through a live Gateway; custom provider endpoint editing is a separate Settings workflow.
 - **follow_up:** Map PAR-0216/0217 partial, validate active and archival packages, publish to main and continue chat/tool feature gaps.
+
+## PAR-0216/0217 main publication
+
+- **id:** hermes-par0216-0217-main-publication-20261120
+- **timestamp:** 2026-11-20 17:01 UTC
+- **what:** Published custom model/provider behavior as `9dd19f5e5951be1e98c5386c437becfc988ab5b8` and partial evidence/progress/docs as `665f2be27a9263214c3ee23140d62bb32573d11d` on `main`.
+- **why:** Keep the user's main-only repository current with the next verified chat-control slice.
+- **components:** Hermes Native composer, custom model preferences, Gateway contracts, capability evidence and progress overlays.
+- **type:** Direct main publication.
+- **validation:** PASS push and fresh fetch; local `main` and `origin/main` both equal `665f2be27a9263214c3ee23140d62bb32573d11d`.
+- **performance:** No performance change measured.
+- **risks:** Candidate activation through the rendered app and live Gateway/source-paired acceptance remain open.
+- **follow_up:** Continue at checkpoint PAR-0218 catalog retry behavior.
