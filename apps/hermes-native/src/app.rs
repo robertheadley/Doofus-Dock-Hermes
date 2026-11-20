@@ -723,6 +723,13 @@ struct PendingToolsetUpdate {
 }
 
 #[derive(Clone, Debug)]
+struct PendingToolsetBulkUpdate {
+    enabled: bool,
+    completed: usize,
+    remaining: VecDeque<String>,
+}
+
+#[derive(Clone, Debug)]
 struct PendingSkillUpdate {
     request_id: String,
     previous_enabled: bool,
@@ -1706,6 +1713,7 @@ pub struct HermesNativeApp {
     pending_skill_hub_installs: BTreeMap<String, PendingSkillHubInstall>,
     pending_skill_hub_update: Option<PendingSkillHubUpdate>,
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
+    pending_toolset_bulk_update: Option<PendingToolsetBulkUpdate>,
     pending_skill_updates: BTreeMap<String, PendingSkillUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
@@ -4071,6 +4079,7 @@ fn render_message() -> &'static str {
             pending_skill_hub_installs: BTreeMap::new(),
             pending_skill_hub_update: None,
             pending_toolset_updates: BTreeMap::new(),
+            pending_toolset_bulk_update: None,
             pending_skill_updates: BTreeMap::new(),
             fonts_installed: false,
             gateway_connected: false,
@@ -10758,26 +10767,47 @@ fn render_message() -> &'static str {
                     return;
                 };
                 let query = self.capabilities_query.trim().to_lowercase();
-                let visible = toolsets
+                let all_visible_toolsets = toolsets
+                    .iter()
+                    .filter(|toolset| desktop_toolset_visible(&toolset.name))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let visible = all_visible_toolsets
                     .iter()
                     .filter(|toolset| {
-                        desktop_toolset_visible(&toolset.name)
-                            && (query.is_empty()
-                                || toolset.name.to_lowercase().contains(&query)
-                                || toolset.label.to_lowercase().contains(&query)
-                                || toolset.description.to_lowercase().contains(&query)
-                                || toolset
-                                    .tools
-                                    .iter()
-                                    .any(|tool| tool.to_lowercase().contains(&query)))
+                        query.is_empty()
+                            || toolset.name.to_lowercase().contains(&query)
+                            || toolset.label.to_lowercase().contains(&query)
+                            || toolset.description.to_lowercase().contains(&query)
+                            || toolset
+                                .tools
+                                .iter()
+                                .any(|tool| tool.to_lowercase().contains(&query))
                     })
                     .cloned()
                     .collect::<Vec<_>>();
-                ui.label(
-                    RichText::new(format!("Toolsets · {}", visible.len()))
-                        .strong()
-                        .color(TEXT),
-                );
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("Toolsets · {}", visible.len()))
+                            .strong()
+                            .color(TEXT),
+                    );
+                    let mut all_enabled = !all_visible_toolsets.is_empty()
+                        && all_visible_toolsets.iter().all(|toolset| toolset.enabled);
+                    let all_toggle = ui
+                        .add_enabled(
+                            !all_visible_toolsets.is_empty()
+                                && self.pending_toolset_updates.is_empty()
+                                && self.pending_toolset_bulk_update.is_none(),
+                            egui::Checkbox::new(&mut all_enabled, "All"),
+                        )
+                        .accessible_name("Toggle all Toolsets");
+                    if all_toggle.changed()
+                        && let Err(error) = self.set_toolsets_enabled_bulk(all_enabled)
+                    {
+                        self.capabilities_error = Some(error);
+                    }
+                });
                 if visible.is_empty() {
                     self.empty_panel(
                         ui,
@@ -10792,7 +10822,8 @@ fn render_message() -> &'static str {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for toolset in visible {
                         let update_pending =
-                            self.pending_toolset_updates.contains_key(&toolset.name);
+                            self.pending_toolset_updates.contains_key(&toolset.name)
+                                || self.pending_toolset_bulk_update.is_some();
                         let display_name = if toolset.label.is_empty() {
                             toolset.name.clone()
                         } else {
@@ -20736,6 +20767,13 @@ fn render_message() -> &'static str {
     }
 
     fn set_toolset_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
+        if self.pending_toolset_bulk_update.is_some() {
+            return Err("Wait for the current Toolsets update to finish".into());
+        }
+        self.set_toolset_enabled_inner(name, enabled)
+    }
+
+    fn set_toolset_enabled_inner(&mut self, name: String, enabled: bool) -> Result<(), String> {
         if !self.gateway_connected {
             return Err("Connect to Hermes before changing a Toolset".into());
         }
@@ -20787,6 +20825,61 @@ fn render_message() -> &'static str {
             if enabled { "Enabling" } else { "Disabling" }
         );
         Ok(())
+    }
+
+    fn set_toolsets_enabled_bulk(&mut self, enabled: bool) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before changing Toolsets".into());
+        }
+        if !self.pending_toolset_updates.is_empty() || self.pending_toolset_bulk_update.is_some() {
+            return Err("Wait for the current Toolsets update to finish".into());
+        }
+        let toolsets = self
+            .toolsets
+            .as_ref()
+            .ok_or_else(|| "Load Toolsets before changing them".to_owned())?;
+        let remaining = toolsets
+            .iter()
+            .filter(|toolset| desktop_toolset_visible(&toolset.name) && toolset.enabled != enabled)
+            .map(|toolset| toolset.name.clone())
+            .collect::<VecDeque<_>>();
+        if remaining.is_empty() {
+            return Ok(());
+        }
+        self.pending_toolset_bulk_update = Some(PendingToolsetBulkUpdate {
+            enabled,
+            completed: 0,
+            remaining,
+        });
+        if let Err(error) = self.advance_toolset_bulk_update() {
+            self.pending_toolset_bulk_update = None;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn advance_toolset_bulk_update(&mut self) -> Result<(), String> {
+        let Some(bulk) = self.pending_toolset_bulk_update.as_ref() else {
+            return Ok(());
+        };
+        let Some(name) = bulk.remaining.front().cloned() else {
+            let finished = self
+                .pending_toolset_bulk_update
+                .take()
+                .expect("completed Toolsets bulk update exists");
+            self.status = format!(
+                "{} {} Toolsets",
+                if finished.enabled {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                },
+                finished.completed
+            );
+            return Ok(());
+        };
+        let enabled = bulk.enabled;
+        self.set_toolset_enabled_inner(name, enabled)
     }
 
     fn open_skill_detail(&mut self, name: String) -> Result<(), String> {
@@ -24642,6 +24735,7 @@ fn render_message() -> &'static str {
         let Some(discovery) = &self.gateway_discovery else {
             return;
         };
+        let mut continue_toolset_bulk_update = false;
         let mut load_capabilities_after_connect = false;
         let mut load_connectors_after_connect = false;
         let mut load_agent_plugins_after_connect = false;
@@ -25520,6 +25614,10 @@ fn render_message() -> &'static str {
                         .pending_toolset_updates
                         .remove(&name)
                         .expect("pending toolset update checked");
+                    let is_bulk_target = self
+                        .pending_toolset_bulk_update
+                        .as_ref()
+                        .is_some_and(|bulk| bulk.remaining.front() == Some(&name));
                     match result {
                         Ok(enabled) => {
                             if let Some(toolset) = self.toolsets.as_mut().and_then(|toolsets| {
@@ -25530,6 +25628,13 @@ fn render_message() -> &'static str {
                             self.capabilities_error = None;
                             self.status =
                                 format!("{} {name}", if enabled { "Enabled" } else { "Disabled" });
+                            if is_bulk_target
+                                && let Some(bulk) = self.pending_toolset_bulk_update.as_mut()
+                            {
+                                bulk.remaining.pop_front();
+                                bulk.completed += 1;
+                                continue_toolset_bulk_update = true;
+                            }
                         }
                         Err(error) => {
                             if let Some(toolset) = self.toolsets.as_mut().and_then(|toolsets| {
@@ -25541,6 +25646,9 @@ fn render_message() -> &'static str {
                                 self.capabilities_error = Some(error.clone());
                             }
                             self.status = error;
+                            if is_bulk_target {
+                                self.pending_toolset_bulk_update = None;
+                            }
                         }
                     }
                 }
@@ -28349,6 +28457,20 @@ fn render_message() -> &'static str {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
                     let mut disconnect_uncertainty = Vec::new();
+                    if !self.pending_toolset_updates.is_empty() {
+                        for (name, pending) in &self.pending_toolset_updates {
+                            if let Some(toolset) = self.toolsets.as_mut().and_then(|toolsets| {
+                                toolsets.iter_mut().find(|item| item.name == *name)
+                            }) {
+                                toolset.enabled = pending.previous_enabled;
+                            }
+                        }
+                        self.pending_toolset_updates.clear();
+                        self.pending_toolset_bulk_update = None;
+                        let note = "Toolset update outcome is unknown after Gateway disconnect; refresh the inventory before retrying";
+                        self.capabilities_error = Some(note.into());
+                        disconnect_uncertainty.push(note.into());
+                    }
                     if let Some(pending) = self.pending_mcp_catalog_install.take() {
                         disconnect_uncertainty.push(format!(
                             "MCP install outcome for {} is unknown after Gateway disconnect; refresh the profile inventory before retrying",
@@ -28496,6 +28618,10 @@ fn render_message() -> &'static str {
                     };
                 }
             }
+        }
+        if continue_toolset_bulk_update && let Err(error) = self.advance_toolset_bulk_update() {
+            self.pending_toolset_bulk_update = None;
+            self.capabilities_error = Some(error);
         }
         if load_capabilities_after_connect {
             self.load_capabilities()
@@ -31285,6 +31411,159 @@ mod tests {
         assert!(harness.query_by_label("Discord").is_none());
         assert!(harness.query_by_label("discord_send").is_none());
 
+        drop(harness);
+        drop(frame_app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn toolsets_master_toggle_uses_full_visible_inventory_sequentially_and_stops_on_denial() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_toolset_enabled();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Toolsets;
+        app.capabilities_query = "web".into();
+        app.toolsets = Some(vec![
+            ToolsetInfo {
+                configured: true,
+                description: "Search and retrieve web pages".into(),
+                enabled: true,
+                label: "Web Search".into(),
+                name: "web".into(),
+                tools: vec!["web_search".into()],
+            },
+            ToolsetInfo {
+                configured: true,
+                description: "Persistent memory".into(),
+                enabled: true,
+                label: "Memory".into(),
+                name: "memory".into(),
+                tools: vec!["memory_search".into()],
+            },
+            ToolsetInfo {
+                configured: true,
+                description: "Platform adapter internals".into(),
+                enabled: true,
+                label: "Discord".into(),
+                name: "discord".into(),
+                tools: vec!["discord_send".into()],
+            },
+        ]);
+        let frame_app = Rc::new(RefCell::new(app));
+        let draw_app = Rc::clone(&frame_app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| draw_app.borrow_mut().capabilities_content(ui));
+
+        harness.get_by_label("Toggle all Toolsets").click();
+        harness.run();
+        let (first_request, first_name, first_enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first master update reaches gateway");
+        assert_eq!(first_name, "web");
+        assert!(!first_enabled);
+        assert!(
+            requests
+                .recv_timeout(std::time::Duration::from_millis(30))
+                .is_err(),
+            "bulk changes must be serialized"
+        );
+        assert!(frame_app.borrow().pending_toolset_bulk_update.is_some());
+
+        events
+            .send(GatewayEvent::ToolsetEnabled {
+                request_id: first_request,
+                name: first_name,
+                result: Ok(false),
+            })
+            .expect("deliver first successful update");
+        frame_app
+            .borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        let (second_request, second_name, second_enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("second visible update begins after first confirms");
+        assert_eq!(second_name, "memory", "search must not narrow master scope");
+        assert!(!second_enabled);
+
+        events
+            .send(GatewayEvent::ToolsetEnabled {
+                request_id: second_request,
+                name: second_name,
+                result: Err("permission denied".into()),
+            })
+            .expect("deliver second denied update");
+        frame_app
+            .borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        let app = frame_app.borrow();
+        let toolsets = app.toolsets.as_ref().expect("Toolsets remain loaded");
+        assert!(
+            !toolsets
+                .iter()
+                .find(|item| item.name == "web")
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            toolsets
+                .iter()
+                .find(|item| item.name == "memory")
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            toolsets
+                .iter()
+                .find(|item| item.name == "discord")
+                .unwrap()
+                .enabled
+        );
+        assert!(app.pending_toolset_bulk_update.is_none());
+        assert!(app.pending_toolset_updates.is_empty());
+        assert_eq!(app.capabilities_error.as_deref(), Some("permission denied"));
+        drop(app);
+
+        frame_app.borrow_mut().capabilities_error = None;
+        frame_app
+            .borrow_mut()
+            .set_toolsets_enabled_bulk(true)
+            .expect("begin a second bulk update");
+        let (_request_id, name, enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("re-enabled Toolset update reaches gateway");
+        assert_eq!(name, "web");
+        assert!(enabled);
+        events
+            .send(GatewayEvent::Disconnected("connection lost".into()))
+            .expect("deliver gateway disconnect");
+        frame_app
+            .borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        let app = frame_app.borrow();
+        let toolsets = app
+            .toolsets
+            .as_ref()
+            .expect("last confirmed inventory retained");
+        assert!(
+            !toolsets
+                .iter()
+                .find(|item| item.name == "web")
+                .unwrap()
+                .enabled
+        );
+        assert!(app.pending_toolset_bulk_update.is_none());
+        assert!(app.pending_toolset_updates.is_empty());
+        assert!(
+            app.capabilities_error
+                .as_deref()
+                .unwrap()
+                .contains("outcome is unknown")
+        );
+        assert!(!app.gateway_connected);
+        drop(app);
         drop(harness);
         drop(frame_app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");

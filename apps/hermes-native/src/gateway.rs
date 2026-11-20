@@ -3367,6 +3367,55 @@ impl GatewayDiscovery {
     }
 
     #[cfg(test)]
+    pub(crate) fn for_test_toolset_enabled() -> (
+        Self,
+        Receiver<(String, String, bool)>,
+        mpsc::Sender<GatewayEvent>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, _command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::SetToolsetEnabled {
+                    request_id,
+                    name,
+                    enabled,
+                } = command
+                    && request_sender.send((request_id, name, enabled)).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn for_test_skill_content() -> (
         Self,
         Receiver<(String, String, String, String, u64)>,
