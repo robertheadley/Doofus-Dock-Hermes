@@ -3469,3 +3469,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No runtime performance change measured.
 - **risks:** UI harness confirms control rendering but does not activate a menu item. Live Gateway, packaged Windows behavior and source-paired acceptance remain open. PAR-0216/0217 custom provider/model flows remain separate.
 - **follow_up:** Complete evidence/package validation and publish to main; then continue with a high-impact chat/tool gap.
+
+## PAR-0214/0215 main publication
+
+- **id:** hermes-par0214-0215-main-publication-20261120
+- **timestamp:** 2026-11-20 16:41 UTC
+- **what:** Published the model/reasoning implementation and its partial evidence as behavior commit `890c291b933df873532d8e33a128a5a00e3385dc` and evidence/docs commit `1e9ade4fe1833f1ef3d4b7be7738e3194f593c44` on `main`.
+- **why:** Keep the user's main-only repository current with validated chat functionality and the evidence limits.
+- **components:** Hermes Native chat controls, Gateway RPC, capability evidence, progress overlay and task protocol.
+- **type:** Direct main publication.
+- **validation:** PASS push and fresh fetch; local `main` and `origin/main` both equal `1e9ade4fe1833f1ef3d4b7be7738e3194f593c44`.
+- **performance:** No performance change measured.
+- **risks:** Live Gateway, physical Windows menu interaction and source-paired acceptance remain open.
+- **follow_up:** Continue from checkpoint PAR-0216 custom model selection.
