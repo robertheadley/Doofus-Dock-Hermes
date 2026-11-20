@@ -443,6 +443,25 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["source-exact handling for every pane close policy, permission class and contributor pane remains open", "live and source-paired acceptance remains open"],
     },
+    "PAR-0033": {
+        "state": "partial",
+        "level": "headless_new_chat_session_create_and_prompt_submit",
+        "refs": [
+            "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id",
+            "apps/hermes-native/src/app.rs#fn begin_create_session",
+            "apps/hermes-native/src/gateway.rs#for_test_session_create_and_submit",
+        ],
+        "gaps": ["live authenticated Gateway behavior and create/submit failure paths remain unverified", "source-paired acceptance remains open"],
+    },
+    "PAR-0034": {
+        "state": "partial",
+        "level": "headless_rendered_incremental_assistant_text",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/streaming.test.tsx#renders assistant text incrementally before completion",
+            "apps/hermes-native/src/app.rs#incremental_assistant_delta_is_visible_before_terminal_message_complete",
+        ],
+        "gaps": ["authenticated live stream and source loading-status behavior remain unverified", "source-paired acceptance remains open"],
+    },
     "PAR-0003": {
         "state": "partial",
         "level": "headless_ui_and_dock_behavior",

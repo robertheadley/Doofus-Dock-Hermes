@@ -1665,3 +1665,19 @@ PAR-0269 is explicitly recorded as not implemented in Hermes Native. The pinned 
 This is an architectural integration gap, not a missing Gateway request. Plugin permissions remain in the approved user scope. Chat/tool work can proceed independently while a native host design remains open.
 
 Validation: PASS pinned-source/native-model audit and UCM package validator. No implementation or live behavior is claimed for PAR-0269.
+
+### Revision 275 — New Chat create-and-send evidence (2026-11-20)
+
+PAR-0033 is now evidence-mapped as partial. A full-app headless egui regression clicks Send in New Chat, observes the profile-scoped `session.create`, delivers the receipt with separate runtime and stored IDs, and verifies that the original draft is submitted with the runtime ID while navigation uses the stored ID. The Gateway test fixture now filters unrelated commands so it waits for the specific create and submit operations.
+
+This does not establish complete PAR-0033 parity: live authenticated Gateway behavior, create/submit failure handling, and source-paired acceptance remain open. Visual matching is outside the current feature-parity goal.
+
+Validation: PASS focused regression `new_chat_send_creates_session_then_submits_draft_on_runtime_id`; PASS rustfmt, progress generators, task validator, package validator (565 target behaviors/items, 15 source receipts, 45 implementation receipts; YAML parsing skipped because PyYAML is not installed), and diff check. Generated progress is 74/499 broadly reviewed and 42/173 chat/tool requirements mapped; neither count is a completion percentage.
+
+### Revision 276 — Incremental assistant rendering evidence (2026-11-20)
+
+PAR-0034 is now evidence-mapped as partial. A staged headless egui test follows the pinned Desktop streaming test: the first assistant chunk is visible before completion, a later delta extends the same bubble, and the active Stop control disappears after final text settles without a duplicate assistant row.
+
+The native stream reducer already handled these events; this slice closes the missing user-visible regression. Authenticated live stream behavior, the pinned loading-status semantics, and source-paired acceptance remain open.
+
+Validation: PASS focused regression `incremental_assistant_delta_is_visible_before_terminal_message_complete`; PASS rustfmt and diff check. The package and progress validators are run after evidence-map updates.

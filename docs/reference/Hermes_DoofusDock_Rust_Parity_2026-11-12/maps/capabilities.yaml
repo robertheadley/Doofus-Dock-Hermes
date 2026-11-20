@@ -856,7 +856,7 @@ capabilities:
   name: Create a chat and send a prompt
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can create a chat and send a prompt.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -868,14 +868,14 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
 - id: ui-render-incremental-assistant-text
   name: Render incremental assistant text
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can render incremental assistant text.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -887,9 +887,12 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0062.json
 - id: ui-merge-final-assistant-message
   name: Merge final assistant message
   area: chat-transcript

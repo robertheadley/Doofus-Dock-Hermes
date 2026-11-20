@@ -803,7 +803,7 @@ capabilities:
   name: Create a chat and send a prompt
   area: chat-transcript
   claim: 'The desktop user can: create a chat and send a prompt'
-  status: not_implemented
+  status: partial
   tags:
   - rust-ui
   - hermes-upstream
@@ -813,9 +813,12 @@ capabilities:
   - type: spec
     locator: Hermes desktop.md / Programmatic Integration
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0061.json
   verification:
     scenarios:
     - id: success
@@ -828,7 +831,7 @@ capabilities:
   name: Render incremental assistant text
   area: chat-transcript
   claim: 'The desktop user can: render incremental assistant text'
-  status: not_implemented
+  status: partial
   tags:
   - rust-ui
   - hermes-upstream
@@ -838,9 +841,12 @@ capabilities:
   - type: spec
     locator: Hermes desktop.md / Programmatic Integration
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0062.json
   verification:
     scenarios:
     - id: success

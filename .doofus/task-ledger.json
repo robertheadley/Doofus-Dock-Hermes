@@ -1,5 +1,5 @@
 {
-  "revision": 68,
+  "revision": 69,
   "schema_version": 1,
   "tasks": [
     {
@@ -1173,7 +1173,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1182,12 +1182,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-20T15:30:58Z",
+              "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
               "objective": "ui-merge-final-assistant-message",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "chat",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -1197,7 +1198,7 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "in_progress",
               "task_id": "hermes-par-0035",
               "title": "PAR-0035 Merge final assistant message",
               "verification_evidence": []
@@ -16298,5 +16299,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-20T15:28:18Z"
+  "updated_at": "2026-11-20T15:30:58Z"
 }

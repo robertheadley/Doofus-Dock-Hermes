@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0061",
+  "capability_id": "ui-create-a-chat-and-send-a-prompt",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "new-chat-send-creates-session-then-submits-draft-on-runtime-id",
+  "locator": "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id",
+  "date": "2026-11-20",
+  "commit": "7216408a5afe2e498337027c363efc19af4d725d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui app and synthetic Hermes Gateway event channel. The test clicks the visible New Chat Send control, asserts session.create profile/source, delivers SessionCreated with distinct runtime and stored IDs, checks prompt.submit uses the runtime ID and original draft, then verifies stored-ID navigation and the admitted transcript state. No live authenticated Gateway or source-paired runtime was used.",
+  "notes": "Partial evidence for the fresh-chat success path. Create and submit failure/reconciliation paths, authenticated live Gateway behavior, and source-paired acceptance remain open."
+}

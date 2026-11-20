@@ -3378,3 +3378,29 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No performance change.
 - **risks:** This feature remains a known gap until the native app has a Desktop renderer-plugin host and app-local grant persistence.
 - **follow_up:** Continue scoped chat/tool work; keep PAR-0269 planned and not implemented.
+
+## PAR-0033 New Chat create-and-send evidence
+
+- **id:** hermes-par0033-new-chat-send-20261120
+- **timestamp:** 2026-11-20 15:20 UTC
+- **what:** Added a full-app headless egui regression for New Chat Send through `session.create`, `SessionCreated`, `prompt.submit`, admission receipt, and stored-ID navigation. Filtered unrelated Gateway commands in the dedicated test fixture. Mapped the capability as partial with EV-0061 and refreshed scoped progress.
+- **why:** The existing path had only isolated Gateway coverage; the test now proves the user-facing Send control and the distinct runtime/stored session identifier flow together.
+- **components:** Hermes Native composer, Gateway test fixture, PAR-0033 evidence, pinned capability maps and completion reporting.
+- **type:** Test and evidence update.
+- **validation:** PASS focused UI regression, rustfmt, progress generators, task validator, UCM package validator and diff check. Live Gateway and source-paired acceptance remain pending.
+- **performance:** No runtime performance change measured.
+- **risks:** Create/submit failures and authenticated Gateway behavior are not covered by this receipt.
+- **follow_up:** Continue to PAR-0034 incremental assistant text and chat/tool gaps; keep this row partial pending failure/live/source-paired evidence.
+
+## PAR-0034 incremental assistant rendering evidence
+
+- **id:** hermes-par0034-streaming-render-20261120
+- **timestamp:** 2026-11-20 15:20 UTC
+- **what:** Added a staged full-app egui regression that verifies streamed assistant text appears before completion, updates on the next delta, and settles without duplication while the active Stop control clears.
+- **why:** The existing reducer test checked only final transcript state; the pinned Desktop test explicitly checks visible text during the stream.
+- **components:** Hermes Native stream event handling, transcript renderer and PAR-0034 evidence mapping.
+- **type:** Test and evidence update.
+- **validation:** PASS focused regression, rustfmt, progress generators, task validator, package validators and diff check. Live stream and source-paired acceptance remain open.
+- **performance:** No runtime performance change measured.
+- **risks:** The test uses synthetic Gateway events and does not verify the authenticated runtime or the pinned loading announcement.
+- **follow_up:** Continue with the next concrete chat/tool gap; keep PAR-0034 partial until live and source-paired evidence is complete.
