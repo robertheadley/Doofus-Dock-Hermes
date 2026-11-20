@@ -38,7 +38,9 @@ use crate::remote_probe::{
 use crate::repo_discovery::RepoScanPolicy;
 use crate::routes::AppRoute;
 use crate::session_peer_sync::{PeerEvent, SessionPeerSync};
-use crate::skill_catalog::{SkillCatalogEntry, SkillCatalogWorker};
+use crate::skill_catalog::{
+    SkillCatalogEntry, SkillCatalogWorker, SkillHubScanResult, parse_skill_hub_install_block,
+};
 use doofusdock_core::{
     CommandId, DragSession, Node, NodeId, NodeKind, Operation, Orientation, PanelId,
 };
@@ -848,6 +850,9 @@ struct PendingSkillHubInstall {
     lines: Vec<String>,
     error: Option<String>,
     completed: Option<bool>,
+    scan_request_id: Option<String>,
+    scan_result: Option<SkillHubScanResult>,
+    scan_error: Option<String>,
 }
 
 impl Default for McpServerAddDraft {
@@ -12700,6 +12705,7 @@ fn render_message() -> &'static str {
         let mut selected_id = self.selected_skill_catalog_id.clone();
         let mut show_more = false;
         let mut install_selected = None;
+        let mut scan_selected = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             ui.allocate_ui_with_layout(
@@ -12927,6 +12933,96 @@ fn render_message() -> &'static str {
                                                     .color(ACCENT),
                                             );
                                         }
+                                        if install.completed == Some(false)
+                                            && parse_skill_hub_install_block(
+                                                &install.lines,
+                                                install.error.as_deref(),
+                                            )
+                                            .is_some()
+                                        {
+                                            detail_ui.horizontal(|detail_ui| {
+                                                if install.scan_request_id.is_some() {
+                                                    detail_ui.spinner();
+                                                    detail_ui.label("Loading Hermes security scan…");
+                                                } else if install.scan_result.is_none()
+                                                    && detail_ui
+                                                        .button(if install.scan_error.is_some() {
+                                                            "Retry security scan"
+                                                        } else {
+                                                            "View security scan"
+                                                        })
+                                                        .accessible_name(format!(
+                                                            "View security scan for {}",
+                                                            entry.name
+                                                        ))
+                                                        .clicked()
+                                                {
+                                                    scan_selected = Some(install.identifier.clone());
+                                                }
+                                            });
+                                            if let Some(error) = &install.scan_error {
+                                                detail_ui.colored_label(
+                                                    Color32::LIGHT_RED,
+                                                    format!("Security scan failed: {error}"),
+                                                );
+                                            }
+                                            if let Some(scan) = &install.scan_result {
+                                                detail_ui.group(|detail_ui| {
+                                                    detail_ui.heading(format!(
+                                                        "Security scan · {}",
+                                                        scan.verdict
+                                                    ));
+                                                    detail_ui.label(&scan.summary);
+                                                    detail_ui.label(format!(
+                                                        "Source · {} · Trust · {} · Policy · {}",
+                                                        scan.source, scan.trust_level, scan.policy
+                                                    ));
+                                                    if let Some(reason) = &scan.policy_reason {
+                                                        detail_ui.label(reason);
+                                                    }
+                                                    if scan.findings.is_empty() {
+                                                        detail_ui.label("No findings reported by Hermes.");
+                                                    } else {
+                                                        detail_ui.label(format!(
+                                                            "{} finding(s)",
+                                                            scan.findings.len()
+                                                        ));
+                                                        egui::ScrollArea::vertical()
+                                                            .id_salt(("skill-hub-scan", &scan.identifier))
+                                                            .max_height(220.0)
+                                                            .show(detail_ui, |detail_ui| {
+                                                                for finding in &scan.findings {
+                                                                    let location = finding.line.map_or_else(
+                                                                        || finding.file.clone(),
+                                                                        |line| format!("{}:{line}", finding.file),
+                                                                    );
+                                                                    detail_ui.colored_label(
+                                                                        if finding.severity.eq_ignore_ascii_case("critical")
+                                                                            || finding.severity.eq_ignore_ascii_case("high")
+                                                                        {
+                                                                            Color32::LIGHT_RED
+                                                                        } else {
+                                                                            Color32::YELLOW
+                                                                        },
+                                                                        format!(
+                                                                            "{} · {} · {} · {}",
+                                                                            finding.severity.to_uppercase(),
+                                                                            finding.category,
+                                                                            location,
+                                                                            finding.description
+                                                                        ),
+                                                                    );
+                                                                }
+                                                            });
+                                                    }
+                                                    detail_ui.label(
+                                                        RichText::new("Hermes did not install this skill. Review the scan, then use Install skill to retry; the security policy remains enforced.")
+                                                            .size(11.0)
+                                                            .color(MUTED),
+                                                    );
+                                                });
+                                            }
+                                        }
                                         egui::ScrollArea::vertical()
                                             .id_salt(("skill-install-log", &install.identifier))
                                             .max_height(180.0)
@@ -12959,6 +13055,12 @@ fn render_message() -> &'static str {
             self.skill_catalog_visible_limit = self
                 .skill_catalog_visible_limit
                 .saturating_add(SKILL_CATALOG_PAGE_SIZE);
+        }
+        if let Some(identifier) = scan_selected
+            && let Err(error) = self.request_skill_hub_scan(&identifier)
+            && let Some(install) = self.pending_skill_hub_installs.get_mut(&identifier)
+        {
+            install.scan_error = Some(error);
         }
         if let Some((identifier, name)) = install_selected
             && let Err(error) = self.request_skill_hub_install(identifier, name)
@@ -20008,9 +20110,60 @@ fn render_message() -> &'static str {
                 lines: vec!["Starting Hermes skill installation…".into()],
                 error: None,
                 completed: None,
+                scan_request_id: None,
+                scan_result: None,
+                scan_error: None,
             },
         );
         self.status = format!("Installing skill {name}");
+        Ok(())
+    }
+
+    fn request_skill_hub_scan(&mut self, identifier: &str) -> Result<(), String> {
+        let blocked_install =
+            self.pending_skill_hub_installs
+                .get(identifier)
+                .is_some_and(|install| {
+                    install.completed == Some(false)
+                        && parse_skill_hub_install_block(&install.lines, install.error.as_deref())
+                            .is_some()
+                });
+        if !blocked_install {
+            return Err(
+                "A security scan is available only after Hermes blocks a skill install".into(),
+            );
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before viewing the skill security scan".into());
+        }
+        let gateway = self
+            .gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes Skills hub scanner is unavailable".to_owned())?;
+        if self
+            .pending_skill_hub_installs
+            .get(identifier)
+            .is_some_and(|install| install.scan_request_id.is_some())
+        {
+            return Ok(());
+        }
+        let request_id = operation_id("skill-hub-scan");
+        gateway.load_skill_hub_scan(
+            request_id.clone(),
+            identifier.to_owned(),
+            endpoint.profile_id.clone(),
+            endpoint.instance_id.clone(),
+            endpoint.authority_epoch,
+        )?;
+        if let Some(install) = self.pending_skill_hub_installs.get_mut(identifier) {
+            install.scan_request_id = Some(request_id);
+            install.scan_result = None;
+            install.scan_error = None;
+        }
         Ok(())
     }
 
@@ -27358,6 +27511,49 @@ fn render_message() -> &'static str {
                             install.completed = Some(false);
                         }
                     }
+                }
+                GatewayEvent::SkillHubScanLoaded {
+                    request_id,
+                    identifier,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(install) = self.pending_skill_hub_installs.get_mut(&identifier) else {
+                        continue;
+                    };
+                    if install.scan_request_id.as_deref() != Some(request_id.as_str()) {
+                        continue;
+                    }
+                    install.scan_request_id = None;
+                    if install.profile_id != profile_id
+                        || install.instance_id != instance_id
+                        || install.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        install.scan_error =
+                            Some("Skill security scan belonged to a stale Gateway owner.".into());
+                        continue;
+                    }
+                    match result {
+                        Ok(scan) if scan.identifier == identifier => {
+                            install.scan_result = Some(scan);
+                            install.scan_error = None;
+                        }
+                        Ok(_) => {
+                            install.scan_error =
+                                Some("Hermes returned scan details for a different skill.".into());
+                        }
+                        Err(error) => {
+                            install.scan_error = Some(bounded_status_text(&error, 2048));
+                        }
+                    }
+                    ctx.request_repaint();
                 }
                 GatewayEvent::McpCatalogInstallCompleted {
                     request_id,
@@ -40554,6 +40750,9 @@ mod tests {
                 lines: vec!["Cloning skill repository".into()],
                 error: None,
                 completed: None,
+                scan_request_id: None,
+                scan_result: None,
+                scan_error: None,
             },
         );
         assert!(app.settle_skill_hub_action_status(
@@ -40612,6 +40811,81 @@ mod tests {
 
         drop(harness);
         drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn skill_hub_blocked_install_exposes_view_scan_without_policy_override() {
+        let (mut app, profile_dir) = isolated_app();
+        app.skill_catalog = Some(vec![SkillCatalogEntry {
+            id: "community:fixture-skill".into(),
+            identifier: "community/fixture-skill".into(),
+            name: "Fixture skill".into(),
+            description: "A skill used to verify scan review.".into(),
+            overview: "Safe synthetic fixture.".into(),
+            category: "research".into(),
+            category_label: "Research".into(),
+            source: "community".into(),
+            install_identifier: Some("community/fixture-skill".into()),
+            author: "Fixture".into(),
+            tags: vec![],
+            repo: String::new(),
+            platforms: vec![],
+            requirements: vec![],
+            tools: vec![],
+            hooks: vec![],
+            middleware: vec![],
+            commands: vec![],
+            added_at: None,
+            updated_at: None,
+            stars: None,
+            featured: None,
+            search: "fixture skill security review".into(),
+        }]);
+        app.skill_catalog_filter_query = "\0".into();
+        app.selected_skill_catalog_id = Some("community:fixture-skill".into());
+        app.gateway_connected = true;
+        app.pending_skill_hub_installs.insert(
+            "community/fixture-skill".into(),
+            PendingSkillHubInstall {
+                request_id: "install-request".into(),
+                identifier: "community/fixture-skill".into(),
+                name: "Fixture skill".into(),
+                profile_id: "fixture-profile".into(),
+                instance_id: "fixture-gateway".into(),
+                authority_epoch: 1,
+                action_name: Some("skills-install-fixture-00000001".into()),
+                status_request_id: None,
+                attempts: 1,
+                next_poll: None,
+                lines: vec!["Not installed: the security scan found 2 high-risk pattern(s) in 'community/fixture-skill'.".into()],
+                error: Some("Hermes never installs unverified skills with high-risk findings.".into()),
+                completed: Some(false),
+                scan_request_id: None,
+                scan_result: None,
+                scan_error: None,
+            },
+        );
+        let frame_app = Rc::new(RefCell::new(app));
+        let draw_app = Rc::clone(&frame_app);
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| draw_app.borrow_mut().draw_skill_hub_catalog(ui));
+        assert!(
+            harness
+                .query_by_label("View security scan for Fixture skill")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Security scan").is_none());
+        assert!(
+            !harness
+                .get_by_label("Install skill Fixture skill")
+                .accesskit_node()
+                .is_disabled(),
+            "the ordinary install action remains available for a policy-respecting retry"
+        );
+        drop(harness);
+        drop(frame_app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 

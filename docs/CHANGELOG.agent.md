@@ -3212,3 +3212,16 @@ UCM evidence addendum (2026-11-19T21:18Z): EV-0043 binds the PAR-0263 manual MCP
 - **performance:** No benchmark change.
 - **risks:** PAR-0255 remains partial pending live Gateway, Windows UI and source-paired acceptance. The skill edit/lock/archive and hub install/update workflows are still separate tasks.
 - **follow_up:** Continue PAR-0256 Browse skill hub against the pinned source snapshot.
+
+## PAR-0257 Skill Hub scan review
+
+- **id:** hermes-par0257-security-scan-review
+- **timestamp:** 2026-11-20 01:30:49 UTC
+- **what:** Added detection of the pinned Desktop's current and legacy security-block messages, profile-scoped Gateway scan reads, bounded response validation, a “View security scan” action with verdict/policy/findings, and an ordinary retry path that cannot override Hermes policy.
+- **why:** Complete the source-observed scan review after a hub install is blocked while keeping Hermes as the security authority.
+- **components:** Hermes Native Skills hub UI, Gateway HTTP actor/DTO, install-block parser, implementation progress generator, pinned UCM maps, plan and completion documentation.
+- **type:** native UI/Gateway implementation and partial capability progress.
+- **validation:** PASS 449 library, 15 automation-protocol and 3 launcher tests; workspace/all-target check; rustfmt; progress generators; task validation; UCM package validation with 38 implementation receipts. The UCM YAML parser was skipped because PyYAML is unavailable; JSON/CSV and other package checks passed.
+- **performance:** No benchmark change; scan requests use the existing bounded Gateway HTTP response limit and run off the UI thread.
+- **risks:** Live Gateway, installed Windows behavior, cancellation and source-paired acceptance remain unverified. Policy override is intentionally not exposed.
+- **follow_up:** Record EV-0054 against the behavior commit, publish directly to main, then continue PAR-0256 merge/discovery/facet/sort/card-list gaps and remaining chat/tool/skills/plugin work.

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     io::Read,
     sync::mpsc::{self, Receiver, SyncSender, TryRecvError},
     thread,
@@ -57,6 +57,127 @@ pub struct SkillCatalogEntry {
     pub stars: Option<f64>,
     pub featured: Option<f64>,
     pub search: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct SkillHubScanFinding {
+    pub severity: String,
+    pub category: String,
+    pub file: String,
+    #[serde(default)]
+    pub line: Option<u32>,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct SkillHubScanResult {
+    pub name: String,
+    pub identifier: String,
+    pub source: String,
+    pub trust_level: String,
+    pub verdict: String,
+    pub summary: String,
+    pub policy: String,
+    #[serde(default)]
+    pub policy_reason: Option<String>,
+    #[serde(default)]
+    pub findings: Vec<SkillHubScanFinding>,
+    #[serde(default)]
+    pub severity_counts: BTreeMap<String, u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SkillHubInstallBlock {
+    pub findings: Option<usize>,
+    pub unverified_source: bool,
+}
+
+/// Detect only the pinned Desktop's structured security-gate messages. Other
+/// install failures keep the ordinary action error and do not trigger a scan.
+pub fn parse_skill_hub_install_block(
+    lines: &[String],
+    error: Option<&str>,
+) -> Option<SkillHubInstallBlock> {
+    let text = lines
+        .iter()
+        .map(String::as_str)
+        .chain(error)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_ascii_lowercase();
+    if let Some(index) = text.find("not installed:") {
+        let tail = &text[index + "not installed:".len()..];
+        let normalized = tail.split_whitespace().collect::<Vec<_>>().join(" ");
+        if normalized.starts_with("the security scan found") {
+            let remainder = normalized["the security scan found".len()..].trim_start();
+            let digits = remainder
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>();
+            return Some(SkillHubInstallBlock {
+                findings: (!digits.is_empty()).then(|| digits.parse().ok()).flatten(),
+                unverified_source: text.contains("never installs unverified"),
+            });
+        }
+    }
+    if let Some(index) = text.find("installation blocked:") {
+        let tail = &text[index..];
+        if tail.contains(" source + ") && tail.contains(" verdict, ") && tail.contains(" finding") {
+            let source = tail
+                .split_once('(')
+                .and_then(|(_, details)| details.split_once(" source + "))
+                .map(|(source, _)| source.trim());
+            let findings = tail
+                .split(" verdict, ")
+                .nth(1)
+                .and_then(|value| value.split_whitespace().next())
+                .and_then(|value| value.parse().ok());
+            return Some(SkillHubInstallBlock {
+                findings,
+                unverified_source: source.is_some_and(|source| source != "official"),
+            });
+        }
+    }
+    None
+}
+
+pub fn validate_skill_hub_scan_result(
+    scan: SkillHubScanResult,
+    expected_identifier: &str,
+) -> Result<SkillHubScanResult, String> {
+    let bounded =
+        |value: &str, max: usize| value.len() <= max && !value.chars().any(char::is_control);
+    if scan.identifier != expected_identifier
+        || !bounded(&scan.name, MAX_NAME_BYTES)
+        || scan.name.trim().is_empty()
+        || !bounded(&scan.identifier, MAX_IDENTIFIER_BYTES)
+        || !bounded(&scan.source, MAX_SOURCE_BYTES)
+        || !bounded(&scan.trust_level, 128)
+        || !bounded(&scan.verdict, 128)
+        || !bounded(&scan.summary, MAX_DESCRIPTION_BYTES)
+        || !matches!(scan.policy.as_str(), "allow" | "ask" | "block")
+        || scan
+            .policy_reason
+            .as_deref()
+            .is_some_and(|reason| !bounded(reason, MAX_DESCRIPTION_BYTES))
+        || scan.findings.len() > 1_000
+        || scan.severity_counts.len() > 16
+        || scan
+            .severity_counts
+            .iter()
+            .any(|(severity, count)| !bounded(severity, 64) || *count > 1_000_000)
+        || scan.findings.iter().any(|finding| {
+            !bounded(&finding.severity, 64)
+                || !bounded(&finding.category, 256)
+                || !bounded(&finding.file, MAX_REPO_BYTES)
+                || !bounded(&finding.description, MAX_DESCRIPTION_BYTES)
+        })
+    {
+        return Err(
+            "Hermes returned invalid, mismatched, or oversized Skill Hub scan details".into(),
+        );
+    }
+    Ok(scan)
 }
 
 #[derive(Debug)]
@@ -589,6 +710,77 @@ mod tests {
             entries[4].install_identifier.as_deref(),
             Some("plain-skill")
         );
+    }
+
+    #[test]
+    fn install_block_parser_matches_current_and_legacy_security_gate_messages() {
+        let current = vec![
+            "Not installed: the security scan found 2 high-risk pattern(s) in 'org/skill'."
+                .to_owned(),
+            "Hermes never installs unverified skills with high-risk findings, even with --force."
+                .to_owned(),
+        ];
+        assert_eq!(
+            parse_skill_hub_install_block(&current, None),
+            Some(SkillHubInstallBlock {
+                findings: Some(2),
+                unverified_source: true,
+            })
+        );
+        let legacy = vec![
+            "Installation blocked: Blocked (community source + caution verdict, 4 findings)."
+                .to_owned(),
+        ];
+        assert_eq!(
+            parse_skill_hub_install_block(&legacy, None),
+            Some(SkillHubInstallBlock {
+                findings: Some(4),
+                unverified_source: true,
+            })
+        );
+        let official_legacy = vec![
+            "Installation blocked: Blocked (official source + caution verdict, 1 finding)."
+                .to_owned(),
+        ];
+        assert_eq!(
+            parse_skill_hub_install_block(&official_legacy, None),
+            Some(SkillHubInstallBlock {
+                findings: Some(1),
+                unverified_source: false,
+            })
+        );
+        assert_eq!(
+            parse_skill_hub_install_block(&[], Some("network request timed out")),
+            None
+        );
+    }
+
+    #[test]
+    fn scan_result_requires_matching_identifier_bounded_fields_and_known_policy() {
+        let valid: SkillHubScanResult = serde_json::from_value(serde_json::json!({
+            "name":"research",
+            "identifier":"official/research",
+            "source":"official",
+            "trust_level":"official",
+            "verdict":"clean",
+            "summary":"No high-risk findings",
+            "policy":"allow",
+            "policy_reason":null,
+            "findings":[{"severity":"low","category":"metadata","file":"SKILL.md","line":1,"description":"Check metadata"}],
+            "severity_counts":{"low":1}
+        }))
+        .expect("typed scan fixture");
+        assert_eq!(
+            validate_skill_hub_scan_result(valid.clone(), "official/research").expect("valid scan"),
+            valid
+        );
+        assert!(validate_skill_hub_scan_result(valid.clone(), "other/skill").is_err());
+        let mut invalid_policy = valid.clone();
+        invalid_policy.policy = "override_allowed".into();
+        assert!(validate_skill_hub_scan_result(invalid_policy, "official/research").is_err());
+        let mut oversized = valid;
+        oversized.findings[0].description = "x".repeat(MAX_DESCRIPTION_BYTES + 1);
+        assert!(validate_skill_hub_scan_result(oversized, "official/research").is_err());
     }
 
     #[test]

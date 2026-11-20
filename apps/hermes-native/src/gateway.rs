@@ -9,6 +9,7 @@ use crate::{
     native_oauth::{NativeOAuthSession, native_token_needs_refresh, refresh_native_session},
     remote_probe::RemoteAuthMode,
     repo_discovery::{DiscoveredRepo, RepoScanOptions, RepoScanPolicy, scan_git_repos},
+    skill_catalog::{SkillHubScanResult, validate_skill_hub_scan_result},
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -2133,6 +2134,14 @@ pub enum GatewayEvent {
         authority_epoch: u64,
         result: Result<String, String>,
     },
+    SkillHubScanLoaded {
+        request_id: String,
+        identifier: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<SkillHubScanResult, String>,
+    },
     McpCatalogInstallStatusLoaded {
         request_id: String,
         action_name: String,
@@ -2559,6 +2568,13 @@ enum GatewayHttpCommand {
         authority_epoch: u64,
     },
     InstallSkillHubEntry {
+        request_id: String,
+        identifier: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    LoadSkillHubScan {
         request_id: String,
         identifier: String,
         profile_id: String,
@@ -4873,6 +4889,25 @@ impl GatewayDiscovery {
                 authority_epoch,
             })
             .map_err(|_| "Hermes Skill Hub installer has closed".to_owned())
+    }
+
+    pub fn load_skill_hub_scan(
+        &self,
+        request_id: String,
+        identifier: String,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadSkillHubScan {
+                request_id,
+                identifier,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes Skill Hub scanner has closed".to_owned())
     }
 
     pub fn load_mcp_catalog_install_status(
@@ -8642,6 +8677,53 @@ fn gateway_http_actor(
             }
             continue;
         }
+        if let GatewayHttpCommand::LoadSkillHubScan {
+            request_id,
+            identifier,
+            profile_id,
+            instance_id,
+            authority_epoch,
+        } = command
+        {
+            let endpoint = endpoint.clone();
+            let events = events.clone();
+            let failed_events = events.clone();
+            let failed_request_id = request_id.clone();
+            let failed_identifier = identifier.clone();
+            let failed_profile_id = profile_id.clone();
+            let failed_instance_id = instance_id.clone();
+            let worker = thread::Builder::new()
+                .name("hermes-skill-hub-scan".into())
+                .spawn(move || {
+                    let result = if endpoint.profile_id != profile_id
+                        || endpoint.instance_id != instance_id
+                        || endpoint.authority_epoch != authority_epoch
+                    {
+                        Err("Hermes Skill Hub scan belongs to a stale connection".into())
+                    } else {
+                        load_skill_hub_scan_http(&endpoint, &identifier)
+                    };
+                    let _ = events.send(GatewayEvent::SkillHubScanLoaded {
+                        request_id,
+                        identifier,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                        result,
+                    });
+                });
+            if worker.is_err() {
+                let _ = failed_events.send(GatewayEvent::SkillHubScanLoaded {
+                    request_id: failed_request_id,
+                    identifier: failed_identifier,
+                    profile_id: failed_profile_id,
+                    instance_id: failed_instance_id,
+                    authority_epoch,
+                    result: Err("Could not start the Hermes Skill Hub scan worker".into()),
+                });
+            }
+            continue;
+        }
         // Preserve FIFO and never coalesce a write. Search is already debounced
         // by the UI; each accepted mutation must produce its own receipt.
         let event = match command {
@@ -8794,6 +8876,9 @@ fn gateway_http_actor(
             }
             GatewayHttpCommand::InstallSkillHubEntry { .. } => {
                 unreachable!("Skill Hub installs are dispatched to their bounded worker")
+            }
+            GatewayHttpCommand::LoadSkillHubScan { .. } => {
+                unreachable!("Skill Hub scans are dispatched to their bounded worker")
             }
             GatewayHttpCommand::TestMcpServer { .. } => {
                 unreachable!("MCP server tests are dispatched to their bounded UI request worker")
@@ -12015,6 +12100,32 @@ fn install_skill_hub_http(
         return Err("Hermes did not confirm the requested Skill Hub install".into());
     }
     Ok(response)
+}
+
+fn load_skill_hub_scan_http(
+    endpoint: &GatewayEndpoint,
+    identifier: &str,
+) -> Result<SkillHubScanResult, String> {
+    if identifier.trim().is_empty()
+        || identifier.trim() != identifier
+        || identifier.len() > 2_048
+        || identifier.chars().any(char::is_control)
+        || endpoint.profile_id.is_empty()
+        || endpoint.profile_id.len() > 128
+        || endpoint.profile_id.chars().any(char::is_control)
+    {
+        return Err("Hermes Skill Hub scan request is invalid or oversized".into());
+    }
+    let mut url = Url::parse(&format!(
+        "{}/api/skills/hub/scan{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(&endpoint.profile_id)
+    ))
+    .map_err(|_| "Hermes Skill Hub scan URL is invalid".to_owned())?;
+    url.query_pairs_mut().append_pair("identifier", identifier);
+    let response: SkillHubScanResult =
+        profile_scoped_gateway_http_request(endpoint, "GET", url.as_str(), None)?;
+    validate_skill_hub_scan_result(response, identifier)
 }
 
 fn load_mcp_servers_http(endpoint: &GatewayEndpoint) -> Result<McpServersSnapshot, String> {
@@ -18880,6 +18991,57 @@ mod tests {
                 .contains("512 KiB")
         );
         server.join().expect("oversized install fixture exits");
+    }
+
+    #[test]
+    fn skill_hub_scan_reads_profile_scoped_findings_without_mutating_install_state() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind Skill Hub scan fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept Skill Hub scan");
+            let request = read_http_fixture_request(&mut stream);
+            let headers = request
+                .split_once("\r\n\r\n")
+                .unwrap()
+                .0
+                .to_ascii_lowercase();
+            assert!(headers.starts_with("get /hermes/api/skills/hub/scan?profile=work&identifier=official%2fresearch%2farxiv http/1.1\r\n"), "unexpected scan request: {headers:?}");
+            assert!(headers.contains("x-hermes-session-token: skill-hub-scan-fixture-token\r\n"));
+            assert!(!headers.contains("content-length:"));
+            let body = json!({
+                "name":"arxiv",
+                "identifier":"official/research/arxiv",
+                "source":"official",
+                "trust_level":"official",
+                "verdict":"caution",
+                "summary":"One low-risk finding",
+                "policy":"allow",
+                "policy_reason":null,
+                "findings":[{"severity":"low","category":"metadata","file":"SKILL.md","line":4,"description":"Review this metadata."}],
+                "severity_counts":{"low":1},
+                "tier1":null
+            }).to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write Skill Hub scan response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "skill-hub-instance".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "skill-hub-scan-fixture-token".into(),
+            ))),
+        };
+        let scan = load_skill_hub_scan_http(&endpoint, "official/research/arxiv")
+            .expect("profile-scoped scan details load");
+        assert_eq!(scan.policy, "allow");
+        assert_eq!(scan.findings.len(), 1);
+        assert_eq!(scan.findings[0].line, Some(4));
+        server.join().expect("scan fixture exits");
     }
 
     #[test]

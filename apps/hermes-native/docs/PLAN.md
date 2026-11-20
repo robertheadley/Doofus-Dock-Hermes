@@ -1609,3 +1609,11 @@ PAR-0257 now resolves the pinned skill install identifier rules (explicit instal
 This remains partial. Hermes live logs are polled and rendered, but the pinned security-scan View scan action, exact retry behavior after scan refusal, live Gateway/Windows checks, and source-paired acceptance remain open. PAR-0256 Browse still lacks installed/catalog merging, discovery shelves, facets, sorting, and the card/list preference.
 
 Validation: full locked feature suite passed (445 library, 15 automation protocol, 3 launcher tests); locked workspace/all-target check, rustfmt, both progress generators, task schema and pinned package validation pass. Strict live/source-paired acceptance remains pending.
+
+### Revision 268 — Skill Hub security scan review (2026-11-20)
+
+PAR-0257 now recognizes the pinned Desktop's current and legacy install-block messages and exposes a “View security scan” action only after a security-gated failure. The read-only GET uses the active Hermes profile, validates the returned identifier, policy and bounded finding fields, and is fenced by request, profile, Gateway instance and authority epoch. The selected skill detail displays the scan verdict, policy, summary, reason and findings. A user can retry with the ordinary Install skill action; the client never sends a force override and Hermes remains authoritative.
+
+This remains partial: exact live Gateway behavior, Windows interaction, process cancellation and source-paired acceptance are open. PAR-0256 installed/catalog merging, discovery shelves, facets, sort modes and card/list preference also remain open.
+
+Validation: PASS full locked feature suite (449 library, 15 automation protocol, 3 launcher tests); PASS locked workspace/all-target check, rustfmt, both progress generators, task schema validation, UCM package validation (565 behaviors/items, 14 source receipts, 38 implementation receipts; YAML parse skipped because PyYAML is unavailable), and diff check. Live Gateway, Windows and source-paired validation remain open.

@@ -5137,7 +5137,7 @@ capabilities:
 - id: ui-install-new-skill-with-live-log
   name: Install new skill with live log
   area: skills-plugins
-  claim: In the new native Rust DoofusDock UI, a user can install new skill with live log.
+  claim: In the new native Rust DoofusDock UI, a user can install a skill with live log and inspect security scan findings after a blocked install.
   status: partial
   depends_on:
   - hermes-gateway
