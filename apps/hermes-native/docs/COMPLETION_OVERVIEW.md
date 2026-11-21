@@ -10,9 +10,13 @@ Current chat/tool measures: **1 implemented, 57 partial, 1 not implemented, 117 
 
 PAR-0062 now caches `session.info` cwd and terminal backend metadata behind connection/profile/runtime/stored-session owner checks. Non-image paths use inline `@file:` only when that exact session proves a matching local loopback/filesystem context; image, remote, container and unknown cases retain byte upload. Live Gateway outcomes and packaged Windows behavior remain open.
 
-## Historical whole-desktop status snapshot (2026-11-18)
+### PAR-0039 Markdown file-preview update (2026-11-21)
 
-The table and workstream details below preserve the earlier whole-desktop view. The active acceptance scope is the 175-row chat/tool scope above.
+A clicked CommonMark link that identifies a local project file now opens DoofusDock's existing preview pane when the active session view matches stored session, runtime ID and profile; the Gateway is unauthenticated loopback; Hermes reports terminal backend `local`; and canonical path resolution keeps the existing file inside the reported project directory. Relative paths and local `file:` URLs decode into the preview path. Remote, container, mismatched, missing and outside-project paths remain closed. The rendered test covers the successful local click and remote-endpoint refusal; helper coverage rejects traversal, external schemes, remote file authorities and missing files. This extends the existing local Files preview component; it does not mean the standalone Files surface is in goal scope. Remote preview endpoints, audio/video playback, full pinned Markdown preprocessing, live Gateway, packaged Windows and source-paired verification remain open. The PAR-0039 evidence row remains `partial` and retains its existing review-count denominator.
+
+The table and workstream details below preserve the earlier whole-desktop view. The active acceptance scope is the 176-row chat/tool scope above.
+
+## Historical whole-desktop status snapshot (2026-11-18)
 
 ## Read the historical status in separate dimensions
 

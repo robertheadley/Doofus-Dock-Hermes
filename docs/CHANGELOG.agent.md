@@ -3925,3 +3925,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No performance change measured. Markdown parsing adds one cached-regex pass over link tokens before the existing CommonMark render.
 - **risks:** Filesystem/media link previews, focused syntax coloring and source-paired/packaged acceptance remain open.
 - **follow_up:** Continue core agent-workflow gaps and preserve all existing functional work.
+
+
+## hermes-par0039-local-markdown-preview-20261121
+
+- **id:** hermes-par0039-local-markdown-preview-20261121
+- **timestamp:** 2026-11-21T01:50:53Z
+- **what:** Extended PAR-0039 so clicked Markdown file links open the existing DoofusDock preview pane for an existing file inside the positively matched local session project. File-like links are no longer misclassified as bare web domains.
+- **why:** Make the chat transcript's local project references usable in the agent workflow without reimplementing file preview or crossing the session's filesystem boundary.
+- **components:** Transcript Markdown link capture and classification, session/profile/runtime owner checks, Gateway loopback and local terminal checks, canonical file-path policy, DoofusDock preview rail, progress generator and implementation docs.
+- **type:** Feature extension with headless UI and policy coverage.
+- **validation:** PASS focused Markdown suite (6/6); full locked suite (515 library + 15 protocol + 3 launcher); `cargo check -p hermes-native --lib --locked`; rustfmt and diff checks. UCM receipt/package validation and final publication are tracked after the implementation commit.
+- **performance:** Preview file reads remain on the existing bounded asynchronous worker; click handling adds bounded path normalization and canonicalization.
+- **risks:** Remote file reads, audio/video playback and broader pinned Markdown media/directive behavior are not implemented. Live Gateway, packaged Windows and source-paired behavior remain unverified. Project containment intentionally blocks explicit links outside the current project.
+- **follow_up:** Bind EV-0083 to the implementation commit, validate UCM/state and publish to `main`; continue remote/context feature gaps without deleting functional work.

@@ -6982,6 +6982,7 @@ fn render_message() -> &'static str {
                 .collect::<BTreeMap<_, _>>();
             let markdown_cache = &mut self.markdown_cache;
             let mut open_tool_image = None;
+            let mut open_transcript_file = None;
             let mut request_tool_image_previews = Vec::new();
             let mut continue_cut_off_reply = false;
             egui::ScrollArea::vertical()
@@ -7037,7 +7038,11 @@ fn render_message() -> &'static str {
                                     .id_salt(("assistant-reasoning", session_id, index))
                                     .default_open(!simple_mode && streaming)
                                     .show(ui, |ui| {
-                                        render_transcript_markdown(ui, markdown_cache, reasoning);
+                                        open_transcript_file = render_transcript_markdown(
+                                            ui,
+                                            markdown_cache,
+                                            reasoning,
+                                        );
                                     });
                             }
                             if let Some((title, explanation)) = &structured_error {
@@ -7048,12 +7053,14 @@ fn render_message() -> &'static str {
                                         .id_salt(("provider-error-details", session_id, index))
                                         .default_open(false)
                                         .show(ui, |ui| {
-                                            render_transcript_markdown(ui, markdown_cache, raw);
+                                            open_transcript_file =
+                                                render_transcript_markdown(ui, markdown_cache, raw);
                                         });
                                 }
                                 if let Some(partial) = &partial_content {
                                     ui.label(RichText::new("Partial response").strong());
-                                    render_transcript_markdown(ui, markdown_cache, partial);
+                                    open_transcript_file =
+                                        render_transcript_markdown(ui, markdown_cache, partial);
                                 }
                                 if message
                                     .pointer("/error_surface/code")
@@ -7067,7 +7074,8 @@ fn render_message() -> &'static str {
                                     continue_cut_off_reply = true;
                                 }
                             } else {
-                                render_transcript_markdown(ui, markdown_cache, &body);
+                                open_transcript_file =
+                                    render_transcript_markdown(ui, markdown_cache, &body);
                             }
                             if let Some(artifact) = tool_image {
                                 let remote = self
@@ -7201,6 +7209,9 @@ fn render_message() -> &'static str {
                         ui.add_space(8.0);
                     }
                 });
+            if let Some(destination) = open_transcript_file {
+                self.open_transcript_local_file_preview(session_id, &destination);
+            }
             for artifact in request_tool_image_previews {
                 self.request_remote_artifact_image_preview(&artifact);
             }
@@ -14438,6 +14449,46 @@ fn render_message() -> &'static str {
         (view.runtime_session_id.as_deref() == Some(runtime_session_id)
             && view.profile == self.active_session_profile)
             .then(|| (view.backend_cwd.clone(), view.terminal_backend.clone()))
+    }
+
+    fn open_transcript_local_file_preview(&mut self, stored_session_id: &str, destination: &str) {
+        let Some(runtime_session_id) = self.active_runtime_session_id.as_deref() else {
+            self.status = "This transcript is not attached to an active Hermes session".into();
+            return;
+        };
+        let locally_shared = self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(GatewayEndpoint::uses_local_loopback_gateway);
+        if !self.gateway_connected
+            || !locally_shared
+            || !matches!(&self.route, AppRoute::Session(id) if id == stored_session_id)
+        {
+            self.status = "Transcript file preview requires the active local Hermes session".into();
+            return;
+        }
+        let Some((Some(backend_cwd), Some(terminal_backend))) =
+            self.active_backend_attachment_metadata(runtime_session_id)
+        else {
+            self.status =
+                "Hermes has not confirmed a local project directory for this session".into();
+            return;
+        };
+        let Some(path) = safe_transcript_preview_path(destination, &backend_cwd, &terminal_backend)
+        else {
+            self.status = "This link is not a file inside the active local project".into();
+            return;
+        };
+        match self.workspace.open_file_preview(&path) {
+            Ok(_) => {
+                self.file_previews.request(&path);
+                self.status = format!(
+                    "Previewing {} from the active Hermes session",
+                    path.display()
+                );
+            }
+            Err(error) => self.status = format!("Could not open transcript file preview: {error}"),
+        }
     }
 
     fn accept_composer_file_drop(&mut self, paths: Vec<std::path::PathBuf>) {
@@ -31647,6 +31698,9 @@ fn safe_transcript_link_url(destination: &str) -> Option<String> {
     }
 
     let trimmed = destination.trim();
+    if url::Url::parse(trimmed).is_err() && is_transcript_file_reference(trimmed) {
+        return None;
+    }
     let candidate = if url::Url::parse(trimmed).is_ok() {
         trimmed.to_owned()
     } else {
@@ -31680,7 +31734,122 @@ fn safe_transcript_link_url(destination: &str) -> Option<String> {
     }
 }
 
-fn render_transcript_markdown(ui: &mut Ui, cache: &mut CommonMarkCache, markdown: &str) {
+fn is_transcript_file_reference(destination: &str) -> bool {
+    let trimmed = destination.trim();
+    if trimmed.starts_with("./")
+        || trimmed.starts_with("../")
+        || trimmed.contains('\\')
+        || trimmed.starts_with("file:")
+    {
+        return true;
+    }
+    let extension = std::path::Path::new(trimmed)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    matches!(
+        extension.as_str(),
+        "md" | "markdown"
+            | "txt"
+            | "rst"
+            | "rs"
+            | "toml"
+            | "json"
+            | "yaml"
+            | "yml"
+            | "html"
+            | "htm"
+            | "css"
+            | "js"
+            | "ts"
+            | "jsx"
+            | "tsx"
+            | "py"
+            | "go"
+            | "log"
+            | "csv"
+            | "xml"
+            | "pdf"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "bmp"
+            | "svg"
+            | "avif"
+    )
+}
+
+fn safe_transcript_preview_path(
+    destination: &str,
+    backend_cwd: &str,
+    terminal_backend: &str,
+) -> Option<std::path::PathBuf> {
+    if destination.is_empty()
+        || destination.chars().any(char::is_control)
+        || !terminal_backend.trim().eq_ignore_ascii_case("local")
+    {
+        return None;
+    }
+
+    let cwd = std::path::Path::new(backend_cwd.trim());
+    if !cwd.is_absolute() {
+        return None;
+    }
+    let canonical_cwd = cwd.canonicalize().ok()?;
+    if !canonical_cwd.is_dir() {
+        return None;
+    }
+
+    let target = if destination.starts_with("file:") {
+        let url = url::Url::parse(destination).ok()?;
+        if url.scheme() != "file"
+            || url
+                .host_str()
+                .is_some_and(|host| !host.eq_ignore_ascii_case("localhost"))
+            || url.username() != ""
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return None;
+        }
+        url.to_file_path().ok()?
+    } else if std::path::Path::new(destination).is_absolute()
+        || is_windows_absolute_path(destination)
+    {
+        std::path::PathBuf::from(destination)
+    } else {
+        if url::Url::parse(destination).is_ok() {
+            return None;
+        }
+        let mut base = url::Url::from_directory_path(&canonical_cwd).ok()?;
+        base = base.join(destination).ok()?;
+        if base.scheme() != "file"
+            || base
+                .host_str()
+                .is_some_and(|host| !host.eq_ignore_ascii_case("localhost"))
+            || base.query().is_some()
+            || base.fragment().is_some()
+        {
+            return None;
+        }
+        base.to_file_path().ok()?
+    };
+
+    let canonical_target = target.canonicalize().ok()?;
+    canonical_target
+        .starts_with(canonical_cwd)
+        .then_some(canonical_target)
+}
+
+fn render_transcript_markdown(
+    ui: &mut Ui,
+    cache: &mut CommonMarkCache,
+    markdown: &str,
+) -> Option<String> {
     // egui_commonmark's default hyperlink widget forwards any parsed URL to
     // the host. Register destinations as link hooks so only this app's
     // validated policy can dispatch external navigation. Fragment links stay
@@ -31702,13 +31871,17 @@ fn render_transcript_markdown(ui: &mut Ui, cache: &mut CommonMarkCache, markdown
         .enable_scroll_to_heading(true)
         .show(ui, cache, markdown);
 
+    let mut clicked_preview = None;
     for destination in link_destinations {
-        if cache.remove_link_hook(&destination) == Some(true)
-            && let Some(url) = safe_transcript_link_url(&destination)
-        {
-            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+        if cache.remove_link_hook(&destination) == Some(true) {
+            if let Some(url) = safe_transcript_link_url(&destination) {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+            } else {
+                clicked_preview = Some(destination);
+            }
         }
     }
+    clicked_preview
 }
 
 fn composer_file_drop_paths(
@@ -37240,6 +37413,11 @@ mod tests {
             safe_transcript_link_url("mailto:hermes@example.com"),
             Some("mailto:hermes@example.com".into())
         );
+        assert_eq!(safe_transcript_link_url("report.md"), None);
+        assert_eq!(
+            safe_transcript_link_url("example.com/docs"),
+            Some("https://example.com/docs".into())
+        );
         for unsafe_target in [
             "javascript:alert(1)",
             "data:text/html,<script>alert(1)</script>",
@@ -37254,6 +37432,48 @@ mod tests {
                 "blocked: {unsafe_target}"
             );
         }
+    }
+
+    #[test]
+    fn markdown_file_preview_resolution_stays_inside_local_project() {
+        let (app, profile) = isolated_app();
+        let root = profile.join("markdown-preview-project");
+        std::fs::create_dir_all(root.join("docs")).expect("create project fixture");
+        let file = root.join("docs").join("release notes.md");
+        std::fs::write(&file, "# Release notes\n").expect("write Markdown fixture");
+        let cwd = root.to_string_lossy().into_owned();
+
+        assert_eq!(
+            safe_transcript_preview_path("docs/release%20notes.md", &cwd, "local"),
+            file.canonicalize().ok()
+        );
+        let file_url = url::Url::from_file_path(&file)
+            .expect("fixture path forms a file URL")
+            .to_string();
+        assert_eq!(
+            safe_transcript_preview_path(&file_url, &cwd, "local"),
+            file.canonicalize().ok()
+        );
+        for blocked in [
+            "../outside.md",
+            "https://example.com/file.md",
+            "javascript:alert(1)",
+            "file://server/share/secret.md",
+            "missing.md",
+        ] {
+            assert_eq!(
+                safe_transcript_preview_path(blocked, &cwd, "local"),
+                None,
+                "blocked: {blocked}"
+            );
+        }
+        assert_eq!(
+            safe_transcript_preview_path("docs/release%20notes.md", &cwd, "docker"),
+            None
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
     }
 
     #[test]
@@ -37323,6 +37543,108 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn markdown_local_file_link_opens_dock_preview_only_for_matching_local_session() {
+        let (mut app, profile_dir) = isolated_app();
+        let project = profile_dir.join("markdown-click-project");
+        std::fs::create_dir_all(&project).expect("create local project fixture");
+        let report = project.join("report.md");
+        std::fs::write(&report, "# Local report\nPreview content.")
+            .expect("write local Markdown fixture");
+        let connection_id = "markdown-local-connection";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-local".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("markdown-session".into());
+        app.active_runtime_session_id = Some("markdown-runtime".into());
+        app.active_session_profile = Some("work".into());
+        let key = app.session_identity_key_for_connection(
+            Some(connection_id),
+            "markdown-session",
+            Some("work"),
+        );
+        app.session_chat_views.insert(
+            key,
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("markdown-runtime".into()),
+                backend_cwd: Some(project.to_string_lossy().into_owned()),
+                terminal_backend: Some("local".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.transcript = vec![json!({
+            "role":"assistant",
+            "content":"[Open local report](report.md)"
+        })];
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 1200.0))
+            .build_ui(|ui| app.draw(ui));
+        harness
+            .query_by_label("Open local report")
+            .expect("local Markdown link is accessible")
+            .click();
+        harness.step();
+        let expected_preview_path = report
+            .canonicalize()
+            .expect("preview target exists")
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            harness
+                .output()
+                .platform_output
+                .commands
+                .iter()
+                .all(|command| { !matches!(command, egui::OutputCommand::OpenUrl(_)) }),
+            "file previews must stay in the native Dock: {:?}",
+            harness.output().platform_output.commands
+        );
+        drop(harness);
+        assert!(
+            app.workspace
+                .dock
+                .snapshot()
+                .document
+                .panels
+                .iter()
+                .any(|panel| {
+                    panel.role == "hermes_file_preview"
+                        && panel
+                            .metadata
+                            .get("hermes.file.path")
+                            .is_some_and(|path| path == &expected_preview_path)
+                })
+        );
+
+        app.gateway_endpoint.as_mut().unwrap().api_origin = "https://gateway.example".into();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 1200.0))
+            .build_ui(|ui| app.draw(ui));
+        harness
+            .query_by_label("Open local report")
+            .expect("Markdown link remains available")
+            .click();
+        harness.step();
+        drop(harness);
+        assert_eq!(
+            app.status,
+            "Transcript file preview requires the active local Hermes session"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

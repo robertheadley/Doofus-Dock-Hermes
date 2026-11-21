@@ -1019,16 +1019,19 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0039": {
         "state": "partial",
-        "level": "headless_safe_markdown_web_link_dispatch",
+        "level": "headless_local_project_preview_and_safe_external_link_dispatch",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/markdown-text.tsx#function MarkdownLink",
             ".staging/hermes-pinned-878305/apps/desktop/src/lib/external-link.tsx#openLink",
             "apps/hermes-native/src/app.rs#safe_transcript_link_url",
+            "apps/hermes-native/src/app.rs#safe_transcript_preview_path",
+            "apps/hermes-native/src/app.rs#markdown_file_preview_resolution_stays_inside_local_project",
+            "apps/hermes-native/src/app.rs#markdown_local_file_link_opens_dock_preview_only_for_matching_local_session",
             "apps/hermes-native/src/app.rs#markdown_web_links_open_only_after_safe_url_validation",
             "apps/hermes-native/src/app.rs#markdown_unsafe_links_never_emit_host_navigation_commands",
             "apps/hermes-native/src/app.rs#markdown_link_policy_normalizes_web_domains_and_rejects_active_schemes",
         ],
-        "gaps": ["backend-aware filesystem/media link preview is not implemented", "packaged Windows and source-paired acceptance remain open"],
+        "gaps": ["remote filesystem previews need session-scoped read endpoints and remote content caching; audio/video players, pinned media/directive preprocessing, and richer Markdown behavior remain open", "packaged Windows, live Gateway and source-paired acceptance remain open"],
     },
     "PAR-0049": {
         "state": "partial",
