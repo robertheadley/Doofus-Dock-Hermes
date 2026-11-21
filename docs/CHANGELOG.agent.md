@@ -3939,3 +3939,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** Preview file reads remain on the existing bounded asynchronous worker; click handling adds bounded path normalization and canonicalization.
 - **risks:** Remote file reads, audio/video playback and broader pinned Markdown media/directive behavior are not implemented. Live Gateway, packaged Windows and source-paired behavior remain unverified. Project containment intentionally blocks explicit links outside the current project.
 - **follow_up:** Bind EV-0083 to the implementation commit, validate UCM/state and publish to `main`; continue remote/context feature gaps without deleting functional work.
+
+
+## hermes-par0039-ev0083-validation-20261121
+
+- **id:** hermes-par0039-ev0083-validation-20261121
+- **timestamp:** 2026-11-21T22:53:02Z
+- **what:** Added EV-0083 for the local Markdown file-preview slice, bound to implementation commit `80d064abfc10b33b4a6a16133b368d1db07b48c2`.
+- **why:** Preserve evidence for the newly working behavior while keeping PAR-0039 partial until remote media, live runtime and source-paired requirements are proven.
+- **components:** Pinned Hermes capability evidence package, durable task status, validation log.
+- **type:** Commit-bound implementation test evidence.
+- **validation:** PASS root package validator (565 targets, 67 implementation receipts); archival package validator (491 pending); durable task validation. Optional YAML syntax parsing was skipped because PyYAML is unavailable.
+- **performance:** No runtime changes.
+- **risks:** Evidence covers headless local fixtures only; the receipt does not claim live Gateway or packaged Windows behavior.
+- **follow_up:** Commit evidence and task records, publish both main commits and verify origin/main SHA equality.

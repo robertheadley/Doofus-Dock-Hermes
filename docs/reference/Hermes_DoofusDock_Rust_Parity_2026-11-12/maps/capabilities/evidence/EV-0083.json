@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0083",
+  "capability_id": "ui-render-clickable-links-safely",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "local_project_file_preview_requires_exact_active_local_session",
+  "locator": "apps/hermes-native/src/app.rs#markdown_local_file_link_opens_dock_preview_only_for_matching_local_session",
+  "date": "2026-11-21",
+  "commit": "80d064abfc10b33b4a6a16133b368d1db07b48c2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Full locked agent-automation suite passes 515 library, 15 automation protocol and 3 launcher tests. Focused Markdown tests pass 6/6. The rendered click opens the existing DoofusDock file-preview panel only for the matched active stored/runtime/profile session with an unauthenticated loopback Gateway and terminal backend local. Path policy resolves relative and local file URLs, canonicalizes an existing target and requires it to remain inside the backend-reported project directory. Remote endpoint, traversal, missing-file, external-scheme, remote file authority and non-local backend cases are rejected.",
+  "notes": "Partial: remote session-scoped filesystem previews, audio/video playback, broader Markdown media/directive behavior, live Gateway, packaged Windows interaction and source-paired acceptance remain open. No prior safe web/mail link behavior was removed."
+}

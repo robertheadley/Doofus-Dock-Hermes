@@ -1,5 +1,5 @@
 {
-  "revision": 90,
+  "revision": 92,
   "schema_version": 1,
   "tasks": [
     {
@@ -1317,7 +1317,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-21T00:53:03Z",
+              "last_updated_at": "2026-11-21T01:50:12Z",
               "lease_id": "11fcbd60-0346-403e-91a8-1373fa435b31",
               "objective": "ui-render-clickable-links-safely",
               "outputs": [],
@@ -1337,7 +1337,8 @@
               "task_id": "hermes-par-0039",
               "title": "PAR-0039 Render clickable links safely",
               "verification_evidence": [
-                "apps/hermes-native/docs/PLAN.md#Revision 292"
+                "apps/hermes-native/docs/PLAN.md#Revision 292",
+                "apps/hermes-native/src/app.rs#markdown_local_file_link_opens_dock_preview_only_for_matching_local_session"
               ]
             },
             {
@@ -16344,5 +16345,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-21T00:53:03Z"
+  "updated_at": "2026-11-21T01:50:12Z"
 }
