@@ -14616,6 +14616,19 @@ fn render_message() -> &'static str {
         self.slash_completion_dismissed = false;
     }
 
+    fn insert_slash_suggestion(&mut self, text: String) {
+        self.draft = text;
+        self.sync_slash_completion_query();
+        self.slash_completion_due = None;
+        self.slash_completion_pending = None;
+        self.slash_completion_items.clear();
+        self.slash_completion_error = None;
+        self.slash_completion_selected_index = 0;
+        self.slash_completion_dismissed = true;
+        self.persist_active_prepared_image_draft();
+        self.save_active_chat_view();
+    }
+
     fn request_slash_completion_if_due(&mut self, ctx: &egui::Context) {
         if self.slash_completion_dismissed || self.slash_completion_pending.is_some() {
             return;
@@ -15090,11 +15103,61 @@ fn render_message() -> &'static str {
         }
         let mut dropped_composer_paths = Vec::new();
         let mut composer_drop_requires_path = false;
+        let mut keyboard_insert = None;
         ui.horizontal(|ui| {
+            let composer_id = ui.make_persistent_id("message-composer");
+            let completion_list_active = ui.ctx().memory(|memory| {
+                memory.focused() == Some(composer_id)
+                    && !self.slash_completion_dismissed
+                    && self.slash_completion_pending.is_none()
+                    && self.slash_completion_error.is_none()
+                    && self.slash_completion_query.is_some()
+                    && !self.slash_completion_items.is_empty()
+            });
+            let completion_key = if completion_list_active {
+                ui.input_mut(|input| {
+                    [
+                        egui::Key::ArrowDown,
+                        egui::Key::ArrowUp,
+                        egui::Key::Enter,
+                        egui::Key::Tab,
+                    ]
+                    .into_iter()
+                    .find(|key| input.consume_key(egui::Modifiers::NONE, *key))
+                })
+            } else {
+                None
+            };
+            if let Some(key) = completion_key {
+                match key {
+                    egui::Key::ArrowDown => {
+                        self.slash_completion_selected_index = slash_completion_move_selection(
+                            self.slash_completion_selected_index,
+                            self.slash_completion_items.len(),
+                            1,
+                        );
+                    }
+                    egui::Key::ArrowUp => {
+                        self.slash_completion_selected_index = slash_completion_move_selection(
+                            self.slash_completion_selected_index,
+                            self.slash_completion_items.len(),
+                            -1,
+                        );
+                    }
+                    egui::Key::Enter | egui::Key::Tab => {
+                        keyboard_insert = self
+                            .slash_completion_items
+                            .get(self.slash_completion_selected_index)
+                            .map(|item| item.text.clone());
+                    }
+                    _ => {}
+                }
+            }
             let input = ui
                 .add_enabled(
                     self.gateway_connected && !waiting_for_new_session,
                     egui::TextEdit::multiline(&mut self.draft)
+                        .id(composer_id)
                         .font(egui::TextStyle::Monospace)
                         .desired_rows(2)
                         .desired_width(composer_width)
@@ -15242,11 +15305,11 @@ fn render_message() -> &'static str {
                 );
             } else if !self.slash_completion_items.is_empty() {
                 let items = self.slash_completion_items.clone();
-                let mut insert = None;
+                let mut insert = keyboard_insert;
                 ui.group(|ui| {
                     ui.label(RichText::new("Slash suggestions").strong());
                     let mut previous_group = String::new();
-                    for item in items.iter().take(24) {
+                    for (index, item) in items.iter().take(24).enumerate() {
                         if item.group != previous_group {
                             previous_group.clone_from(&item.group);
                             ui.label(RichText::new(&item.group).size(10.0).color(MUTED));
@@ -15257,7 +15320,10 @@ fn render_message() -> &'static str {
                             format!("{} · {}", item.display, item.meta)
                         };
                         if ui
-                            .button(button_text)
+                            .selectable_label(
+                                self.slash_completion_selected_index == index,
+                                button_text,
+                            )
                             .accessible_name(format!(
                                 "Insert {} into the message draft without sending",
                                 item.display
@@ -15269,22 +15335,14 @@ fn render_message() -> &'static str {
                     }
                     ui.label(
                         RichText::new(
-                            "Tab to a suggestion and press Enter to insert; nothing is sent.",
+                            "Use ↑ and ↓ to choose a suggestion, then Enter or Tab to insert; nothing is sent.",
                         )
                         .size(10.0)
                         .color(MUTED),
                     );
                 });
                 if let Some(text) = insert {
-                    self.draft = text;
-                    self.sync_slash_completion_query();
-                    self.slash_completion_due = None;
-                    self.slash_completion_pending = None;
-                    self.slash_completion_items.clear();
-                    self.slash_completion_error = None;
-                    self.slash_completion_dismissed = true;
-                    self.persist_active_prepared_image_draft();
-                    self.save_active_chat_view();
+                    self.insert_slash_suggestion(text);
                 }
             }
         }
@@ -31521,6 +31579,21 @@ fn slash_completion_query(draft: &str) -> Option<String> {
     Some(query.to_owned())
 }
 
+fn slash_completion_move_selection(current: usize, count: usize, delta: isize) -> usize {
+    let count = count.min(24);
+    if count == 0 {
+        return 0;
+    }
+    let current = current.min(count - 1);
+    if delta < 0 {
+        if current == 0 { count - 1 } else { current - 1 }
+    } else if delta > 0 {
+        (current + 1) % count
+    } else {
+        current
+    }
+}
+
 fn desktop_slash_suggestion_allowed(item: &SlashCompletionItem, advanced: bool) -> bool {
     let root = item.text.split_whitespace().next().unwrap_or(&item.text);
     match desktop_slash_registry().get(&root.to_ascii_lowercase()) {
@@ -37144,6 +37217,83 @@ mod tests {
         assert_eq!(app.borrow().draft, "/review fix");
         assert!(app.borrow().pending_submissions.is_empty());
         assert!(app.borrow().slash_completion_dismissed);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn slash_suggestions_support_keyboard_selection_without_sending() {
+        let (mut app, profile) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::NewChat;
+        app.draft = "/r".into();
+        app.sync_slash_completion_query();
+        app.slash_completion_items = vec![
+            SlashCompletionItem {
+                text: "/review".into(),
+                display: "/review".into(),
+                meta: "Review the working tree".into(),
+                group: "Commands".into(),
+            },
+            SlashCompletionItem {
+                text: "/research".into(),
+                display: "/research".into(),
+                meta: "Research a topic".into(),
+                group: "Skills".into(),
+            },
+        ];
+        app.slash_completion_due = None;
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.get_by_label("Message composer").click();
+        harness.run();
+        harness.key_press(egui::Key::ArrowDown);
+        harness.run();
+        assert_eq!(app.borrow().slash_completion_selected_index, 1);
+        harness.key_press(egui::Key::ArrowDown);
+        harness.run();
+        assert_eq!(app.borrow().slash_completion_selected_index, 0);
+        harness.key_press(egui::Key::ArrowUp);
+        harness.run();
+        assert_eq!(app.borrow().slash_completion_selected_index, 1);
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+        assert_eq!(app.borrow().draft, "/research");
+        assert!(app.borrow().pending_submissions.is_empty());
+        assert!(app.borrow().slash_completion_dismissed);
+        {
+            let mut app = app.borrow_mut();
+            app.draft = "/r".into();
+            app.sync_slash_completion_query();
+            app.slash_completion_items = vec![
+                SlashCompletionItem {
+                    text: "/review".into(),
+                    display: "/review".into(),
+                    meta: "Review the working tree".into(),
+                    group: "Commands".into(),
+                },
+                SlashCompletionItem {
+                    text: "/research".into(),
+                    display: "/research".into(),
+                    meta: "Research a topic".into(),
+                    group: "Skills".into(),
+                },
+            ];
+            app.slash_completion_due = None;
+        }
+        harness.run();
+        harness.key_press(egui::Key::ArrowUp);
+        harness.run();
+        assert_eq!(app.borrow().slash_completion_selected_index, 1);
+        harness.key_press(egui::Key::Tab);
+        harness.run();
+        assert_eq!(app.borrow().draft, "/research");
+        assert!(app.borrow().pending_submissions.is_empty());
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");

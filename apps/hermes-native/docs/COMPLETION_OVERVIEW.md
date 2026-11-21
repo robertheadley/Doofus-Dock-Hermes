@@ -211,3 +211,5 @@ Settings now exposes persisted overrides for ten native actions with working han
 ### Skill detail and source — 2026-11-20
 
 PAR-0255 is now **partial and headlessly verified**. From the installed Skills list, a user can request a skill's instructions and see its source path. The request and displayed content are fenced to the current profile, Gateway instance and authority epoch. Edit, lock, archive, hub install/update, live Gateway behavior, packaged Windows behavior, and source-paired acceptance remain open. Current coverage counts are generated from the matrix and are not a product-completion percentage.
+
+PAR-0067 now supports keyboard navigation of the visible slash suggestions: ArrowUp/ArrowDown move the highlighted choice, and Enter/Tab insert it into the draft without sending. The rendered regression covers both directions, wraparound and both accept keys. PAR-0067 remains partial; directive chips, mid-message triggers, cache invalidation, special local commands, live Gateway and source-paired Windows behavior remain open. The 59/176 evidence-mapped count is unchanged because this adds evidence to an already reviewed requirement.

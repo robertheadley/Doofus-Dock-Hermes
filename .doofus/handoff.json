@@ -287,14 +287,14 @@
     }
   ],
   "checkpoint": {
-    "command": "git fetch origin main; compare HEAD and origin/main; doofus_task.py validate; doofus_task.py progress --json",
+    "command": "git fetch origin main; compare HEAD and origin/main; doofus_task validate; doofus_task progress --json",
     "evidence": [
       "docs/EXECUTION_LOGS.md#hermes-par0039-main-publication-20261121",
       "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0083.json#uid"
     ],
     "state": "tested",
-    "summary": "Local Markdown project-file preview slice is tested and published to main. EV-0083 is bound to implementation commit 80d064ab; both package validators pass, all 515+15+3 locked tests pass, and final fetched main SHA is 30d5fb95cea4e28a79a70e90c12ba1552932e9cc. PAR-0039 remains partial; user-owned work folder untouched.",
-    "verified_at": "2026-11-21T22:59:11Z"
+    "summary": "Local Markdown project-file preview slice, EV-0083 and push-state sync are published. Current main is 2aa61f933c1841d103c47c26e240d5db2b88453e on local and origin; package/task validators and 515+15+3 tests pass. PAR-0039 remains partial; user work folder untouched.",
+    "verified_at": "2026-11-21T23:01:23Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -351,7 +351,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-21T23:59:11Z",
+    "lease_expires_at": "2026-11-22T00:01:23Z",
     "lease_id": "11fcbd60-0346-403e-91a8-1373fa435b31",
     "model": null,
     "ownership_state": "active",
@@ -1433,14 +1433,94 @@
         "docs/EXECUTION_LOGS.md#hermes-par0039-main-publication-20261121"
       ],
       "kind": "git_push_main",
-      "note": "Published implementation 80d064ab and EV-0083/state 011c11c; fresh fetch verified local main and origin/main exactly match at 011c11c70483485ccff9d641febbf3d777757a3a.",
-      "observed_at": "2026-11-21T22:57:48Z",
+      "note": "Published implementation 80d064ab, EV-0083 evidence commit 011c11c, publication log 30d5fb9 and durable successful push-state sync 2aa61f9; fresh fetch confirms local and origin main both equal 2aa61f933c1841d103c47c26e240d5db2b88453e.",
+      "observed_at": "2026-11-21T23:01:18Z",
       "operation_id": "par0039-publish-main-20261121",
       "owner": {
         "model": null,
         "provider": "codex"
       },
       "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending"
+      ],
+      "kind": "cargo_test",
+      "note": "PASS final focused rendered test; format, regenerated broad/scoped progress overlays, task-state validator, root UCM validator and diff check. PAR-0067 remains partial; 59/176 mapped evidence remains unchanged.",
+      "observed_at": "2026-11-21T23:21:25Z",
+      "operation_id": "par0067-final-render-test-and-maps-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending"
+      ],
+      "kind": "cargo_check",
+      "note": "PASS cargo check --all-targets --locked --features agent-automation; durable task validator; root package validator (565 behaviors/inventory/pending tests, 15 source inspections, 67 implementation receipts). Optional YAML parsing skipped because PyYAML is unavailable.",
+      "observed_at": "2026-11-21T23:19:50Z",
+      "operation_id": "par0067-slash-keyboard-check-and-package-validation-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_test",
+      "note": "The first compile attempt failed before tests ran because keyboard_insert was out of scope; source corrected and formatter passed. The prior process has exited (exit 1).",
+      "observed_at": "2026-11-21T23:12:18Z",
+      "operation_id": "par0067-slash-keyboard-focused-test-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending"
+      ],
+      "kind": "cargo_test",
+      "note": "PASS rendered headless composer regression: ArrowDown selects the second slash suggestion, Enter inserts it into the draft, and no prompt submission is emitted.",
+      "observed_at": "2026-11-21T23:15:10Z",
+      "operation_id": "par0067-slash-keyboard-focused-test-retry1-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending"
+      ],
+      "kind": "cargo_test",
+      "note": "PASS: cargo fmt check and full locked agent-automation suite; 516 library + 15 automation protocol + 3 launcher tests, zero failures. Rendered regression covers ArrowUp/Down, wraparound, Enter and Tab insertion without submitting.",
+      "observed_at": "2026-11-21T23:16:56Z",
+      "operation_id": "par0067-slash-keyboard-full-suite-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_commit",
+      "note": "Commit the additive keyboard navigation feature, preservation-aware progress generator, generated status row, tests, and required project documentation on main. Exclude apps/hermes-native/work/.",
+      "observed_at": "2026-11-21T23:24:03Z",
+      "operation_id": "par0067-slash-keyboard-implementation-commit-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
     },
     {
       "evidence": [
@@ -1486,11 +1566,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "codex-par0039-final-checkpoint-20261121",
+  "last_event_id": "a20a2759-3e45-4a7e-92be-a094c33bd6c4",
   "last_operation": {
-    "request_id": "codex-par0039-final-checkpoint-20261121",
+    "request_id": "a20a2759-3e45-4a7e-92be-a094c33bd6c4",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "external_operation.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1507,7 +1587,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue the active agent-workflow goal by selecting the next dependency-ready P0/P1 gap among remote/session-scoped previews, Markdown media/directive integration, attachment recovery, and plugin lifecycle. Preserve all functional work and keep apps/hermes-native/work untouched.",
+  "recommended_next_action": "Continue the active agent-workflow goal with the next dependency-ready P0/P1 gap. Review remote/session-scoped previews, Markdown media/directive integration, attachment recovery and renderer-plugin lifecycle; preserve all functional work and apps/hermes-native/work.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1963,7 +2043,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "1fb026dd83c2277564198282f2dcab94058c12996f3afd7f6f686413a0042d27",
+    "change_fingerprint": "8ad6a095d3db90c498f80f40f6007b9c33608fd35ac4d15b291b140bc1278a2b",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1990,14 +2070,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "30d5fb95cea4e28a79a70e90c12ba1552932e9cc",
+    "head_commit": "2aa61f933c1841d103c47c26e240d5db2b88453e",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 564,
+  "revision": 577,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 564,
+  "state_revision": 577,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0039",
   "task_ledger_revision": 92,
@@ -3371,9 +3451,14 @@
       "command": "git fetch origin main; compare HEAD and origin/main",
       "result": "PASS local main equals origin/main at 30d5fb95cea4e28a79a70e90c12ba1552932e9cc; durable state will be verified after this checkpoint.",
       "timestamp": "2026-11-21T22:59:11Z"
+    },
+    {
+      "command": "git fetch origin main; compare HEAD and origin/main",
+      "result": "PASS local main equals origin/main at 2aa61f933c1841d103c47c26e240d5db2b88453e.",
+      "timestamp": "2026-11-21T23:01:23Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T22:59:11Z"
+  "updated_at": "2026-11-21T23:24:03Z"
 }

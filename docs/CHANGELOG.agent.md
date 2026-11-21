@@ -3967,3 +3967,29 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No new performance measurement; preview reads use the existing async store.
 - **risks:** Remote/media preview, live Gateway, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** Continue the agent-workflow backlog without removing functional features.
+
+## hermes-par0067-slash-keyboard-20261121
+
+- **id:** hermes-par0067-slash-keyboard-20261121
+- **timestamp:** 2026-11-21T23:16:55Z
+- **what:** Added focused-composer arrow navigation and Enter/Tab insertion for the visible Hermes slash suggestion list; retained mouse selection and no-send semantics.
+- **why:** Keyboard users need to select and stage tools/skills commands without leaving the message composer or accidentally submitting.
+- **components:** Hermes native egui composer, slash-completion selection state, test coverage and evidence-backed progress maps.
+- **type:** Additive accessibility and agent-workflow feature.
+- **validation:** PASS rendered keyboard regression and full locked agent-automation suite (516 library + 15 protocol + 3 launcher); rustfmt and diff checks.
+- **performance:** Selection is an O(1) index update across at most 24 visible entries.
+- **risks:** Live Gateway, packaged Windows keyboard behavior and pinned-source paired acceptance remain unverified.
+- **follow_up:** Add EV-0084 bound to the implementation commit, validate progress packages, publish to main, and continue the remaining PAR-0067 gaps.
+
+## hermes-progress-review-date-preservation-20261121
+
+- **id:** hermes-progress-review-date-preservation-20261121
+- **timestamp:** 2026-11-21T23:23:04Z
+- **what:** The implementation progress generator retains prior review dates for requirements whose evidence records have not changed.
+- **why:** Routine regeneration must not make old evidence appear newly reviewed.
+- **components:** Progress generator and broad/scoped evidence overlays.
+- **type:** Evidence ledger correctness fix.
+- **validation:** PASS both progress generators; repeated runs produced identical broad and scoped CSV hashes. PAR-0067 alone receives the current date because its evidence changed.
+- **performance:** No runtime impact.
+- **risks:** The date comparison is based on the exact evidence state, level, refs and gaps; manual edits to generated output are overwritten by the next generator run.
+- **follow_up:** Continue preserving unchanged evidence dates on later progress refreshes.

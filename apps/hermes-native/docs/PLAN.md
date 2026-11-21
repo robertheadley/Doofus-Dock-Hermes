@@ -1812,3 +1812,15 @@ Validation: PASS focused locked `agent-automation` Markdown tests (4/4); full lo
 PAR-0039 now routes a clicked project-contained local Markdown/file link into the existing DoofusDock preview tab. Preview is allowed only when the current route, stored/runtime/profile view, unauthenticated loopback Gateway, and Hermes-reported `local` terminal backend match; the target must exist and canonicalize inside the backend-reported project directory. Local `file:` URLs and relative paths resolve through URL decoding. Links that resemble previewable file names are excluded from bare-domain normalization, fixing the observed `report.md` → `https://report.md/` misroute. The existing safe external-link behavior is preserved. Remote endpoints, containers, mismatched/stale sessions, traversal, missing files, and out-of-project targets fail closed.
 
 Validation: PASS focused Markdown tests (6/6), full locked `agent-automation` package suite (515 library + 15 protocol + 3 launcher), `cargo check -p hermes-native --lib --locked`, rustfmt and diff checks. No live Gateway or packaged UI run was performed. PAR-0039 remains partial: remote filesystem reading, media players and complete pinned Markdown media/directive behavior are open, along with packaged Windows and source-paired acceptance.
+
+### Revision 293 — Keyboard navigation for slash suggestions (2026-11-21)
+
+PAR-0067 now supports ArrowUp/ArrowDown selection in the focused composer, including wraparound across the visible 24-row list. Enter and Tab insert the highlighted suggestion into the draft and share the existing no-send path with mouse selection. The selected row is visibly highlighted, the composer retains focus for the keyboard flow, and the draft is persisted using the existing chat-view/prepared-image lifecycle. Existing gateway query scoping, filtering, and mouse insertion are preserved.
+
+Validation: PASS rendered headless keyboard test for both arrow keys, wraparound, Enter and Tab; suggestion choice emits no prompt submission. PASS full locked `agent-automation` suite (516 library + 15 protocol + 3 launcher), rustfmt and diff checks. This remains partial: directive chips, mid-message triggers, suggestion cache invalidation, special local commands, live Gateway, packaged Windows and source-paired acceptance remain open.
+
+### Revision 294 — Preserve review dates in generated progress (2026-11-21)
+
+The implementation progress generator now retains each requirement's existing `reviewed_on` date when its state, evidence level, evidence references, and known gaps are unchanged. A changed evidence record receives the current review date; newly unknown rows remain blank. This prevents a routine regeneration from implying that every mapped requirement was re-reviewed.
+
+Validation: PASS both progress generators; repeated generation produces byte-identical broad and scoped CSVs. Existing review counts and all pending live/source-pair states are retained.

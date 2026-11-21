@@ -1166,15 +1166,19 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0067": {
         "state": "partial",
-        "level": "headless_gateway_scoped_slash_completion_and_draft_insertion",
+        "level": "headless_gateway_scoped_keyboard_slash_completion_and_draft_insertion",
         "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/index.tsx#event.key === 'ArrowDown'",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/index.tsx#event.key === 'ArrowUp'",
             "apps/hermes-native/src/app.rs#slash_completion_requires_a_leading_single_line_command",
             "apps/hermes-native/src/app.rs#slash_suggestion_filter_uses_pinned_desktop_surface_and_skill_rows",
             "apps/hermes-native/src/app.rs#slash_suggestion_inserts_a_draft_without_submitting_it",
+            "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending",
             "apps/hermes-native/src/gateway.rs#slash_completion_actor_routes_catalog_and_typed_queries_to_the_scoped_gateway",
             "apps/hermes-native/docs/PLAN.md#Revision 244",
+            "apps/hermes-native/docs/PLAN.md#Revision 293",
         ],
-        "gaps": ["keyboard arrow navigation, directive chips, and mid-message trigger behavior are not implemented", "suggestion cache invalidation and special local /skin and session commands are not implemented", "live Gateway behavior, installed Windows interaction, source-paired acceptance, and visual pairing remain unverified"],
+        "gaps": ["directive chips and mid-message trigger behavior are not implemented", "suggestion cache invalidation and special local /skin and session commands are not implemented", "live Gateway behavior, installed Windows interaction, source-paired acceptance, and visual pairing remain unverified"],
     },
     "PAR-0511": {
         "state": "partial",
@@ -1509,6 +1513,7 @@ def write_atomic(path: Path, rows: list[dict[str, str]]) -> None:
 
 def build(output: Path) -> dict[str, object]:
     source_rows = read_rows(SOURCE)
+    prior_rows = {row["test_id"]: row for row in read_rows(output)} if output.is_file() else {}
     pinned = [row for row in source_rows if row.get("source_snapshot") == PIN]
     if len(source_rows) != 565 or len(pinned) != 499:
         raise ValueError(f"fixed source scope changed: total={len(source_rows)}, pinned={len(pinned)}")
@@ -1528,6 +1533,17 @@ def build(output: Path) -> dict[str, object]:
     rows: list[dict[str, str]] = []
     for source in pinned:
         evidence = EVIDENCE.get(source["test_id"])
+        prior = prior_rows.get(source["test_id"])
+        evidence_unchanged = bool(
+            evidence
+            and prior
+            and prior.get("implementation_state") == str(evidence["state"])
+            and prior.get("evidence_level") == str(evidence["level"])
+            and prior.get("evidence_refs_json")
+            == json.dumps(evidence["refs"], ensure_ascii=False)
+            and prior.get("known_gaps_json")
+            == json.dumps(evidence["gaps"], ensure_ascii=False)
+        )
         rows.append(
             {
                 "test_id": source["test_id"],
@@ -1548,7 +1564,11 @@ def build(output: Path) -> dict[str, object]:
                     else "not_paired"
                 ),
                 "source_pair_state": source["result"],
-                "reviewed_on": today if evidence else "",
+                "reviewed_on": (
+                    prior["reviewed_on"]
+                    if evidence_unchanged and prior is not None
+                    else today if evidence else ""
+                ),
             }
         )
 

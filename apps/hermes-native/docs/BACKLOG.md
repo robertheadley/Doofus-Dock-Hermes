@@ -348,3 +348,7 @@ PAR-0062/0063 composer attachments (2026-11-19):
 **Latest scoped progress (2026-11-19):** PAR-0267 now reads the pinned Desktop REST catalog contract, including credential prompts and bootstrap metadata. PAR-0268 adds a profile-fenced install form with masked required fields, the exact install payload, secret-safe errors, synchronous refresh, and background action polling. PAR-0043 projects live tool progress into profile/session-scoped running transcript rows and clears stale updates on completion or failure. PAR-0042 exposes formatted raw Arguments and Result behind an Advanced-mode disclosure. PAR-0044 now previews tool images and opens an accessible enlarge window. Live Gateway behavior, authenticated remote behavior, physical Windows interaction, and source-paired acceptance remain open.
 
 - [ ] Complete PAR-0050 cut-off response continuation with live Gateway and packaged Windows verification; the accessible truncated-only action, safe session submit, and draft fallback have headless evidence (EV-0077).
+
+### PAR-0067 slash suggestion keyboard update (2026-11-21)
+
+Keyboard navigation for the focused composer is implemented: arrows move the highlighted result with visible-list wraparound; Enter and Tab insert the selection into the draft without sending. The existing click route remains available. Remaining work includes directive chips, mid-message triggers, cache invalidation, local `/skin` and session command handling, live Gateway, Windows packaging and source-paired acceptance.
