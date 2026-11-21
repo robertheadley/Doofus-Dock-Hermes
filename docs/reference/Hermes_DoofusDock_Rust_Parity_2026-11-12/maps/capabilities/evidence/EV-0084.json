@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0084",
+  "capability_id": "ui-keep-command-slash-suggestions-accessible",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "keyboard_select_slash_suggestion_and_insert_without_submitting",
+  "locator": "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending",
+  "date": "2026-11-21",
+  "commit": "979c970493faf045a1708f36889402426af1df20",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "The final rendered egui_kittest regression passes ArrowDown and ArrowUp movement, visible-list wraparound, Enter and Tab insertion, and asserts that no prompt submission occurs. The full locked agent-automation suite passes 516 library, 15 protocol and 3 launcher tests. cargo check --all-targets --locked --features agent-automation, rustfmt, progress generators, task validation and root UCM package validation pass. Runtime and native OS keyboard interaction are not part of this headless run.",
+  "notes": "Partial: this adds keyboard selection to the existing Gateway-backed scoped suggestions and retains mouse selection/no-send behavior. Directive chips, mid-message triggers, cache invalidation, special local /skin and session commands, live Gateway, packaged Windows interaction and source-paired acceptance remain open."
+}

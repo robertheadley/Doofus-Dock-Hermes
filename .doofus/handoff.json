@@ -1443,6 +1443,18 @@
       "state": "succeeded"
     },
     {
+      "evidence": [],
+      "kind": "git_commit",
+      "note": "Commit EV-0084 and its capability crosswalk and validation log; evidence is bound to implementation commit 979c970493faf045a1708f36889402426af1df20.",
+      "observed_at": "2026-11-21T23:25:25Z",
+      "operation_id": "par0067-ev0084-evidence-commit-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
+    },
+    {
       "evidence": [
         "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending"
       ],
@@ -1511,16 +1523,18 @@
       "state": "succeeded"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending"
+      ],
       "kind": "git_commit",
-      "note": "Commit the additive keyboard navigation feature, preservation-aware progress generator, generated status row, tests, and required project documentation on main. Exclude apps/hermes-native/work/.",
-      "observed_at": "2026-11-21T23:24:03Z",
+      "note": "Committed additive PAR-0067 implementation, tests, documentation and generated evidence overlay to local main at 979c970493faf045a1708f36889402426af1df20. Existing features retained; apps/hermes-native/work excluded.",
+      "observed_at": "2026-11-21T23:24:28Z",
       "operation_id": "par0067-slash-keyboard-implementation-commit-20261121",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -1566,9 +1580,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "a20a2759-3e45-4a7e-92be-a094c33bd6c4",
+  "last_event_id": "8fcd1e14-2e7a-4f8c-ae57-fa051168e50a",
   "last_operation": {
-    "request_id": "a20a2759-3e45-4a7e-92be-a094c33bd6c4",
+    "request_id": "8fcd1e14-2e7a-4f8c-ae57-fa051168e50a",
     "state": "committed",
     "type": "external_operation.state_changed"
   },
@@ -2074,10 +2088,10 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 577,
+  "revision": 579,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 577,
+  "state_revision": 579,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0039",
   "task_ledger_revision": 92,
@@ -3460,5 +3474,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T23:24:03Z"
+  "updated_at": "2026-11-21T23:25:25Z"
 }

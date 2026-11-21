@@ -3993,3 +3993,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime impact.
 - **risks:** The date comparison is based on the exact evidence state, level, refs and gaps; manual edits to generated output are overwritten by the next generator run.
 - **follow_up:** Continue preserving unchanged evidence dates on later progress refreshes.
+
+
+## hermes-par0067-ev0084-20261121
+
+- **id:** hermes-par0067-ev0084-20261121
+- **timestamp:** 2026-11-21T23:23:04Z
+- **what:** Added EV-0084 for the rendered slash-suggestion keyboard workflow and updated the capability crosswalk to describe the new interaction.
+- **why:** Keep the user-visible P0 capability evidence-backed and distinguish implemented keyboard behavior from the remaining gaps.
+- **components:** Native composer test evidence, fixed-source capability map and crosswalk.
+- **type:** Partial implementation evidence.
+- **validation:** PASS root UCM package validator with 68 implementation receipts and durable task validator at revision 578.
+- **performance:** No runtime change.
+- **risks:** Evidence is headless only; it does not claim live Gateway or physical Windows keyboard acceptance.
+- **follow_up:** Publish the implementation and evidence commits to main, then continue the remaining agent-workflow gaps.
