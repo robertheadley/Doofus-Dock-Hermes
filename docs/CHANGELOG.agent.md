@@ -3953,3 +3953,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime changes.
 - **risks:** Evidence covers headless local fixtures only; the receipt does not claim live Gateway or packaged Windows behavior.
 - **follow_up:** Commit evidence and task records, publish both main commits and verify origin/main SHA equality.
+
+
+## hermes-par0039-main-publication-20261121
+
+- **id:** hermes-par0039-main-publication-20261121
+- **timestamp:** 2026-11-21T22:53:02Z
+- **what:** Published the local Markdown preview implementation `80d064a` and commit-bound EV-0083/task evidence `011c11c` to the user's `main` branch.
+- **why:** Keep the user's canonical repository current with the verified agent-workflow feature slice.
+- **components:** Native chat Markdown rendering, DoofusDock preview panel, UCM evidence package, task handoff and repository logs.
+- **type:** Direct main publication.
+- **validation:** Fresh post-push fetch confirms local `main` and `origin/main` both equal `011c11c70483485ccff9d641febbf3d777757a3a`. User work folder remains untracked and untouched.
+- **performance:** No new performance measurement; preview reads use the existing async store.
+- **risks:** Remote/media preview, live Gateway, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** Continue the agent-workflow backlog without removing functional features.
