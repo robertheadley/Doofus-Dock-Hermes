@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0081",
+  "capability_id": "ui-render-inline-tables-and-lists",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "gfm_table_and_ordered_unordered_lists_render_accessibly",
+  "locator": "apps/hermes-native/src/app.rs#markdown_fixture_renders_table_and_code_copy_action_accessibly",
+  "date": "2026-11-21",
+  "commit": "c20baa57c54b4c3f5e23550080a38072268af2c0",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "The headless full-app Markdown fixture asserts a GFM table cell, unordered-list item, ordered-list item and adjacent Markdown content are present in the accessible tree.",
+  "notes": "Partial: pinned resizable table behavior, narrow-width behavior, and source-paired acceptance remain open."
+}

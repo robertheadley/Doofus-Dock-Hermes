@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0082",
+  "capability_id": "ui-render-clickable-links-safely",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "validated_markdown_links_dispatch_only_allowed_host_urls",
+  "locator": "apps/hermes-native/src/app.rs#markdown_web_links_open_only_after_safe_url_validation",
+  "date": "2026-11-21",
+  "commit": "c20baa57c54b4c3f5e23550080a38072268af2c0",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "The renderer registers parsed link destinations as CommonMark link hooks, then emits egui OpenUrl only for HTTP(S) links with host and no credentials, normalized bare domains, and explicit user-clicked mailto. Headless click tests verify HTTP opens and javascript emits no host-navigation command; pure policy cases reject data/file/relative/control-bearing/credential-bearing targets. Full locked suite passes (513 library, 15 protocol, 3 launcher).",
+  "notes": "Partial: backend-aware local/remote filesystem and media previews, packaged Windows navigation, and source-paired acceptance remain open."
+}

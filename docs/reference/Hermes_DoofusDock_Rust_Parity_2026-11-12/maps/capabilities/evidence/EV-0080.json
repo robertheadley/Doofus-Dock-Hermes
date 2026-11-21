@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0080",
+  "capability_id": "ui-render-syntax-highlighted-code",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "fenced_code_uses_the_native_syntax_highlighter_and_copy_control",
+  "locator": "apps/hermes-native/Cargo.toml#egui_commonmark",
+  "date": "2026-11-21",
+  "commit": "c20baa57c54b4c3f5e23550080a38072268af2c0",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "The pinned egui_commonmark dependency enables pulldown-cmark and better_syntax_highlighting; the rendered full-app fixture exposes an accessible fenced-code copy action and verifies the exact clipboard payload. Full locked agent-automation suite passes (513 library, 15 protocol, 3 launcher).",
+  "notes": "Partial: dedicated token-color, grammar-alias and theme assertions plus source-paired Windows acceptance remain open."
+}

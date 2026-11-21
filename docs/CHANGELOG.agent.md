@@ -3897,3 +3897,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No benchmark change measured; link targets are parsed once per rendered message and the bare-domain regex is cached.
 - **risks:** Backend-aware file/media previews and external-browser experience on packaged Windows remain unverified.
 - **follow_up:** Add evidence receipts bound to the implementation commit, validate UCM packages and publish to `main`; continue remaining agent-workflow gaps.
+
+
+## hermes-par0039-evidence-20261121
+
+- **id:** hermes-par0039-evidence-20261121
+- **timestamp:** 2026-11-21T00:58:55Z
+- **what:** Added commit-bound partial evidence EV-0079 through EV-0082 for Markdown/code fences, syntax highlighter configuration, lists/tables, and safe chat links at implementation commit `c20baa57c54b4c3f5e23550080a38072268af2c0`.
+- **why:** Make existing and newly verified chat behavior visible in the user's partial completion overview without claiming full Desktop parity.
+- **components:** Root Hermes capability map, scoped/broad progress overlays, durable task handoff and evidence ledger.
+- **type:** Evidence and progress record.
+- **validation:** Root validator passes with 66 receipts; archival validator passes with 491 pending requirements; durable task state and diff checks pass. Optional YAML syntax parsing was skipped because PyYAML is not installed.
+- **performance:** No runtime changes.
+- **risks:** Evidence is headless; Windows packaged and source-paired acceptance remain open.
+- **follow_up:** Publish evidence records to main and continue remaining agent workflow gaps.
