@@ -3855,3 +3855,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No performance changes measured.
 - **risks:** Partial evidence only; live and packaged acceptance are still pending.
 - **follow_up:** Continue the agent-focused feature backlog while preserving all functional work.
+
+
+## PAR-0049 — Recover Stop after a stale runtime (2026-11-20)
+
+- **id:** hermes-par0049-20261120
+- **timestamp:** 2026-11-20T23:55:39Z
+- **what:** Stop now resumes the owner-matched stored session without replaying messages and retries `session.interrupt` once with the fresh runtime ID and execution generation. The app only rebinds the exact matching profile, connection and stored-session view; partial assistant text remains intact.
+- **why:** A stale runtime ID should not strand a user without the ability to stop a running turn. Existing functional work is preserved.
+- **components:** Native Gateway actor, session ownership/event reducer, Stop action, capability evidence and progress docs.
+- **type:** Feature implementation and partial evidence.
+- **validation:** Full locked package suite passed (510 library + 15 protocol + 3 launcher); focused stale-runtime retry, resume failure and owner-scoped rebind tests passed; `cargo check`, rustfmt and diff checks passed. Live Gateway and packaged Windows checks remain open.
+- **performance:** No performance change measured or expected; retry is bounded to one after one resume attempt.
+- **risks:** Runtime behavior, owner response variations and packaged Windows interaction remain unverified.
+- **follow_up:** Record code/evidence commit SHAs, validate capability packages and durable handoff, publish to `main`, then continue the next agent workflow gap.

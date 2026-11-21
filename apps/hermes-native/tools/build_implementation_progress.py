@@ -988,6 +988,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["source-paired and packaged Windows acceptance remains open"],
     },
+    "PAR-0049": {
+        "state": "partial",
+        "level": "headless_owner_scoped_stale_runtime_interrupt_recovery",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 291",
+            "apps/hermes-native/src/gateway.rs#session_interrupt_resumes_stored_session_and_retries_once_when_runtime_is_stale",
+            "apps/hermes-native/src/gateway.rs#stale_interrupt_resume_failure_preserves_original_error_and_does_not_retry",
+            "apps/hermes-native/src/app.rs#recovered_interrupt_rebinds_only_the_matching_session_view",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/index.sleep-wake.test.tsx#resumes the stored session and retries once when session.interrupt reports",
+        ],
+        "gaps": [
+            "live Gateway and packaged Windows Stop behavior remain unverified",
+            "source-paired acceptance is pending",
+        ],
+    },
     "PAR-0050": {
         "state": "partial",
         "level": "headless_truncated_reply_continue_action_and_submit_fallback",

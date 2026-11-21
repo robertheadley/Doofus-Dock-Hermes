@@ -1178,7 +1178,7 @@ capabilities:
   name: Cancel or interrupt a running turn
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can cancel or interrupt a running turn.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1191,8 +1191,8 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: partial
 - id: ui-ask-the-agent-to-continue-a-paused-turn
   name: Ask the agent to continue a paused turn
   area: chat-transcript

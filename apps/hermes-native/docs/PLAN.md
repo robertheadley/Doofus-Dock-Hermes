@@ -1791,3 +1791,10 @@ Validation: PASS focused policy and rendered flow tests; full locked `agent-auto
 When a structured assistant error identifies Hermes' `truncated` condition, the transcript now offers an accessible Continue action. It sends `continue` through the existing chat session when the composer can submit safely; otherwise it preserves the user's draft and inserts the continuation prompt into the input. Other error codes do not show this action.
 
 Validation: PASS rendered action and full-app headless tests for active-session submission and draft fallback; full locked `agent-automation` package suite (507 library + 15 protocol + 3 launcher), `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. EV-0077 records partial PAR-0050 evidence. Live Gateway, packaged Windows interaction and source-paired acceptance remain open.
+
+
+### Revision 291 — Recover Stop after a stale runtime session (2026-11-20)
+
+PAR-0049 now makes Stop recover from Hermes returning `session not found` for an interrupted runtime session. The Gateway resumes the matching stored session without replaying its messages, verifies the stored-session identity, requires a fresh execution generation, and retries `session.interrupt` once. The UI rebinds only the matching profile/connection/stored-session view and preserves the partial assistant transcript. Resume failures retain the original interrupt error; retry count is bounded.
+
+Validation: PASS full locked `agent-automation` package suite (510 library + 15 protocol + 3 launcher), focused stale-runtime recovery and resume-failure tests, owner-scoped UI rebind test, `cargo check -p hermes-native --lib`, rustfmt and `git diff --check`. Live Gateway, packaged Windows behavior and source-paired acceptance remain open.

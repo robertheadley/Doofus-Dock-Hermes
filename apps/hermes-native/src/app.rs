@@ -22484,6 +22484,23 @@ fn render_message() -> &'static str {
         {
             return Err("A stop request is already in progress".into());
         }
+        let stored_session_id =
+            self.stored_session_id_for_runtime(&session_id, self.active_session_profile.as_deref());
+        let execution_generation = pending.execution_generation.or_else(|| {
+            self.transcript.iter().rev().find_map(|message| {
+                (message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                    && message
+                        .get("streaming")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true))
+                .then(|| {
+                    message
+                        .get("execution_generation")
+                        .and_then(serde_json::Value::as_u64)
+                })
+                .flatten()
+            })
+        });
         let request_id = operation_id("interrupt");
         self.gateway_discovery
             .as_ref()
@@ -22491,7 +22508,9 @@ fn render_message() -> &'static str {
             .interrupt_session(
                 request_id.clone(),
                 session_id.clone(),
+                stored_session_id,
                 self.active_session_profile.clone(),
+                execution_generation,
             )?;
         self.pending_interrupt = Some((request_id, session_id));
         self.status = "Stopping Hermes response…".into();
@@ -22732,10 +22751,26 @@ fn render_message() -> &'static str {
         }
     }
 
+    #[cfg(test)]
     fn handle_session_interrupted(
         &mut self,
         request_id: String,
         session_id: String,
+        result: Result<bool, String>,
+    ) {
+        self.handle_session_interrupted_for_owner(
+            request_id, session_id, None, None, None, None, result,
+        );
+    }
+
+    fn handle_session_interrupted_for_owner(
+        &mut self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        stored_session_id: Option<String>,
+        connection_id: Option<String>,
+        recovered_session_id: Option<String>,
         result: Result<bool, String>,
     ) {
         if !self
@@ -22746,6 +22781,30 @@ fn render_message() -> &'static str {
             })
         {
             return;
+        }
+        if let (Some(stored_session_id), Some(recovered_session_id)) = (
+            stored_session_id.as_deref(),
+            recovered_session_id.as_deref(),
+        ) {
+            let key = session_owner_identity_key(
+                stored_session_id,
+                profile.as_deref(),
+                connection_id.as_deref(),
+            );
+            if let Some(mut view) = self.session_chat_views.get(&key).cloned()
+                && view.runtime_session_id.as_deref() == Some(session_id.as_str())
+            {
+                view.runtime_session_id = Some(recovered_session_id.to_owned());
+                self.cache_session_chat_view(key, view);
+                if connection_id.as_deref() == Some(self.active_gateway_connection_id())
+                    && self.route == AppRoute::Session(stored_session_id.to_owned())
+                    && self.active_session_profile == profile
+                    && self.active_runtime_session_id.as_deref() == Some(session_id.as_str())
+                {
+                    self.active_runtime_session_id = Some(recovered_session_id.to_owned());
+                    self.save_active_chat_view();
+                }
+            }
         }
         self.pending_interrupt = None;
         match result {
@@ -26643,8 +26702,20 @@ fn render_message() -> &'static str {
                 GatewayEvent::SessionInterrupted {
                     request_id,
                     session_id,
+                    profile,
+                    stored_session_id,
+                    connection_id,
+                    recovered_session_id,
                     result,
-                } => self.handle_session_interrupted(request_id, session_id, result),
+                } => self.handle_session_interrupted_for_owner(
+                    request_id,
+                    session_id,
+                    profile,
+                    stored_session_id,
+                    connection_id,
+                    recovered_session_id,
+                    result,
+                ),
                 GatewayEvent::ApprovalResponded {
                     request_id,
                     session_id,
@@ -44891,6 +44962,52 @@ mod tests {
 
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn recovered_interrupt_rebinds_only_the_matching_session_view() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("runtime-stale".into());
+        app.transcript = vec![serde_json::json!({
+            "role":"assistant",
+            "content":"partial response",
+            "streaming":true
+        })];
+        app.pending_interrupt = Some(("interrupt-recovery".into(), "runtime-stale".into()));
+        app.save_active_chat_view();
+
+        app.handle_session_interrupted_for_owner(
+            "interrupt-recovery".into(),
+            "runtime-stale".into(),
+            Some("work".into()),
+            Some("stored-session".into()),
+            Some(connection_id.clone()),
+            Some("runtime-recovered".into()),
+            Ok(true),
+        );
+
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-recovered")
+        );
+        let key = session_owner_identity_key("stored-session", Some("work"), Some(&connection_id));
+        assert_eq!(
+            app.session_chat_views
+                .get(&key)
+                .and_then(|view| view.runtime_session_id.as_deref()),
+            Some("runtime-recovered")
+        );
+        assert_eq!(
+            app.transcript[0]["interrupted"],
+            serde_json::Value::Bool(true)
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

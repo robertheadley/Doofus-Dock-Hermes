@@ -1,5 +1,5 @@
 {
-  "revision": 87,
+  "revision": 89,
   "schema_version": 1,
   "tasks": [
     {
@@ -1646,7 +1646,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1655,12 +1655,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-21T00:00:21Z",
+              "lease_id": "11fcbd60-0346-403e-91a8-1373fa435b31",
               "objective": "ui-cancel-or-interrupt-a-running-turn",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "03-chat",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -1670,10 +1671,14 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0049",
               "title": "PAR-0049 Cancel or interrupt a running turn",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/gateway.rs#interrupt_session_with_recovery",
+                "apps/hermes-native/src/app.rs#stop_generation",
+                "apps/hermes-native/docs/PLAN.md#Revision 291"
+              ]
             },
             {
               "agent_identity": {
@@ -16336,5 +16341,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-20T22:24:40Z"
+  "updated_at": "2026-11-21T00:00:21Z"
 }

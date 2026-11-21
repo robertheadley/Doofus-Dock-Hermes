@@ -1898,6 +1898,10 @@ pub enum GatewayEvent {
     SessionInterrupted {
         request_id: String,
         session_id: String,
+        profile: Option<String>,
+        stored_session_id: Option<String>,
+        connection_id: Option<String>,
+        recovered_session_id: Option<String>,
         result: Result<bool, String>,
     },
     ApprovalResponded {
@@ -2604,7 +2608,9 @@ enum GatewayCommand {
     InterruptSession {
         request_id: String,
         session_id: String,
+        stored_session_id: Option<String>,
         profile: Option<String>,
+        execution_generation: Option<u64>,
     },
     RespondApproval {
         request_id: String,
@@ -4226,6 +4232,7 @@ impl GatewayDiscovery {
         let mut event = self.event_receiver.try_recv().ok()?;
         match &mut event {
             GatewayEvent::SessionResumed { connection_id, .. }
+            | GatewayEvent::SessionInterrupted { connection_id, .. }
             | GatewayEvent::SlashCompletionLoaded { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
@@ -4464,13 +4471,17 @@ impl GatewayDiscovery {
         &self,
         request_id: String,
         session_id: String,
+        stored_session_id: Option<String>,
         profile: Option<String>,
+        execution_generation: Option<u64>,
     ) -> Result<(), String> {
         self.command_sender
             .send(GatewayCommand::InterruptSession {
                 request_id,
                 session_id,
+                stored_session_id,
                 profile,
+                execution_generation,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -7530,34 +7541,27 @@ fn gateway_actor(
             Ok(GatewayCommand::InterruptSession {
                 request_id,
                 session_id,
+                stored_session_id,
                 profile,
+                execution_generation,
             }) => {
-                let params = session_profile_params(
-                    serde_json::json!({"session_id":session_id}),
+                let (result, recovered_session_id) = interrupt_session_with_recovery(
+                    socket,
+                    &mut next_request_id,
+                    &session_id,
+                    stored_session_id.as_deref(),
                     profile.as_deref(),
+                    execution_generation,
+                    &events,
                 );
-                let result = params
-                    .and_then(|params| {
-                        rpc_with_events(
-                            socket,
-                            next_request_id,
-                            "session.interrupt",
-                            params,
-                            Some(&events),
-                        )
-                    })
-                    .and_then(|result| {
-                        match result.get("status").and_then(serde_json::Value::as_str) {
-                            Some("interrupted") => Ok(true),
-                            Some("not_interrupted") => Ok(false),
-                            _ => Err("Hermes returned an invalid session.interrupt result".into()),
-                        }
-                    });
-                next_request_id = next_request_id.saturating_add(1);
                 if events
                     .send(GatewayEvent::SessionInterrupted {
                         request_id,
                         session_id,
+                        profile,
+                        stored_session_id,
+                        connection_id: None,
+                        recovered_session_id,
                         result,
                     })
                     .is_err()
@@ -8219,6 +8223,119 @@ fn resume_session(
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
     })
+}
+
+fn session_interrupt_rpc(
+    socket: &mut GatewaySocket,
+    next_request_id: &mut u64,
+    session_id: &str,
+    profile: Option<&str>,
+    execution_generation: Option<u64>,
+    events: &mpsc::Sender<GatewayEvent>,
+) -> Result<bool, String> {
+    let mut params = serde_json::json!({"session_id":session_id});
+    if let Some(generation) = execution_generation {
+        params["execution_generation"] = serde_json::json!(generation);
+    }
+    let params = session_profile_params(params, profile)?;
+    let response = rpc_with_events(
+        socket,
+        *next_request_id,
+        "session.interrupt",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    match response?.get("status").and_then(serde_json::Value::as_str) {
+        Some("interrupted") => Ok(true),
+        Some("not_interrupted") => Ok(false),
+        _ => Err("Hermes returned an invalid session.interrupt result".into()),
+    }
+}
+
+fn interrupt_session_with_recovery(
+    socket: &mut GatewaySocket,
+    next_request_id: &mut u64,
+    runtime_session_id: &str,
+    stored_session_id: Option<&str>,
+    profile: Option<&str>,
+    execution_generation: Option<u64>,
+    events: &mpsc::Sender<GatewayEvent>,
+) -> (Result<bool, String>, Option<String>) {
+    match session_interrupt_rpc(
+        socket,
+        next_request_id,
+        runtime_session_id,
+        profile,
+        execution_generation,
+        events,
+    ) {
+        Ok(interrupted) => (Ok(interrupted), None),
+        Err(original_error)
+            if original_error
+                .to_ascii_lowercase()
+                .contains("session not found")
+                && stored_session_id.is_some_and(|id| !id.is_empty()) =>
+        {
+            let stored_session_id = stored_session_id.expect("guarded stored session ID");
+            let resume_params = match session_profile_params(
+                serde_json::json!({
+                    "session_id":stored_session_id,
+                    "source":"desktop",
+                    "omit_messages":true
+                }),
+                profile,
+            ) {
+                Ok(params) => params,
+                Err(_) => return (Err(original_error), None),
+            };
+            let resume_response = rpc_with_events(
+                socket,
+                *next_request_id,
+                "session.resume",
+                resume_params,
+                Some(events),
+            );
+            *next_request_id = next_request_id.saturating_add(1);
+            let Ok(resume_response) = resume_response else {
+                return (Err(original_error), None);
+            };
+            if resume_response
+                .get("stored_session_id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|returned| returned != stored_session_id)
+            {
+                return (Err(original_error), None);
+            }
+            let Some(recovered_session_id) = resume_response
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+            else {
+                return (Err(original_error), None);
+            };
+            let Some(recovered_generation) = resume_response
+                .get("execution_generation")
+                .and_then(serde_json::Value::as_u64)
+            else {
+                return (
+                    Err("Session execution identity unavailable; reconnect before controlling this turn".into()),
+                    Some(recovered_session_id),
+                );
+            };
+            let result = session_interrupt_rpc(
+                socket,
+                next_request_id,
+                &recovered_session_id,
+                profile,
+                Some(recovered_generation),
+                events,
+            );
+            (result, Some(recovered_session_id))
+        }
+        Err(error) => (Err(error), None),
+    }
 }
 
 fn slash_completion_rpc_payload(
@@ -22687,7 +22804,9 @@ mod tests {
                 .send(GatewayCommand::InterruptSession {
                     request_id: request_id.into(),
                     session_id: session_id.into(),
+                    stored_session_id: None,
                     profile: None,
+                    execution_generation: None,
                 })
                 .expect("queue interrupt");
         }
@@ -22704,12 +22823,220 @@ mod tests {
                 GatewayEvent::SessionInterrupted {
                     request_id: actual_request,
                     session_id: actual_session,
+                    recovered_session_id: None,
                     result: Ok(actual_interrupted),
+                    ..
                 } if actual_request == request_id
                     && actual_session == session_id
                     && actual_interrupted == interrupted
             ));
         }
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn session_interrupt_resumes_stored_session_and_retries_once_when_runtime_is_stale() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let read_request = |socket: &mut tungstenite::WebSocket<TcpStream>| match socket
+                .read()
+                .expect("read gateway request")
+            {
+                Message::Text(text) => {
+                    serde_json::from_str::<serde_json::Value>(&text).expect("parse gateway request")
+                }
+                other => panic!("expected text request, got {other:?}"),
+            };
+            let reply = |socket: &mut tungstenite::WebSocket<TcpStream>, id, result| {
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":result})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send gateway reply");
+            };
+
+            let first = read_request(&mut socket);
+            assert_eq!(first["method"], "session.interrupt");
+            assert_eq!(
+                first["params"],
+                json!({
+                    "session_id":"runtime-stale",
+                    "profile":"work",
+                    "execution_generation":3
+                })
+            );
+            let first_id = first["id"].as_u64().expect("first request id");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":first_id,
+                        "error":{"code":-32000,"message":"request failed","data":{"reason":"session not found"}}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("report stale runtime");
+
+            let resume = read_request(&mut socket);
+            assert_eq!(resume["method"], "session.resume");
+            assert_eq!(
+                resume["params"],
+                json!({
+                    "session_id":"stored-session",
+                    "source":"desktop",
+                    "omit_messages":true,
+                    "profile":"work"
+                })
+            );
+            reply(
+                &mut socket,
+                resume["id"].as_u64().expect("resume request id"),
+                json!({
+                    "session_id":"runtime-recovered",
+                    "stored_session_id":"stored-session",
+                    "execution_generation":7
+                }),
+            );
+
+            let retry = read_request(&mut socket);
+            assert_eq!(retry["method"], "session.interrupt");
+            assert_eq!(
+                retry["params"],
+                json!({
+                    "session_id":"runtime-recovered",
+                    "execution_generation":7,
+                    "profile":"work"
+                })
+            );
+            reply(
+                &mut socket,
+                retry["id"].as_u64().expect("retry request id"),
+                json!({"status":"interrupted"}),
+            );
+            socket.close(None).expect("close fixture socket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::InterruptSession {
+                request_id: "interrupt-recover".into(),
+                session_id: "runtime-stale".into(),
+                stored_session_id: Some("stored-session".into()),
+                profile: Some("work".into()),
+                execution_generation: Some(3),
+            })
+            .expect("queue interrupt");
+        let event = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("recovered interrupt result");
+        match event {
+            GatewayEvent::SessionInterrupted {
+                request_id,
+                session_id,
+                profile: Some(profile),
+                stored_session_id: Some(stored_session_id),
+                recovered_session_id: Some(recovered_session_id),
+                result: Ok(true),
+                ..
+            } => {
+                assert_eq!(request_id, "interrupt-recover");
+                assert_eq!(session_id, "runtime-stale");
+                assert_eq!(profile, "work");
+                assert_eq!(stored_session_id, "stored-session");
+                assert_eq!(recovered_session_id, "runtime-recovered");
+            }
+            other => panic!("unexpected recovered interrupt event: {other:?}"),
+        }
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn stale_interrupt_resume_failure_preserves_original_error_and_does_not_retry() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for (expected_method, expected_session) in [
+                ("session.interrupt", "runtime-stale"),
+                ("session.resume", "stored-session"),
+            ] {
+                let request: serde_json::Value = match socket.read().expect("read request") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                    other => panic!("expected text request, got {other:?}"),
+                };
+                assert_eq!(request["method"], expected_method);
+                assert_eq!(request["params"]["session_id"], expected_session);
+                let id = request["id"].as_u64().expect("JSON-RPC request id");
+                let error = if expected_method == "session.interrupt" {
+                    json!({
+                        "code":-32000,
+                        "message":"request failed",
+                        "data":{"reason":"session not found"}
+                    })
+                } else {
+                    json!({"code":-32000,"message":"resume unavailable"})
+                };
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"error":error})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send gateway error");
+            }
+            socket.close(None).expect("close fixture socket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::InterruptSession {
+                request_id: "interrupt-resume-failed".into(),
+                session_id: "runtime-stale".into(),
+                stored_session_id: Some("stored-session".into()),
+                profile: None,
+                execution_generation: Some(3),
+            })
+            .expect("queue interrupt");
+        let event = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("interrupt failure result");
+        assert!(matches!(
+            event,
+            GatewayEvent::SessionInterrupted {
+                recovered_session_id: None,
+                result: Err(error),
+                ..
+            } if error == "Hermes session.interrupt refused: session not found"
+        ));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");
