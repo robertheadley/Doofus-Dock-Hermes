@@ -921,7 +921,7 @@ capabilities:
   name: Render Markdown and code fences
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can render Markdown and code fences.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -934,13 +934,13 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: partial
 - id: ui-render-syntax-highlighted-code
   name: Render syntax-highlighted code
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can render syntax-highlighted code.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -953,13 +953,13 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: partial
 - id: ui-render-inline-tables-and-lists
   name: Render inline tables and lists
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can render inline tables and lists.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -972,13 +972,13 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: partial
 - id: ui-render-clickable-links-safely
   name: Render clickable links safely
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can render clickable links safely.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -991,8 +991,8 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: partial
 - id: ui-render-code-copy-action
   name: Render code copy action
   area: chat-transcript

@@ -3883,3 +3883,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No performance changes measured.
 - **risks:** Live runtime behavior and source-paired acceptance remain open.
 - **follow_up:** Continue first-version agent workflow gaps and preserve all existing functional work.
+
+
+## hermes-par0039-20261121
+
+- **id:** hermes-par0039-20261121
+- **timestamp:** 2026-11-21T00:53:26Z
+- **what:** PAR-0039 now captures CommonMark links as hooks and emits host navigation only for validated HTTP(S) URLs without embedded credentials or user-clicked mailto URLs. Heading fragments stay in the transcript. File, data, javascript, relative and other custom-scheme targets cannot launch host handlers. PAR-0036..0038 were reviewed and mapped partial because the renderer and accessible fixture already cover Markdown, GFM tables/lists, and fenced code/copy.
+- **why:** Chat is the agent's primary interaction surface; link output must be safe while existing formatted content remains usable.
+- **components:** Hermes Native transcript renderer, pulldown-cmark dependency, UCM evidence and generated progress.
+- **type:** Feature implementation and partial capability evidence.
+- **validation:** PASS focused Markdown tests (4/4), full locked suite (513 library + 15 protocol + 3 launcher), cargo check, rustfmt and diff checks. Source-paired package validation remains pending evidence receipts; live Gateway and packaged Windows are not claimed.
+- **performance:** No benchmark change measured; link targets are parsed once per rendered message and the bare-domain regex is cached.
+- **risks:** Backend-aware file/media previews and external-browser experience on packaged Windows remain unverified.
+- **follow_up:** Add evidence receipts bound to the implementation commit, validate UCM packages and publish to `main`; continue remaining agent-workflow gaps.

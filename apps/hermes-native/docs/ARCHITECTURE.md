@@ -297,3 +297,8 @@ Toolsets inventory rows also expose Hermes' configured boolean as â€œConfiguredâ
 The pinned Desktop's linked-plugin preview-script permissions are app-local Electron state, per plugin and HTTP(S) origin. They are not part of the Hermes Gateway's AgentPluginInfo contract. Hermes Native currently has no Desktop renderer-plugin host or equivalent origin-grant store; PAR-0269 remains explicitly not implemented until such a host exists. The separate Agent Plugins list must not be presented as having these grants.
 
 Installed Agent Plugins with a declared settings schema expose typed manifest-backed controls. Nonsecret changes are sent through `plugins.manage action=settings`; secret fields use the selected profile's authenticated `/api/env` route and never appear in plugin RPC values or readback. This Gateway configuration flow does not implement Electron Desktop renderer-plugin permission grants.
+
+
+## Transcript Markdown and link safety
+
+Assistant transcript bodies use `egui_commonmark` with the pinned Pulldown parser and native syntax highlighting. Link destinations are registered as CommonMark hooks so the widget cannot directly dispatch arbitrary schemes. Only parsed HTTP(S) URLs with a hostname and no embedded credentials, recognized bare domains normalized to HTTPS, and user-clicked `mailto:` URLs are forwarded through egui's host URL command. Heading fragments remain local; active/file/relative and other custom-scheme links are blocked. This is partial pinned behavior: session-aware local/remote filesystem and media previews, tool-owned media routing, and the source's broader Markdown preprocessing remain open.

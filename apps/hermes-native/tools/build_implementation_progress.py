@@ -988,6 +988,48 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["source-paired and packaged Windows acceptance remains open"],
     },
+    "PAR-0036": {
+        "state": "partial",
+        "level": "headless_full_app_commonmark_markdown_blocks_and_code_fences",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/markdown-text.tsx#MarkdownTextContent",
+            "apps/hermes-native/src/app.rs#render_transcript_markdown",
+            "apps/hermes-native/src/app.rs#markdown_fixture_renders_table_and_code_copy_action_accessibly",
+        ],
+        "gaps": ["pinned Streamdown preprocessing, media/directive/math integrations and packaged Windows behavior are not fully ported or verified"],
+    },
+    "PAR-0037": {
+        "state": "partial",
+        "level": "headless_fenced_code_render_and_copy_with_native_highlighter_enabled",
+        "refs": [
+            "apps/hermes-native/Cargo.toml#egui_commonmark",
+            "apps/hermes-native/src/app.rs#render_transcript_markdown",
+            "apps/hermes-native/src/app.rs#markdown_fixture_renders_table_and_code_copy_action_accessibly",
+        ],
+        "gaps": ["syntax token colors, language aliases, theme behavior and packaged Windows rendering lack focused assertions and source-paired acceptance"],
+    },
+    "PAR-0038": {
+        "state": "partial",
+        "level": "headless_rendered_gfm_table_and_list_content",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/markdown-table.tsx#ResizableMarkdownTable",
+            "apps/hermes-native/src/app.rs#markdown_fixture_renders_table_and_code_copy_action_accessibly",
+        ],
+        "gaps": ["resizable table behavior, narrow-width rendering, and live/source-paired acceptance remain open"],
+    },
+    "PAR-0039": {
+        "state": "partial",
+        "level": "headless_safe_markdown_web_link_dispatch",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/markdown-text.tsx#function MarkdownLink",
+            ".staging/hermes-pinned-878305/apps/desktop/src/lib/external-link.tsx#openLink",
+            "apps/hermes-native/src/app.rs#safe_transcript_link_url",
+            "apps/hermes-native/src/app.rs#markdown_web_links_open_only_after_safe_url_validation",
+            "apps/hermes-native/src/app.rs#markdown_unsafe_links_never_emit_host_navigation_commands",
+            "apps/hermes-native/src/app.rs#markdown_link_policy_normalizes_web_domains_and_rejects_active_schemes",
+        ],
+        "gaps": ["backend-aware filesystem/media link preview is not implemented", "packaged Windows and source-paired acceptance remain open"],
+    },
     "PAR-0049": {
         "state": "partial",
         "level": "headless_owner_scoped_stale_runtime_interrupt_recovery",

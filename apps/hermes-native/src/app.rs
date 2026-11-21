@@ -54,6 +54,8 @@ use doofusdock_render_egui::{
 };
 use egui::{Align, Color32, FontId, Id, Layout, Rect, RichText, Role, Stroke, Ui, Vec2};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use pulldown_cmark::{Event as MarkdownEvent, Parser as MarkdownParser, Tag as MarkdownTag};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -31639,8 +31641,74 @@ fn transcript_search_matches(messages: &[serde_json::Value], query: &str) -> Vec
         .collect()
 }
 
+fn safe_transcript_link_url(destination: &str) -> Option<String> {
+    if destination.is_empty() || destination.chars().any(char::is_control) {
+        return None;
+    }
+
+    let trimmed = destination.trim();
+    let candidate = if url::Url::parse(trimmed).is_ok() {
+        trimmed.to_owned()
+    } else {
+        static BARE_DOMAIN: OnceLock<Regex> = OnceLock::new();
+        let pattern = BARE_DOMAIN.get_or_init(|| {
+            Regex::new(
+                r"(?i)^(?:www\.)?[a-z0-9](?:[a-z0-9-]*\.)+[a-z]{2,}(?::\d+)?(?:[/?#][^\s]*)?$",
+            )
+            .expect("static bare-domain pattern is valid")
+        });
+        if pattern.is_match(trimmed) {
+            format!("https://{trimmed}")
+        } else {
+            return None;
+        }
+    };
+
+    let url = url::Url::parse(&candidate).ok()?;
+    match url.scheme() {
+        "http" | "https"
+            if url.host_str().is_some()
+                && url.username().is_empty()
+                && url.password().is_none() =>
+        {
+            Some(url.into())
+        }
+        // Opening a mail composer is a user-initiated external action; other
+        // custom schemes can launch arbitrary local handlers and stay blocked.
+        "mailto" if !url.path().is_empty() => Some(url.into()),
+        _ => None,
+    }
+}
+
 fn render_transcript_markdown(ui: &mut Ui, cache: &mut CommonMarkCache, markdown: &str) {
-    CommonMarkViewer::new().show(ui, cache, markdown);
+    // egui_commonmark's default hyperlink widget forwards any parsed URL to
+    // the host. Register destinations as link hooks so only this app's
+    // validated policy can dispatch external navigation. Fragment links stay
+    // inside the document and use CommonMarkViewer's heading handling.
+    let link_destinations = MarkdownParser::new(markdown)
+        .filter_map(|event| match event {
+            MarkdownEvent::Start(MarkdownTag::Link { dest_url, .. }) => {
+                let destination = dest_url.to_string();
+                (!destination.starts_with('#')).then_some(destination)
+            }
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+    for destination in &link_destinations {
+        cache.add_link_hook(destination.clone());
+    }
+
+    CommonMarkViewer::new()
+        .enable_scroll_to_heading(true)
+        .show(ui, cache, markdown);
+
+    for destination in link_destinations {
+        if cache.remove_link_hook(&destination) == Some(true)
+            && let Some(url) = safe_transcript_link_url(&destination)
+        {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+        }
+    }
 }
 
 fn composer_file_drop_paths(
@@ -37125,6 +37193,131 @@ mod tests {
                 .next()
                 .is_some(),
             "GitHub-style table cells remain visible to agent locators"
+        );
+        for text in [
+            "Markdown preview",
+            "source link",
+            "A block quote with",
+            "unordered item one",
+            "ordered item two",
+        ] {
+            assert!(
+                harness
+                    .query_all_by(|node| node
+                        .value()
+                        .as_deref()
+                        .is_some_and(|value| value.contains(text)))
+                    .next()
+                    .is_some(),
+                "CommonMark block and inline content remains available to the accessible UI: {text}; values={:?}",
+                harness
+                    .query_all_by(|_| true)
+                    .filter_map(|node| node.value())
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn markdown_link_policy_normalizes_web_domains_and_rejects_active_schemes() {
+        assert_eq!(
+            safe_transcript_link_url("https://example.com/docs"),
+            Some("https://example.com/docs".into())
+        );
+        assert_eq!(
+            safe_transcript_link_url("www.example.com/docs"),
+            Some("https://www.example.com/docs".into())
+        );
+        assert_eq!(
+            safe_transcript_link_url("example.com/docs"),
+            Some("https://example.com/docs".into())
+        );
+        assert_eq!(
+            safe_transcript_link_url("mailto:hermes@example.com"),
+            Some("mailto:hermes@example.com".into())
+        );
+        for unsafe_target in [
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "file:///C:/Windows/win.ini",
+            "relative/path.md",
+            "https://user:pass@example.com/",
+            "https://example.com/\nmalicious",
+        ] {
+            assert_eq!(
+                safe_transcript_link_url(unsafe_target),
+                None,
+                "blocked: {unsafe_target}"
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_web_links_open_only_after_safe_url_validation() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("safe-links".into());
+        app.transcript = vec![json!({
+            "role":"assistant",
+            "content":"[Public docs](https://example.com/docs)"
+        })];
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 1200.0))
+            .build_ui(|ui| app.draw(ui));
+        harness
+            .query_by_label("Public docs")
+            .expect("markdown link is accessible")
+            .click();
+        harness.step();
+        assert!(
+            harness.output().platform_output.commands.iter().any(|command| {
+                matches!(command, egui::OutputCommand::OpenUrl(url) if url.url == "https://example.com/docs")
+            }),
+            "validated HTTP links are dispatched through egui's host URL command"
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn markdown_unsafe_links_never_emit_host_navigation_commands() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("unsafe-links".into());
+        app.transcript = vec![json!({
+            "role":"assistant",
+            "content":"[Run script](javascript:alert(1))"
+        })];
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 1200.0))
+            .build_ui(|ui| app.draw(ui));
+        harness
+            .query_by_label("Run script")
+            .expect("blocked markdown link remains visible and accessible")
+            .click();
+        harness.step();
+        assert!(
+            !harness
+                .output()
+                .platform_output
+                .commands
+                .iter()
+                .any(|command| matches!(command, egui::OutputCommand::OpenUrl(_))),
+            "unsafe schemes must never reach the operating-system URL handler"
+        );
+        assert_eq!(safe_transcript_link_url("javascript:alert(1)"), None);
+        assert_eq!(safe_transcript_link_url("file:///C:/Windows/win.ini"), None);
+        assert_eq!(
+            safe_transcript_link_url("https://user:pass@example.com/"),
+            None
+        );
+        assert_eq!(
+            safe_transcript_link_url("https://example.com/\nmalicious"),
+            None
         );
 
         drop(harness);

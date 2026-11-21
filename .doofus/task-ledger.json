@@ -1,5 +1,5 @@
 {
-  "revision": 89,
+  "revision": 90,
   "schema_version": 1,
   "tasks": [
     {
@@ -1308,7 +1308,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1317,12 +1317,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-21T00:53:03Z",
+              "lease_id": "11fcbd60-0346-403e-91a8-1373fa435b31",
               "objective": "ui-render-clickable-links-safely",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "03-chat",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -1332,10 +1333,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0039",
               "title": "PAR-0039 Render clickable links safely",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/docs/PLAN.md#Revision 292"
+              ]
             },
             {
               "agent_identity": {
@@ -16341,5 +16344,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-21T00:00:21Z"
+  "updated_at": "2026-11-21T00:53:03Z"
 }
