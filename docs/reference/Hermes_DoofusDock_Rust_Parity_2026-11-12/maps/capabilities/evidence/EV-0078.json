@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0078",
+  "capability_id": "ui-cancel-or-interrupt-a-running-turn",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "stop_recovers_stale_runtime_session_with_one_owner_scoped_interrupt_retry",
+  "locator": "apps/hermes-native/src/gateway.rs#session_interrupt_resumes_stored_session_and_retries_once_when_runtime_is_stale",
+  "date": "2026-11-20",
+  "commit": "4fdf594bb3f8cfedfba9239c6e41aef20889ddac",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless local Gateway fixtures cover stale runtime ID recovery by resuming the owner-matched stored session without replaying messages, verifying returned stored identity and requiring a fresh execution generation, then retrying session.interrupt once. A resume failure preserves the original interrupt error and does not retry. App tests verify only the matching profile/connection/stored-session view is rebound. Full locked agent-automation suite passes (510 library + 15 protocol + 3 launcher); cargo check, rustfmt and diff checks pass. No live Gateway or packaged Windows interaction was used.",
+  "notes": "Partial PAR-0049 evidence. Live Gateway behavior, packaged Windows Stop behavior and source-paired acceptance remain open."
+}
