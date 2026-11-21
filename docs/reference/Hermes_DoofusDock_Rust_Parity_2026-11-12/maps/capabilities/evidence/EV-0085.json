@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0085",
+  "capability_id": "ui-authenticate-remote-gateway",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "saved_remote_gateway_without_endpoint_matched_credentials_fails_closed",
+  "locator": "apps/hermes-native/src/app.rs#saved_remote_connection_without_credentials_does_not_fall_back_to_local",
+  "date": "2026-11-21",
+  "commit": "ec26ba3b8fa7d6241d5856e94903ad93f40bb6c2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "The focused regression uses an isolated Hermes profile with a selected remote Gateway and no stored token or OAuth session. Startup returns an actionable error and does not construct a local Gateway actor. The full locked agent-automation suite passes 517 library, 15 protocol and 3 launcher tests; all-target cargo check, rustfmt, task validation and both capability package validators pass. No live remote service or packaged Windows application was used.",
+  "notes": "Partial safety evidence only. Successful remote login/attach, credential refresh, live Gateway operation and packaged Windows startup still require runtime verification."
+}

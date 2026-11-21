@@ -1449,6 +1449,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "Hermes owns fallback execution; live default-model failure followed by a configured fallback route, packaged Windows behavior and source-paired acceptance remain open",
         ],
     },
+    "PAR-0240": {
+        "state": "partial",
+        "level": "headless_saved_remote_auth_fail_closed",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 295",
+            "apps/hermes-native/src/app.rs#start_saved_gateway_connection",
+            "apps/hermes-native/src/app.rs#saved_remote_connection_without_credentials_does_not_fall_back_to_local",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0085.json#EV-0085",
+        ],
+        "gaps": [
+            "headless evidence covers the missing-credential failure path only; successful remote login and endpoint authentication require a live Gateway",
+            "saved-connection selection UI and complete owner/result fencing across connection switches remain open",
+            "packaged Windows behavior and source-paired acceptance remain pending",
+        ],
+    },
 }
 
 FIELDS = [

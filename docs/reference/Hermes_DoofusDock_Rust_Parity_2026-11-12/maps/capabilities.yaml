@@ -4852,7 +4852,7 @@ capabilities:
   name: Authenticate remote gateway
   area: profiles-gateways
   claim: In the new native Rust DoofusDock UI, a user can authenticate remote gateway.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -4864,9 +4864,11 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  evidence:
+  - EV-0085
 - id: ui-connect-hermes-cloud-account
   name: Connect Hermes Cloud account
   area: profiles-gateways

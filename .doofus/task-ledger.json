@@ -1,5 +1,5 @@
 {
-  "revision": 93,
+  "revision": 94,
   "schema_version": 1,
   "tasks": [
     {
@@ -14472,7 +14472,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-21T23:45:42Z",
+              "last_updated_at": "2026-11-21T23:50:37Z",
               "lease_id": "f0fdf59a-2e2d-4773-97c6-26a5156d7688",
               "objective": "ui-reattach-to-in-flight-turn-without-duplicating-submit",
               "outputs": [],
@@ -14499,7 +14499,8 @@
                 "apps/hermes-native/src/layout.rs#legacy_remote_gateway_preference_migrates_to_selected_connection",
                 "apps/hermes-native/src/layout.rs#selected_gateway_connection_changes_persist_and_local_selection_keeps_remote_saved",
                 "apps/hermes-native/src/app.rs#session_actions_fail_closed_for_non_active_connection_owners",
-                "apps/hermes-native/src/app.rs#saved_remote_connection_without_credentials_does_not_fall_back_to_local"
+                "apps/hermes-native/src/app.rs#saved_remote_connection_without_credentials_does_not_fall_back_to_local",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0085.json#EV-0085"
               ]
             },
             {
@@ -16346,5 +16347,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-21T23:45:42Z"
+  "updated_at": "2026-11-21T23:50:37Z"
 }

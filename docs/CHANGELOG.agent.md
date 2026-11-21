@@ -4025,11 +4025,11 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 
 - **id:** hermes-remote-startup-fail-closed-20261121
 - **timestamp:** 2026-11-21T23:42:51Z
-- **what:** Saved remote Gateway startup now returns an actionable connection error if neither an endpoint-matched token nor OAuth session exists. It no longer starts the local Gateway while claiming the selected remote connection ID.
+- **what:** Saved remote Gateway startup now returns an actionable connection error if neither an endpoint-matched token nor OAuth session exists. It no longer starts the local Gateway while claiming the selected remote connection ID. Added EV-0085 and mapped PAR-0240 as partial in the capability and implementation status overlays.
 - **why:** A remote connection with missing credentials must fail visibly and preserve connection ownership; silently reaching a different Hermes instance can misroute future UI actions.
-- **components:** Hermes Native saved connection discovery, startup status, README, architecture, backlog, implementation plan.
+- **components:** Hermes Native saved connection discovery, startup status, README, architecture, backlog, implementation plan, UCM evidence and progress overlays.
 - **type:** Connection safety fix and regression coverage.
-- **validation:** PASS focused regression; full locked `agent-automation` package suite (517 library + 15 protocol + 3 launcher), all-target locked cargo check, rustfmt, `git diff --check`, task validator and both capability-package validators. YAML parsing was skipped because PyYAML is not installed.
+- **validation:** PASS focused regression; full locked `agent-automation` package suite (517 library + 15 protocol + 3 launcher), all-target locked cargo check, rustfmt, `git diff --check`, task validator and both capability-package validators. The root package validates 69 implementation receipts. YAML parsing was skipped because PyYAML is not installed.
 - **performance:** Startup avoids creating the wrong local Gateway actor; no benchmark performed.
 - **risks:** Live remote authentication and packaged Windows startup remain unverified. The saved-connection picker and complete multi-connection lifecycle are still open.
 - **follow_up:** Record partial UCM evidence, publish the validated commits to `main`, then continue owner-safe connection switching and in-flight reattach proof.
