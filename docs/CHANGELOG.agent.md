@@ -3869,3 +3869,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No performance change measured or expected; retry is bounded to one after one resume attempt.
 - **risks:** Runtime behavior, owner response variations and packaged Windows interaction remain unverified.
 - **follow_up:** Record code/evidence commit SHAs, validate capability packages and durable handoff, publish to `main`, then continue the next agent workflow gap.
+
+
+## hermes-par0049-main-publication-20261121
+
+- **id:** hermes-par0049-main-publication-20261121
+- **timestamp:** 2026-11-21T00:06:55Z
+- **what:** Published PAR-0049 stale-runtime Stop recovery in `4fdf594` and EV-0078, progress maps, docs and durable task receipt in `4c380a2`; fresh fetch confirmed local `main` equals `origin/main` at `4c380a2c0e74ad10f2b534ff817cf85beab9d60e`.
+- **why:** Keep the user's main branch current with verified progress on core agent workflows.
+- **components:** Hermes Native Stop action, Gateway stale session recovery, UCM evidence and progress/handoff records.
+- **type:** Direct main publication.
+- **validation:** Locked package suite passed (510 library + 15 protocol + 3 launcher); root and archival package validators, durable state validation, cargo check, rustfmt and diff checks passed. No live Gateway or packaged Windows validation is claimed.
+- **performance:** No performance changes measured.
+- **risks:** Live runtime behavior and source-paired acceptance remain open.
+- **follow_up:** Continue first-version agent workflow gaps and preserve all existing functional work.

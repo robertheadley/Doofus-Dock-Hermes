@@ -222,8 +222,26 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "ocs/EXECUTION_LOGS.md",
+      "path": "doofus/events.jsonl",
       "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
     },
     {
       "change_type": "untracked",
@@ -248,22 +266,16 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0078.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+    "command": "git fetch origin main; compare git rev-parse HEAD with git rev-parse origin/main",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0078.json#EV-0078"
+      "docs/CHANGELOG.agent.md#hermes-par0049-main-publication-20261121"
     ],
     "state": "tested",
-    "summary": "PAR-0049 implementation 4fdf594 is validated and EV-0078 now passes the root evidence schema; archival package and task state validate too.",
-    "verified_at": "2026-11-21T00:04:47Z"
+    "summary": "PAR-0049 is committed and published to main as 4c380a2; fresh fetch confirmed origin/main equality. The user work folder remains untouched and untracked.",
+    "verified_at": "2026-11-21T00:08:26Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -319,7 +331,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-21T01:04:47Z",
+    "lease_expires_at": "2026-11-21T01:08:26Z",
     "lease_id": "11fcbd60-0346-403e-91a8-1373fa435b31",
     "model": null,
     "ownership_state": "active",
@@ -750,6 +762,20 @@
       "note": "Pushed behavior commit f69925d and EV-0050 evidence commit 4343e41; fresh fetch confirmed local main equals origin/main at 4343e419f4cb7c55c1d69dc96e42b7afa03ceac3.",
       "observed_at": "2026-11-19T23:55:49Z",
       "operation_id": "hermes-par0044-push-20261119",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/CHANGELOG.agent.md#hermes-par0049-main-publication-20261121"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed implementation 4fdf594 and evidence/docs 4c380a2; fresh fetch confirms local main equals origin/main at 4c380a2c0e74ad10f2b534ff817cf85beab9d60e.",
+      "observed_at": "2026-11-21T00:07:42Z",
+      "operation_id": "hermes-par0049-publish-main-20261121",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -1308,9 +1334,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0049-evidence-checkpoint2-20261120",
+  "last_event_id": "hermes-par0049-postpublish-checkpoint-20261121",
   "last_operation": {
-    "request_id": "hermes-par0049-evidence-checkpoint2-20261120",
+    "request_id": "hermes-par0049-postpublish-checkpoint-20261121",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1329,7 +1355,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit EV-0078 and validation record, publish main, then freshly fetch and compare exact remote SHA. Preserve apps/hermes-native/work/ operator residue.",
+  "recommended_next_action": "Review the current P0/P1 chat, tool, model, skill, MCP and plugin evidence gaps; select the next bounded agent-workflow feature without removing or regressing functional work.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1786,11 +1812,23 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "8aea6884e670df848b71785114b0b410ace9d78eceb9cbbdc7d33d9e011061d9",
+    "change_fingerprint": "f844ebd6ca4136759237bd776318840e71155dc0d98f4d9a9bdcb7f63b9627b5",
     "changed_files": [
       {
-        "path": "ocs/EXECUTION_LOGS.md",
+        "path": "doofus/events.jsonl",
         "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
       },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -1807,20 +1845,16 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0078.json",
-        "status": "??"
       }
     ],
-    "head_commit": "4fdf594bb3f8cfedfba9239c6e41aef20889ddac",
+    "head_commit": "4c380a2c0e74ad10f2b534ff817cf85beab9d60e",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 531,
+  "revision": 533,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 531,
+  "state_revision": 533,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0049",
   "task_ledger_revision": 89,
@@ -3139,9 +3173,14 @@
       "command": "Root and archival UCM validators, durable task validator, git diff --check",
       "result": "PASS root: 565 target behaviors, 62 implementation receipts; PASS archival: 491 pending capabilities; PASS durable state revision 530 / ledger 89; diff check passes. PyYAML unavailable, YAML syntax parse skipped.",
       "timestamp": "2026-11-21T00:04:47Z"
+    },
+    {
+      "command": "fresh origin/main comparison; root and archival package validators; durable task validator",
+      "result": "PASS: local and origin/main are 4c380a2c0e74ad10f2b534ff817cf85beab9d60e; root validator 565 targets/62 receipts; archival validator 491 pending; durable task state valid; full tests 510+15+3 passed before publication.",
+      "timestamp": "2026-11-21T00:08:26Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T00:04:47Z"
+  "updated_at": "2026-11-21T00:08:26Z"
 }
