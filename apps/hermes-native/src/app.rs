@@ -2907,9 +2907,9 @@ fn native_oauth_login_supported(report: &RemoteProbeReport) -> bool {
 fn start_saved_gateway_connection(
     workspace: &Workspace,
     connect_gateway: bool,
-) -> Option<GatewayDiscovery> {
+) -> Result<Option<GatewayDiscovery>, String> {
     if !connect_gateway {
-        return None;
+        return Ok(None);
     }
     let selected_connection = workspace.selected_gateway_connection();
     let remote_url = match selected_connection {
@@ -2923,18 +2923,18 @@ fn start_saved_gateway_connection(
         if let Ok(Some(token)) =
             crate::native_token_store::load_session_token(workspace.data_directory(), url)
         {
-            return Some(
+            return Ok(Some(
                 GatewayDiscovery::start_remote(
                     url.to_owned(),
                     RemoteAuthMode::Token,
                     RemoteGatewayAuth::Token(token),
                 )
                 .with_connection_id(workspace.selected_gateway_connection_id().to_owned()),
-            );
+            ));
         }
         if let Ok(Some(session)) = crate::native_token_store::load(workspace.data_directory(), url)
         {
-            return Some(
+            return Ok(Some(
                 GatewayDiscovery::start_remote(
                     url.to_owned(),
                     RemoteAuthMode::OAuth,
@@ -2944,13 +2944,19 @@ fn start_saved_gateway_connection(
                     },
                 )
                 .with_connection_id(workspace.selected_gateway_connection_id().to_owned()),
-            );
+            ));
         }
+        return Err(format!(
+            "Saved Hermes connection {} has no stored token or OAuth session for {url}; refusing to connect to the local gateway instead.",
+            workspace
+                .selected_gateway_connection()
+                .map(|connection| connection.display_label.as_str())
+                .unwrap_or("remote gateway")
+        ));
     }
-    Some(
-        GatewayDiscovery::start()
-            .with_connection_id(workspace.selected_gateway_connection_id().to_owned()),
-    )
+    Ok(Some(GatewayDiscovery::start().with_connection_id(
+        workspace.selected_gateway_connection_id().to_owned(),
+    )))
 }
 
 fn current_key_platform() -> KeyPlatform {
@@ -3966,7 +3972,11 @@ fn render_message() -> &'static str {
         };
         let gateway_connection_id =
             connect_gateway.then(|| workspace.selected_gateway_connection_id().to_owned());
-        let gateway_discovery = start_saved_gateway_connection(&workspace, connect_gateway);
+        let (gateway_discovery, gateway_start_error) =
+            match start_saved_gateway_connection(&workspace, connect_gateway) {
+                Ok(discovery) => (discovery, None),
+                Err(error) => (None, Some(error)),
+            };
         let (prepared_image_drafts, prepared_image_draft_store_error) =
             match crate::prepared_image_drafts::load(workspace.data_directory()) {
                 Ok(drafts) => (drafts, None),
@@ -3985,16 +3995,20 @@ fn render_message() -> &'static str {
             narrow_viewport: false,
             narrow_pane_overlay: None,
             load_error,
-            status: prepared_image_draft_store_error.as_ref().map_or_else(
-                || {
+            status: gateway_start_error
+                .clone()
+                .or_else(|| {
+                    prepared_image_draft_store_error
+                        .as_ref()
+                        .map(|error| format!("Prepared image recovery unavailable: {error}"))
+                })
+                .unwrap_or_else(|| {
                     if connect_gateway {
                         "Backend offline".to_owned()
                     } else {
                         "Automation · gateway isolated".to_owned()
                     }
-                },
-                |error| format!("Prepared image recovery unavailable: {error}"),
-            ),
+                }),
             next_native_window_id: 1,
             native_window_id: None,
             allow_native_window_launch: false,
@@ -42904,6 +42918,27 @@ mod tests {
             HermesNativeApp::new_for_automation(profile.clone()),
             profile,
         )
+    }
+
+    #[test]
+    fn saved_remote_connection_without_credentials_does_not_fall_back_to_local() {
+        let (mut app, profile_dir) = isolated_app();
+        app.workspace
+            .save_remote_gateway_url("https://hermes.example.test")
+            .expect("save remote connection");
+
+        let error = match start_saved_gateway_connection(&app.workspace, true) {
+            Err(error) => error,
+            Ok(_) => panic!("missing remote credentials must fail closed"),
+        };
+
+        assert!(error.contains("no stored token or OAuth session"));
+        assert!(error.contains("refusing to connect to the local gateway instead"));
+        assert_eq!(
+            app.workspace.selected_gateway_connection().unwrap().kind,
+            crate::layout::GatewayConnectionKind::Remote
+        );
+        let _ = std::fs::remove_dir_all(profile_dir);
     }
 
     #[test]

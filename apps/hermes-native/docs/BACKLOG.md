@@ -306,6 +306,9 @@ PAR-0510 owner enforcement follow-up (2026-11-19T15:23Z):
 
 PAR-0510 connection-owned resume progress (2026-11-19T16:41:18Z):
 - [x] Scope session pane IDs, persisted metadata, close/restore and view cache identity by stable Gateway connection plus profile/session.
+- [x] Fail closed when the selected saved remote Gateway has no endpoint-matched token or OAuth session; do not start the local Gateway under a remote owner ID.
+- [ ] Add the saved-connection picker and lifecycle management for multiple GatewayDiscovery actors with draft preservation, pending-operation handling, and stale-result fencing.
+- [ ] Prove reattach against a live Hermes gateway during an in-flight turn, actual offline/reconnect behavior, and source-paired Windows behavior.
 - [x] Attribute `SessionResumed` to its discovery connection and fence resume results and peer transcript refresh by that owner.
 - [x] Add same-profile/same-session cross-connection pane isolation and persistence regression coverage.
 - [ ] Add the saved-connection picker and concurrent discovery actor lifecycle/generation fencing.

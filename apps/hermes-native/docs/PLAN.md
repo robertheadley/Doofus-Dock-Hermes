@@ -1824,3 +1824,10 @@ Validation: PASS rendered headless keyboard test for both arrow keys, wraparound
 The implementation progress generator now retains each requirement's existing `reviewed_on` date when its state, evidence level, evidence references, and known gaps are unchanged. A changed evidence record receives the current review date; newly unknown rows remain blank. This prevents a routine regeneration from implying that every mapped requirement was re-reviewed.
 
 Validation: PASS both progress generators; repeated generation produces byte-identical broad and scoped CSVs. Existing review counts and all pending live/source-pair states are retained.
+
+
+### Revision 295 — Fail closed for missing saved remote credentials (2026-11-21)
+
+Startup now reports an actionable error when the selected saved remote Gateway has no endpoint-matched token or OAuth session, instead of starting the local Gateway while retaining the remote connection identity. The saved connection selection and any other stored descriptors remain unchanged. This is a connection-safety prerequisite; a connection picker, full operation/result fencing, live Gateway reattach, and packaged Windows acceptance remain open.
+
+Validation: PASS focused locked `agent-automation` test `saved_remote_connection_without_credentials_does_not_fall_back_to_local`. The full package suite and remote live-runtime acceptance remain to be run.

@@ -2,7 +2,9 @@
 
 ## Current completion boundary
 
-The active user goal is complete, verified support for chat, tool, skill, MCP integration, and plugin functionality from pinned snapshot `8783054ef6cbafd86f10892241436862c1171a66`, measured against the 176-row chat/tool scope. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory, not the current acceptance denominator. Hermes owns agent/tool execution; the native app owns chat UI and request/state presentation; DoofusDock provides the UI framework. Doofus Hermes is sequenced after scoped parity.
+The active user goal is a first usable native Hermes agent-workflow UI against pinned snapshot `8783054ef6cbafd86f10892241436862c1171a66`, covering chat, tools, skills, plugins/MCP and required connection/context/attachment support. This goal is still in progress; its completion is not established. Pixel parity and unrelated Desktop administration are deferred. The 499-row matrix is the broad source inventory; scoped capability evidence and live runtime verification remain incomplete. Hermes owns agent/tool execution; the native app owns chat UI and request/state presentation; DoofusDock provides the UI framework. Doofus Hermes backporting follows completion of the new UI.
+
+Saved remote Gateway startup loads only a credential matching the selected remote endpoint. If neither a token nor OAuth session is available, startup fails closed and shows the credential requirement; it must never attach to the local Gateway while retaining the remote connection identity. A saved-connection picker and complete per-connection lifecycle/result fencing remain open.
 
 ## Messaging route boundary
 
