@@ -1484,16 +1484,18 @@
       "state": "succeeded"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0067-main-publication-20261121"
+      ],
       "kind": "git_commit",
-      "note": "Commit the append-only main publication record and final durable checkpoint. Keep the untracked user-owned apps/hermes-native/work/ folder untouched.",
-      "observed_at": "2026-11-21T23:26:59Z",
+      "note": "Committed publication log and final task checkpoint at 4229024c8fd87786264f8ba714b1f08d592b5132; user-owned work folder excluded.",
+      "observed_at": "2026-11-21T23:27:30Z",
       "operation_id": "par0067-publication-state-commit-20261121",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -1621,9 +1623,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "c5c7c20b-8545-4a75-9876-03d79b30697d",
+  "last_event_id": "9c491de0-2d97-4adf-91b3-2be81ba7c445",
   "last_operation": {
-    "request_id": "c5c7c20b-8545-4a75-9876-03d79b30697d",
+    "request_id": "9c491de0-2d97-4adf-91b3-2be81ba7c445",
     "state": "committed",
     "type": "external_operation.state_changed"
   },
@@ -2137,10 +2139,10 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 584,
+  "revision": 585,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 584,
+  "state_revision": 585,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0039",
   "task_ledger_revision": 92,
@@ -3528,5 +3530,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T23:26:59Z"
+  "updated_at": "2026-11-21T23:27:30Z"
 }
