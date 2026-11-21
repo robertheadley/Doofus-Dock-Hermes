@@ -3911,3 +3911,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime changes.
 - **risks:** Evidence is headless; Windows packaged and source-paired acceptance remain open.
 - **follow_up:** Publish evidence records to main and continue remaining agent workflow gaps.
+
+
+## hermes-par0039-main-publication-20261121
+
+- **id:** hermes-par0039-main-publication-20261121
+- **timestamp:** 2026-11-21T01:02:37Z
+- **what:** Published native Markdown link safety in `c20baa5` and EV-0079..82 plus maps/docs/task receipts in `bb23014`; fresh fetch confirmed local `main` equals `origin/main` at `bb23014e31301736c3dc74eb58f4a27c92b13d3f`.
+- **why:** Keep the user's main branch current with progress on chat-agent functionality.
+- **components:** Native chat Markdown renderer, safe link dispatch, evidence overlay and progress ledger.
+- **type:** Direct main publication.
+- **validation:** 513 library + 15 protocol + 3 launcher tests; cargo check, formatting, diff checks, root and archival package validators and durable task validation passed. Live Gateway and packaged Windows behavior remain unverified.
+- **performance:** No performance change measured. Markdown parsing adds one cached-regex pass over link tokens before the existing CommonMark render.
+- **risks:** Filesystem/media link previews, focused syntax coloring and source-paired/packaged acceptance remain open.
+- **follow_up:** Continue core agent-workflow gaps and preserve all existing functional work.
