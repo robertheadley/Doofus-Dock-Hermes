@@ -257,26 +257,8 @@
     },
     {
       "change_type": "modified",
-      "owner": "codex",
+      "owner": "unattributed_preexisting",
       "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": ".doofus/task-ledger.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
@@ -302,22 +284,17 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0083.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "git status; git diff --check; root and archival UCM validators; doofus_task validate",
+    "command": "git fetch origin main; compare HEAD and origin/main; doofus_task.py validate; doofus_task.py progress --json",
     "evidence": [
+      "docs/EXECUTION_LOGS.md#hermes-par0039-main-publication-20261121",
       "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0083.json#uid"
     ],
     "state": "tested",
-    "summary": "EV-0083 validated and bound to implementation commit 80d064ab; root package has 67 receipts and archival package remains 491 pending. All local Markdown preview and full package tests pass.",
-    "verified_at": "2026-11-21T22:56:11Z"
+    "summary": "Local Markdown project-file preview slice is tested and published to main. EV-0083 is bound to implementation commit 80d064ab; both package validators pass, all 515+15+3 locked tests pass, and final fetched main SHA is 30d5fb95cea4e28a79a70e90c12ba1552932e9cc. PAR-0039 remains partial; user-owned work folder untouched.",
+    "verified_at": "2026-11-21T22:59:11Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -374,7 +351,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-21T23:56:11Z",
+    "lease_expires_at": "2026-11-21T23:59:11Z",
     "lease_id": "11fcbd60-0346-403e-91a8-1373fa435b31",
     "model": null,
     "ownership_state": "active",
@@ -1438,16 +1415,18 @@
       "state": "succeeded"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0039-main-publication-20261121"
+      ],
       "kind": "git_push_main",
-      "note": "Prepare the publication log, changelog and durable status receipt commit for main; push only after checking the fetched remote and staged file list.",
-      "observed_at": "2026-11-21T22:58:14Z",
+      "note": "Publication-log commit 30d5fb9 pushed successfully; fresh fetch confirms local main and origin/main both equal 30d5fb95cea4e28a79a70e90c12ba1552932e9cc.",
+      "observed_at": "2026-11-21T22:59:10Z",
       "operation_id": "par0039-publication-log-main-20261121",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -1507,11 +1486,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "codex-par0039-publication-log-commit-start-20261121",
+  "last_event_id": "codex-par0039-final-checkpoint-20261121",
   "last_operation": {
-    "request_id": "codex-par0039-publication-log-commit-start-20261121",
+    "request_id": "codex-par0039-final-checkpoint-20261121",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1528,7 +1507,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Stage and commit EV-0083 plus its validation/journal/task receipts, push both PAR-0039 commits to origin/main, then fetch and confirm exact SHA equality. Do not touch apps/hermes-native/work.",
+  "recommended_next_action": "Continue the active agent-workflow goal by selecting the next dependency-ready P0/P1 gap among remote/session-scoped previews, Markdown media/directive integration, attachment recovery, and plugin lifecycle. Preserve all functional work and keep apps/hermes-native/work untouched.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1984,7 +1963,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "2de0cde9429bd0a86331affb7a6f1f9aefcab64ad7c6c6de085010b823622b97",
+    "change_fingerprint": "1fb026dd83c2277564198282f2dcab94058c12996f3afd7f6f686413a0042d27",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -1992,18 +1971,6 @@
       },
       {
         "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2021,20 +1988,16 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0083.json",
-        "status": "??"
       }
     ],
-    "head_commit": "80d064abfc10b33b4a6a16133b368d1db07b48c2",
+    "head_commit": "30d5fb95cea4e28a79a70e90c12ba1552932e9cc",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 562,
+  "revision": 564,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 562,
+  "state_revision": 564,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0039",
   "task_ledger_revision": 92,
@@ -3403,9 +3366,14 @@
       "command": "python apps/hermes-native/docs/reference/Hermes_Upstream_UI_DoofusDock_Rust_Parity_2026-11-13/tools/validate_package.py",
       "result": "PASS root validator 565 rows/67 receipts; archival validator 491 pending; task state valid; diff check clean; optional YAML parser unavailable.",
       "timestamp": "2026-11-21T22:56:11Z"
+    },
+    {
+      "command": "git fetch origin main; compare HEAD and origin/main",
+      "result": "PASS local main equals origin/main at 30d5fb95cea4e28a79a70e90c12ba1552932e9cc; durable state will be verified after this checkpoint.",
+      "timestamp": "2026-11-21T22:59:11Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T22:58:14Z"
+  "updated_at": "2026-11-21T22:59:11Z"
 }
