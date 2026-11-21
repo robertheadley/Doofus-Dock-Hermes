@@ -262,6 +262,18 @@
       "status": " M"
     },
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -287,14 +299,15 @@
     }
   ],
   "checkpoint": {
-    "command": "git fetch origin main; compare HEAD and origin/main; doofus_task validate; doofus_task progress --json",
+    "command": "git fetch origin main; compare HEAD with origin/main; doofus_task validate; doofus_task progress --json",
     "evidence": [
-      "docs/EXECUTION_LOGS.md#hermes-par0039-main-publication-20261121",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0083.json#uid"
+      "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending",
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0084.json#uid",
+      "docs/EXECUTION_LOGS.md#hermes-par0067-main-publication-20261121"
     ],
     "state": "tested",
-    "summary": "Local Markdown project-file preview slice, EV-0083 and push-state sync are published. Current main is 2aa61f933c1841d103c47c26e240d5db2b88453e on local and origin; package/task validators and 515+15+3 tests pass. PAR-0039 remains partial; user work folder untouched.",
-    "verified_at": "2026-11-21T23:01:23Z"
+    "summary": "Slash suggestion keyboard navigation and commit-bound EV-0084 are published. ArrowUp/Down, wraparound, Enter/Tab insertion and no-submit behavior pass headless coverage; PAR-0067 remains partial. Broad status 92/499 reviewed; chat/tool 59/176 mapped; no runtime or source-paired acceptance claimed. User work folder preserved.",
+    "verified_at": "2026-11-21T23:26:34Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -351,7 +364,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T00:01:23Z",
+    "lease_expires_at": "2026-11-22T00:26:34Z",
     "lease_id": "11fcbd60-0346-403e-91a8-1373fa435b31",
     "model": null,
     "ownership_state": "active",
@@ -1443,16 +1456,18 @@
       "state": "succeeded"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0084.json#uid"
+      ],
       "kind": "git_commit",
-      "note": "Commit EV-0084 and its capability crosswalk and validation log; evidence is bound to implementation commit 979c970493faf045a1708f36889402426af1df20.",
-      "observed_at": "2026-11-21T23:25:25Z",
+      "note": "Committed EV-0084 bound to implementation commit 979c970493faf045a1708f36889402426af1df20 plus crosswalk and validation log at 3ef5bb21222bee9ca37339a3ad57d8588c499648.",
+      "observed_at": "2026-11-21T23:26:00Z",
       "operation_id": "par0067-ev0084-evidence-commit-20261121",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -1462,6 +1477,32 @@
       "note": "PASS final focused rendered test; format, regenerated broad/scoped progress overlays, task-state validator, root UCM validator and diff check. PAR-0067 remains partial; 59/176 mapped evidence remains unchanged.",
       "observed_at": "2026-11-21T23:21:25Z",
       "operation_id": "par0067-final-render-test-and-maps-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_commit",
+      "note": "Commit the append-only main publication record and final durable checkpoint. Keep the untracked user-owned apps/hermes-native/work/ folder untouched.",
+      "observed_at": "2026-11-21T23:26:59Z",
+      "operation_id": "par0067-publication-state-commit-20261121",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "running"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0067-main-publication-20261121"
+      ],
+      "kind": "git_push_main",
+      "note": "Published implementation 979c970 and EV-0084 commit 3ef5bb2; fresh fetch verified local main and origin/main equal 3ef5bb21222bee9ca37339a3ad57d8588c499648.",
+      "observed_at": "2026-11-21T23:26:49Z",
+      "operation_id": "par0067-publish-main-20261121",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -1580,9 +1621,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "8fcd1e14-2e7a-4f8c-ae57-fa051168e50a",
+  "last_event_id": "c5c7c20b-8545-4a75-9876-03d79b30697d",
   "last_operation": {
-    "request_id": "8fcd1e14-2e7a-4f8c-ae57-fa051168e50a",
+    "request_id": "c5c7c20b-8545-4a75-9876-03d79b30697d",
     "state": "committed",
     "type": "external_operation.state_changed"
   },
@@ -1601,7 +1642,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue the active agent-workflow goal with the next dependency-ready P0/P1 gap. Review remote/session-scoped previews, Markdown media/directive integration, attachment recovery and renderer-plugin lifecycle; preserve all functional work and apps/hermes-native/work.",
+  "recommended_next_action": "Continue the next dependency-ready P0/P1 gap from remote/session-scoped previews, Markdown media/directives, attachment recovery or renderer-plugin lifecycle; preserve all functional work and apps/hermes-native/work.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2057,7 +2098,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "8ad6a095d3db90c498f80f40f6007b9c33608fd35ac4d15b291b140bc1278a2b",
+    "change_fingerprint": "1289ec05f637a1cc25c9d1041cc7219314ebfe795f5ad1b7254f3b46e54b5a64",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -2065,6 +2106,14 @@
       },
       {
         "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2084,14 +2133,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "2aa61f933c1841d103c47c26e240d5db2b88453e",
+    "head_commit": "3ef5bb21222bee9ca37339a3ad57d8588c499648",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 579,
+  "revision": 584,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 579,
+  "state_revision": 584,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0039",
   "task_ledger_revision": 92,
@@ -3470,9 +3519,14 @@
       "command": "git fetch origin main; compare HEAD and origin/main",
       "result": "PASS local main equals origin/main at 2aa61f933c1841d103c47c26e240d5db2b88453e.",
       "timestamp": "2026-11-21T23:01:23Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --locked --features agent-automation",
+      "result": "PASS 516 library + 15 protocol + 3 launcher tests; fresh local/origin main SHA equality at 3ef5bb21222bee9ca37339a3ad57d8588c499648.",
+      "timestamp": "2026-11-21T23:26:34Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T23:25:25Z"
+  "updated_at": "2026-11-21T23:26:59Z"
 }

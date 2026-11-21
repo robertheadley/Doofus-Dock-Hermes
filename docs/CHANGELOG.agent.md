@@ -4007,3 +4007,16 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime change.
 - **risks:** Evidence is headless only; it does not claim live Gateway or physical Windows keyboard acceptance.
 - **follow_up:** Publish the implementation and evidence commits to main, then continue the remaining agent-workflow gaps.
+
+## hermes-par0067-main-publication-20261121
+
+- **id:** hermes-par0067-main-publication-20261121
+- **timestamp:** 2026-11-21T23:25:59Z
+- **what:** Published implementation `979c970` and evidence `3ef5bb2` to `main`.
+- **why:** Keep the verified agent-workflow improvement current in the user's canonical repository.
+- **components:** Native composer, progress maps, pinned capability evidence, durable checkpoint.
+- **type:** Direct main publication.
+- **validation:** Fresh fetch confirmed local and origin main both equal `3ef5bb21222bee9ca37339a3ad57d8588c499648`; prior test, package and task validators passed.
+- **performance:** No runtime benchmark needed; this changes only composer key interaction and progress bookkeeping.
+- **risks:** PAR-0067 remains partial; live Gateway and physical Windows input are unverified.
+- **follow_up:** Continue with another dependency-ready P0/P1 gap while preserving existing functional behavior.
