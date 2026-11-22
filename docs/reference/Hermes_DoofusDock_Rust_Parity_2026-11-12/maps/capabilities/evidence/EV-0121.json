@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0121",
+  "capability_id": "ui-advertise-client-capabilities-explicitly",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "gateway_attach_advertises_server_requests_and_preserves_locality_boundary",
+  "locator": "../../../../apps/hermes-native/src/gateway.rs::client_capabilities_advertise_server_requests_without_claiming_remote_locality",
+  "date": "2026-11-22",
+  "commit": "d34c761dbd95c091bc79de25b14047ebc35f5f3c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Gateway tests verify that both local and remote attach payloads set server_requests=true, while desktop_local is true only for the local attachment. The same-socket fixture routes a typed vault unlock request through the actor and accepts its value response. The pinned liveness contract specifies that clients which do not advertise server requests are rejected before the UI can handle them. Full locked suite passes 613 library + 15 protocol + 3 launcher tests; all-target check, rustfmt, diff and 19 task-continuity tests pass.",
+  "notes": "Partial headless evidence only. Authenticated local/remote Gateway handshake behavior, packaged Windows attachment and formal pinned-source acceptance remain open."
+}

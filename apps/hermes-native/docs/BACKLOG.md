@@ -447,3 +447,7 @@ New Chat loads the selected profile's model catalog and allows manual model/prov
 ### PAR-0516 — Answer Gateway sudo requests securely — 2026-11-22
 
 Headless app and same-socket Gateway tests now cover the masked ephemeral password flow, exact request/profile response, empty-value refusal, strict connection/profile cancellation ownership, and unknown-outcome no-resend behavior. The actor routes `sudo` instead of returning method-not-found. EV-0119 is partial: authenticated live Gateway, packaged Windows, formal pinned-source acceptance and transient secret allocation during JSON-RPC serialization remain open.
+
+### PAR-0517 / PAR-0520 — Vault unlock prompts and server-request advertisement — 2026-11-22
+
+The native UI now handles `vault.unlock_prompt` with a masked, session/profile/connection-owned master-password card. Unlock responds to the exact request with `{value: password}`; “Keep locked” sends an empty value. Cancellation is exact-owner scoped, route changes and disconnects clear app-owned input and egui undo history, unknown write outcomes prevent retries, and a same-ID replay can only restore a blank card. Local and remote Gateway attachments now advertise `server_requests: true` without granting remote connections `desktop_local`; unhandled methods still receive -32601. EV-0120 and EV-0121 remain partial pending authenticated live Gateway and packaged Windows verification; serialized transport copies are transient ordinary JSON values.

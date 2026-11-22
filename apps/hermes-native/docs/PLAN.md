@@ -1,17 +1,17 @@
 # Approved implementation plan
 
 - **Plan ID:** `HUR-001`
-- **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 339 (implementation in progress).
-- **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
+- **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
+- **Working revision:** 340 (implementation in progress).
+- **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
-- **Scope:** complete, verified chat and tool functionality from pinned Hermes source `8783054ef6cbafd86f10892241436862c1171a66`, implemented in native Rust/egui with DoofusDock; Hermes Gateway/runtime/tool execution remains authoritative. Feature parity is required; pixel parity is not.
+- **Scope:** first usable native Rust/egui UI for agent workflows in pinned Hermes source `8783054ef6cbafd86f10892241436862c1171a66`: establish model/provider connections, chat and prompt lifecycle, tool execution/progress/results and approvals, skills, plugins/MCP, and supporting context/attachments. Hermes Gateway/runtime/tool execution remains authoritative. Functional support is the target; pixel accuracy and unrelated Desktop administration are deferred.
 - **Excluded:** Hermes-Doofus plugin UI/backend, Doofus Vault/Control and the separate browser Dashboard.
 
 ## Completion and runtime boundary
 
-Completion means verified support for every in-scope chat and tool feature in the pinned Hermes snapshot, measured by the 175-row scope in `docs/status/CHAT_TOOL_SCOPE.csv`. Pixel accuracy is not a gate. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After scoped parity, Doofus Hermes will be backported to this UI.
+Completion means verified support for every feature directly needed to use Hermes as an agent, using the current 176-row `docs/status/CHAT_TOOL_SCOPE.csv` as the working feature ledger. The broader 499-row Desktop inventory remains a reference and is not the completion denominator. Pixel accuracy and unrelated Desktop administration are deferred. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After this first version is complete, Doofus Hermes will be backported to this UI.
 
 ## Downloaded parity source snapshot
 
@@ -53,14 +53,15 @@ The selected and downloaded target is commit `8783054ef6cbafd86f10892241436862c1
 
 **Gate:** protocol fixture tests cover correct and adversarial/negative receipts, replay, unsupported capabilities, disconnect, restored delivery and profile scope; a live isolated gateway session passes before UI capability claims are updated.
 
-### 3. Remaining stock Desktop workflows
+### 3. In-scope agent workflows
 
-- Implement, in dependency order: files/previews/artifacts; terminal and PTY lifetime; Git/worktrees/review; tasks/subagents; profiles/models/settings; skills/MCP/plugins; messaging/bots/scheduling/webhooks; memory/analytics/voice/HUD; command palette, notifications, diagnostics, accessibility, themes, native platform and security release behavior.
+- Implement the agent-facing features in dependency order: provider/model connection; chat and prompt lifecycle; tool execution/progress/results and approvals; skills; plugins/MCP; supporting context and attachments.
+- Use other Desktop workflows only when they are necessary for the in-scope agent features. General administration, visual polish, and unrelated route coverage remain deferred.
 - Keep same panel identity and active resource through hide, layout changes, resize, detach and window changes. Mutating actions require explicit confirmation/failure semantics from upstream.
 - Exclude arbitrary third-party React compatibility and the deferred plugin/dashboard rows unless later scope explicitly changes.
 
 
-**Gate:** every in-scope row (499 Hermes Desktop requirements) is traced to the fixed source and implementation; functional and failure-path receipts exist for the applicable controls.
+**Gate:** each agent-workflow feature in the 176-row ledger is traced to the fixed source and has functional and failure-path evidence at the appropriate UI, Gateway and runtime boundaries.
 
 ### 4. Agent-operated UI and background evidence
 
@@ -73,13 +74,13 @@ The selected and downloaded target is commit `8783054ef6cbafd86f10892241436862c1
 
 **Gate:** an agent completes the same visible workflows as a person using semantic controls, records screenshots and receipts from a non-foreground run, and can inspect extra diagnostic state without changing the meaning or safety of the user-facing workflow.
 
-### 5. Full parity acceptance
+### 5. First-version agent-workflow acceptance
 
-- Run the refreshed acceptance matrix against pinned upstream and Rust builds with matched fixture, theme, fonts, viewport and scale. Capture actual source and target windows and record exclusions/masks, route, state and backend receipt.
-- Cover 100%, 125% and 150% DPI where the Windows host permits; include focus, hover, IME, keyboard, screen reader, narrow window, error/offline/recovery and multiple monitor/window lifecycle.
-- Use the supplied image-diff script as a metric aid, never as the only acceptance decision.
+- Verify the in-scope workflows against the pinned source contracts and an isolated authenticated Gateway profile; capture request/response receipts and failure/recovery behavior.
+- Cover provider setup, chat lifecycle, tools and approvals, skills, plugins/MCP, context and attachments through native UI behavior and the agent-control interface.
+- Confirm the installed Hermes app and older prototype remain intact; visual pairing is not an acceptance gate.
 
-**Gate:** all applicable in-scope requirements are verified with visual and functional evidence, or an explicit unresolved-difference review is accepted. No compilation-only, map-only or screenshot-only parity claim.
+**Gate:** all first-version agent-workflow features have functional evidence, including applicable live Gateway and packaged Windows checks. Compilation-only and map-only evidence do not prove user-visible behavior.
 
 ### 6. Alternate profiles and release
 
@@ -2108,3 +2109,9 @@ Validation: PASS both focused clarify regressions; full locked suite (601 librar
 The idle Gateway actor now forwards `sudo` server requests to the active session UI instead of declining them as unsupported. The app renders a masked password field, displays the requested command, binds the prompt to its originating connection/profile/request, sends `{value: password}` or `{value: ""}` for refusal, and blocks retries after an unknown write outcome. egui undo snapshots are cleared each frame; the UI does not persist or log the secret, though the response value is transiently present in memory during JSON-RPC serialization and delivery. Cancellation requires the exact owner tuple, including when IDs are reused.
 
 Validation: PASS focused sudo app/actor regressions; full locked suite (606 library + 15 protocol + 3 launcher); all-target cargo check, rustfmt and diff checks. EV-0119 binds partial headless evidence to implementation commit `d0d6942b033ebea0fc301d91522bdecddf5ae42d`. Authenticated live Gateway behavior, packaged Windows interaction and formal pinned-source acceptance remain open.
+
+### Revision 340 — Secure vault unlock and server-request capability
+
+The native Gateway now advertises `server_requests: true` for local and remote attachments while preserving the `desktop_local` boundary. The idle actor forwards pinned `vault.unlock_prompt` requests to a profile-, connection-, and session-owned card. Its master-password field is masked, uses `Zeroizing<String>`, clears egui undo state, and answers the original request with `{value: password}` or `{value: ""}` to keep the vault locked. Cancellation and receipts require the exact owner; disconnect clears the local value, uncertain sends prohibit retry, and a fresh same-ID open-request replay restores a blank prompt. Unsupported request methods continue to receive method-not-found. EV-0120 and EV-0121 record partial headless evidence.
+
+Validation: PASS full locked headless suite (613 library + 15 protocol + 3 launcher), all-target cargo check, rustfmt/diff, and 19 task-continuity tests. Live authenticated Gateway behavior, packaged Windows interaction, and formal pinned-source acceptance remain open; a normal JSON-RPC value is transiently allocated while the secret is sent.

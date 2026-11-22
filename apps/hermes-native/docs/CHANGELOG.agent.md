@@ -3340,3 +3340,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime benchmark was run.
 - **risks:** Secret is transiently allocated while JSON-RPC response is serialized and sent; live Gateway, packaged Windows and formal pinned-source acceptance remain open.
 - **follow_up:** Continue the next dependency-ready agent-workflow capability; preserve this feature and its partial evidence.
+
+
+- **id:** hermes-native-par0517-vault-unlock-20261122
+- **timestamp:** 2026-11-22T22:17:00Z
+- **what:** Added masked native vault unlock requests and explicit server-request capability advertisement for local and remote Gateway attachments.
+- **why:** Hermes password-manager tool flows must be answerable through the correct profile/session/request without persisting or leaking the master password.
+- **components:** PAR-0517, PAR-0520, Gateway actor, vault unlock prompt, EV-0120, EV-0121, generated progress.
+- **type:** feature_and_test
+- **validation:** PASS 613 library + 15 protocol + 3 launcher tests; all-target locked cargo check; rustfmt/diff; 19 task-continuity tests; progress and package validators.
+- **performance:** No runtime benchmark was run.
+- **risks:** A normal JSON string copy exists transiently during response serialization/send; live authenticated Gateway, packaged Windows and formal pinned-source acceptance remain open.
+- **follow_up:** Verify authenticated local/remote Gateway behavior and continue the next dependency-ready agent-workflow gap.

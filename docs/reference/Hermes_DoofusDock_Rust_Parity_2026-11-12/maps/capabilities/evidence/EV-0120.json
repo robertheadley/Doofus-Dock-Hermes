@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0120",
+  "capability_id": "ui-answer-gateway-vault-unlock-request-securely",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "vault_unlock_prompt_masks_ephemeral_password_and_answers_exact_request",
+  "locator": "../../../../apps/hermes-native/src/app.rs::vault_unlock_prompt_is_masked_ephemeral_and_uses_its_gateway_request",
+  "date": "2026-11-22",
+  "commit": "d34c761dbd95c091bc79de25b14047ebc35f5f3c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui app/Gateway fixtures. The actual masked field accepts input, egui undo cannot restore the typed master password, and route changes clear its app-owned value. Requests require a known session/profile/connection owner; missing and mismatched owners are refused. The exact originating request receives {\"value\":password}; Keep locked sends an empty value. Cancellation is exact-owner scoped, disconnect clears values and marks pending sends unknown, unknown results cannot be retried, and a same-ID replay restores only a blank prompt. The same-socket Gateway fixture passes. Full locked suite passes 613 library + 15 protocol + 3 launcher tests; all-target check, rustfmt, diff and 19 task-continuity tests pass.",
+  "notes": "Partial headless evidence only. The secret is not written to UI preferences, layout, status or automation state; a normal JSON value is transiently allocated during response serialization and send. Authenticated live Gateway behavior, packaged Windows interaction and formal pinned-source acceptance remain open."
+}

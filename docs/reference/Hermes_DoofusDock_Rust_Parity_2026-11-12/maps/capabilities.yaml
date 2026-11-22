@@ -10136,7 +10136,7 @@ capabilities:
   name: Answer gateway vault unlock request securely
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can answer gateway vault unlock request securely.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10149,8 +10149,14 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0120
+  verification:
+    scenarios:
+    - id: vault_unlock_prompt_masks_ephemeral_password_and_answers_exact_request
+      description: Route the masked master-password request to the unique owning session; answer or keep locked through its original request; clear local copies and reject stale/ambiguous ownership or unsafe retries.
 - id: ui-answer-gateway-mcp-setup-request-when-supported
   name: Answer gateway MCP setup request when supported
   area: protocol-reliability
@@ -10193,7 +10199,7 @@ capabilities:
   name: Advertise client capabilities explicitly
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can advertise client capabilities explicitly.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10206,8 +10212,14 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0121
+  verification:
+    scenarios:
+    - id: gateway_attach_advertises_server_requests_and_preserves_locality_boundary
+      description: Advertise server requests on local and remote Gateway attachments while asserting that only the ticketed local attachment claims desktop-local behavior.
 - id: ui-handle-request-cancellation
   name: Handle request cancellation
   area: protocol-reliability
