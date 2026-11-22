@@ -4103,3 +4103,14 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime change.
 - **risks:** Receipt validator initially rejected a short SHA; EV-0089 now uses the full SHA and both package validators pass. PyYAML remains unavailable, so the root validator skipped direct YAML parsing.
 - **follow_up:** Publish the implementation and evidence commits to main, then continue the attachment-semantics and live-Gateway audit.
+
+- **id:** hermes-par0051-attachment-source-audit-20261122
+- **timestamp:** 2026-11-22T01:29:49Z
+- **what:** Audited pinned edit/submit code and clarified that prior attachment parts are dropped by the source when an edit replaces a message. Updated the plan and progress gaps: native currently matches replacement semantics; newly dropped files in the native edit dialog remain unsupported.
+- **why:** Resolve the historical-attachment question from the fixed source without adding behavior the source does not have, while keeping the real edit-upload gap visible.
+- **components:** Pinned source locators, PAR-0051 plan/backlog/completion docs, architecture, README and the generated progress source map.
+- **type:** Read-only source audit and status correction.
+- **validation:** PASS exact-source inspection at `rewind.ts#planEdit`, `rewind.ts#runRewindSubmit`, `user-edit-composer.tsx#handleDrop`, and `methods_prompt.py#_truncate_history_for_submit`. No product code changed and no tests were run. Process inspection found no running Hermes Gateway, so live validation could not run.
+- **performance:** No runtime change.
+- **risks:** New file upload from the edit dialog, live Gateway behavior, packaged Windows behavior and formal source acceptance remain open.
+- **follow_up:** Continue with edit-dialog file upload or another dependency-ready agent-workflow gap; preserve the existing composer attachment path.
