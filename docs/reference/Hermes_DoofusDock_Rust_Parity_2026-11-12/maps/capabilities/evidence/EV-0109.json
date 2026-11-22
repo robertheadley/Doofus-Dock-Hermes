@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0109",
+  "capability_id": "ui-scope-requests-by-gateway-and-profile",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "duplicate-request-ids-across-gateways",
+  "locator": "apps/hermes-native/src/app.rs::approval_prompts_are_scoped_by_gateway_and_profile",
+  "date": "2026-11-22",
+  "commit": "85e7e08d9e1771d391b72152f89196e4eb9381f3",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless regressions prove approval/clarification prompt and result scoping by Gateway connection and profile, duplicate prompt/request identifier coexistence, stale owner rejection, and Gateway event owner stamping. Locked all-target Rust suite, all-target check, formatter, task continuity tests, and source package validators pass.",
+  "notes": "Partial evidence only. Session owner fencing covers approval and clarification workflows; other request mutations, authenticated live Gateway behavior, packaged Windows behavior, and formal pinned-source acceptance remain open."
+}

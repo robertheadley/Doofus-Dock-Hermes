@@ -10229,7 +10229,7 @@ capabilities:
   name: Scope requests by gateway and profile
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can scope requests by gateway and profile.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10241,9 +10241,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0109
+  verification:
+    scenarios:
+    - id: duplicate-request-ids-across-gateways
+      description: Scope approval and clarification prompts, result receipts, cancellations, and session-owner validation to the originating Gateway connection and profile when request identifiers are reused.
 - id: ui-prevent-stale-connection-writes
   name: Prevent stale-connection writes
   area: protocol-reliability

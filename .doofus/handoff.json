@@ -349,6 +349,36 @@
   ],
   "changed_files": [
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/events.jsonl",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -371,16 +401,22 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0109.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": null,
+    "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
     "evidence": [
-      "apps/hermes-native/src/app.rs#uncertain_prompt_responses_stay_visible_and_cannot_be_retried"
+      "apps/hermes-native/src/app.rs#approval_prompts_are_scoped_by_gateway_and_profile"
     ],
-    "state": "in_progress",
-    "summary": "PAR-0522 is implemented, fully headlessly validated, evidence-bound, and published. Ambiguous approval/clarification outcomes remain unknown and non-retryable; explicit refusals are distinct. Broader mutation uncertainty and live/package acceptance remain open.",
-    "verified_at": "2026-11-22T09:38:14Z"
+    "state": "tested",
+    "summary": "PAR-0523 Gateway/profile-scoped approval and clarification prompts are implemented, full-suite tested, and mapped as partial capability evidence EV-0109.",
+    "verified_at": "2026-11-22T10:12:15Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -445,11 +481,12 @@
     "hermes-par-0512",
     "hermes-par-0521",
     "hermes-par-0522",
+    "hermes-par-0523",
     "hermes-cross-provider-handoff"
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T10:38:14Z",
+    "lease_expires_at": "2026-11-22T11:12:15Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1871,9 +1908,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "c4980bf8-87cf-46d5-9455-67fadf77479b",
+  "last_event_id": "c4c8dbee-eb96-49a0-8294-27538336d868",
   "last_operation": {
-    "request_id": "c4980bf8-87cf-46d5-9455-67fadf77479b",
+    "request_id": "c4c8dbee-eb96-49a0-8294-27538336d868",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1892,7 +1929,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Select the next dependency-ready P0 agent-workflow requirement from the pinned source; do not modify the pinned snapshot.",
+  "recommended_next_action": "Trace pinned cross-owner request behavior and native Gateway/profile/connection identifiers from request creation through result application; identify the narrowest shared correctness gap.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2290,7 +2327,6 @@
     "hermes-par-0518",
     "hermes-par-0519",
     "hermes-par-0520",
-    "hermes-par-0523",
     "hermes-par-0524",
     "hermes-par-0525",
     "hermes-par-0526",
@@ -2336,8 +2372,28 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "292c5fc00c0665c13aa408676882812c49bb4308ff4920d39bd22e2e4ec6bee9",
+    "change_fingerprint": "2d90b92df20c7c8b223c356398ce4519b055748a8ffc392f4559fdae311c81f2",
     "changed_files": [
+      {
+        "path": ".doofus/events.jsonl",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "status": " M"
+      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2353,19 +2409,23 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0109.json",
+        "status": "??"
       }
     ],
-    "head_commit": "d5eec2d1466d93a1f7a1c474b504fc057e6d769c",
+    "head_commit": "85e7e08d9e1771d391b72152f89196e4eb9381f3",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 740,
+  "revision": 743,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 740,
+  "state_revision": 743,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0522",
-  "task_ledger_revision": 130,
+  "task_id": "hermes-par-0523",
+  "task_ledger_revision": 131,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -4111,9 +4171,14 @@
       "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
       "result": "PASS 585 library + 15 automation protocol + 3 launcher tests; all-target check, fmt, continuity, task and source package validators pass.",
       "timestamp": "2026-11-22T09:38:14Z"
+    },
+    {
+      "command": "apps/hermes-native/src/app.rs::approval_prompts_are_scoped_by_gateway_and_profile",
+      "result": "PASS 586 library + 15 protocol + 3 launcher tests; cargo check, fmt, continuity, UCM scoped review, package validator and diff check pass.",
+      "timestamp": "2026-11-22T10:12:15Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T09:38:14Z"
+  "updated_at": "2026-11-22T10:12:15Z"
 }
