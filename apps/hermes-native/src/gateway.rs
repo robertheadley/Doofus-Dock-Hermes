@@ -3176,6 +3176,13 @@ pub(crate) enum TestGatewayCommand {
         profile: Option<String>,
         response: Result<serde_json::Value, (i64, String)>,
     },
+    LockClarify {
+        request_id: String,
+        clarify_request_id: String,
+        question_id: String,
+        profile: Option<String>,
+        answer: Option<String>,
+    },
     AttachComposerFile {
         request_id: String,
         session_id: String,
@@ -3319,6 +3326,19 @@ impl GatewayDiscovery {
                         id,
                         profile,
                         response,
+                    }),
+                    GatewayCommand::LockClarify {
+                        request_id,
+                        clarify_request_id,
+                        question_id,
+                        profile,
+                        answer,
+                    } => Some(TestGatewayCommand::LockClarify {
+                        request_id,
+                        clarify_request_id,
+                        question_id,
+                        profile,
+                        answer,
                     }),
                     _ => None,
                 };

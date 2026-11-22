@@ -54003,6 +54003,162 @@ mod tests {
     }
 
     #[test]
+    fn batch_clarify_answer_action_locks_profile_owned_answers_in_question_order() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.handle_server_request(
+            "clarify-wire-ordered".into(),
+            "clarify".into(),
+            serde_json::json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "questions":[
+                    {"qid":"q1","question":"Which package?","choices":["Core","Desktop"]},
+                    {"qid":"q2","question":"Which checks?","choices":["Unit","UI"],"multi_select":true}
+                ]
+            }),
+        );
+        let prompt_key = app
+            .batch_clarify_prompts
+            .keys()
+            .next()
+            .cloned()
+            .expect("profile-owned batch clarify prompt");
+        let prompt = app
+            .batch_clarify_prompts
+            .get_mut(&prompt_key)
+            .expect("batch clarify prompt");
+        prompt.questions[0].selected = vec!["Desktop".into()];
+        prompt.questions[1].selected = vec!["Unit".into(), "UI".into()];
+        let answer = batch_clarify_answer(prompt).expect("at least one answer is selected");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&answer).expect("valid answer JSON"),
+            serde_json::json!({"answers":{"q1":"Desktop","q2":"[\"Unit\",\"UI\"]"}})
+        );
+
+        app.execute_registered_action(RegisteredUiAction::RespondClarify {
+            prompt_id: prompt_key.clone(),
+            answer,
+        })
+        .expect("confirm answer card");
+        let first_lock = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first answer reaches the Gateway actor");
+        let (first_request_id, first_question_id) = match first_lock {
+            TestGatewayCommand::LockClarify {
+                request_id,
+                clarify_request_id,
+                question_id,
+                profile,
+                answer,
+            } => {
+                assert_eq!(clarify_request_id, "clarify-wire-ordered");
+                assert_eq!(question_id, "q1");
+                assert_eq!(profile.as_deref(), Some("work"));
+                assert_eq!(answer.as_deref(), Some("Desktop"));
+                (request_id, question_id)
+            }
+            other => panic!("expected first ordered clarify.lock, got {other:?}"),
+        };
+        assert!(!first_request_id.is_empty());
+
+        app.handle_batch_clarify_locked_from_connection(
+            first_request_id,
+            "clarify-wire-ordered".into(),
+            Some("work".into()),
+            first_question_id,
+            Ok(crate::gateway::ClarifyLockReceipt { expired: false }),
+            false,
+            None,
+        );
+        let second_lock = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("next answer is sent after the first lock receipt");
+        let (second_request_id, second_question_id) = match second_lock {
+            TestGatewayCommand::LockClarify {
+                request_id,
+                clarify_request_id,
+                question_id,
+                profile,
+                answer,
+            } => {
+                assert_eq!(clarify_request_id, "clarify-wire-ordered");
+                assert_eq!(question_id, "q2");
+                assert_eq!(profile.as_deref(), Some("work"));
+                assert_eq!(answer.as_deref(), Some("[\"Unit\",\"UI\"]"));
+                (request_id, question_id)
+            }
+            other => panic!("expected second ordered clarify.lock, got {other:?}"),
+        };
+        app.handle_batch_clarify_locked_from_connection(
+            second_request_id,
+            "clarify-wire-ordered".into(),
+            Some("work".into()),
+            second_question_id,
+            Ok(crate::gateway::ClarifyLockReceipt { expired: false }),
+            false,
+            None,
+        );
+        assert!(
+            !app.batch_clarify_prompts.contains_key(&prompt_key),
+            "the final lock receipt settles the batch request"
+        );
+        assert_eq!(app.status, "Hermes received your answers");
+        assert!(commands.try_recv().is_err());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn batch_clarify_skip_answers_the_originating_server_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.handle_server_request(
+            "clarify-wire-skip".into(),
+            "clarify".into(),
+            serde_json::json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "questions":[{"qid":"q1","question":"Which package?"}]
+            }),
+        );
+        let prompt_key = app
+            .batch_clarify_prompts
+            .keys()
+            .next()
+            .cloned()
+            .expect("profile-owned batch clarify prompt");
+        app.execute_registered_action(RegisteredUiAction::RespondClarify {
+            prompt_id: prompt_key.clone(),
+            answer: String::new(),
+        })
+        .expect("skip clarify card");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("skip reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "clarify-wire-skip".into(),
+                profile: Some("work".into()),
+                response: Ok(serde_json::json!({})),
+            }
+        );
+        assert!(app.batch_clarify_prompts[&prompt_key].response_pending);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn hidden_session_approval_and_clarify_requests_render_in_their_dock_pane() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
