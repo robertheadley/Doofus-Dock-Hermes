@@ -1396,6 +1396,23 @@ struct OwnedNewChatReasoningSelection {
 }
 
 #[derive(Clone, Debug)]
+struct PendingSettingsModelOptions {
+    request_id: String,
+    profile: String,
+    connection_id: String,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMainModelAssignment {
+    request_id: String,
+    profile: String,
+    connection_id: String,
+    provider: String,
+    model: String,
+    confirm_expensive_model: bool,
+}
+
+#[derive(Clone, Debug)]
 struct PendingChatPolicyMutation {
     request_id: String,
     session_id: String,
@@ -1944,10 +1961,20 @@ pub struct HermesNativeApp {
     fallback_model_options_profile: Option<String>,
     fallback_model_options_request: Option<(String, String)>,
     fallback_model_options_error: Option<String>,
+    settings_model_options: Option<ModelOptionsSnapshot>,
+    settings_model_options_owner: Option<(String, String)>,
+    settings_model_options_pending: Option<PendingSettingsModelOptions>,
+    settings_model_options_error: Option<String>,
+    settings_model_provider_draft: String,
+    settings_model_draft: String,
+    main_model_assignment_pending: Option<PendingMainModelAssignment>,
+    main_model_confirmation: Option<(PendingMainModelAssignment, String)>,
+    main_model_assignment_error: Option<String>,
     keybindings: Option<KeybindingStore>,
     keybindings_error: Option<String>,
     keybindings_panel: KeybindingsPanel,
     settings_keybindings_active: bool,
+    settings_model_active: bool,
     settings_fallbacks_active: bool,
     settings_security_active: bool,
     keybinding_consumed_combos: BTreeSet<String>,
@@ -4428,10 +4455,20 @@ fn render_message() -> &'static str {
             fallback_model_options_profile: None,
             fallback_model_options_request: None,
             fallback_model_options_error: None,
+            settings_model_options: None,
+            settings_model_options_owner: None,
+            settings_model_options_pending: None,
+            settings_model_options_error: None,
+            settings_model_provider_draft: String::new(),
+            settings_model_draft: String::new(),
+            main_model_assignment_pending: None,
+            main_model_confirmation: None,
+            main_model_assignment_error: None,
             keybindings,
             keybindings_error,
             keybindings_panel: KeybindingsPanel::new(),
             settings_keybindings_active: false,
+            settings_model_active: false,
             settings_fallbacks_active: false,
             settings_security_active: false,
             keybinding_consumed_combos: BTreeSet::new(),
@@ -25890,11 +25927,294 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn ensure_settings_model_options_loaded(&mut self) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.settings_model_options_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        };
+        let profile = endpoint.profile_id.clone();
+        if profile.eq_ignore_ascii_case("all") {
+            self.settings_model_options_error =
+                Some("Main model settings require one Hermes profile".into());
+            return;
+        }
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let owner = (connection_id.clone(), profile.clone());
+        if self.settings_model_options_owner.as_ref() == Some(&owner)
+            || self
+                .settings_model_options_pending
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.profile == profile && pending.connection_id == connection_id
+                })
+        {
+            return;
+        }
+        self.settings_model_options = None;
+        self.settings_model_options_owner = None;
+        self.settings_model_options_error = None;
+        self.settings_model_provider_draft.clear();
+        self.settings_model_draft.clear();
+        if self
+            .main_model_assignment_pending
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.profile != profile || pending.connection_id != connection_id
+            })
+        {
+            self.main_model_assignment_pending = None;
+            self.main_model_confirmation = None;
+            self.main_model_assignment_error = Some(
+                "The previous profile's model save was abandoned after switching profiles. Reopen that profile to confirm its saved value.".into(),
+            );
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.settings_model_options_owner = Some(owner);
+            self.settings_model_options_error = Some("Hermes Gateway reader is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("settings-main-model-options");
+        if let Err(error) = gateway.load_model_options(request_id.clone(), Some(profile.clone())) {
+            self.settings_model_options_error = Some(error);
+            return;
+        }
+        self.settings_model_options_pending = Some(PendingSettingsModelOptions {
+            request_id,
+            profile,
+            connection_id,
+        });
+    }
+
+    fn submit_main_model_assignment(&mut self, confirm_expensive_model: bool) {
+        if self.main_model_assignment_pending.is_some() {
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.main_model_assignment_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        };
+        let profile = endpoint.profile_id.clone();
+        if profile.eq_ignore_ascii_case("all") {
+            self.main_model_assignment_error =
+                Some("Main model settings require one Hermes profile".into());
+            return;
+        }
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        if self.settings_model_options_owner.as_ref()
+            != Some(&(connection_id.clone(), profile.clone()))
+        {
+            self.main_model_assignment_error =
+                Some("Wait for the selected profile's model catalog to finish loading".into());
+            return;
+        }
+        let provider = self.settings_model_provider_draft.trim().to_owned();
+        let model = self.settings_model_draft.trim().to_owned();
+        if provider.is_empty() || model.is_empty() {
+            self.main_model_assignment_error =
+                Some("Choose a provider and model before applying the profile default".into());
+            return;
+        }
+        let base_url = self
+            .settings_model_options
+            .as_ref()
+            .and_then(|options| options.providers.iter().find(|row| row.slug == provider))
+            .and_then(|row| row.api_url.clone());
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.main_model_assignment_error = Some("Hermes Gateway writer is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("settings-main-model-save");
+        match gateway.set_main_model_assignment(
+            request_id.clone(),
+            Some(profile.clone()),
+            provider.clone(),
+            model.clone(),
+            base_url.clone(),
+            confirm_expensive_model,
+        ) {
+            Ok(()) => {
+                self.main_model_assignment_pending = Some(PendingMainModelAssignment {
+                    request_id,
+                    profile,
+                    connection_id,
+                    provider,
+                    model,
+                    confirm_expensive_model,
+                });
+                self.main_model_confirmation = None;
+                self.main_model_assignment_error = None;
+            }
+            Err(error) => self.main_model_assignment_error = Some(error),
+        }
+    }
+
+    fn show_main_model_settings(&mut self, ui: &mut Ui) {
+        self.ensure_settings_model_options_loaded();
+        ui.heading("Main model");
+        ui.label(
+            RichText::new(
+                "Choose the Hermes default provider and model for new sessions. Existing chats keep their own model settings.",
+            )
+            .color(MUTED),
+        );
+        if self.settings_model_options_pending.is_some() {
+            ui.label(RichText::new("Loading profile model catalog…").color(MUTED));
+        }
+        let options = self.settings_model_options.clone();
+        let provider_rows = options
+            .as_ref()
+            .map(|options| options.providers.clone())
+            .unwrap_or_default();
+        let selected_provider = self.settings_model_provider_draft.clone();
+        let selected_row = provider_rows
+            .iter()
+            .find(|provider| provider.slug == selected_provider);
+        let mut provider_change = None;
+        let mut model_change = None;
+        let locked =
+            self.main_model_assignment_pending.is_some() || self.main_model_confirmation.is_some();
+        ui.add_enabled_ui(!locked, |ui| {
+            egui::ComboBox::from_label("Provider")
+                .selected_text(if selected_provider.is_empty() {
+                    "Choose provider"
+                } else {
+                    selected_row
+                        .map(|provider| provider.name.as_str())
+                        .unwrap_or(selected_provider.as_str())
+                })
+                .show_ui(ui, |ui| {
+                    for provider in &provider_rows {
+                        let label = if provider.authenticated == Some(false)
+                            && provider.models.is_empty()
+                        {
+                            format!("{} · setup required", provider.name)
+                        } else {
+                            provider.name.clone()
+                        };
+                        if ui
+                            .selectable_label(provider.slug == selected_provider, label)
+                            .clicked()
+                        {
+                            provider_change = Some(provider.slug.clone());
+                        }
+                    }
+                });
+            if let Some(row) = selected_row {
+                ui.label("Model ID");
+                ui.text_edit_singleline(&mut self.settings_model_draft)
+                    .accessible_name("Hermes default model ID");
+                if !row.models.is_empty() {
+                    egui::ComboBox::from_label("Available models")
+                        .selected_text(if self.settings_model_draft.is_empty() {
+                            "Choose model"
+                        } else {
+                            self.settings_model_draft.as_str()
+                        })
+                        .show_ui(ui, |ui| {
+                            for model in &row.models {
+                                if ui
+                                    .selectable_label(model == &self.settings_model_draft, model)
+                                    .clicked()
+                                {
+                                    model_change = Some(model.clone());
+                                }
+                            }
+                        });
+                } else {
+                    ui.label(
+                        RichText::new(
+                            "No catalog models are available; enter a configured model ID.",
+                        )
+                        .size(11.0)
+                        .color(MUTED),
+                    );
+                }
+            }
+        });
+        if let Some(provider) = provider_change {
+            self.settings_model_provider_draft = provider;
+            self.settings_model_draft.clear();
+        }
+        if let Some(model) = model_change {
+            self.settings_model_draft = model;
+        }
+
+        if let Some((pending, message)) = self.main_model_confirmation.as_ref() {
+            ui.colored_label(
+                Color32::YELLOW,
+                if message.trim().is_empty() {
+                    "Hermes flagged this model selection. Confirm to save it as the profile default."
+                } else {
+                    message
+                },
+            );
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Confirm profile model")
+                    .accessible_name("Confirm guarded profile model assignment")
+                    .clicked()
+                {
+                    let _ = pending;
+                    self.submit_main_model_assignment(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    self.main_model_confirmation = None;
+                }
+            });
+        } else {
+            let saved = options.as_ref().is_some_and(|options| {
+                options.provider.as_deref() == Some(self.settings_model_provider_draft.as_str())
+                    && options.model.as_deref() == Some(self.settings_model_draft.as_str())
+            });
+            if ui
+                .add_enabled(
+                    !locked
+                        && !saved
+                        && !self.settings_model_provider_draft.trim().is_empty()
+                        && !self.settings_model_draft.trim().is_empty(),
+                    egui::Button::new(if locked {
+                        "Saving…"
+                    } else {
+                        "Apply profile default"
+                    }),
+                )
+                .accessible_name("Apply Hermes default model for this profile")
+                .clicked()
+            {
+                self.submit_main_model_assignment(false);
+            }
+        }
+        if let Some(error) = &self.settings_model_options_error {
+            ui.colored_label(Color32::LIGHT_RED, error);
+            if self.settings_model_options_pending.is_none()
+                && ui.button("Retry model catalog").clicked()
+            {
+                self.settings_model_options_owner = None;
+                self.settings_model_options_error = None;
+                self.ensure_settings_model_options_loaded();
+            }
+        }
+        if let Some(error) = &self.main_model_assignment_error {
+            ui.colored_label(Color32::LIGHT_RED, error);
+        }
+        if let Some(pending) = &self.main_model_assignment_pending {
+            ui.label(
+                RichText::new(format!(
+                    "Saving {} · {} for profile {}…",
+                    pending.model, pending.provider, pending.profile
+                ))
+                .size(11.0)
+                .color(MUTED),
+            );
+        }
+    }
+
     fn show_settings(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             if ui
                 .selectable_label(
                     !self.settings_keybindings_active
+                        && !self.settings_model_active
                         && !self.settings_fallbacks_active
                         && !self.settings_security_active,
                     "Workspace",
@@ -25903,6 +26223,18 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_model_active = false;
+                self.settings_fallbacks_active = false;
+                self.settings_security_active = false;
+                self.keybindings_panel.cancel_capture();
+            }
+            if ui
+                .selectable_label(self.settings_model_active, "Main model")
+                .accessible_name("Profile main model settings")
+                .clicked()
+            {
+                self.settings_keybindings_active = false;
+                self.settings_model_active = true;
                 self.settings_fallbacks_active = false;
                 self.settings_security_active = false;
                 self.keybindings_panel.cancel_capture();
@@ -25913,6 +26245,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_model_active = false;
                 self.settings_fallbacks_active = true;
                 self.settings_security_active = false;
                 self.keybindings_panel.cancel_capture();
@@ -25923,6 +26256,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_model_active = false;
                 self.settings_fallbacks_active = false;
                 self.settings_security_active = true;
                 self.keybindings_panel.cancel_capture();
@@ -25933,6 +26267,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = true;
+                self.settings_model_active = false;
                 self.settings_fallbacks_active = false;
                 self.settings_security_active = false;
             }
@@ -25940,6 +26275,8 @@ fn render_message() -> &'static str {
         ui.separator();
         if self.settings_security_active {
             self.show_security_settings(ui);
+        } else if self.settings_model_active {
+            self.show_main_model_settings(ui);
         } else if self.settings_keybindings_active {
             if let Some(error) = self.keybindings_error.as_deref() {
                 ui.colored_label(Color32::LIGHT_RED, error);
@@ -31576,6 +31913,53 @@ fn render_message() -> &'static str {
                     profile,
                     result,
                 } => {
+                    if let Some(pending) = self.settings_model_options_pending.clone()
+                        && pending.request_id == request_id
+                    {
+                        let active_profile = self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.as_str());
+                        let active_connection = self.active_gateway_connection_id();
+                        if profile.as_deref() != Some(pending.profile.as_str())
+                            || active_profile != Some(pending.profile.as_str())
+                            || active_connection != pending.connection_id
+                        {
+                            self.settings_model_options_pending = None;
+                            continue;
+                        }
+                        self.settings_model_options_pending = None;
+                        self.settings_model_options_owner =
+                            Some((pending.connection_id, pending.profile));
+                        match result {
+                            Ok(mut snapshot) => {
+                                for provider in &mut snapshot.providers {
+                                    for model in
+                                        self.workspace.custom_model_ids(&provider.slug).to_vec()
+                                    {
+                                        if !provider.models.contains(&model) {
+                                            provider.models.push(model);
+                                        }
+                                    }
+                                }
+                                if self.settings_model_provider_draft.is_empty() {
+                                    self.settings_model_provider_draft =
+                                        snapshot.provider.clone().unwrap_or_default();
+                                }
+                                if self.settings_model_draft.is_empty() {
+                                    self.settings_model_draft =
+                                        snapshot.model.clone().unwrap_or_default();
+                                }
+                                self.settings_model_options = Some(snapshot);
+                                self.settings_model_options_error = None;
+                            }
+                            Err(error) => {
+                                self.settings_model_options = None;
+                                self.settings_model_options_error = Some(error);
+                            }
+                        }
+                        continue;
+                    }
                     if let Some(pending) = self.new_chat_model_options_pending.clone()
                         && pending.request_id == request_id
                     {
@@ -31667,6 +32051,71 @@ fn render_message() -> &'static str {
                             self.cron_model_options_error = None;
                         }
                         Err(error) => self.cron_model_options_error = Some(error),
+                    }
+                }
+                GatewayEvent::MainModelAssignmentSaved {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.main_model_assignment_pending.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id {
+                        continue;
+                    }
+                    let pending = self
+                        .main_model_assignment_pending
+                        .take()
+                        .expect("matched main-model assignment");
+                    let active_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.as_str());
+                    if profile.as_deref() != Some(pending.profile.as_str())
+                        || active_profile != Some(pending.profile.as_str())
+                        || self.active_gateway_connection_id() != pending.connection_id
+                    {
+                        self.main_model_confirmation = None;
+                        self.main_model_assignment_error = Some(
+                            "The model-setting response belongs to a previous profile or connection. Reload Settings before applying it again.".into(),
+                        );
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) if receipt.confirm_required => {
+                            if pending.confirm_expensive_model {
+                                self.main_model_confirmation = None;
+                                self.main_model_assignment_error =
+                                    Some(receipt.confirm_message.unwrap_or_else(|| {
+                                        "Hermes still requires confirmation".into()
+                                    }));
+                            } else {
+                                self.main_model_confirmation =
+                                    Some((pending, receipt.confirm_message.unwrap_or_default()));
+                                self.main_model_assignment_error = None;
+                            }
+                        }
+                        Ok(receipt) if receipt.ok => {
+                            let provider = receipt.provider.unwrap_or(pending.provider);
+                            let model = receipt.model.unwrap_or(pending.model);
+                            if let Some(options) = self.settings_model_options.as_mut() {
+                                options.provider = Some(provider.clone());
+                                options.model = Some(model.clone());
+                            }
+                            self.settings_model_provider_draft = provider;
+                            self.settings_model_draft = model;
+                            self.main_model_confirmation = None;
+                            self.main_model_assignment_error = None;
+                            self.status = "Hermes default model saved for new sessions".into();
+                        }
+                        Ok(_) => {
+                            self.main_model_assignment_error =
+                                Some("Hermes did not confirm the main-model assignment".into());
+                        }
+                        Err(error) => {
+                            self.main_model_assignment_error = Some(error);
+                        }
                     }
                 }
                 GatewayEvent::ChatModelOptionsLoaded {
@@ -37713,6 +38162,7 @@ mod tests {
         let providers = vec![crate::gateway::ModelOptionProvider {
             slug: "custom:local-ollama".into(),
             name: "Local Ollama".into(),
+            api_url: None,
             authenticated: Some(true),
             models: vec!["llama3.2:latest".into()],
             capabilities: Default::default(),
@@ -39404,6 +39854,7 @@ mod tests {
             providers: vec![crate::gateway::ModelOptionProvider {
                 slug: "openai".into(),
                 name: "OpenAI".into(),
+                api_url: None,
                 authenticated: Some(true),
                 models: vec!["m1".into(), "m2".into()],
                 capabilities: BTreeMap::from([
@@ -39480,6 +39931,7 @@ mod tests {
             providers: vec![crate::gateway::ModelOptionProvider {
                 slug: "openai".into(),
                 name: "OpenAI".into(),
+                api_url: None,
                 authenticated: Some(true),
                 models: vec!["m1".into(), "m2".into()],
                 capabilities: BTreeMap::from([(
@@ -39560,6 +40012,214 @@ mod tests {
     }
 
     #[test]
+    fn profile_main_model_settings_confirm_before_saving_and_keep_chat_overrides_separate() {
+        let (mut native, profile_dir) = isolated_app();
+        native.gateway_connected = true;
+        native.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-work".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let connection_id = native.active_gateway_connection_id().to_owned();
+        native.settings_model_options_owner = Some((connection_id, "work".into()));
+        native.settings_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "openai".into(),
+                name: "OpenAI".into(),
+                api_url: Some("https://api.example.test/v1".into()),
+                authenticated: Some(true),
+                models: vec!["gpt-expensive".into()],
+                capabilities: BTreeMap::new(),
+            }],
+            model: Some("gpt-current".into()),
+            provider: Some("openai".into()),
+        });
+        native.settings_model_provider_draft = "openai".into();
+        native.settings_model_draft = "gpt-expensive".into();
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        native.gateway_discovery = Some(gateway);
+
+        let app = Rc::new(RefCell::new(native));
+        let draw_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 520.0))
+            .build_ui(move |ui| draw_app.borrow_mut().show_main_model_settings(ui));
+        harness.run_steps(2);
+        harness
+            .get_by_label("Apply Hermes default model for this profile")
+            .click();
+        harness.run();
+        let TestGatewayCommand::SetMainModelAssignment {
+            request_id,
+            profile,
+            provider,
+            model,
+            base_url,
+            confirm_expensive_model,
+        } = commands
+            .recv_timeout(Duration::from_secs(1))
+            .expect("profile model save is dispatched")
+        else {
+            panic!("expected profile-scoped model assignment");
+        };
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert_eq!(provider, "openai");
+        assert_eq!(model, "gpt-expensive");
+        assert_eq!(base_url.as_deref(), Some("https://api.example.test/v1"));
+        assert!(!confirm_expensive_model);
+
+        events
+            .send(GatewayEvent::MainModelAssignmentSaved {
+                request_id,
+                profile: Some("work".into()),
+                result: Ok(crate::gateway::MainModelAssignmentReceipt {
+                    ok: false,
+                    provider: None,
+                    model: None,
+                    confirm_required: true,
+                    confirm_message: Some("Confirm the higher-cost model.".into()),
+                    notice: None,
+                }),
+            })
+            .expect("send confirmation-required receipt");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Confirm guarded profile model assignment")
+                .is_some()
+        );
+        assert_eq!(
+            app.borrow()
+                .settings_model_options
+                .as_ref()
+                .and_then(|options| options.model.as_deref()),
+            Some("gpt-current"),
+            "a confirmation prompt must not optimistically change the profile default"
+        );
+
+        harness
+            .get_by_label("Confirm guarded profile model assignment")
+            .click();
+        harness.run();
+        let TestGatewayCommand::SetMainModelAssignment {
+            request_id,
+            confirm_expensive_model,
+            ..
+        } = commands
+            .recv_timeout(Duration::from_secs(1))
+            .expect("user confirmation retries the assignment")
+        else {
+            panic!("expected confirmed profile model assignment");
+        };
+        assert!(confirm_expensive_model);
+        events
+            .send(GatewayEvent::MainModelAssignmentSaved {
+                request_id,
+                profile: Some("work".into()),
+                result: Ok(crate::gateway::MainModelAssignmentReceipt {
+                    ok: true,
+                    provider: Some("openai".into()),
+                    model: Some("gpt-expensive".into()),
+                    confirm_required: false,
+                    confirm_message: None,
+                    notice: Some("saved".into()),
+                }),
+            })
+            .expect("send confirmed assignment receipt");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.borrow()
+                .settings_model_options
+                .as_ref()
+                .and_then(|options| options.model.as_deref()),
+            Some("gpt-expensive")
+        );
+        assert_eq!(
+            app.borrow().status,
+            "Hermes default model saved for new sessions"
+        );
+        app.borrow_mut().main_model_assignment_pending = Some(PendingMainModelAssignment {
+            request_id: "stale-model-reply".into(),
+            profile: "work".into(),
+            connection_id: "previous-gateway-connection".into(),
+            provider: "openai".into(),
+            model: "gpt-stale".into(),
+            confirm_expensive_model: false,
+        });
+        events
+            .send(GatewayEvent::MainModelAssignmentSaved {
+                request_id: "stale-model-reply".into(),
+                profile: Some("work".into()),
+                result: Ok(crate::gateway::MainModelAssignmentReceipt {
+                    ok: true,
+                    provider: Some("openai".into()),
+                    model: Some("gpt-stale".into()),
+                    confirm_required: false,
+                    confirm_message: None,
+                    notice: None,
+                }),
+            })
+            .expect("send stale-connection assignment receipt");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.borrow()
+                .settings_model_options
+                .as_ref()
+                .and_then(|options| options.model.as_deref()),
+            Some("gpt-expensive"),
+            "a receipt from an old gateway connection cannot overwrite the current default"
+        );
+        assert!(
+            app.borrow()
+                .main_model_assignment_error
+                .as_deref()
+                .is_some_and(|message| message.contains("previous profile or connection"))
+        );
+        let connection_id = app.borrow().active_gateway_connection_id().to_owned();
+        app.borrow_mut().main_model_assignment_pending = Some(PendingMainModelAssignment {
+            request_id: "denied-model-reply".into(),
+            profile: "work".into(),
+            connection_id,
+            provider: "openai".into(),
+            model: "gpt-denied".into(),
+            confirm_expensive_model: false,
+        });
+        events
+            .send(GatewayEvent::MainModelAssignmentSaved {
+                request_id: "denied-model-reply".into(),
+                profile: Some("work".into()),
+                result: Err("Provider rejected this model.".into()),
+            })
+            .expect("send denied assignment receipt");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.borrow()
+                .settings_model_options
+                .as_ref()
+                .and_then(|options| options.model.as_deref()),
+            Some("gpt-expensive"),
+            "a rejected assignment must not change the profile default"
+        );
+        assert_eq!(
+            app.borrow().main_model_assignment_error.as_deref(),
+            Some("Provider rejected this model.")
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation() {
         let (mut native, profile_dir) = isolated_app();
         let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
@@ -39585,6 +40245,7 @@ mod tests {
             providers: vec![crate::gateway::ModelOptionProvider {
                 slug: "openai".into(),
                 name: "OpenAI".into(),
+                api_url: None,
                 authenticated: Some(true),
                 models: vec!["m1".into(), "m2".into()],
                 capabilities: BTreeMap::new(),
@@ -40208,6 +40869,7 @@ mod tests {
             providers: vec![crate::gateway::ModelOptionProvider {
                 slug: "anthropic".into(),
                 name: "Anthropic".into(),
+                api_url: None,
                 authenticated: Some(true),
                 models: vec!["claude-test".into()],
                 capabilities: Default::default(),
@@ -47232,6 +47894,7 @@ mod tests {
             providers: vec![crate::gateway::ModelOptionProvider {
                 slug: "openai".into(),
                 name: "OpenAI".into(),
+                api_url: None,
                 authenticated: Some(true),
                 models: vec!["openai/gpt-fixture".into(), "openai/gpt-next".into()],
                 capabilities: BTreeMap::new(),
@@ -47595,6 +48258,7 @@ mod tests {
             providers: vec![crate::gateway::ModelOptionProvider {
                 slug: "current-provider".into(),
                 name: "Current provider".into(),
+                api_url: None,
                 authenticated: Some(true),
                 models: vec!["current-model".into()],
                 capabilities: BTreeMap::new(),

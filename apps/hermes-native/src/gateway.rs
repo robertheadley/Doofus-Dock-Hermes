@@ -823,6 +823,22 @@ pub struct ModelOptionsSnapshot {
     pub provider: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct MainModelAssignmentReceipt {
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub confirm_required: bool,
+    #[serde(default)]
+    pub confirm_message: Option<String>,
+    #[serde(default)]
+    pub notice: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SlashCompletionItem {
     pub text: String,
@@ -841,6 +857,8 @@ pub struct SlashCompletionResult {
 pub struct ModelOptionProvider {
     pub slug: String,
     pub name: String,
+    #[serde(default)]
+    pub api_url: Option<String>,
     #[serde(default)]
     pub authenticated: Option<bool>,
     #[serde(default)]
@@ -2072,6 +2090,11 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<ModelOptionsSnapshot, String>,
     },
+    MainModelAssignmentSaved {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<MainModelAssignmentReceipt, String>,
+    },
     SlashCompletionLoaded {
         request_id: String,
         query: String,
@@ -2866,6 +2889,14 @@ enum GatewayHttpCommand {
         request_id: String,
         profile: Option<String>,
     },
+    SetMainModelAssignment {
+        request_id: String,
+        profile: Option<String>,
+        provider: String,
+        model: String,
+        base_url: Option<String>,
+        confirm_expensive_model: bool,
+    },
     LoadCronDeliveryTargets {
         request_id: String,
         profile: Option<String>,
@@ -3132,6 +3163,14 @@ pub(crate) enum TestGatewayCommand {
         source_text: String,
         latest_user_turn: bool,
     },
+    SetMainModelAssignment {
+        request_id: String,
+        profile: Option<String>,
+        provider: String,
+        model: String,
+        base_url: Option<String>,
+        confirm_expensive_model: bool,
+    },
     AttachComposerFile {
         request_id: String,
         session_id: String,
@@ -3278,26 +3317,43 @@ impl GatewayDiscovery {
         });
         thread::spawn(move || {
             while let Ok(command) = http_receiver.recv() {
-                if let GatewayHttpCommand::ResolveEditTarget {
-                    request_id,
-                    session_id,
-                    stored_session_id,
-                    profile,
-                    connection_id,
-                    source_text,
-                    latest_user_turn,
-                } = command
-                    && observed_http_sender
-                        .send(TestGatewayCommand::ResolveEditTarget {
-                            request_id,
-                            session_id,
-                            stored_session_id,
-                            profile,
-                            connection_id,
-                            source_text,
-                            latest_user_turn,
-                        })
-                        .is_err()
+                let observed = match command {
+                    GatewayHttpCommand::ResolveEditTarget {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                        connection_id,
+                        source_text,
+                        latest_user_turn,
+                    } => Some(TestGatewayCommand::ResolveEditTarget {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                        connection_id,
+                        source_text,
+                        latest_user_turn,
+                    }),
+                    GatewayHttpCommand::SetMainModelAssignment {
+                        request_id,
+                        profile,
+                        provider,
+                        model,
+                        base_url,
+                        confirm_expensive_model,
+                    } => Some(TestGatewayCommand::SetMainModelAssignment {
+                        request_id,
+                        profile,
+                        provider,
+                        model,
+                        base_url,
+                        confirm_expensive_model,
+                    }),
+                    _ => None,
+                };
+                if let Some(observed) = observed
+                    && observed_http_sender.send(observed).is_err()
                 {
                     break;
                 }
@@ -5040,6 +5096,27 @@ impl GatewayDiscovery {
             .send(GatewayHttpCommand::LoadModelOptions {
                 request_id,
                 profile,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn set_main_model_assignment(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        provider: String,
+        model: String,
+        base_url: Option<String>,
+        confirm_expensive_model: bool,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::SetMainModelAssignment {
+                request_id,
+                profile,
+                provider,
+                model,
+                base_url,
+                confirm_expensive_model,
             })
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
@@ -10572,6 +10649,25 @@ fn gateway_http_actor(
                 profile: profile.clone(),
                 result: load_model_options_http(&endpoint, profile.as_deref()),
             },
+            GatewayHttpCommand::SetMainModelAssignment {
+                request_id,
+                profile,
+                provider,
+                model,
+                base_url,
+                confirm_expensive_model,
+            } => GatewayEvent::MainModelAssignmentSaved {
+                request_id,
+                profile: profile.clone(),
+                result: set_main_model_assignment_http(
+                    &endpoint,
+                    profile.as_deref(),
+                    &provider,
+                    &model,
+                    base_url.as_deref(),
+                    confirm_expensive_model,
+                ),
+            },
             GatewayHttpCommand::LoadCronDeliveryTargets {
                 request_id,
                 profile,
@@ -12620,6 +12716,97 @@ fn load_model_options_http(
         }
     }
     Ok(snapshot)
+}
+
+fn set_main_model_assignment_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+    provider: &str,
+    model: &str,
+    base_url: Option<&str>,
+    confirm_expensive_model: bool,
+) -> Result<MainModelAssignmentReceipt, String> {
+    let profile = cron_profile_scope(endpoint, profile)?;
+    let provider = provider.trim();
+    let model = model.trim();
+    let base_url = base_url.map(str::trim).filter(|value| !value.is_empty());
+    if provider.is_empty()
+        || provider.len() > 256
+        || provider.chars().any(char::is_control)
+        || model.is_empty()
+        || model.len() > CRON_FORM_MODEL_LIMIT
+        || model.chars().any(char::is_control)
+        || base_url.is_some_and(|value| {
+            value.len() > 4096
+                || value.chars().any(char::is_control)
+                || (!value.starts_with("http://") && !value.starts_with("https://"))
+        })
+    {
+        return Err("Hermes main-model assignment fields are invalid or oversized".into());
+    }
+    let url = format!(
+        "{}/api/model/set{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(&profile)
+    );
+    let mut body = serde_json::json!({
+        "scope": "main",
+        "provider": provider,
+        "model": model,
+        "profile": profile,
+    });
+    if confirm_expensive_model {
+        body["confirm_expensive_model"] = serde_json::json!(true);
+    }
+    if let Some(base_url) = base_url {
+        body["base_url"] = serde_json::json!(base_url);
+    }
+    let receipt: MainModelAssignmentReceipt = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_mutation(endpoint, "POST", &url, body)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes main-model assignment requires a verified loopback origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .proxy(None)
+            .timeout_global(Some(Duration::from_secs(8)))
+            .max_redirects(0)
+            .build()
+            .into();
+        let response = agent
+            .post(&url)
+            .header("X-Hermes-Gateway-Ticket", ticket.as_str())
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .send(body.to_string())
+            .map_err(|_| "Hermes main-model assignment request failed".to_owned())?;
+        let mut bytes = Vec::new();
+        response
+            .into_body()
+            .into_reader()
+            .take(GATEWAY_HTTP_RESPONSE_LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "Could not read Hermes main-model assignment response".to_owned())?;
+        if bytes.len() as u64 > GATEWAY_HTTP_RESPONSE_LIMIT {
+            return Err("Hermes main-model assignment response exceeded 512 KiB".into());
+        }
+        serde_json::from_slice(&bytes)
+            .map_err(|_| "Hermes returned invalid main-model assignment JSON".to_owned())?
+    };
+    if receipt.confirm_required {
+        return Ok(receipt);
+    }
+    if !receipt.ok {
+        return Err(receipt
+            .confirm_message
+            .as_deref()
+            .filter(|message| !message.trim().is_empty())
+            .unwrap_or("Hermes did not confirm the main-model assignment")
+            .to_owned());
+    }
+    Ok(receipt)
 }
 
 fn load_cron_blueprints_http(
@@ -18736,6 +18923,93 @@ mod tests {
                 "cron-fixture-token".into(),
             ))),
         }
+    }
+
+    #[test]
+    fn main_model_assignment_uses_profile_scope_and_requires_explicit_server_confirmation() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind model assignment fixture");
+        let address = listener
+            .local_addr()
+            .expect("model assignment fixture address");
+        let server = thread::spawn(move || {
+            let replies = [
+                r#"{"ok":false,"confirm_required":true,"confirm_message":"This model may incur additional cost."}"#,
+                r#"{"ok":true,"provider":"openai","model":"gpt-expensive"}"#,
+                r#"{"ok":false,"confirm_message":"Provider rejected this model."}"#,
+            ];
+            for (index, body) in replies.into_iter().enumerate() {
+                let (mut stream, _) = listener.accept().expect("accept model assignment request");
+                let request = read_http_fixture_request(&mut stream);
+                let lower = request.to_ascii_lowercase();
+                assert!(lower.starts_with("post /hermes/api/model/set?profile=work http/1.1\r\n"));
+                assert!(lower.contains("x-hermes-session-token: cron-fixture-token\r\n"));
+                assert!(!lower.contains("x-hermes-gateway-ticket:"));
+                let request_body = request.split_once("\r\n\r\n").unwrap().1;
+                let value: serde_json::Value = serde_json::from_str(request_body).unwrap();
+                assert_eq!(value["scope"], "main");
+                assert_eq!(value["profile"], "work");
+                assert_eq!(value["provider"], "openai");
+                assert_eq!(value["model"], "gpt-expensive");
+                assert_eq!(value["base_url"], "https://api.example.test/v1");
+                assert_eq!(
+                    value
+                        .get("confirm_expensive_model")
+                        .and_then(|value| value.as_bool()),
+                    (index == 1).then_some(true)
+                );
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .expect("write model assignment response");
+            }
+        });
+
+        let endpoint = cron_remote_fixture_endpoint(address);
+        let confirmation = set_main_model_assignment_http(
+            &endpoint,
+            Some("work"),
+            "openai",
+            "gpt-expensive",
+            Some("https://api.example.test/v1"),
+            false,
+        )
+        .expect("confirmation receipt is not treated as a save");
+        assert!(!confirmation.ok);
+        assert!(confirmation.confirm_required);
+        assert_eq!(
+            confirmation.confirm_message.as_deref(),
+            Some("This model may incur additional cost.")
+        );
+
+        let saved = set_main_model_assignment_http(
+            &endpoint,
+            Some("work"),
+            "openai",
+            "gpt-expensive",
+            Some("https://api.example.test/v1"),
+            true,
+        )
+        .expect("confirmed assignment receipt");
+        assert!(saved.ok);
+        assert_eq!(saved.provider.as_deref(), Some("openai"));
+        assert_eq!(saved.model.as_deref(), Some("gpt-expensive"));
+
+        let denied = set_main_model_assignment_http(
+            &endpoint,
+            Some("work"),
+            "openai",
+            "gpt-expensive",
+            Some("https://api.example.test/v1"),
+            false,
+        )
+        .expect_err("backend denial must fail closed");
+        assert_eq!(denied, "Provider rejected this model.");
+        server.join().expect("model assignment fixture exits");
     }
 
     #[test]
