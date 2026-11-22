@@ -1,5 +1,5 @@
 {
-  "revision": 113,
+  "revision": 117,
   "schema_version": 1,
   "tasks": [
     {
@@ -1812,7 +1812,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1821,12 +1821,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T06:03:39Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-explicitly-confirm-destructive-transcript-rewind",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "03-chat",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -1836,10 +1837,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0053",
               "title": "PAR-0053 Explicitly confirm destructive transcript rewind",
-              "verification_evidence": []
+              "verification_evidence": [
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0099.json#EV-0099"
+              ]
             },
             {
               "agent_identity": {
@@ -2267,8 +2270,8 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-19T18:43:31Z",
-              "lease_id": "398fe06d-c943-45fa-96d6-4c39efd42746",
+              "last_updated_at": "2026-11-22T05:48:48Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-convert-selected-terminal-text-into-composer-draft",
               "outputs": [],
               "owner": "codex",
@@ -2283,7 +2286,7 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "blocked",
+              "state": "planned",
               "task_id": "hermes-par-0066",
               "title": "PAR-0066 Convert selected terminal text into composer draft",
               "verification_evidence": [
@@ -16387,5 +16390,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T05:40:43Z"
+  "updated_at": "2026-11-22T06:03:39Z"
 }

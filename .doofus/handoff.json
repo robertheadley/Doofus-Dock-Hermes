@@ -367,6 +367,36 @@
       "status": " M"
     },
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -392,21 +422,19 @@
     },
     {
       "change_type": "untracked",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0098.json",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0099.json",
       "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked --features agent-automation --all-targets --quiet",
+    "command": "PAR-0053 validation and EV-0099 checkpoint",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0098.json#EV-0098",
-      "apps/hermes-native/src/app.rs#background_completion_is_routed_by_session_and_profile_owner",
-      "apps/hermes-native/src/app.rs#background_completion_notice_is_persistent_bounded_and_task_idempotent"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0099.json#EV-0099"
     ],
     "state": "tested",
-    "summary": "PAR-0059 source-backed background.complete path implemented and headless-validated; EV-0098 is bound to 812292c212627e7f4fabd3b857785de1715f704f. Full locked suite 562+15+3, all-target check, formatting/diff, continuity/schema, progress generators, and both package validators pass. Task revision 667 / ledger 113.",
-    "verified_at": "2026-11-22T05:41:11Z"
+    "summary": "PAR-0053 headless deep-rewind confirmation test and stale-target contract are mapped to EV-0099; feature remains partial pending live Gateway, packaged Windows, and formal pinned-source acceptance.",
+    "verified_at": "2026-11-22T06:07:13Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -426,6 +454,7 @@
     "hermes-par-0049",
     "hermes-par-0050",
     "hermes-par-0052",
+    "hermes-par-0053",
     "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0059",
@@ -470,7 +499,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T06:41:11Z",
+    "lease_expires_at": "2026-11-22T07:07:13Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1741,9 +1770,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0059-checkpoint-20261122",
+  "last_event_id": "21a4cf2e-f382-40ae-9e1f-3a25ff931c02",
   "last_operation": {
-    "request_id": "hermes-par0059-checkpoint-20261122",
+    "request_id": "21a4cf2e-f382-40ae-9e1f-3a25ff931c02",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1762,7 +1791,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Select the next dependency-ready P0 feature required for the native agent workflow; preserve all prior functional work and continue against the pinned Hermes snapshot.",
+  "recommended_next_action": "Select and inspect the next dependency-ready P0 chat/tool requirement against the pinned source.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1801,7 +1830,6 @@
     "hermes-par-0037",
     "hermes-par-0038",
     "hermes-par-0051",
-    "hermes-par-0053",
     "hermes-par-0054",
     "hermes-par-0055",
     "hermes-par-0056",
@@ -2211,7 +2239,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "e51fdd56085007a7fde46aece6500bb7a00fd3263c52174485f4a382a4975093",
+    "change_fingerprint": "6ae5ce28d1fe9163acd9bb8415ef0249b2f6e2a038e1b3dd18d101494cf02fc2",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2223,6 +2251,26 @@
       },
       {
         "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
         "status": " M"
       },
       {
@@ -2242,21 +2290,21 @@
         "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0098.json",
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0099.json",
         "status": "??"
       }
     ],
-    "head_commit": "812292c212627e7f4fabd3b857785de1715f704f",
+    "head_commit": "c6d355dc6cf6dbc5af2e0238638ef68f42e9b0cb",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 668,
+  "revision": 676,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 668,
+  "state_revision": 676,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0059",
-  "task_ledger_revision": 113,
+  "task_id": "hermes-par-0053",
+  "task_ledger_revision": 117,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3787,9 +3835,49 @@
       "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py; python apps/hermes-native/docs/reference/Hermes_Upstream_UI_DoofusDock_Rust_Parity_2026-11-13/tools/validate_package.py",
       "result": "PASS root 82 implementation receipts; archival 491 pending",
       "timestamp": "2026-11-22T05:41:11Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py progress --json",
+      "result": "PASS; task revision and progress snapshot refreshed after publication",
+      "timestamp": "2026-11-22T05:43:55Z"
+    },
+    {
+      "command": "cargo test --locked --features agent-automation --all-targets --quiet",
+      "result": "PASS locked suite 562+15+3, all-target check, format/diff, 19 continuity tests, task validation, root and archival package validators; canonical UCM checker remains globally failing on legacy package issues, no PAR-0053 checker errors.",
+      "timestamp": "2026-11-22T06:07:13Z"
+    },
+    {
+      "command": "cargo check --all-targets --locked --features agent-automation",
+      "result": "PASS locked suite 562+15+3, all-target check, format/diff, 19 continuity tests, task validation, root and archival package validators; canonical UCM checker remains globally failing on legacy package issues, no PAR-0053 checker errors.",
+      "timestamp": "2026-11-22T06:07:13Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check && git diff --check",
+      "result": "PASS locked suite 562+15+3, all-target check, format/diff, 19 continuity tests, task validation, root and archival package validators; canonical UCM checker remains globally failing on legacy package issues, no PAR-0053 checker errors.",
+      "timestamp": "2026-11-22T06:07:13Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS locked suite 562+15+3, all-target check, format/diff, 19 continuity tests, task validation, root and archival package validators; canonical UCM checker remains globally failing on legacy package issues, no PAR-0053 checker errors.",
+      "timestamp": "2026-11-22T06:07:13Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS locked suite 562+15+3, all-target check, format/diff, 19 continuity tests, task validation, root and archival package validators; canonical UCM checker remains globally failing on legacy package issues, no PAR-0053 checker errors.",
+      "timestamp": "2026-11-22T06:07:13Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS locked suite 562+15+3, all-target check, format/diff, 19 continuity tests, task validation, root and archival package validators; canonical UCM checker remains globally failing on legacy package issues, no PAR-0053 checker errors.",
+      "timestamp": "2026-11-22T06:07:13Z"
+    },
+    {
+      "command": "python apps/hermes-native/docs/reference/Hermes_Upstream_UI_DoofusDock_Rust_Parity_2026-11-13/tools/validate_package.py",
+      "result": "PASS locked suite 562+15+3, all-target check, format/diff, 19 continuity tests, task validation, root and archival package validators; canonical UCM checker remains globally failing on legacy package issues, no PAR-0053 checker errors.",
+      "timestamp": "2026-11-22T06:07:13Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T05:41:11Z"
+  "updated_at": "2026-11-22T06:07:13Z"
 }

@@ -1257,6 +1257,8 @@ capabilities:
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can explicitly confirm destructive transcript rewind.
   status: partial
+  evidence:
+  - EV-0099
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1271,6 +1273,10 @@ capabilities:
     backend: unknown
     ui: partial
     tests: verified
+  verification:
+    scenarios:
+    - id: deep-rewind-confirmation-ui
+      description: Require explicit confirmation before enabling a destructive rewind submission.
 - id: ui-follow-transcript-bottom-during-live-stream
   name: Follow transcript bottom during live stream
   area: chat-transcript

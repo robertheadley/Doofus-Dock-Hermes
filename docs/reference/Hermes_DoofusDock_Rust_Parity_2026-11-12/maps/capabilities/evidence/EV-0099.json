@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0099",
+  "capability_id": "ui-explicitly-confirm-destructive-transcript-rewind",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "deep-rewind-confirmation-ui",
+  "locator": "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
+  "date": "2026-11-22",
+  "commit": "c6d355dc6cf6dbc5af2e0238638ef68f42e9b0cb",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui UI interaction proves the Send edited message control is disabled before consent, the accessible destructive-rewind checkbox records explicit confirmation, and submission becomes enabled only after the replacement text differs from the original. Existing regressions verify confirmed deep-truncate Gateway payload, unchanged local history before admission, composer draft/attachment preservation, and refusal when later-turn count changes. Full locked suite passes 562 library + 15 protocol + 3 launcher tests; all-target locked check, formatting/diff, 19 continuity tests, task validation, both progress generators and root/archival package validators pass.",
+  "notes": "Partial native UI evidence only. The Gateway/backend dimension remains unknown; no authenticated live Gateway, packaged Windows app, or formal pinned-source acceptance was exercised."
+}
