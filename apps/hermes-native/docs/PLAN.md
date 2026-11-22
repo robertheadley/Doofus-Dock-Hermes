@@ -2069,3 +2069,7 @@ PAR-0525 implementation commit `9d7ffe786e35126c2f2335ce9720fada0d11a0a9` is now
 ### Revision 332 — Distinguish policy refusal from network failure — 2026-11-22
 
 The native transcript now reads the pinned structured error layer/code and renders distinct copy for provider policy refusal, content safety refusal, rejected sign-in, provider timeout, custom endpoint reachability, and dropped response streams. The rendered headless regression confirms refusal, timeout and auth messages are distinct and preserves the existing model-not-found/Continue behavior. PAR-0526 remains partial pending authenticated live Gateway events, packaged Windows interaction, and formal source-paired acceptance.
+
+### Revision 333 — Bind PAR-0526 error distinction evidence — 2026-11-22
+
+EV-0112 binds the rendered policy/auth/timeout regression to implementation commit `58aa11c445c8624b9128cdf148be7d2e9a8bf180`. The scoped UCM report shows the declared scenario passing with no EV-0112-specific schema or reconciliation findings. The capability remains partial because authenticated live Gateway events, endpoint/stream-specific interaction, packaged Windows behavior, and formal source-paired acceptance remain open. The map-wide checker still reports 162 legacy errors and 11 unrelated reconciliation items.

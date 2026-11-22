@@ -4578,3 +4578,16 @@ Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d004
 - **performance:** No runtime request or rendering work was added; the presenter reads fields already in each transcript row.
 - **risks:** Live authenticated error-surface events, packaged Windows interaction and formal pinned-source acceptance remain unverified.
 - **follow_up:** Add commit-bound partial UCM evidence, publish PAR-0526 to main, and continue the next dependency-ready agent-workflow gap.
+
+### PAR-0526 evidence — 2026-11-22
+
+- **id:** PAR-0526-EV-0112
+- **timestamp:** 2026-11-22T11:19:15Z
+- **what:** Added EV-0112 and linked it to the partial `ui-distinguish-permission-rejection-from-network-error` capability for scenario `structured-policy-auth-and-timeout-copy`, bound to implementation SHA 58aa11c445c8624b9128cdf148be7d2e9a8bf180.
+- **why:** Keep the permission/auth versus network behavior auditable without overstating live or packaged verification.
+- **components:** UCM capability map/evidence, Doofus task checkpoint, plan and execution journal.
+- **type:** evidence and progress record
+- **validation:** Scenario coverage is pass; EV-0112 has no scoped schema or reconciliation findings. Source package validator passes 565 behaviors, 15 source inspections and 96 implementation receipts; task state validates at revision 758.
+- **performance:** No runtime behavior changed in the evidence step.
+- **risks:** UCM shows a promotion suggestion based on headless test evidence; status remains partial because live Gateway, packaged Windows and source-paired acceptance are still open. The map-wide checker retains 162 legacy errors and 11 unrelated reconciliation items.
+- **follow_up:** Commit evidence and checkpoint, publish PAR-0526 to origin/main, then continue the next P0 agent-workflow gap.

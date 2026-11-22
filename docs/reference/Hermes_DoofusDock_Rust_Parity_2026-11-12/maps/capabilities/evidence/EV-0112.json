@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0112",
+  "capability_id": "ui-distinguish-permission-rejection-from-network-error",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "structured-policy-auth-and-timeout-copy",
+  "locator": "apps/hermes-native/src/app.rs::structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details",
+  "date": "2026-11-22",
+  "commit": "58aa11c445c8624b9128cdf148be7d2e9a8bf180",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui rendered regression proves provider policy denial, invalid credentials and provider timeout each render distinct accessible titles and guidance. Full locked suite passes 590 library + 15 automation protocol + 3 launcher; cargo check all targets, 19 task continuity tests, task ledger/package validators, progress generators, rustfmt and diff check pass.",
+  "notes": "Partial evidence only. Pinned source pytest and source-paired acceptance were not run. Authenticated live Gateway events and packaged Windows interaction remain unverified. The focused regression does not assert endpoint or stream-drop wording."
+}
