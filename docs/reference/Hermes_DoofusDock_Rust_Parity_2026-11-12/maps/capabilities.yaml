@@ -4388,7 +4388,7 @@ capabilities:
   dimensions:
     backend: partial
     ui: partial
-    tests: implemented
+    tests: verified
   evidence:
   - type: test_result
     locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0065.json
@@ -10355,8 +10355,8 @@ capabilities:
 - id: ui-preserve-backend-native-model-and-profile-policy
   name: Preserve backend-native model and profile policy
   area: protocol-reliability
-  claim: In the new native Rust DoofusDock UI, a user can preserve backend-native model and profile policy.
-  status: not_implemented
+  claim: A user can set the selected Hermes profile's default model for future sessions, and the UI preserves separate session-local model overrides.
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10368,9 +10368,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0115
+  verification:
+    scenarios:
+    - id: profile-default-model-save-confirmation-denial-and-owner-fencing
+      description: Save a selected profile default only after any required confirmation, and ignore denied or stale-connection results.
 - id: ui-inventory-installed-third-party-desktop-ui-contributions
   name: Inventory installed third-party desktop UI contributions
   area: plugin-compatibility

@@ -3252,3 +3252,17 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime behavior changed during publication.
 - **risks:** Authenticated live Gateway and packaged Windows acceptance remain open; the capability stays partial.
 - **follow_up:** Select the next dependency-ready agent workflow task from the current progress report.
+
+
+### PAR-0528 profile main-model settings — 2026-11-22
+
+- **id:** PAR-0528-MAIN-MODEL
+- **timestamp:** 2026-11-22T12:34:15Z
+- **what:** Added Settings → Main model for the selected Hermes profile. It reads the model catalog and writes the profile-wide `scope=main` assignment with an explicit confirmation step when Hermes requires it. New-chat overrides remain session-local.
+- **why:** The first usable Hermes agent UI needs both a configurable model default for future sessions and a separate per-chat override.
+- **components:** Native Rust/egui Settings, Gateway HTTP worker, model assignment receipt handling, UCM capability evidence.
+- **type:** feature
+- **validation:** Rendered egui test and profile-authenticated Gateway HTTP fixture pass for confirmation, success, denial, and stale-connection refusal; full locked suite 596 + 15 + 3, all-target cargo check, rustfmt, and 19 continuity tests pass. Implementation commit: `294a88e`.
+- **performance:** Requests use the existing bounded HTTP worker and 8-second request timeout; no benchmarked performance change claimed.
+- **risks:** Live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain open; capability stays partial.
+- **follow_up:** Validate updated evidence and project package, publish docs/evidence/checkpoint to main, then select the next goal-relevant agent workflow gap.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0115",
+  "capability_id": "ui-preserve-backend-native-model-and-profile-policy",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "profile-default-model-save-confirmation-denial-and-owner-fencing",
+  "locator": "../../../../apps/hermes-native/src/app.rs::profile_main_model_settings_confirm_before_saving_and_keep_chat_overrides_separate",
+  "date": "2026-11-22",
+  "commit": "294a88eb73760c14f0e977182d6f4331f956e34e",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui interaction applies a profile default, waits for a server confirmation-required receipt, confirms it explicitly, and changes the displayed default only after a success receipt. A stale old-connection receipt and a denied result do not alter the profile default. The Gateway HTTP fixture asserts POST /api/model/set?profile=work, authenticated profile scope, main assignment body, base URL, confirmation retry, and backend denial. Full locked suite passes 596 library + 15 protocol + 3 launcher tests; all-target cargo check and 19 task continuity tests pass.",
+  "notes": "Partial capability evidence. This proves headless UI and fixture behavior only; authenticated live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open."
+}

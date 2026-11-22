@@ -227,3 +227,7 @@ Approval and clarification prompts now retain their originating Gateway connecti
 Gateway server-request answer receipts are owner-scoped by both connection and profile. A response for a reused request ID clears only the matching approval or clarification prompt; missing owner data on a tagged receipt cannot clear profile-owned state.
 
 The Settings Security tab reads and saves Hermes' profile-scoped security.redact_secrets preference. Missing values default to on, while an explicit profile opt-out is preserved so log and model-content redaction continue to follow Hermes policy.
+
+### Model settings
+
+Settings → Main model loads the selected Hermes profile's provider/model catalog and can save its `scope=main` default for future sessions. Hermes remains authoritative: a `confirm_required` response pauses the save and requires a second explicit action, denials remain visible, and stale profile/connection receipts cannot update the displayed default. This setting does not modify existing chats or replace their session-local model choice. New Chat separately supports manual model/provider and reasoning-effort overrides. Headless egui and authenticated HTTP-fixture tests cover both flows; live Gateway, packaged Windows, and formal pinned-source acceptance remain open.

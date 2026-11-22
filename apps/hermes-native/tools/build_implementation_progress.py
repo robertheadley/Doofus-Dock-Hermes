@@ -1384,6 +1384,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "malformed-response safeguards for other UI workflows are outside this focused sidebar slice",
         ],
     },
+    "PAR-0528": {
+        "state": "partial",
+        "level": "headless_profile_default_model_confirmation_denial_owner_fencing",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/models.ts#path: '/api/model/set'",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/model-assignment.ts#confirm_expensive_model",
+            "apps/hermes-native/src/app.rs#profile_main_model_settings_confirm_before_saving_and_keep_chat_overrides_separate",
+            "apps/hermes-native/src/gateway.rs#main_model_assignment_uses_profile_scope_and_requires_explicit_server_confirmation",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0115.json#EV-0115",
+        ],
+        "gaps": [
+            "authenticated live Gateway behavior, packaged Windows interaction, and formal pinned-source acceptance remain unverified",
+            "provider onboarding and existing session model switching remain separate workflows",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",
