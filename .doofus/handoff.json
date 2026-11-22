@@ -280,6 +280,90 @@
   "blockers": [],
   "changed_files": [
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "doofus/events.jsonl",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/lib.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/gateway_event_dedup.rs",
+      "status": "??"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -305,14 +389,16 @@
     }
   ],
   "checkpoint": {
-    "command": "git fetch origin main; verify exact local/remote SHA; task validate",
+    "command": "python apps/hermes-native/tools/build_implementation_progress.py && python apps/hermes-native/tools/build_chat_tool_progress.py && python apps/hermes-native/tools/doofus_task.py validate",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json#EV-0090",
-      "apps/hermes-native/src/app.rs#message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference"
+      "apps/hermes-native/src/gateway_event_dedup.rs#suppresses_duplicate_sequence_only_for_same_owner_epoch_and_connection",
+      "apps/hermes-native/src/gateway_event_dedup.rs#unsequenced_legacy_events_are_never_suppressed",
+      "apps/hermes-native/src/gateway_event_dedup.rs#retention_is_bounded_and_old_keys_can_be_relearned",
+      "apps/hermes-native/tools/build_implementation_progress.py#PAR-0512"
     ],
-    "state": "in_progress",
-    "summary": "PAR-0051 now supports stable-row edit, deep-cut consent, active-turn interrupt, bounded 4009 recovery, and separate new image/file uploads. Implementation and EV-0090 are on main; all prior functionality is preserved.",
-    "verified_at": "2026-11-22T01:48:31Z"
+    "state": "tested",
+    "summary": "Implemented and validated bounded owner-scoped canonical Gateway event deduplication for PAR-0512. All changes are additive; protected work directory preserved. Progress overlay records this requirement as partial because live replay, cache history beyond 8192 entries, and formal source acceptance remain open.",
+    "verified_at": "2026-11-22T02:01:04Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -366,11 +452,12 @@
     "hermes-par-0333",
     "hermes-par-0334",
     "hermes-par-0511",
+    "hermes-par-0512",
     "hermes-cross-provider-handoff"
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T02:48:31Z",
+    "lease_expires_at": "2026-11-22T03:01:04Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1629,9 +1716,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0051-edit-attachments-published-checkpoint-20261122",
+  "last_event_id": "hermes-event-dedupe-checkpoint-20261122",
   "last_operation": {
-    "request_id": "hermes-par0051-edit-attachments-published-checkpoint-20261122",
+    "request_id": "hermes-event-dedupe-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1643,14 +1730,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "03-chat",
+  "phase": "02-gateway",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Select the next P0 requirement directly tied to model connection, chat/prompt lifecycle, tools/approvals, skills, plugins/MCP or context; continue additively. Revisit live Gateway/physical Windows checks when a safe runtime is available.",
+  "recommended_next_action": "Select the next dependency-ready P0 agent workflow gap, inspect pinned source and native state, and continue additively; recheck live Gateway only when safe runtime is available.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2048,7 +2135,6 @@
     "hermes-par-0508",
     "hermes-par-0509",
     "hermes-par-0510",
-    "hermes-par-0512",
     "hermes-par-0513",
     "hermes-par-0514",
     "hermes-par-0515",
@@ -2105,8 +2191,64 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "12d9a740c525aa11b042d1cc06338802612dedb899cbcf136db147f916e6917b",
+    "change_fingerprint": "942e78445bbb1b7acde7ceabf7b1f51edba0530825d38fce0de63a35ed24ac88",
     "changed_files": [
+      {
+        "path": "doofus/events.jsonl",
+        "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/lib.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway_event_dedup.rs",
+        "status": "??"
+      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2124,17 +2266,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "6fbc11b54f9af154293d6e89df94c1b95ab6f642",
+    "head_commit": "10aa860c4240b98bdf37f525c29d45c6aa0b45d7",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 623,
+  "revision": 626,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 623,
+  "state_revision": 626,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0051",
-  "task_ledger_revision": 99,
+  "task_id": "hermes-par-0512",
+  "task_ledger_revision": 100,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3589,5 +3731,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T01:48:31Z"
+  "updated_at": "2026-11-22T02:01:04Z"
 }

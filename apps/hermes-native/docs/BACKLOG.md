@@ -359,3 +359,9 @@ PAR-0062/0063 composer attachments (2026-11-19):
 ### PAR-0067 slash suggestion keyboard update (2026-11-21)
 
 Keyboard navigation for the focused composer is implemented: arrows move the highlighted result with visible-list wraparound; Enter and Tab insert the selection into the draft without sending. The existing click route remains available. Remaining work includes directive chips, mid-message triggers, cache invalidation, local `/skin` and session command handling, live Gateway, Windows packaging and source-paired acceptance.
+
+### PAR-0512 — Deduplicate canonical Gateway event sequences (2026-11-22)
+
+Canonical Gateway frames with a session, replay epoch, and sequence now pass through an owner-scoped bounded deduplicator before event handlers can change transcript or agent state. Exact identities include the Gateway connection and profile, so equal sequence values across owners do not suppress each other. Unsequenced legacy events preserve their existing behavior. The cache holds 8,192 recent identities; retransmissions older than that window can be processed again.
+
+Validation: PASS three focused tests for duplicate suppression, owner/epoch/connection isolation, legacy compatibility, and bounded retention; full locked suite (533 library + 15 protocol + 3 launcher); all-target check, rustfmt and diff checks. The capability progress overlay now records PAR-0512 as partial with exact evidence and limitations. Live Gateway reconnect/replay and pinned-source formal acceptance remain open.

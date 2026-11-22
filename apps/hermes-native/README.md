@@ -111,6 +111,8 @@ Typography uses bundled JetBrains Mono for the application UI and Fira Code for 
 
 The Plugins inventory also reads and writes the pinned source's profile-scoped automatic-update preference. The accessible checkbox is hidden if Hermes lacks `plugins.manage auto_update`. Its synthetic 1440×900 fixture uses `--plugin-auto-update-fixture` and starts no gateway.
 
+Canonical Gateway event frames with `session_id`, `profile`, `replay_epoch`, and `seq` are deduplicated before they can alter transcript, tool, approval, or session state. The bounded recent-key cache is scoped by connection and owner route. Legacy frames without canonical sequence metadata continue through unchanged; live reconnect/replay behavior remains unverified.
+
 The composer now has a partial Gateway-backed slash suggestion flow: `/` requests the pinned command catalog, typed commands query the active session/profile, and accessible results insert into the draft without sending. Arrow navigation, directive chips, mid-message triggers, result caching and special local session/skin commands are still open. Live Gateway and source-paired acceptance have not been run.
 
 Markdown fenced code exposes an accessible Copy button; the headless fixture verifies that it emits the full code body to the clipboard. URL directive unwrapping and physical/source-paired acceptance remain open.

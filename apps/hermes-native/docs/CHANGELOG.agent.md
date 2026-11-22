@@ -2978,3 +2978,29 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - performance: No performance change measured.
 - risks: No full feature suite, physical Windows keyboard input, live gateway, installed UI or source-paired acceptance was run. Two pre-existing dead-code warning groups remain in files/layout/gateway.
 - follow_up: Continue implementing remaining pinned features; do not promote matrix acceptance from these local/headless checks.
+
+## HUR-001-195 — 2026-11-22
+
+- **id:** HUR-001-195
+- **timestamp:** 2026-11-22T01:55:06Z
+- **what:** Added bounded exact-sequence deduplication for canonical Gateway event frames before app state handlers run.
+- **why:** Prevent replayed duplicate frames from repeating transcript, tool, approval, or session side effects while preserving the pinned connection/session/profile/replay-epoch ownership boundaries.
+- **components:** `src/gateway_event_dedup.rs`, `src/app.rs`, `src/lib.rs`, `README.md`, `docs/PLAN.md`, `docs/BACKLOG.md`.
+- **type:** feature
+- **validation:** PASS three focused helper tests for duplicate suppression, owner/epoch/connection isolation, legacy unsequenced compatibility, and bounded retention. Full suite and all-target checks pending at journal time.
+- **performance:** O(1) expected lookup/insertion; fixed upper bound of 8,192 retained identities. No benchmark run.
+- **risks:** Exact duplicate protection expires after eviction; frames without canonical sequence fields intentionally bypass deduplication. Live reconnect/replay and formal pinned-source acceptance remain unverified.
+- **follow_up:** Run full locked tests and all-target checks, update durable task evidence, and publish additive changes to `main`.
+
+### HUR-001-195 validation addendum — 2026-11-22T01:59:57Z
+
+- **id:** HUR-001-196
+- **timestamp:** 2026-11-22T01:59:57Z
+- **what:** Completed full validation and updated the capability progress overlay to show PAR-0512 as partial with evidence.
+- **why:** Keep the partial-completion report evidence-backed and ensure the scope progress includes this verified implementation slice.
+- **components:** `tools/build_implementation_progress.py`, `docs/status/IMPLEMENTATION_PROGRESS.csv`, `docs/status/CHAT_TOOL_PROGRESS.csv`, `.doofus/task-ledger.json`.
+- **type:** validation and progress
+- **validation:** PASS full locked automation suite (533 library + 15 protocol + 3 launcher); PASS `cargo check --all-targets --locked --features agent-automation`; PASS rustfmt and `git diff --check`; PASS implementation/chat progress generators and task schema validation. An initial progress-generator attempt failed because its exact source locator did not match; the locator was corrected and regeneration passed.
+- **performance:** No benchmark run; implementation uses a fixed-size identity cache.
+- **risks:** Live Gateway reconnect/replay, packaged Windows behavior, and formal pinned-source acceptance remain unverified.
+- **follow_up:** Publish only the explicit additive source, evidence, and documentation files; retain protected work data.

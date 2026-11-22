@@ -1,5 +1,5 @@
 {
-  "revision": 99,
+  "revision": 100,
   "schema_version": 1,
   "tasks": [
     {
@@ -14550,7 +14550,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -14559,11 +14559,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T01:58:01Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-deduplicate-streamed-event-ids",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -14574,10 +14574,15 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0512",
               "title": "PAR-0512 Deduplicate streamed event IDs",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/gateway_event_dedup.rs#suppresses_duplicate_sequence_only_for_same_owner_epoch_and_connection",
+                "apps/hermes-native/src/gateway_event_dedup.rs#unsequenced_legacy_events_are_never_suppressed",
+                "apps/hermes-native/src/gateway_event_dedup.rs#retention_is_bounded_and_old_keys_can_be_relearned",
+                "apps/hermes-native/src/app.rs#handle_server_event_from_connection"
+              ]
             },
             {
               "agent_identity": {
@@ -16356,5 +16361,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T01:08:22Z"
+  "updated_at": "2026-11-22T01:58:01Z"
 }

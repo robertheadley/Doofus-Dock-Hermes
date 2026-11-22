@@ -21,6 +21,7 @@ use crate::gateway::{
     SkillInfo, SlashCompletionItem, SlashCompletionResult, TelegramOnboardingApplyReceipt,
     TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
 };
+use crate::gateway_event_dedup::GatewayEventDeduplicator;
 use crate::keybindings::{KeyPlatform, KeybindingStore};
 use crate::keybindings_ui::{KeybindingsPanel, key_event_to_combo};
 use crate::layout::{
@@ -1734,6 +1735,7 @@ pub struct HermesNativeApp {
     contributed_paths: BTreeSet<String>,
     gateway_discovery: Option<GatewayDiscovery>,
     gateway_connection_id: Option<String>,
+    gateway_event_deduplicator: GatewayEventDeduplicator,
     gateway_endpoint: Option<GatewayEndpoint>,
     sessions: Vec<SessionSummary>,
     project_session_colors: BTreeMap<(String, String), Option<String>>,
@@ -4201,6 +4203,7 @@ fn render_message() -> &'static str {
             contributed_paths: BTreeSet::new(),
             gateway_discovery,
             gateway_connection_id,
+            gateway_event_deduplicator: GatewayEventDeduplicator::default(),
             gateway_endpoint: None,
             sessions: Vec::new(),
             project_session_colors: BTreeMap::new(),
@@ -19187,6 +19190,12 @@ fn render_message() -> &'static str {
         event: serde_json::Value,
         connection_id: Option<&str>,
     ) {
+        if !self
+            .gateway_event_deduplicator
+            .should_deliver(&event, connection_id)
+        {
+            return;
+        }
         let session_id = event.get("session_id").and_then(|value| value.as_str());
         let event_type = event
             .get("type")

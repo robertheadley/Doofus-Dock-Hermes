@@ -1221,6 +1221,18 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["automatic WebSocket reconnect is not implemented; recovery currently handles replay-gap events after a Gateway is connected", "live Hermes replay-gap behavior and authoritative resume after a production disconnect are unverified", "ambiguous multi-profile runtime ownership is fail-closed but lacks a targeted regression", "installed Windows, source-paired visual evidence, and formal source acceptance remain pending"],
     },
+    "PAR-0512": {
+        "state": "partial",
+        "level": "headless_canonical_event_sequence_dedup",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/canonical-reconnect-replay-owner.test.ts#canonical reconnect replays the retained window to the epoch owner",
+            "apps/hermes-native/src/gateway_event_dedup.rs#suppresses_duplicate_sequence_only_for_same_owner_epoch_and_connection",
+            "apps/hermes-native/src/gateway_event_dedup.rs#unsequenced_legacy_events_are_never_suppressed",
+            "apps/hermes-native/src/gateway_event_dedup.rs#retention_is_bounded_and_old_keys_can_be_relearned",
+            "apps/hermes-native/src/app.rs#handle_server_event_from_connection",
+        ],
+        "gaps": ["deduplication retains only the latest 8,192 canonical identities, so much older retransmissions can repeat", "live Gateway reconnect/replay has not been verified", "Windows runtime and formal pinned-source acceptance remain pending"],
+    },
     "PAR-0075": {
         "state": "implemented",
         "level": "headless_protocol_and_persistence_test",

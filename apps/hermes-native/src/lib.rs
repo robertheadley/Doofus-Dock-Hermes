@@ -3,6 +3,7 @@ pub mod artifacts;
 pub mod files;
 pub mod fonts;
 pub mod gateway;
+mod gateway_event_dedup;
 pub mod keybindings;
 pub mod keybindings_ui;
 pub mod layout;
