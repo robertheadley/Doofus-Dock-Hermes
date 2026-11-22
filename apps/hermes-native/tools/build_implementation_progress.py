@@ -1318,6 +1318,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified",
         ],
     },
+    "PAR-0524": {
+        "state": "partial",
+        "level": "headless_exact_gateway_profile_request_receipt_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/gateway.ts#ScopedServerRequest",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/contrib/session-rpc-dispatcher.ts#exact (connectionId, profile)",
+            "apps/hermes-native/src/gateway.rs#GatewayCommand::RespondServerRequest",
+            "apps/hermes-native/src/gateway.rs#GatewayEvent::ServerRequestAnswered",
+            "apps/hermes-native/src/app.rs#handle_server_request_answered_from_connection",
+            "apps/hermes-native/src/app.rs#server_request_receipts_require_the_exact_gateway_and_profile_owner",
+        ],
+        "gaps": [
+            "server-request receipt ownership is now exact by connection and profile, but stale-owner audit remains open for other mutating Gateway operations",
+            "authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",

@@ -2005,6 +2005,7 @@ pub enum GatewayEvent {
     ServerRequestAnswered {
         id: String,
         result: Result<(), String>,
+        profile: Option<String>,
         connection_id: Option<String>,
     },
     SessionCreated(Result<CreatedSession, String>),
@@ -2721,6 +2722,7 @@ enum GatewayCommand {
     },
     RespondServerRequest {
         id: String,
+        profile: Option<String>,
         response: Result<serde_json::Value, (i64, String)>,
     },
     LoadConnectors {
@@ -4895,10 +4897,15 @@ impl GatewayDiscovery {
     pub fn respond_server_request(
         &self,
         id: String,
+        profile: Option<String>,
         response: Result<serde_json::Value, (i64, String)>,
     ) -> Result<(), String> {
         self.command_sender
-            .send(GatewayCommand::RespondServerRequest { id, response })
+            .send(GatewayCommand::RespondServerRequest {
+                id,
+                profile,
+                response,
+            })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
@@ -8136,7 +8143,11 @@ fn gateway_actor(
                     return;
                 }
             }
-            Ok(GatewayCommand::RespondServerRequest { id, response }) => {
+            Ok(GatewayCommand::RespondServerRequest {
+                id,
+                profile,
+                response,
+            }) => {
                 let (frame, result) = match response {
                     Ok(result) => (
                         serde_json::json!({"jsonrpc":"2.0","id":id,"result":result}),
@@ -8159,6 +8170,7 @@ fn gateway_actor(
                     .send(GatewayEvent::ServerRequestAnswered {
                         id,
                         result,
+                        profile,
                         connection_id: None,
                     })
                     .is_err()
@@ -16737,6 +16749,7 @@ mod tests {
             .send(GatewayEvent::ServerRequestAnswered {
                 id: "approval-request".into(),
                 result: Ok(()),
+                profile: Some("work".into()),
                 connection_id: None,
             })
             .expect("queue server request receipt");
@@ -16744,9 +16757,12 @@ mod tests {
             discovery.poll_event(),
             Some(GatewayEvent::ServerRequestAnswered {
                 id,
+                profile: Some(profile),
                 connection_id: Some(connection_id),
                 ..
-            }) if id == "approval-request" && connection_id == "saved-remote-a"
+            }) if id == "approval-request"
+                && profile == "work"
+                && connection_id == "saved-remote-a"
         ));
 
         events
@@ -19970,6 +19986,7 @@ mod tests {
         commands
             .send(GatewayCommand::RespondServerRequest {
                 id: "approval-wire-1".into(),
+                profile: Some("work".into()),
                 response: Ok(json!({"choice":"once"})),
             })
             .expect("queue approval response");
@@ -19978,8 +19995,12 @@ mod tests {
             .expect("server request response receipt");
         assert!(matches!(
             receipt,
-            GatewayEvent::ServerRequestAnswered { id, result: Ok(()), .. }
-                if id == "approval-wire-1"
+            GatewayEvent::ServerRequestAnswered {
+                id,
+                profile: Some(profile),
+                result: Ok(()),
+                ..
+            } if id == "approval-wire-1" && profile == "work"
         ));
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");
@@ -20036,6 +20057,7 @@ mod tests {
         commands
             .send(GatewayCommand::RespondServerRequest {
                 id: "clarify-wire-1".into(),
+                profile: Some("work".into()),
                 response: Ok(json!({"answers":{"q1":"Desktop"}})),
             })
             .expect("queue clarify response");
@@ -20044,8 +20066,12 @@ mod tests {
             .expect("server request response receipt");
         assert!(matches!(
             receipt,
-            GatewayEvent::ServerRequestAnswered { id, result: Ok(()), .. }
-                if id == "clarify-wire-1"
+            GatewayEvent::ServerRequestAnswered {
+                id,
+                profile: Some(profile),
+                result: Ok(()),
+                ..
+            } if id == "clarify-wire-1" && profile == "work"
         ));
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

@@ -4512,3 +4512,16 @@ Publication follow-up — 2026-11-22T09:37:33Z: Implementation commit `6a4ad7afd
 - **performance:** No benchmarked performance change; prompt maps remain bounded by the existing in-memory lifecycle.
 - **risks:** Other mutating Gateway operations still need a full connection/profile audit. Authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified.
 - **follow_up:** Add commit-bound EV-0109 and partial capability state, run the UCM/package/task checks, publish to main, then continue the next P0 workflow gap.
+
+### PAR-0524 — Fence Gateway answer receipts by profile — 2026-11-22T10:22:13Z
+
+- **id:** PAR-0524
+- **timestamp:** 2026-11-22T10:22:13Z
+- **what:** Added profile ownership to RespondServerRequest and ServerRequestAnswered; receipt application now requires the exact connection/profile/request tuple.
+- **why:** Prevent a result receipt for a reused request ID from mutating another profile's approval or clarification prompt.
+- **components:** pps/hermes-native/src/gateway.rs, pps/hermes-native/src/app.rs, architecture/plan/backlog/completion docs, implementation progress evidence builder.
+- **type:** correctness fix
+- **validation:** PASS 587 library + 15 protocol + 3 launcher tests; cargo check --all-targets --locked --features agent-automation; 19 task-continuity tests; package validator; progress builders; rustfmt and diff checks.
+- **performance:** No benchmark applicable; only metadata fields and owner comparisons were added.
+- **risks:** Other mutating Gateway operations remain unaudited; live authenticated Gateway, packaged Windows and pinned-source acceptance are not verified.
+- **follow_up:** Continue the P0 stale-owner audit from the next dependency-ready request/result path.

@@ -19691,6 +19691,14 @@ fn render_message() -> &'static str {
         {
             return;
         }
+        let request_profile = params
+            .get("profile")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
         if method == "clarify" {
             self.handle_batch_clarify_request(server_request_id, params, connection_id);
             return;
@@ -19698,6 +19706,7 @@ fn render_message() -> &'static str {
         if method != "approval" {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 -32601,
                 "No native handler for this request",
             );
@@ -19710,22 +19719,16 @@ fn render_message() -> &'static str {
         let Some(session_id) = session_id else {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 -32602,
                 "Approval request omitted its session ID",
             );
             return;
         };
-        let request_profile = params
-            .get("profile")
-            .and_then(|value| value.as_str())
-            .or_else(|| {
-                self.gateway_endpoint
-                    .as_ref()
-                    .map(|endpoint| endpoint.profile_id.as_str())
-            });
         if !self.session_runtime_is_known(session_id, request_profile, connection_id.as_deref()) {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 4404,
                 "This window has no unique open session pane for the request",
             );
@@ -19759,6 +19762,7 @@ fn render_message() -> &'static str {
         if choices.is_empty() {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 -32602,
                 "Approval request offered no supported choices",
             );
@@ -19768,6 +19772,7 @@ fn render_message() -> &'static str {
         if self.approval_prompts.contains_key(&prompt_key) {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 -32600,
                 "Approval request is already being shown",
             );
@@ -19891,18 +19896,6 @@ fn render_message() -> &'static str {
         params: serde_json::Value,
         connection_id: Option<String>,
     ) {
-        let session_id = params
-            .get("session_id")
-            .and_then(|value| value.as_str())
-            .filter(|value| !value.is_empty());
-        let Some(session_id) = session_id else {
-            self.reject_server_request(
-                server_request_id,
-                -32602,
-                "Clarify request omitted its session ID",
-            );
-            return;
-        };
         let request_profile = params
             .get("profile")
             .and_then(|value| value.as_str())
@@ -19911,9 +19904,23 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.as_str())
             });
+        let session_id = params
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty());
+        let Some(session_id) = session_id else {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32602,
+                "Clarify request omitted its session ID",
+            );
+            return;
+        };
         if !self.session_runtime_is_known(session_id, request_profile, connection_id.as_deref()) {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 4404,
                 "This window has no unique open session pane for the request",
             );
@@ -19927,6 +19934,7 @@ fn render_message() -> &'static str {
         if rows.len() > 5 {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 -32602,
                 "Clarify requests may contain at most five questions",
             );
@@ -19935,6 +19943,7 @@ fn render_message() -> &'static str {
         if rows.is_empty() {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 -32602,
                 "Clarify requests must contain at least one question",
             );
@@ -20026,8 +20035,11 @@ fn render_message() -> &'static str {
         }
         if questions.is_empty() {
             if let Some(gateway) = &self.gateway_discovery {
-                let _ =
-                    gateway.respond_server_request(server_request_id, Ok(serde_json::json!({})));
+                let _ = gateway.respond_server_request(
+                    server_request_id,
+                    request_profile.map(str::to_owned),
+                    Ok(serde_json::json!({})),
+                );
             }
             return;
         }
@@ -20039,6 +20051,7 @@ fn render_message() -> &'static str {
         if self.batch_clarify_prompts.contains_key(&prompt_key) {
             self.reject_server_request(
                 server_request_id,
+                request_profile.map(str::to_owned),
                 -32600,
                 "Clarify request is already being shown",
             );
@@ -20061,28 +20074,32 @@ fn render_message() -> &'static str {
         self.status = "Hermes has questions for you".into();
     }
 
-    fn reject_server_request(&self, id: String, code: i64, message: &str) {
+    fn reject_server_request(&self, id: String, profile: Option<String>, code: i64, message: &str) {
         if let Some(gateway) = &self.gateway_discovery {
-            let _ = gateway.respond_server_request(id, Err((code, message.to_owned())));
+            let _ = gateway.respond_server_request(id, profile, Err((code, message.to_owned())));
         }
     }
 
     #[cfg(test)]
     fn handle_server_request_answered(&mut self, id: String, result: Result<(), String>) {
-        self.handle_server_request_answered_from_connection(id, result, None);
+        self.handle_server_request_answered_from_connection(id, result, None, None);
     }
 
     fn handle_server_request_answered_from_connection(
         &mut self,
         id: String,
         result: Result<(), String>,
+        profile: Option<String>,
         connection_id: Option<String>,
     ) {
         let batch_key = self.batch_clarify_prompts.iter().find_map(|(key, prompt)| {
             (prompt.server_request_id == id
-                && connection_id
-                    .as_deref()
-                    .is_none_or(|owner| prompt.connection_id.as_deref() == Some(owner)))
+                && server_request_owner_matches(
+                    prompt.connection_id.as_deref(),
+                    prompt.profile.as_deref(),
+                    connection_id.as_deref(),
+                    profile.as_deref(),
+                ))
             .then(|| key.clone())
         });
         if let Some(prompt_id) = batch_key {
@@ -20107,9 +20124,12 @@ fn render_message() -> &'static str {
             .iter()
             .find_map(|(prompt_id, prompt)| {
                 (prompt.server_request_id.as_deref() == Some(&id)
-                    && connection_id
-                        .as_deref()
-                        .is_none_or(|owner| prompt.connection_id.as_deref() == Some(owner)))
+                    && server_request_owner_matches(
+                        prompt.connection_id.as_deref(),
+                        prompt.profile.as_deref(),
+                        connection_id.as_deref(),
+                        profile.as_deref(),
+                    ))
                 .then(|| prompt_id.clone())
             })
         else {
@@ -24808,6 +24828,7 @@ fn render_message() -> &'static str {
         if let Some(server_request_id) = server_request_id {
             gateway.respond_server_request(
                 server_request_id.clone(),
+                prompt.profile.clone(),
                 Ok(serde_json::json!({"choice":choice})),
             )?;
             if let Some(prompt) = self.approval_prompts.get_mut(&prompt_id) {
@@ -24852,7 +24873,11 @@ fn render_message() -> &'static str {
                 self.gateway_discovery
                     .as_ref()
                     .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
-                    .respond_server_request(server_request_id, Ok(serde_json::json!({})))?;
+                    .respond_server_request(
+                        server_request_id,
+                        prompt.profile.clone(),
+                        Ok(serde_json::json!({})),
+                    )?;
                 if let Some(prompt) = self.batch_clarify_prompts.get_mut(&prompt_id) {
                     prompt.response_pending = true;
                 }
@@ -29530,8 +29555,14 @@ fn render_message() -> &'static str {
                 GatewayEvent::ServerRequestAnswered {
                     id,
                     result,
+                    profile,
                     connection_id,
-                } => self.handle_server_request_answered_from_connection(id, result, connection_id),
+                } => self.handle_server_request_answered_from_connection(
+                    id,
+                    result,
+                    profile,
+                    connection_id,
+                ),
                 GatewayEvent::ServerEvent {
                     event,
                     connection_id,
@@ -36045,6 +36076,18 @@ fn gateway_prompt_key(connection_id: Option<&str>, profile: Option<&str>, id: &s
         || id.to_owned(),
         |connection_id| session_owner_identity_key(id, profile, Some(connection_id)),
     )
+}
+
+fn server_request_owner_matches(
+    prompt_connection_id: Option<&str>,
+    prompt_profile: Option<&str>,
+    event_connection_id: Option<&str>,
+    event_profile: Option<&str>,
+) -> bool {
+    if event_connection_id.is_none() && event_profile.is_none() {
+        return true;
+    }
+    prompt_connection_id == event_connection_id && prompt_profile == event_profile
 }
 
 fn session_id_from_owner_identity_key(key: &str) -> Option<&str> {
@@ -51869,6 +51912,52 @@ mod tests {
         );
         assert!(!app.approval_prompts.contains_key(&key_a));
         assert!(!app.approval_prompts.contains_key(&key_b));
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn server_request_receipts_require_the_exact_gateway_and_profile_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        let prompt = |profile: &str| ApprovalPrompt {
+            session_id: "runtime-session".into(),
+            profile: Some(profile.into()),
+            connection_id: Some("gateway-a".into()),
+            execution_generation: 0,
+            prompt_id: format!("prompt-{profile}"),
+            server_request_id: Some("reused-server-request".into()),
+            command: "run tool".into(),
+            description: "test request".into(),
+            choices: vec!["once".into(), "deny".into()],
+            response_pending: Some(("local-request".into(), "once".into())),
+            response_unknown: false,
+        };
+        let work_key = gateway_prompt_key(Some("gateway-a"), Some("work"), "prompt-work");
+        let personal_key =
+            gateway_prompt_key(Some("gateway-a"), Some("personal"), "prompt-personal");
+        app.approval_prompts
+            .insert(work_key.clone(), prompt("work"));
+        app.approval_prompts
+            .insert(personal_key.clone(), prompt("personal"));
+
+        app.handle_server_request_answered_from_connection(
+            "reused-server-request".into(),
+            Ok(()),
+            None,
+            Some("gateway-a".into()),
+        );
+        assert!(app.approval_prompts.contains_key(&work_key));
+        assert!(app.approval_prompts.contains_key(&personal_key));
+
+        app.handle_server_request_answered_from_connection(
+            "reused-server-request".into(),
+            Ok(()),
+            Some("work".into()),
+            Some("gateway-a".into()),
+        );
+        assert!(!app.approval_prompts.contains_key(&work_key));
+        assert!(app.approval_prompts.contains_key(&personal_key));
 
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
