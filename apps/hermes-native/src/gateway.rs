@@ -8347,7 +8347,7 @@ fn gateway_actor(
             Ok(Message::Text(text)) => {
                 if let Ok(frame) = serde_json::from_str::<serde_json::Value>(&text) {
                     if let Some((id, method, params)) = server_request_parts(&frame) {
-                        if matches!(method.as_str(), "approval" | "clarify") {
+                        if matches!(method.as_str(), "approval" | "clarify" | "sudo") {
                             let _ = events.send(GatewayEvent::ServerRequestReceived {
                                 id,
                                 method,
@@ -20483,6 +20483,77 @@ mod tests {
                 result: Ok(()),
                 ..
             } if id == "approval-wire-1" && profile == "work"
+        ));
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn idle_actor_routes_sudo_server_request_and_returns_password_value_on_same_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":"sudo-wire-1",
+                        "method":"sudo",
+                        "params":{"session_id":"runtime-1","command":"sudo install package"}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send sudo server request");
+            let response: serde_json::Value = match socket.read().expect("read server reply") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse server reply"),
+                other => panic!("expected JSON-RPC response, got {other:?}"),
+            };
+            assert_eq!(response["jsonrpc"], "2.0");
+            assert_eq!(response["id"], "sudo-wire-1");
+            assert_eq!(response["result"], json!({"value":"fixture-only-password"}));
+            socket.close(None).expect("close fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (commands, command_receiver) = mpsc::channel();
+        let (events, event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let request = event_receiver
+            .recv_timeout(Duration::from_secs(3))
+            .expect("sudo request reaches the UI event channel");
+        assert!(matches!(
+            request,
+            GatewayEvent::ServerRequestReceived { id, method, params, .. }
+                if id == "sudo-wire-1"
+                    && method == "sudo"
+                    && params["session_id"] == "runtime-1"
+        ));
+        commands
+            .send(GatewayCommand::RespondServerRequest {
+                id: "sudo-wire-1".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":"fixture-only-password"})),
+            })
+            .expect("queue sudo response");
+        let receipt = event_receiver
+            .recv_timeout(Duration::from_secs(3))
+            .expect("server request response receipt");
+        assert!(matches!(
+            receipt,
+            GatewayEvent::ServerRequestAnswered {
+                id,
+                profile: Some(profile),
+                result: Ok(()),
+                ..
+            } if id == "sudo-wire-1" && profile == "work"
         ));
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

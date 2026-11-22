@@ -1705,6 +1705,17 @@ struct ApprovalPrompt {
     response_unknown: bool,
 }
 
+struct SudoPrompt {
+    session_id: String,
+    profile: Option<String>,
+    connection_id: Option<String>,
+    server_request_id: String,
+    command: String,
+    password: Zeroizing<String>,
+    response_pending: bool,
+    response_unknown: bool,
+}
+
 #[derive(Clone, Debug)]
 struct ClarifyPrompt {
     session_id: String,
@@ -2254,6 +2265,7 @@ pub struct HermesNativeApp {
     rename_draft: String,
     pending_session_closes: VecDeque<PanelId>,
     approval_prompts: BTreeMap<String, ApprovalPrompt>,
+    sudo_prompts: BTreeMap<String, SudoPrompt>,
     clarify_prompts: BTreeMap<String, ClarifyPrompt>,
     batch_clarify_prompts: BTreeMap<String, BatchClarifyPrompt>,
     panel_drag: Option<DragSession<PanelDropTarget>>,
@@ -4747,6 +4759,7 @@ fn render_message() -> &'static str {
             rename_draft: String::new(),
             pending_session_closes: VecDeque::new(),
             approval_prompts: BTreeMap::new(),
+            sudo_prompts: BTreeMap::new(),
             clarify_prompts: BTreeMap::new(),
             batch_clarify_prompts: BTreeMap::new(),
             panel_drag: None,
@@ -7090,6 +7103,7 @@ fn render_message() -> &'static str {
     }
 
     fn workspace_content(&mut self, ui: &mut egui::Ui) {
+        self.clear_inactive_sudo_passwords(ui);
         if self.route.is_overlay() {
             return;
         }
@@ -7115,6 +7129,7 @@ fn render_message() -> &'static str {
         }
         if matches!(self.route, AppRoute::NewChat | AppRoute::Session(_)) {
             self.approval_cards(ui);
+            self.sudo_cards(ui);
             self.clarify_cards(ui);
             self.batch_clarify_cards(ui);
             self.composer(ui);
@@ -7969,6 +7984,148 @@ fn render_message() -> &'static str {
                     }
                 });
             });
+        }
+    }
+
+    fn clear_inactive_sudo_passwords(&mut self, ui: &Ui) {
+        let session_id = self.active_runtime_session_id.clone();
+        let profile = self.active_session_profile.clone();
+        let active_connection = self.active_gateway_connection_id().to_owned();
+        let connection_id = (!active_connection.is_empty()).then_some(active_connection);
+        let chat_route = matches!(self.route, AppRoute::NewChat | AppRoute::Session(_));
+        for (key, prompt) in &mut self.sudo_prompts {
+            let visible_owner = chat_route
+                && self.gateway_connected
+                && session_id.as_deref() == Some(prompt.session_id.as_str())
+                && profile.as_deref() == prompt.profile.as_deref()
+                && connection_id.as_deref() == prompt.connection_id.as_deref();
+            if !visible_owner {
+                prompt.password.zeroize();
+                let widget_id = ui.make_persistent_id(("sudo-password", key.as_str()));
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), widget_id) {
+                    state.clear_undoer();
+                    state.store(ui.ctx(), widget_id);
+                }
+            }
+        }
+    }
+
+    fn sudo_cards(&mut self, ui: &mut Ui) {
+        let session_id = self.active_runtime_session_id.clone();
+        let profile = self.active_session_profile.clone();
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let connection_id = (!connection_id.is_empty()).then_some(connection_id);
+        for prompt in self.sudo_prompts.values_mut() {
+            let visible_owner = session_id.as_deref() == Some(prompt.session_id.as_str())
+                && profile == prompt.profile
+                && prompt.connection_id.as_deref() == connection_id.as_deref();
+            if !visible_owner || !self.gateway_connected {
+                prompt.password.zeroize();
+            }
+        }
+        let Some(session_id) = session_id else {
+            return;
+        };
+        let prompt_keys = self
+            .sudo_prompts
+            .iter()
+            .filter(|(_, prompt)| {
+                prompt.session_id == session_id
+                    && prompt.profile == profile
+                    && prompt.connection_id.as_deref() == connection_id.as_deref()
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for prompt_key in prompt_keys {
+            let password_widget_id = ui.make_persistent_id(("sudo-password", prompt_key.as_str()));
+            let mut submit = false;
+            let mut cancel = false;
+            if let Some(prompt) = self.sudo_prompts.get_mut(&prompt_key) {
+                ui.add_space(8.0);
+                ui.group(|ui| {
+                    ui.label(
+                        RichText::new("Administrator permission required")
+                            .strong()
+                            .color(ACCENT),
+                    );
+                    if prompt.command.trim().is_empty() {
+                        ui.label("Hermes did not provide the command details.")
+                            .accessible_name("Administrator command details unavailable");
+                    } else {
+                        ui.label(RichText::new(&prompt.command).monospace().color(TEXT))
+                            .accessible_name("Administrator command");
+                    }
+                    let pending = prompt.response_pending || prompt.response_unknown;
+                    ui.add_enabled_ui(self.gateway_connected && !pending, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut *prompt.password)
+                                .id(password_widget_id)
+                                .password(true)
+                                .desired_width(ui.available_width())
+                                .hint_text("Administrator password"),
+                        )
+                        .accessible_name(format!(
+                            "Administrator password for request {}",
+                            prompt.server_request_id
+                        ));
+                        if let Some(mut state) =
+                            egui::TextEdit::load_state(ui.ctx(), password_widget_id)
+                        {
+                            state.clear_undoer();
+                            state.store(ui.ctx(), password_widget_id);
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        let send = ui
+                            .add_enabled(
+                                self.gateway_connected && !pending && !prompt.password.is_empty(),
+                                egui::Button::new("Send password"),
+                            )
+                            .accessible_name(format!(
+                                "Send administrator password for request {}",
+                                prompt.server_request_id
+                            ));
+                        submit = send.clicked();
+                        let refuse = ui
+                            .add_enabled(
+                                self.gateway_connected && !pending,
+                                egui::Button::new("Cancel"),
+                            )
+                            .accessible_name(format!(
+                                "Refuse administrator request {}",
+                                prompt.server_request_id
+                            ));
+                        cancel = refuse.clicked();
+                        if prompt.response_unknown {
+                            ui.label(
+                                RichText::new(
+                                    "Response outcome unknown — do not resend this password.",
+                                )
+                                .color(Color32::YELLOW),
+                            )
+                            .accessible_name(format!(
+                                "Administrator response outcome unknown for request {}",
+                                prompt.server_request_id
+                            ));
+                        } else if prompt.response_pending {
+                            ui.label(RichText::new("Sending secure response…").color(MUTED));
+                        }
+                    });
+                });
+            }
+            if submit || cancel {
+                let password = if submit {
+                    self.sudo_prompts
+                        .get_mut(&prompt_key)
+                        .map(|prompt| Zeroizing::new(std::mem::take(&mut *prompt.password)))
+                        .unwrap_or_else(|| Zeroizing::new(String::new()))
+                } else {
+                    Zeroizing::new(String::new())
+                };
+                if let Err(error) = self.respond_to_sudo(&prompt_key, password) {
+                    self.status = error;
+                }
+            }
         }
     }
 
@@ -16770,6 +16927,10 @@ fn render_message() -> &'static str {
                     .values()
                     .any(|prompt| prompt.session_id == runtime_session_id)
                 || self
+                    .sudo_prompts
+                    .values()
+                    .any(|prompt| prompt.session_id == runtime_session_id)
+                || self
                     .clarify_prompts
                     .values()
                     .any(|prompt| prompt.session_id == runtime_session_id)
@@ -20064,6 +20225,10 @@ fn render_message() -> &'static str {
             self.handle_batch_clarify_request(server_request_id, params, connection_id);
             return;
         }
+        if method == "sudo" {
+            self.handle_sudo_request(server_request_id, params, connection_id);
+            return;
+        }
         if method != "approval" {
             self.reject_server_request(
                 server_request_id,
@@ -20166,6 +20331,77 @@ fn render_message() -> &'static str {
         self.status = "A tool approval is waiting for your decision".into();
     }
 
+    fn handle_sudo_request(
+        &mut self,
+        server_request_id: String,
+        params: serde_json::Value,
+        connection_id: Option<String>,
+    ) {
+        let request_profile = params
+            .get("profile")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+        let session_id = params
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty());
+        let Some(session_id) = session_id else {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32602,
+                "Sudo request omitted its session ID",
+            );
+            return;
+        };
+        if !self.session_runtime_is_known(session_id, request_profile, connection_id.as_deref()) {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                4404,
+                "This window has no unique open session pane for the request",
+            );
+            return;
+        }
+        let prompt_key = gateway_prompt_key(
+            connection_id.as_deref(),
+            request_profile,
+            &server_request_id,
+        );
+        if self.sudo_prompts.contains_key(&prompt_key) {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32600,
+                "Sudo request is already being shown",
+            );
+            return;
+        }
+        let command = params
+            .get("command")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_owned();
+        self.sudo_prompts.insert(
+            prompt_key,
+            SudoPrompt {
+                session_id: session_id.to_owned(),
+                profile: request_profile.map(str::to_owned),
+                connection_id,
+                server_request_id,
+                command,
+                password: Zeroizing::new(String::new()),
+                response_pending: false,
+                response_unknown: false,
+            },
+        );
+        self.status = "Hermes is waiting for administrator input".into();
+    }
+
     fn handle_server_request_cancelled(
         &mut self,
         payload: &serde_json::Value,
@@ -20189,6 +20425,18 @@ fn render_message() -> &'static str {
         if let Some(batch_key) = batch_key {
             self.batch_clarify_prompts.remove(&batch_key);
             self.status = "Hermes withdrew the clarification request".into();
+            return;
+        }
+
+        let sudo_prompt_key = self.sudo_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == server_request_id
+                && prompt.connection_id.as_deref() == connection_id
+                && prompt.profile.as_deref() == event_profile)
+                .then(|| key.clone())
+        });
+        if let Some(prompt_key) = sudo_prompt_key {
+            self.sudo_prompts.remove(&prompt_key);
+            self.status = "Hermes withdrew the administrator request".into();
             return;
         }
 
@@ -20480,6 +20728,35 @@ fn render_message() -> &'static str {
             }
             return;
         }
+
+        let sudo_key = self.sudo_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == id
+                && server_request_owner_matches(
+                    prompt.connection_id.as_deref(),
+                    prompt.profile.as_deref(),
+                    connection_id.as_deref(),
+                    profile.as_deref(),
+                ))
+            .then(|| key.clone())
+        });
+        if let Some(prompt_key) = sudo_key {
+            match result {
+                Ok(()) => {
+                    self.sudo_prompts.remove(&prompt_key);
+                    self.status = "Administrator response sent to Hermes".into();
+                }
+                Err(_) => {
+                    if let Some(prompt) = self.sudo_prompts.get_mut(&prompt_key) {
+                        prompt.password.zeroize();
+                        prompt.response_unknown = true;
+                    }
+                    self.status =
+                        "Administrator response outcome is unknown; do not resend the password."
+                            .into();
+                }
+            }
+            return;
+        }
         let Some(prompt_id) = self
             .approval_prompts
             .iter()
@@ -20523,6 +20800,12 @@ fn render_message() -> &'static str {
             }
         }
         for prompt in self.batch_clarify_prompts.values_mut() {
+            if prompt.response_pending {
+                prompt.response_unknown = true;
+            }
+        }
+        for prompt in self.sudo_prompts.values_mut() {
+            prompt.password.zeroize();
             if prompt.response_pending {
                 prompt.response_unknown = true;
             }
@@ -21690,6 +21973,10 @@ fn render_message() -> &'static str {
                             .is_some_and(|(_, id)| id == runtime)
                         && !self
                             .approval_prompts
+                            .values()
+                            .any(|prompt| prompt.session_id == runtime)
+                        && !self
+                            .sudo_prompts
                             .values()
                             .any(|prompt| prompt.session_id == runtime)
                         && !self
@@ -25153,6 +25440,52 @@ fn render_message() -> &'static str {
             )?;
         self.pending_interrupt = Some((request_id, session_id));
         self.status = "Stopping Hermes response…".into();
+        Ok(())
+    }
+
+    fn respond_to_sudo(
+        &mut self,
+        prompt_key: &str,
+        password: Zeroizing<String>,
+    ) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before answering the administrator prompt".into());
+        }
+        let Some(prompt) = self.sudo_prompts.get(prompt_key) else {
+            return Err("This administrator request is no longer pending".into());
+        };
+        if prompt.response_pending || prompt.response_unknown {
+            return Err("This administrator response is already pending or unknown".into());
+        }
+        if !self.session_runtime_is_known(
+            &prompt.session_id,
+            prompt.profile.as_deref(),
+            prompt.connection_id.as_deref(),
+        ) {
+            return Err(
+                "This administrator request no longer maps to a unique open session".into(),
+            );
+        }
+        if password.len() > 16_384 || password.chars().any(|character| character == '\0') {
+            return Err(
+                "Administrator password must be at most 16384 bytes and contain no NUL".into(),
+            );
+        }
+        let server_request_id = prompt.server_request_id.clone();
+        let profile = prompt.profile.clone();
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
+            .respond_server_request(
+                server_request_id,
+                profile,
+                Ok(serde_json::json!({"value": password.as_str()})),
+            )?;
+        if let Some(prompt) = self.sudo_prompts.get_mut(prompt_key) {
+            prompt.password.zeroize();
+            prompt.response_pending = true;
+        }
+        self.status = "Sending secure response to Hermes…".into();
         Ok(())
     }
 
@@ -28695,6 +29028,14 @@ fn render_message() -> &'static str {
                 .as_ref()
                 .is_some_and(|(_, session)| session == &runtime)
             || self.approval_prompts.values().any(|prompt| {
+                prompt.session_id == runtime
+                    && prompt.profile.as_deref() == profile
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection_id)
+            })
+            || self.sudo_prompts.values().any(|prompt| {
                 prompt.session_id == runtime
                     && prompt.profile.as_deref() == profile
                     && prompt
@@ -53932,6 +54273,230 @@ mod tests {
     }
 
     #[test]
+    fn sudo_cancel_requires_exact_connection_and_profile_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        let first_key = gateway_prompt_key(Some("gateway-a"), Some("work"), "reused-id");
+        let second_key = gateway_prompt_key(Some("gateway-b"), Some("personal"), "reused-id");
+        for (key, connection_id, profile) in [
+            (first_key.as_str(), "gateway-a", "work"),
+            (second_key.as_str(), "gateway-b", "personal"),
+        ] {
+            app.sudo_prompts.insert(
+                key.to_owned(),
+                SudoPrompt {
+                    session_id: "runtime-session".into(),
+                    profile: Some(profile.into()),
+                    connection_id: Some(connection_id.into()),
+                    server_request_id: "reused-id".into(),
+                    command: "sudo fixture".into(),
+                    password: Zeroizing::new("fixture-only".into()),
+                    response_pending: false,
+                    response_unknown: false,
+                },
+            );
+        }
+
+        app.handle_server_request_cancelled(&json!({"id":"reused-id"}), None, None);
+        assert_eq!(
+            app.sudo_prompts.len(),
+            2,
+            "unscoped cancellation removes neither owner"
+        );
+        app.handle_server_request_cancelled(
+            &json!({"id":"reused-id"}),
+            Some("work"),
+            Some("gateway-a"),
+        );
+        assert!(!app.sudo_prompts.contains_key(&first_key));
+        assert!(app.sudo_prompts.contains_key(&second_key));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn sudo_password_is_cleared_when_prompt_leaves_active_chat() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Settings;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        let prompt_key =
+            gateway_prompt_key(Some("gateway-connection-1"), Some("work"), "sudo-hidden");
+        app.sudo_prompts.insert(
+            prompt_key.clone(),
+            SudoPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                connection_id: Some("gateway-connection-1".into()),
+                server_request_id: "sudo-hidden".into(),
+                command: "sudo fixture".into(),
+                password: Zeroizing::new("fixture-only".into()),
+                response_pending: false,
+                response_unknown: false,
+            },
+        );
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        drop(harness);
+        assert!(app.sudo_prompts[&prompt_key].password.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn sudo_password_is_masked_ephemeral_and_sent_only_to_its_profile_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "sudo-wire-1".into(),
+            "sudo".into(),
+            serde_json::json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "command":"sudo install package"
+            }),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key =
+            gateway_prompt_key(Some("gateway-connection-1"), Some("work"), "sudo-wire-1");
+        assert_eq!(
+            app.sudo_prompts[&prompt_key].command,
+            "sudo install package"
+        );
+        assert!(app.sudo_prompts[&prompt_key].password.is_empty());
+
+        app.sudo_prompts
+            .get_mut(&prompt_key)
+            .expect("sudo prompt")
+            .password
+            .push_str("fixture-secret");
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref()
+                        == Some("Administrator password for request sudo-wire-1")
+                })
+                .next()
+                .is_some(),
+            "masked credential control has an accessible name"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label()
+                        .is_some_and(|label| label.contains("fixture-secret"))
+                })
+                .next()
+                .is_none(),
+            "the password value is not exposed as an accessible label"
+        );
+        drop(harness);
+        let password = Zeroizing::new(std::mem::take(
+            &mut *app
+                .sudo_prompts
+                .get_mut(&prompt_key)
+                .expect("sudo prompt")
+                .password,
+        ));
+        app.respond_to_sudo(&prompt_key, password)
+            .expect("send password to the owner Gateway request");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("sudo response reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "sudo-wire-1".into(),
+                profile: Some("work".into()),
+                response: Ok(serde_json::json!({"value":"fixture-secret"})),
+            }
+        );
+        assert!(app.sudo_prompts[&prompt_key].password.is_empty());
+        assert!(app.sudo_prompts[&prompt_key].response_pending);
+        assert!(app.status.to_lowercase().find("fixture-secret").is_none());
+        assert!(
+            serde_json::to_string(&app.automation_state())
+                .expect("automation state serializes")
+                .find("fixture-secret")
+                .is_none(),
+            "automation state never contains the password"
+        );
+
+        app.handle_server_request_answered_from_connection(
+            "sudo-wire-1".into(),
+            Ok(()),
+            Some("personal".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.sudo_prompts.contains_key(&prompt_key));
+        app.handle_server_request_answered_from_connection(
+            "sudo-wire-1".into(),
+            Ok(()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(!app.sudo_prompts.contains_key(&prompt_key));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn sudo_cancel_sends_empty_value_and_unknown_receipt_forbids_resend() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "sudo-wire-cancel".into(),
+            "sudo".into(),
+            serde_json::json!({"session_id":"runtime-session","profile":"work"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "sudo-wire-cancel",
+        );
+        app.respond_to_sudo(&prompt_key, Zeroizing::new(String::new()))
+            .expect("cancel as explicit empty refusal");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("empty refusal reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "sudo-wire-cancel".into(),
+                profile: Some("work".into()),
+                response: Ok(serde_json::json!({"value":""})),
+            }
+        );
+        app.handle_server_request_answered_from_connection(
+            "sudo-wire-cancel".into(),
+            Err("connection closed after write".into()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt = &app.sudo_prompts[&prompt_key];
+        assert!(prompt.response_unknown);
+        assert!(prompt.password.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn inbound_batch_clarify_request_renders_accessible_question_controls() {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());
@@ -57822,6 +58387,7 @@ impl HermesNativeApp {
                 }).and_then(|pending| pending.admission_id.as_deref()),
                 "interrupt_pending": self.pending_interrupt.is_some(),
                 "approval_pending_count": self.approval_prompts.len(),
+                "sudo_pending_count": self.sudo_prompts.len(),
                 "clarify_pending_count": self.clarify_prompts.len() + self.batch_clarify_prompts.len(),
                 "can_stop": self.gateway_connected
                     && self.active_runtime_session_id.as_ref().is_some_and(|session_id| {
