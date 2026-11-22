@@ -4150,3 +4150,10 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No benchmark run; row selection and local survivor rebinding are linear in the loaded transcript length, and one truncating submit RPC is issued after consent.
 - **risks:** Hermes rewrites durable rows during truncation. If a receipt lacks a valid replacement row ID, subsequent rewind on that cached row is disabled until history refresh; the feature does not infer IDs.
 - **follow_up:** Verify live Gateway admission and transcript reconciliation in an isolated session, then continue the next agent-workflow gap.
+
+
+### PAR-0052 publication record
+
+- Behavior commit `759b4a49153deddbd56cb4ae5ca05b1e2a0721c9`; partial evidence receipt EV-0091 and generated overlays committed in `c2a05b656bb8e5aeb9fe25d4374f1699b43127cf`.
+- Both commits were pushed to `main`; fresh fetch confirmed local `main` and `origin/main` equal `c2a05b656bb8e5aeb9fe25d4374f1699b43127cf`.
+- Coverage now records 97/499 broad requirements and 63/176 scoped chat/tool requirements with mapped evidence. All live-runtime and source-paired acceptance remains pending. `apps/hermes-native/work/` was excluded and preserved.
