@@ -363,13 +363,13 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
+      "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
@@ -395,24 +395,16 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0111.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+    "command": "git push origin main && git fetch origin main && compare main SHAs",
     "evidence": [
-      "apps/hermes-native/src/app.rs#security_settings_expose_profile_scoped_secret_redaction",
-      "apps/hermes-native/src/gateway.rs#redact_secrets_remote_config_reads_and_writes_only_the_requested_profile",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0111.json#EV-0111"
+      "docs/EXECUTION_LOGS.md#hermes-par0525-main-publication-20261122"
     ],
-    "state": "tested",
-    "summary": "PAR-0525 implementation 9d7ffe786e35126c2f2335ce9720fada0d11a0a9 is committed locally. EV-0111 binds its profile-redaction preference test evidence to that full SHA as partial capability evidence; UCM has no EV-0111-specific errors or reconciliation. Native tests and package validators pass; pinned pytest was unavailable because ruamel.yaml is missing.",
-    "verified_at": "2026-11-22T11:00:17Z"
+    "state": "in_progress",
+    "summary": "PAR-0525 is published through 2d3631aaf4d20cb99722a329ece5bfd4a54be1e5 with local main and origin/main equal. PAR-0526 is selected for the P0 permission-rejection versus network-error distinction.",
+    "verified_at": "2026-11-22T11:02:52Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -484,7 +476,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T12:00:17Z",
+    "lease_expires_at": "2026-11-22T12:02:52Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1906,9 +1898,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "69aef870-1138-4c73-82a9-380d29f9169a",
+  "last_event_id": "292e6a6a-ec2b-40d0-b246-3074431421c0",
   "last_operation": {
-    "request_id": "69aef870-1138-4c73-82a9-380d29f9169a",
+    "request_id": "292e6a6a-ec2b-40d0-b246-3074431421c0",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1927,7 +1919,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit EV-0111 and the UCM map/docs/task checkpoint, then push all PAR-0525 commits to origin/main and verify exact SHA equality.",
+  "recommended_next_action": "Audit pinned Gateway error payloads and native reducer/UI error classification for PAR-0526; implement and headlessly validate any missing user-visible distinction.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2368,7 +2360,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "867afe3ed442b45b5eac8e47c8c0b57191d77a18df0e829dcf6f66fc7fd4fe32",
+    "change_fingerprint": "94f2de3414dcc615f4d233055babe8cc34227707b78933aa3a93e42675bc38b8",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2379,11 +2371,11 @@
         "status": " M"
       },
       {
-        "path": ".doofus/task-ledger.json",
+        "path": "docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2401,22 +2393,18 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0111.json",
-        "status": "??"
       }
     ],
-    "head_commit": "9d7ffe786e35126c2f2335ce9720fada0d11a0a9",
+    "head_commit": "2d3631aaf4d20cb99722a329ece5bfd4a54be1e5",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 754,
+  "revision": 756,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 754,
+  "state_revision": 756,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0525",
+  "task_id": "hermes-par-0526",
   "task_ledger_revision": 135,
   "tests_executed": [
     {
@@ -4188,9 +4176,14 @@
       "command": "apps/hermes-native/src/app.rs::security_settings_expose_profile_scoped_secret_redaction",
       "result": "PASS 590 library + 15 protocol + 3 launcher tests; cargo check, continuity, package validators, progress generators, rustfmt and diff check pass. Pinned pytest unavailable: ruamel.yaml missing.",
       "timestamp": "2026-11-22T11:00:17Z"
+    },
+    {
+      "command": "UCM EV-0111 scoped validation; source package validator; task continuity/state validators",
+      "result": "PASS EV-0111 has no scoped UCM findings; source package and task state validation pass. Remote main verified at 2d3631aaf4d20cb99722a329ece5bfd4a54be1e5.",
+      "timestamp": "2026-11-22T11:02:52Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T11:00:17Z"
+  "updated_at": "2026-11-22T11:02:52Z"
 }

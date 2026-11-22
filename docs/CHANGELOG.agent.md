@@ -4552,3 +4552,16 @@ Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d004
 - **performance:** No runtime behavior changed.
 - **risks:** Pinned Hermes pytest could not execute because ruamel.yaml is missing; live Gateway and packaged Windows behavior remain unverified.
 - **follow_up:** Commit evidence and task state, publish PAR-0525 to origin/main, then continue the next dependency-ready agent workflow gap.
+
+### PAR-0525 publication — 2026-11-22
+
+- **id:** PAR-0525-PUBLISH
+- **timestamp:** 2026-11-22T11:02:15Z
+- **what:** Published implementation commit 9d7ffe786e35126c2f2335ce9720fada0d11a0a9 and evidence commit 2d3631aaf4d20cb99722a329ece5bfd4a54be1e5 to origin/main.
+- **why:** Make the completed tested slice and its capability proof available on the requested canonical branch.
+- **components:** Hermes native Settings, Gateway config, UCM map, task checkpoint.
+- **type:** publication
+- **validation:** Fresh fetch confirms local main and origin/main both equal 2d3631aaf4d20cb99722a329ece5bfd4a54be1e5.
+- **performance:** No runtime changes in the publication step.
+- **risks:** The capability remains partial pending pinned formatter tests and live Gateway/package acceptance.
+- **follow_up:** Continue with PAR-0526, distinguishing permission rejection from network failure.
