@@ -7168,6 +7168,15 @@ fn render_message() -> &'static str {
                 ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
             }
             let messages = self.transcript.clone();
+            if let Some(target) = render_transcript_prompt_timeline(
+                ui,
+                &self.session_identity_key(session_id, self.active_session_profile.as_deref()),
+                &messages,
+                self.find_in_page_target,
+            ) {
+                self.find_in_page_target = Some(target);
+                self.find_in_page_scroll_pending = true;
+            }
             let mut open_message_edit: Option<(u64, String, usize, bool, Option<String>, bool)> =
                 None;
             let mut open_message_regenerate: Option<(usize, u64, String)> = None;
@@ -7566,7 +7575,7 @@ fn render_message() -> &'static str {
                                 format!("{speaker}: {body}"),
                             )
                         });
-                        if selected_match && scroll_target == Some(index) {
+                        if scroll_target == Some(index) {
                             entry.response.scroll_to_me(Some(egui::Align::Center));
                         }
                         ui.add_space(8.0);
@@ -33608,6 +33617,74 @@ fn transcript_message(message: &serde_json::Value) -> (String, String) {
     (speaker, body)
 }
 
+fn transcript_prompt_timeline_entries(messages: &[serde_json::Value]) -> Vec<(usize, String)> {
+    messages
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            if message.get("role").and_then(serde_json::Value::as_str) != Some("user") {
+                return None;
+            }
+            let (_, body) = transcript_message(message);
+            let preview = body.split_whitespace().collect::<Vec<_>>().join(" ");
+            if preview.is_empty()
+                || (preview.starts_with("[IMPORTANT: Background process ")
+                    && preview.ends_with(']'))
+            {
+                return None;
+            }
+            let mut chars = preview.chars();
+            let short = chars.by_ref().take(72).collect::<String>();
+            Some((
+                index,
+                if chars.next().is_some() {
+                    format!("{short}…")
+                } else {
+                    short
+                },
+            ))
+        })
+        .collect()
+}
+
+fn render_transcript_prompt_timeline(
+    ui: &mut Ui,
+    owner_key: &str,
+    messages: &[serde_json::Value],
+    selected_message: Option<usize>,
+) -> Option<usize> {
+    let mut selected = None;
+    ui.collapsing("Prompt timeline", |ui| {
+        let entries = transcript_prompt_timeline_entries(messages);
+        if entries.is_empty() {
+            ui.label("No user prompts in the loaded transcript.");
+            return;
+        }
+        ui.label(format!(
+            "{} prompts in the loaded transcript",
+            entries.len()
+        ));
+        egui::ScrollArea::vertical()
+            .id_salt(("hermes-prompt-timeline", owner_key.to_owned()))
+            .max_height(176.0)
+            .show_rows(ui, 26.0, entries.len(), |ui, rows| {
+                for row in rows {
+                    let (message_index, preview) = &entries[row];
+                    let response = ui
+                        .selectable_label(
+                            selected_message == Some(*message_index),
+                            format!("{:03}  {preview}", row + 1),
+                        )
+                        .accessible_name(format!("Jump to prompt {}: {preview}", row + 1));
+                    if response.clicked() {
+                        selected = Some(*message_index);
+                    }
+                }
+            });
+    });
+    selected
+}
+
 fn tool_progress_text(message: &serde_json::Value) -> Option<String> {
     if message.get("status").and_then(|value| value.as_str()) != Some("running") {
         return None;
@@ -35818,6 +35895,49 @@ mod tests {
             None,
             "a bottom-pinned session stays at the newest message after transcript growth"
         );
+    }
+
+    #[test]
+    fn prompt_timeline_lists_real_user_prompts_and_returns_clicked_message() {
+        let transcript = vec![
+            json!({"role":"user","content":"  First prompt\nwith detail "}),
+            json!({"role":"assistant","content":"answer"}),
+            json!({"role":"user","content":"[IMPORTANT: Background process finished]"}),
+            json!({"role":"user","content":"Second prompt"}),
+            json!({"role":"user","content":"   "}),
+        ];
+        let entries = transcript_prompt_timeline_entries(&transcript);
+        assert_eq!(
+            entries,
+            vec![
+                (0, "First prompt with detail".into()),
+                (3, "Second prompt".into())
+            ]
+        );
+
+        let selected = std::rc::Rc::new(std::cell::Cell::new(None));
+        let frame_selected = selected.clone();
+        let frame_transcript = transcript.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(640.0, 420.0))
+            .build_ui(move |ui| {
+                if let Some(index) = render_transcript_prompt_timeline(
+                    ui,
+                    "work/connection-a/session-a",
+                    &frame_transcript,
+                    None,
+                ) {
+                    frame_selected.set(Some(index));
+                }
+            });
+        harness.run();
+        harness.get_by_label("Prompt timeline").click();
+        harness.run();
+        harness
+            .get_by_label("Jump to prompt 2: Second prompt")
+            .click();
+        harness.run();
+        assert_eq!(selected.get(), Some(3));
     }
 
     #[test]
@@ -40903,6 +41023,40 @@ mod tests {
         harness.key_press(egui::Key::Escape);
         harness.run();
         assert!(!app.borrow().find_in_page_open);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn rendered_prompt_timeline_targets_the_existing_transcript_row() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("timeline-session".into());
+        app.transcript = vec![
+            json!({"role":"user","content":"First prompt"}),
+            json!({"role":"assistant","content":"First response"}),
+            json!({"role":"user","content":"Target prompt"}),
+            json!({"role":"assistant","content":"Target response"}),
+        ];
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.run();
+        harness.get_by_label("Prompt timeline").click();
+        harness.run();
+        harness
+            .get_by_label("Jump to prompt 2: Target prompt")
+            .click();
+        harness.run();
+
+        assert_eq!(app.borrow().find_in_page_target, Some(2));
+        assert!(!app.borrow().find_in_page_scroll_pending);
+        assert!(
+            app.borrow().pending_submissions.is_empty(),
+            "timeline navigation must only reveal a transcript row and never submit a prompt"
+        );
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");

@@ -1036,6 +1036,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live Gateway, packaged Windows, and formal pinned-source acceptance remain open",
         ],
     },
+    "PAR-0056": {
+        "state": "partial",
+        "level": "headless_owner_scoped_loaded_prompt_timeline_navigation",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/timeline.tsx#ThreadTimeline",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/timeline-data.ts#deriveTimelineEntries",
+            "apps/hermes-native/src/app.rs#transcript_prompt_timeline_entries",
+            "apps/hermes-native/src/app.rs#rendered_prompt_timeline_targets_the_existing_transcript_row",
+            "apps/hermes-native/docs/PLAN.md#Revision 321",
+        ],
+        "gaps": [
+            "native timeline navigates only prompts in the currently loaded transcript and does not index or fetch a window around unloaded historical prompt IDs",
+            "active marker tracking during manual scrolling, physical Windows input, packaged behavior, live Gateway, and formal pinned-source acceptance remain open",
+        ],
+    },
     "PAR-0059": {
         "state": "partial",
         "level": "headless_background_complete_transcript_routing_and_owner_fence",
