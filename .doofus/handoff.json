@@ -1656,6 +1656,20 @@
     },
     {
       "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0104.json#EV-0104"
+      ],
+      "kind": "capability_validation",
+      "note": "UCM found no EV-0104-specific schema, locator or reference issues. The existing map still has 159 legacy project-wide errors and 11 reconciliation items.",
+      "observed_at": "2026-11-22T08:02:13Z",
+      "operation_id": "par0056-around-ucm-20261122",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0084.json#uid"
       ],
       "kind": "git_commit",
@@ -1834,11 +1848,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0056-around-window-checkpoint-20261122",
+  "last_event_id": "cbc62173-939e-4675-99c6-bac682692acf",
   "last_operation": {
-    "request_id": "hermes-par0056-around-window-checkpoint-20261122",
+    "request_id": "cbc62173-939e-4675-99c6-bac682692acf",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "external_operation.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -2379,10 +2393,10 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 706,
+  "revision": 707,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 706,
+  "state_revision": 707,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0056",
   "task_ledger_revision": 125,
@@ -4080,5 +4094,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T07:59:32Z"
+  "updated_at": "2026-11-22T08:02:13Z"
 }

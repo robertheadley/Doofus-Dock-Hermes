@@ -1335,6 +1335,7 @@ capabilities:
   evidence:
   - EV-0102
   - EV-0103
+  - EV-0104
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
