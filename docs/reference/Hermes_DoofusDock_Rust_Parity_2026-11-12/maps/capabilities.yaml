@@ -10254,7 +10254,7 @@ capabilities:
   name: Prevent stale-connection writes
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can prevent stale-connection writes.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10266,9 +10266,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0110
+  verification:
+    scenarios:
+    - id: profile-scoped-server-request-receipts
+      description: Carry and apply server-request answer receipts only when Gateway connection, profile, and request ID match the owning approval or clarification prompt.
 - id: ui-redact-tokens-from-logs
   name: Redact tokens from logs
   area: protocol-reliability

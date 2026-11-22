@@ -1,5 +1,5 @@
 {
-  "revision": 131,
+  "revision": 132,
   "schema_version": 1,
   "tasks": [
     {
@@ -14990,7 +14990,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -14999,12 +14999,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T10:23:16Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-prevent-stale-connection-writes",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "02-gateway",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -15014,10 +15015,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0524",
               "title": "PAR-0524 Prevent stale-connection writes",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#server_request_receipts_require_the_exact_gateway_and_profile_owner"
+              ]
             },
             {
               "agent_identity": {
@@ -16412,5 +16415,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T10:00:45Z"
+  "updated_at": "2026-11-22T10:23:16Z"
 }

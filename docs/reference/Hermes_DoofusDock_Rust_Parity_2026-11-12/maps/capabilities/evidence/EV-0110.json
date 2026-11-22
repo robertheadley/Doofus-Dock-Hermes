@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0110",
+  "capability_id": "ui-prevent-stale-connection-writes",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "profile-scoped-server-request-receipts",
+  "locator": "apps/hermes-native/src/app.rs::server_request_receipts_require_the_exact_gateway_and_profile_owner",
+  "date": "2026-11-22",
+  "commit": "36c2da65a2c20d0049269a7b10cd58e42ec37a4c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless regression proves answer receipts require matching Gateway connection and profile and that a missing profile on a tagged receipt cannot clear prompt state. Gateway actor fixtures verify profile propagation for approval and batch clarification receipts. Full locked suite passes 587 library + 15 protocol + 3 launcher tests; cargo check, 19 continuity tests, progress generators, package validators, rustfmt and diff check pass.",
+  "notes": "Partial evidence only. Other mutating Gateway operations still need owner audit. No authenticated live Gateway, packaged Windows, or formal pinned-source acceptance was exercised."
+}
