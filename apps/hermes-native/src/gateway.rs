@@ -2591,6 +2591,14 @@ enum GatewayCommand {
         text: String,
         attachments: Vec<GatewayPromptAttachment>,
     },
+    EditPrompt {
+        session_id: String,
+        profile: Option<String>,
+        submission_id: String,
+        text: String,
+        truncate_before_row_id: u64,
+        confirm_deep_truncate: bool,
+    },
     AttachComposerFile {
         request_id: String,
         session_id: String,
@@ -2985,6 +2993,14 @@ pub(crate) enum TestGatewayCommand {
         text: String,
         attachments: Vec<GatewayPromptAttachment>,
     },
+    EditPrompt {
+        session_id: String,
+        profile: Option<String>,
+        submission_id: String,
+        text: String,
+        truncate_before_row_id: u64,
+        confirm_deep_truncate: bool,
+    },
     Other,
 }
 
@@ -3057,6 +3073,21 @@ impl GatewayDiscovery {
                         text,
                         attachments,
                     }),
+                    GatewayCommand::EditPrompt {
+                        session_id,
+                        profile,
+                        submission_id,
+                        text,
+                        truncate_before_row_id,
+                        confirm_deep_truncate,
+                    } => Some(TestGatewayCommand::EditPrompt {
+                        session_id,
+                        profile,
+                        submission_id,
+                        text,
+                        truncate_before_row_id,
+                        confirm_deep_truncate,
+                    }),
                     _ => None,
                 };
                 if let Some(observed) = observed {
@@ -3127,6 +3158,21 @@ impl GatewayDiscovery {
                         submission_id,
                         text,
                         attachments,
+                    },
+                    GatewayCommand::EditPrompt {
+                        session_id,
+                        profile,
+                        submission_id,
+                        text,
+                        truncate_before_row_id,
+                        confirm_deep_truncate,
+                    } => TestGatewayCommand::EditPrompt {
+                        session_id,
+                        profile,
+                        submission_id,
+                        text,
+                        truncate_before_row_id,
+                        confirm_deep_truncate,
                     },
                     _ => TestGatewayCommand::Other,
                 };
@@ -4425,6 +4471,30 @@ impl GatewayDiscovery {
                 submission_id,
                 text,
                 attachments,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn edit_prompt(
+        &self,
+        session_id: String,
+        profile: Option<String>,
+        submission_id: String,
+        text: String,
+        truncate_before_row_id: u64,
+        confirm_deep_truncate: bool,
+    ) -> Result<(), String> {
+        if truncate_before_row_id == 0 {
+            return Err("Cannot edit a transcript row without a stable positive row ID".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::EditPrompt {
+                session_id,
+                profile,
+                submission_id,
+                text,
+                truncate_before_row_id,
+                confirm_deep_truncate,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -7406,6 +7476,45 @@ fn gateway_actor(
                     return;
                 }
             }
+            Ok(GatewayCommand::EditPrompt {
+                session_id,
+                profile,
+                submission_id,
+                text,
+                truncate_before_row_id,
+                confirm_deep_truncate,
+            }) => {
+                let params = prompt_edit_rpc_params(
+                    &session_id,
+                    profile.as_deref(),
+                    &submission_id,
+                    &text,
+                    truncate_before_row_id,
+                    confirm_deep_truncate,
+                );
+                let result = params
+                    .and_then(|params| {
+                        rpc_with_events(
+                            socket,
+                            next_request_id,
+                            "prompt.submit",
+                            params,
+                            Some(&events),
+                        )
+                    })
+                    .and_then(|result| parse_prompt_submit_receipt(&result, &session_id));
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::PromptSubmitted {
+                        session_id,
+                        submission_id,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::AttachComposerFile {
                 request_id,
                 session_id,
@@ -7885,6 +7994,26 @@ fn prompt_submit_rpc_params(
             .map_err(|error| format!("Could not encode prompt attachments: {error}"))?;
     }
     session_profile_params(payload, profile)
+}
+
+fn prompt_edit_rpc_params(
+    session_id: &str,
+    profile: Option<&str>,
+    submission_id: &str,
+    text: &str,
+    truncate_before_row_id: u64,
+    confirm_deep_truncate: bool,
+) -> Result<serde_json::Value, String> {
+    if truncate_before_row_id == 0 {
+        return Err("Cannot edit a transcript row without a stable positive row ID".into());
+    }
+    let mut payload = prompt_submit_rpc_params(session_id, profile, submission_id, text, &[])?;
+    payload["confirm_truncate"] = serde_json::Value::Bool(true);
+    payload["truncate_before_row_id"] = serde_json::json!(truncate_before_row_id);
+    if confirm_deep_truncate {
+        payload["confirm_deep_truncate"] = serde_json::Value::Bool(true);
+    }
+    Ok(payload)
 }
 
 const COMPOSER_UPLOAD_MAX_BYTES: u64 = 16 * 1024 * 1024;
@@ -15527,6 +15656,30 @@ mod tests {
             params["attachments"],
             serde_json::json!([{"path":"attachments/capture.png","mime":"image/png"}])
         );
+    }
+
+    #[test]
+    fn prompt_edit_uses_stable_row_and_explicit_deep_cut_confirmation() {
+        let shallow = prompt_edit_rpc_params(
+            "runtime-3",
+            Some("profile-3"),
+            "edit-1",
+            "updated",
+            41,
+            false,
+        )
+        .unwrap();
+        assert_eq!(shallow["session_id"], "runtime-3");
+        assert_eq!(shallow["profile"], "profile-3");
+        assert_eq!(shallow["confirm_truncate"], true);
+        assert_eq!(shallow["truncate_before_row_id"], 41);
+        assert!(shallow.get("confirm_deep_truncate").is_none());
+
+        let deep =
+            prompt_edit_rpc_params("runtime-3", None, "edit-2", "updated", 42, true).unwrap();
+        assert_eq!(deep["confirm_deep_truncate"], true);
+        assert_eq!(deep["truncate_before_row_id"], 42);
+        assert!(prompt_edit_rpc_params("runtime-3", None, "edit-3", "updated", 0, true).is_err());
     }
 
     #[test]

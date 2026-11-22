@@ -1319,6 +1319,18 @@ struct PendingModelConfirmation {
 }
 
 #[derive(Clone, Debug)]
+struct MessageEditDraft {
+    session_id: String,
+    profile: Option<String>,
+    connection_id: Option<String>,
+    row_id: u64,
+    original_text: String,
+    text: String,
+    later_user_turns: usize,
+    confirm_deep_cut: bool,
+}
+
+#[derive(Clone, Debug)]
 struct FallbackRouteDraft {
     /// Retains route-specific keys (for example base_url or api_key_ref) that
     /// this editor does not own.
@@ -1849,6 +1861,7 @@ pub struct HermesNativeApp {
     chat_policy_mutation: Option<PendingChatPolicyMutation>,
     chat_policy_error: Option<String>,
     chat_model_confirmation: Option<PendingModelConfirmation>,
+    message_edit: Option<MessageEditDraft>,
     chat_custom_model_input: String,
     cron_blueprints: Option<Vec<CronBlueprint>>,
     cron_blueprints_request: Option<(String, Option<String>)>,
@@ -2050,6 +2063,7 @@ pub struct HermesNativeApp {
     pending_create: Option<(String, String)>,
     untouched_blank_session: Option<(String, Option<String>)>,
     pending_submissions: BTreeMap<String, PendingPrompt>,
+    pending_message_edits: BTreeMap<String, (u64, String)>,
     recent_completed_admissions: VecDeque<String>,
     pending_interrupt: Option<(String, String)>,
     pending_session_pins: BTreeMap<String, String>,
@@ -4313,6 +4327,7 @@ fn render_message() -> &'static str {
             chat_policy_mutation: None,
             chat_policy_error: None,
             chat_model_confirmation: None,
+            message_edit: None,
             chat_custom_model_input: String::new(),
             cron_blueprints: None,
             cron_blueprints_request: None,
@@ -4513,6 +4528,7 @@ fn render_message() -> &'static str {
             pending_create: None,
             untouched_blank_session: None,
             pending_submissions: BTreeMap::new(),
+            pending_message_edits: BTreeMap::new(),
             recent_completed_admissions: VecDeque::new(),
             pending_interrupt: None,
             pending_session_pins: BTreeMap::new(),
@@ -7078,6 +7094,7 @@ fn render_message() -> &'static str {
                 ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
             }
             let messages = self.transcript.clone();
+            let mut open_message_edit: Option<(u64, String, usize)> = None;
             let search_matches = transcript_search_matches(&messages, &self.find_in_page_query);
             let timestamps_enabled = self.timestamps_enabled;
             let technical_tool_payloads =
@@ -7128,7 +7145,7 @@ fn render_message() -> &'static str {
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
                     ui.set_max_width(ui.available_width().min(860.0));
-                    for (index, message) in messages.into_iter().enumerate() {
+                    for (index, message) in messages.iter().cloned().enumerate() {
                         let (speaker, body) = transcript_message(&message);
                         let structured_error = structured_provider_error_presentation(&message);
                         let error_detail = message
@@ -7161,6 +7178,29 @@ fn render_message() -> &'static str {
                         };
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
+                            if message.get("role").and_then(serde_json::Value::as_str)
+                                == Some("user")
+                                && message.get("error").is_none_or(serde_json::Value::is_null)
+                                && let Some(row_id) = message
+                                    .get("row_id")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .filter(|id| *id > 0)
+                                && messages
+                                    .iter()
+                                    .filter(|candidate| {
+                                        candidate.get("row_id").and_then(serde_json::Value::as_u64)
+                                            == Some(row_id)
+                                    })
+                                    .count()
+                                    == 1
+                            {
+                                let edit = ui
+                                    .add_enabled(!retry_pending, egui::Button::new("Edit message"))
+                                    .accessible_name("Edit this sent message");
+                                if edit.clicked() {
+                                    open_message_edit = Some((row_id, body.clone(), index));
+                                }
+                            }
                             if let Some(reasoning) = message
                                 .get("reasoning")
                                 .and_then(serde_json::Value::as_str)
@@ -7351,6 +7391,29 @@ fn render_message() -> &'static str {
             if let Some(destination) = open_transcript_file {
                 self.open_transcript_local_file_preview(session_id, &destination);
             }
+            if let Some((row_id, original_text, index)) = open_message_edit {
+                let later_user_turns = messages
+                    .iter()
+                    .skip(index + 1)
+                    .filter(|message| {
+                        message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                    })
+                    .count();
+                self.message_edit = Some(MessageEditDraft {
+                    session_id: session_id.to_owned(),
+                    profile: self.active_session_profile.clone(),
+                    connection_id: self
+                        .gateway_discovery
+                        .as_ref()
+                        .and_then(|gateway| gateway.connection_id().map(str::to_owned)),
+                    row_id,
+                    text: original_text.clone(),
+                    original_text,
+                    later_user_turns,
+                    confirm_deep_cut: false,
+                });
+            }
+            self.render_message_edit_dialog(ui.ctx());
             for artifact in request_tool_image_previews {
                 self.request_remote_artifact_image_preview(&artifact);
             }
@@ -17597,6 +17660,137 @@ fn render_message() -> &'static str {
         self.status = "Sending message to Hermes…".into();
     }
 
+    fn render_message_edit_dialog(&mut self, ctx: &egui::Context) {
+        let Some(edit) = self.message_edit.as_mut() else {
+            return;
+        };
+        let mut open = true;
+        let mut cancel = false;
+        let mut submit = false;
+        egui::Window::new("Edit sent message")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(560.0)
+            .show(ctx, |ui| {
+                ui.label("Editing this message resubmits it and removes the later conversation from Hermes history.");
+                ui.add(egui::TextEdit::multiline(&mut edit.text).desired_rows(5).desired_width(f32::INFINITY))
+                    .accessible_name("Edited message text");
+                if edit.later_user_turns > 0 {
+                    ui.colored_label(Color32::YELLOW, format!("This will archive {} later user message(s).", edit.later_user_turns));
+                    ui.checkbox(&mut edit.confirm_deep_cut, "I understand that later user turns will be removed");
+                }
+                ui.horizontal(|ui| {
+                    let enabled = !edit.text.trim().is_empty()
+                        && edit.text.trim() != edit.original_text.trim()
+                        && (edit.later_user_turns == 0 || edit.confirm_deep_cut);
+                    if ui.add_enabled(enabled, egui::Button::new("Send edited message")).clicked() { submit = true; }
+                    if ui.button("Cancel").clicked() { cancel = true; }
+                });
+            });
+        if !open || cancel {
+            self.message_edit = None;
+        } else if submit {
+            if let Some(edit) = self.message_edit.take() {
+                self.submit_message_edit(edit);
+            }
+        }
+    }
+
+    fn submit_message_edit(&mut self, edit: MessageEditDraft) {
+        let owner_matches = self.active_runtime_session_id.as_deref()
+            == Some(edit.session_id.as_str())
+            && self.active_session_profile == edit.profile
+            && self
+                .gateway_discovery
+                .as_ref()
+                .and_then(|gateway| gateway.connection_id())
+                == edit.connection_id.as_deref();
+        if !owner_matches || !self.gateway_connected {
+            self.status = "The Hermes connection changed while editing. Reopen the edit on the current session.".into();
+            return;
+        }
+        let matches = self
+            .transcript
+            .iter()
+            .enumerate()
+            .filter(|(_, message)| {
+                message.get("row_id").and_then(serde_json::Value::as_u64) == Some(edit.row_id)
+                    && message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                    && transcript_message(message).1 == edit.original_text
+                    && message.get("error").is_none_or(serde_json::Value::is_null)
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            self.status =
+                "The original message is no longer uniquely available; no edit was sent.".into();
+            return;
+        }
+        let target_index = matches[0];
+        let later_user_turns = self
+            .transcript
+            .iter()
+            .skip(target_index + 1)
+            .filter(|message| {
+                message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+            })
+            .count();
+        if later_user_turns != edit.later_user_turns
+            || (later_user_turns > 0 && !edit.confirm_deep_cut)
+        {
+            self.status =
+                "The conversation changed while confirming the edit. Review the edit again.".into();
+            return;
+        }
+        let text = edit.text.trim().to_owned();
+        if text.is_empty() || text == edit.original_text.trim() {
+            self.status = "The edited message must contain changed text.".into();
+            return;
+        }
+        let pending_key = self.session_identity_key(&edit.session_id, edit.profile.as_deref());
+        if self.pending_submissions.contains_key(&pending_key) {
+            self.status =
+                "Finish or recover this session's pending message before editing history".into();
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            self.status = "Hermes gateway is unavailable".into();
+            return;
+        };
+        let submission_id = operation_id("edit");
+        if let Err(error) = gateway.edit_prompt(
+            edit.session_id.clone(),
+            edit.profile.clone(),
+            submission_id.clone(),
+            text.clone(),
+            edit.row_id,
+            later_user_turns > 0,
+        ) {
+            self.status = error;
+            return;
+        }
+        self.pending_message_edits
+            .insert(submission_id.clone(), (edit.row_id, text.clone()));
+        self.pending_submissions.insert(
+            pending_key,
+            PendingPrompt {
+                session_id: edit.session_id,
+                profile: edit.profile,
+                submission_id,
+                text: text.clone(),
+                display_text: text,
+                attachments: Vec::new(),
+                uncertain: false,
+                admission_id: None,
+                execution_generation: None,
+                resolving_unknown: false,
+                retrying_failed_turn: false,
+            },
+        );
+        self.status = "Sending edited message to Hermes…".into();
+    }
+
     fn continue_cut_off_reply(&mut self) {
         let ready_to_submit = self.gateway_connected
             && self.draft.trim().is_empty()
@@ -17840,6 +18034,35 @@ fn render_message() -> &'static str {
                 status,
                 execution_generation,
             }) => {
+                if let Some((row_id, edited_text)) =
+                    self.pending_message_edits.remove(&submission_id)
+                {
+                    if let Some(transcript) =
+                        self.transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
+                    {
+                        let targets = transcript
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, message)| {
+                                message.get("row_id").and_then(serde_json::Value::as_u64)
+                                    == Some(row_id)
+                                    && message.get("role").and_then(serde_json::Value::as_str)
+                                        == Some("user")
+                            })
+                            .map(|(index, _)| index)
+                            .collect::<Vec<_>>();
+                        if let [target_index] = targets.as_slice() {
+                            transcript.truncate(*target_index);
+                            transcript.push(serde_json::json!({
+                                "id":submission_id,"submission_id":submission_id,"row_id":row_id,
+                                "admission_id":admission_id,"role":"user","content":edited_text,
+                                "timestamp":unix_now_seconds()
+                            }));
+                        } else if is_active {
+                            self.status = "Hermes admitted the edit, but the local transcript changed; refreshing history".into();
+                        }
+                    }
+                }
                 // A prepared draft is retired only after Hermes confirms admission.
                 // Using the draft ID as the submission ID keeps this correct if the
                 // user navigated away while the request was in flight.
@@ -17890,6 +18113,7 @@ fn render_message() -> &'static str {
                 }
             }
             Ok(PromptSubmitReceipt::VoiceStopped) => {
+                self.pending_message_edits.remove(&submission_id);
                 if let Some(transcript) =
                     self.transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
                 {
@@ -17909,6 +18133,7 @@ fn render_message() -> &'static str {
                 if error.starts_with("Hermes prompt.submit refused:")
                     || error == "Hermes session profile scope is invalid" =>
             {
+                self.pending_message_edits.remove(&submission_id);
                 let message = if pending.retrying_failed_turn {
                     None
                 } else {
@@ -34009,6 +34234,163 @@ mod tests {
         );
 
         drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "unfinished current draft".into();
+        app.composer_attachments.push(ComposerAttachment {
+            path: "attachments/current.pdf".into(),
+            source_path: "C:/current.pdf".into(),
+            name: "current.pdf".into(),
+            is_image: false,
+            mime: "application/pdf".into(),
+            attached_session_id: Some("runtime-session".into()),
+            ref_text: Some("@file:attachments/current.pdf".into()),
+            request_id: None,
+            error: None,
+        });
+        app.transcript = vec![
+            serde_json::json!({"row_id":31,"role":"user","content":"first question"}),
+            serde_json::json!({"row_id":32,"role":"assistant","content":"first answer"}),
+            serde_json::json!({"row_id":33,"role":"user","content":"second question"}),
+        ];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 720.0))
+            .build_ui(move |ui| {
+                frame_app
+                    .borrow_mut()
+                    .session_content(ui, "runtime-session")
+            });
+        harness.run_steps(2);
+        assert_eq!(
+            harness.query_all_by_label("Edit this sent message").count(),
+            2
+        );
+        harness
+            .query_all_by_label("Edit this sent message")
+            .next()
+            .expect("first stable user row can be edited")
+            .click();
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("I understand that later user turns will be removed")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Send edited message").is_some());
+        {
+            let app = app.borrow();
+            assert_eq!(app.draft, "unfinished current draft");
+            assert_eq!(app.composer_attachments.len(), 1);
+            assert_eq!(app.composer_attachments[0].name, "current.pdf");
+            assert_eq!(app.message_edit.as_ref().map(|edit| edit.row_id), Some(31));
+        }
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn edited_message_revalidates_target_and_submits_confirmed_gateway_truncation() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "keep this draft".into();
+        app.transcript = vec![
+            serde_json::json!({"row_id":51,"role":"user","content":"old question"}),
+            serde_json::json!({"row_id":52,"role":"assistant","content":"old answer"}),
+            serde_json::json!({"row_id":53,"role":"user","content":"later question"}),
+        ];
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 51,
+            original_text: "old question".into(),
+            text: "revised question".into(),
+            later_user_turns: 1,
+            confirm_deep_cut: true,
+        });
+        let command = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("edit command");
+        assert!(
+            matches!(command, TestGatewayCommand::EditPrompt { session_id, profile, text, truncate_before_row_id, confirm_deep_truncate, .. }
+            if session_id == "runtime-session" && profile.as_deref() == Some("work") && text == "revised question" && truncate_before_row_id == 51 && confirm_deep_truncate)
+        );
+        assert_eq!(
+            app.transcript.len(),
+            3,
+            "local history stays intact until Gateway admission"
+        );
+        assert_eq!(app.transcript[0]["content"], "old question");
+        assert_eq!(app.draft, "keep this draft");
+        assert_eq!(app.pending_submissions.len(), 1);
+        let edit_submission_id = app
+            .pending_submissions
+            .values()
+            .next()
+            .unwrap()
+            .submission_id
+            .clone();
+        app.handle_prompt_submitted(
+            "runtime-session".into(),
+            edit_submission_id,
+            Ok(PromptSubmitReceipt::Admitted {
+                admission_id: "admission-edit".into(),
+                status: "started".into(),
+                execution_generation: Some(4),
+            }),
+        );
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(app.transcript[0]["content"], "revised question");
+        assert_eq!(app.transcript[0]["row_id"], 51);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({"row_id":61,"role":"user","content":"target"}),
+            serde_json::json!({"row_id":62,"role":"user","content":"arrived later"}),
+        ];
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 61,
+            original_text: "target".into(),
+            text: "revised".into(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+        });
+        assert!(
+            commands.try_recv().is_err(),
+            "a moved edit plan must not enqueue prompt.submit"
+        );
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0]["content"], "target");
+        assert!(app.status.contains("conversation changed"));
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

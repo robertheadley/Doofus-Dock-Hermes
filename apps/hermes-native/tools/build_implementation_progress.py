@@ -1063,6 +1063,26 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "source-paired acceptance is pending",
         ],
     },
+    "PAR-0051": {
+        "state": "partial",
+        "level": "headless_owner_scoped_prior_message_edit_and_confirmed_truncation",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 298",
+            "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
+            "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
+            "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
+            "apps/hermes-native/src/gateway.rs#prompt_edit_uses_stable_row_and_explicit_deep_cut_confirmation",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planConfirmedEdit",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/user-message.tsx#editable={!readOnly}",
+            ".staging/hermes-pinned-878305/tui_gateway/methods_prompt.py#_truncate_history_for_submit",
+        ],
+        "gaps": [
+            "live Gateway admission/refusal/uncertain recovery and stale-confirmation races remain unverified",
+            "editing during a running response does not yet interrupt the turn before rewind",
+            "historical message attachment preservation semantics need source-paired review",
+            "packaged Windows behavior and formal pinned-source acceptance remain open",
+        ],
+    },
     "PAR-0057": {
         "state": "partial",
         "level": "headless_older_transcript_page_and_gateway_scope_tests",

@@ -298,6 +298,84 @@
       "status": " M"
     },
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -323,14 +401,14 @@
     }
   ],
   "checkpoint": {
-    "command": "Read pinned apps/desktop user-message-edit.tsx, rewind.ts, canonical-protocol.ts and Gateway prompt submit contract; inspect native app/gateway submission and transcript rendering.",
+    "command": null,
     "evidence": [
-      ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#runRewindSubmit",
-      ".staging/hermes-pinned-878305/apps/shared/src/usage-tick.ts#usageFromTick"
+      "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
+      "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation"
     ],
-    "state": "in_progress",
-    "summary": "Selected PAR-0051 after publishing PAR-0048. Read-only audit confirms user-message editing is a destructive edit-and-resubmit flow with stable row_id targeting, confirmation when later user turns would be archived, and post-confirm target/count revalidation. Pinned direct Gateway prompt.submit supports truncation flags; canonical Desktop redirects truncate submits to a rewind mutation then plain submit. Native code has no edit workflow yet; no functional code was modified during this audit.",
-    "verified_at": "2026-11-22T00:27:14Z"
+    "state": "tested",
+    "summary": "PAR-0051 stable-row prior-message editing implemented with explicit deep-cut confirmation, stale-plan refusal, owner/target revalidation, draft/file preservation and transcript mutation only after Gateway admission receipt. Partial/headless only.",
+    "verified_at": "2026-11-22T00:51:08Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -348,6 +426,7 @@
     "hermes-par-0048",
     "hermes-par-0049",
     "hermes-par-0050",
+    "hermes-par-0051",
     "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0062",
@@ -388,7 +467,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T01:27:14Z",
+    "lease_expires_at": "2026-11-22T01:51:08Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1647,9 +1726,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0051-audit-checkpoint-20261122",
+  "last_event_id": "363c6839-8d4d-4724-b9d5-d336ec5c4b53",
   "last_operation": {
-    "request_id": "hermes-par0051-audit-checkpoint-20261122",
+    "request_id": "363c6839-8d4d-4724-b9d5-d336ec5c4b53",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1668,7 +1747,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Implement an additive stable-row edit flow that preserves the active draft/attachments, gates deep cuts with explicit consent, revalidates the target and later-user-turn count, and sends the pinned truncation payload through native prompt.submit. Add owner-fenced protocol and rendered regressions; do not guess row IDs or replay uncertain destructive submissions.",
+  "recommended_next_action": "Publish the implementation and commit-bound partial UCM evidence to main; then address in-flight edit interruption, historical attachments and live admission/refusal/recovery.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1707,7 +1786,6 @@
     "hermes-par-0037",
     "hermes-par-0038",
     "hermes-par-0045",
-    "hermes-par-0051",
     "hermes-par-0052",
     "hermes-par-0053",
     "hermes-par-0054",
@@ -2123,7 +2201,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "fef59e7566bc7d53ff453730ce067e3192b66871aced0690294a7bae9f9ae9a2",
+    "change_fingerprint": "322374fcfbe9e9a2684260d384a17a09a0276716c285a2a279f5c9bd513c6b42",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -2135,6 +2213,58 @@
       },
       {
         "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
         "status": " M"
       },
       {
@@ -2154,17 +2284,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "303639e4739a2e134a7c01753636c682731fc230",
+    "head_commit": "9e282e83f5aa7ebedec72c2324f9526c484e43c4",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 605,
+  "revision": 609,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 605,
+  "state_revision": 609,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0051",
-  "task_ledger_revision": 96,
+  "task_ledger_revision": 97,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3560,9 +3690,19 @@
       "command": "519 library + 15 protocol + 3 launcher; focused usage tests 2/2",
       "result": "PASS local/headless; no live Gateway or source-paired acceptance claimed",
       "timestamp": "2026-11-22T00:21:56Z"
+    },
+    {
+      "command": "cargo test --locked --features agent-automation",
+      "result": "PASS 522 library + 15 protocol + 3 launcher; cargo check --all-targets, rustfmt, diff check and validators pass",
+      "timestamp": "2026-11-22T00:47:07Z"
+    },
+    {
+      "command": "cargo fmt --check; cargo test --locked --features agent-automation; cargo check --all-targets --locked --features agent-automation; git diff --check",
+      "result": "PASS: 523 library + 15 protocol + 3 launcher; all-target check and formatting/diff checks pass. Progress 95/499 overall and 61/176 chat/tool; live/source-pair acceptance pending.",
+      "timestamp": "2026-11-22T00:51:08Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T00:27:14Z"
+  "updated_at": "2026-11-22T00:51:08Z"
 }

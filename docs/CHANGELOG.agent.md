@@ -4059,3 +4059,14 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime change.
 - **risks:** The prior-message editing implementation and its destructive confirmation behavior remain incomplete.
 - **follow_up:** Implement stable-row targeting, preserve drafts/attachments, confirm deep cuts, revalidate after confirmation, and add owner-fenced protocol/render tests.
+
+- **id:** hermes-par0051-prior-message-edit-20261122
+- **timestamp:** 2026-11-22T00:40:15Z
+- **what:** Added an edit dialog for uniquely identified persisted user rows, safe deep-cut confirmation, post-confirm owner/target revalidation, native prompt.submit truncation parameters, optimistic pending-turn integration, and focused rendered/Gateway tests.
+- **why:** Support the pinned Hermes prior-message edit-and-resubmit workflow while preserving the user's current draft and attachments and preventing stale or unconfirmed history truncation.
+- **components:** Native session transcript, message edit dialog, Gateway command/RPC payload, focused tests, task plan and backlog.
+- **type:** Additive agent chat workflow implementation.
+- **validation:** PASS focused protocol payload, rendered dialog, stale-turn revalidation, owner/target submission and admission-gated history update tests; full locked suite (523 library + 15 protocol + 3 launcher); all-target cargo check; rustfmt; diff check; durable task-state validation; root UCM package validation (565 behaviors, 15 source inspections, 70 receipts). Optional YAML parsing was skipped because PyYAML is unavailable. Live Gateway, Windows package and pinned-source acceptance remain open.
+- **performance:** No benchmark-sensitive hot path changed; an edit control is rendered only for transcript user rows with a unique positive row_id.
+- **risks:** Refusal leaves the existing transcript untouched and uncertain admission keeps the old transcript while awaiting recovery; live recovery, in-flight response interruption and historical attachment semantics need more coverage.
+- **follow_up:** Finish full validation, record evidence and task checkpoint, then publish this slice to main with all existing functional work preserved.
