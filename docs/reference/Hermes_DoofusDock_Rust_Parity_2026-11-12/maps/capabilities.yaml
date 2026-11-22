@@ -1281,7 +1281,9 @@ capabilities:
   name: Follow transcript bottom during live stream
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can follow transcript bottom during live stream.
-  status: not_implemented
+  status: partial
+  evidence:
+  - EV-0100
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1294,8 +1296,12 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: transcript-bottom-follow-and-reader-intent
+      description: Follow growing content at the latest position, preserve history position after scrolling up, and resume when returning to the bottom.
 - id: ui-preserve-historical-read-position
   name: Preserve historical read position
   area: chat-transcript

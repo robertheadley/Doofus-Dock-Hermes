@@ -1,5 +1,5 @@
 {
-  "revision": 118,
+  "revision": 119,
   "schema_version": 1,
   "tasks": [
     {
@@ -1856,7 +1856,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-22T06:25:12Z",
+              "last_updated_at": "2026-11-22T06:30:22Z",
               "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-follow-transcript-bottom-during-live-stream",
               "outputs": [],
@@ -1872,10 +1872,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "in_progress",
+              "state": "tested",
               "task_id": "hermes-par-0054",
               "title": "PAR-0054 Follow transcript bottom during live stream",
-              "verification_evidence": []
+              "verification_evidence": [
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0100.json#EV-0100"
+              ]
             },
             {
               "agent_identity": {
@@ -16391,5 +16393,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T06:25:12Z"
+  "updated_at": "2026-11-22T06:30:22Z"
 }
