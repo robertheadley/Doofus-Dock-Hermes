@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0116",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "prior_message_edit_detects_shifted_offset_pages",
+  "locator": "../../../../apps/hermes-native/src/gateway.rs::edit_row_history_lookup_fails_closed_when_history_shifts_between_pages",
+  "date": "2026-11-22",
+  "commit": "eb41edfa7a6af9439afb7d9143b61fedee6d5f13",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless authenticated Gateway HTTP fixture. Two 500-row oldest-first pages overlap at their shared durable row. A stable boundary resolves the missing local row ID; a shifted boundary returns an error before any truncating edit target can be resolved. The existing app path treats lookup errors as an unresolved target and submits ordinary prompt.submit without truncation. Full locked suite passes 598 library + 15 protocol + 3 launcher tests; all-target cargo check, rustfmt/diff, and 19 task continuity tests pass.",
+  "notes": "Partial implementation evidence only. This detects offset shifts between page requests; the pinned API has no snapshot cursor, so single-page or post-lookup history changes, live Gateway admission/refusal/race behavior, packaged Windows interaction, and formal source-paired acceptance remain open."
+}

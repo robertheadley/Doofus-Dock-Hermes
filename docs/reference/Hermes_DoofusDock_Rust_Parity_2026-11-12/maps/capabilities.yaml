@@ -1233,6 +1233,12 @@ capabilities:
     backend: unknown
     ui: partial
     tests: partial
+  evidence:
+  - EV-0116
+  verification:
+    scenarios:
+    - id: prior_message_edit_detects_shifted_offset_pages
+      description: Overlap adjacent bounded history pages and refuse to resolve a truncating edit target when the persisted boundary changes between reads.
 - id: ui-regenerate-a-previous-answer
   name: Regenerate a previous answer
   area: chat-transcript

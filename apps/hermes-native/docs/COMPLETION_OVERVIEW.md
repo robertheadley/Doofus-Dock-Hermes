@@ -233,6 +233,8 @@ Validation: PASS 25 edit-filtered regressions and full locked agent-automation p
 
 PAR-0051 Revision 307 validation update: 25 edit-filtered tests and the full locked suite (550 library + 15 protocol + 3 launcher) pass. All-target check, rustfmt, diff, both progress generators, 19 continuity tests, task schema and both capability-package validators pass. Broad/scoped mapped evidence remains 99/499 and 65/176; these counts are not product completion. Live Gateway, packaged Windows, concurrent history pagination and pinned-source acceptance remain open.
 
+PAR-0051 now overlaps adjacent full history pages by one row and rejects a changed boundary, preventing known inter-page offset shifts from producing a truncating edit target. The app retains its non-truncating fallback and all existing edit functionality. EV-0116 is partial headless evidence bound to commit `eb41edfa7a6af9439afb7d9143b61fedee6d5f13`. The full suite passes 598 + 15 + 3; all-target check and 19 task continuity tests pass. The pinned API has no snapshot cursor, so single-page or post-lookup changes, authenticated live Gateway, packaged Windows, and formal source acceptance remain open.
+
 
 ## PAR-0060 update
 

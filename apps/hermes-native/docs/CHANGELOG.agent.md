@@ -3280,3 +3280,17 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime performance change claimed.
 - **risks:** Live Gateway and packaged Windows behavior remain unverified; source-acceptance inventory remains pending; `apps/hermes-native/work/` remains operator-owned and untracked.
 - **follow_up:** Inspect and implement the next goal-relevant P0 chat/prompt lifecycle gap, currently PAR-0051.
+
+
+### PAR-0051 offset-page mutation guard — 2026-11-22
+
+- **id:** PAR-0051-HISTORY-PAGE-GUARD
+- **timestamp:** 2026-11-22T13:03:21Z
+- **what:** Added one-row overlap checks between adjacent bounded oldest-first edit-history pages. A changed boundary cannot resolve a truncating edit target; the existing app falls back to a non-truncating prompt.
+- **why:** Offset pagination has no pinned-source snapshot cursor, so page shifts must fail closed instead of joining different history views.
+- **components:** Native Gateway history lookup, headless HTTP fixtures, PAR-0051 docs and EV-0116. Existing edit, attachment, consent, recovery and composer behavior is retained.
+- **type:** safety and reliability
+- **validation:** Full locked suite 598 + 15 + 3, all-target cargo check, rustfmt/diff, and 19 task continuity tests pass. Implementation commit: `eb41edfa7a6af9439afb7d9143b61fedee6d5f13`.
+- **performance:** Each history page after the first shifts the next request by one row; page count and payload remain within the existing 100-page, 50,000-unique-row and 16 MB bounds. No benchmark was run.
+- **risks:** The endpoint cannot provide a stable snapshot; writes within a single-page read or after lookup, live Gateway races, packaged Windows behavior and formal source-paired acceptance remain open.
+- **follow_up:** Validate package/UCM evidence, checkpoint PAR-0051, and publish implementation plus evidence/docs to main.

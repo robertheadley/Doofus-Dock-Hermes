@@ -1,5 +1,5 @@
 {
-  "revision": 140,
+  "revision": 141,
   "schema_version": 1,
   "tasks": [
     {
@@ -1736,8 +1736,8 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-22T04:06:34Z",
-              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
+              "last_updated_at": "2026-11-22T13:06:11Z",
+              "lease_id": "8b184f2a-3034-42e8-9c31-6636ad41b811",
               "objective": "ui-edit-a-previous-user-message",
               "outputs": [],
               "owner": "codex",
@@ -1767,7 +1767,11 @@
                 "apps/hermes-native/src/app.rs#failed_turn_without_durable_row_uses_plain_submit_and_replaces_only_after_admission",
                 "apps/hermes-native/src/app.rs#refused_failed_turn_edit_keeps_original_error_and_draft_for_retry",
                 "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0093.json#EV-0093",
-                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0094.json#EV-0094"
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0094.json#EV-0094",
+                "apps/hermes-native/src/gateway.rs#edit_row_history_lookup_overlaps_pages_and_resolves_a_stable_boundary",
+                "apps/hermes-native/src/gateway.rs#edit_row_history_lookup_fails_closed_when_history_shifts_between_pages",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0116.json#EV-0116",
+                "apps/hermes-native/docs/PLAN.md#Revision 336"
               ]
             },
             {
@@ -16434,5 +16438,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T12:42:35Z"
+  "updated_at": "2026-11-22T13:06:11Z"
 }

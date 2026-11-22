@@ -1175,7 +1175,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0051": {
         "state": "partial",
-        "level": "headless_owner_scoped_prior_message_edit_stale_runtime_recovery_failed_turn_and_history_row_resolution",
+        "level": "headless_owner_scoped_prior_message_edit_stale_runtime_recovery_failed_turn_history_row_resolution_and_inter_page_overlap_guard",
         "refs": [
             "apps/hermes-native/docs/PLAN.md#Revision 304",
             "apps/hermes-native/docs/PLAN.md#Revision 307",
@@ -1185,6 +1185,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/gateway.rs#durable_edit_row_resolution_requires_exact_unique_persisted_user_match",
             "apps/hermes-native/src/gateway.rs#durable_edit_row_resolution_uses_last_duplicate_only_for_proven_newest_turn",
             "apps/hermes-native/src/gateway.rs#edit_row_history_lookup_uses_oldest_ordered_profile_scoped_pages",
+            "apps/hermes-native/src/gateway.rs#edit_row_history_lookup_overlaps_pages_and_resolves_a_stable_boundary",
+            "apps/hermes-native/src/gateway.rs#edit_row_history_lookup_fails_closed_when_history_shifts_between_pages",
+            "apps/hermes-native/docs/PLAN.md#Revision 336",
             "apps/hermes-native/docs/PLAN.md#Revision 305",
             "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
             "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
@@ -1210,6 +1213,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0092.json#EV-0092",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0093.json#EV-0093",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0094.json#EV-0094",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0116.json#EV-0116",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planConfirmedEdit",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planEdit",
             ".staging/hermes-pinned-878305/hermes_cli/web_routers/sessions.py#get_session_messages",
@@ -1219,7 +1223,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": [
             "live Gateway stale-runtime resume, admission/refusal, uncertainty and race behavior remain unverified",
-            "live Gateway behavior, packaged Windows picker/drop interaction, concurrent offset-pagination stability, and formal pinned-source acceptance remain unverified",
+            "single-page or post-lookup history changes, live Gateway behavior, packaged Windows picker/drop interaction, and formal pinned-source acceptance remain unverified",
         ],
     },
     "PAR-0052": {
