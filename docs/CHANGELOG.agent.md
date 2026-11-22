@@ -4367,3 +4367,7 @@ Implementation commit `dee655dbaf82017c2b15eef903800448b37ef6b2` and evidence/ta
 - **performance:** No runtime behavior changed.
 - **risks:** Native has no indexed prompt timeline/history window yet; no behavior was claimed as implemented.
 - **follow_up:** Add an owner-scoped prompt timeline for loaded messages, then separately account for historical-index loading and installation/runtime validation.
+
+### PAR-0056 checkpoint revision correction — 2026-11-22T06:50:25Z
+
+The prior source-audit changelog entry mistakenly stated ledger revision 123. The successful validator returned state revision 691 and ledger revision 122. The correction is appended here; the original audit record remains unchanged.
