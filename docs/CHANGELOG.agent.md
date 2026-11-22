@@ -4496,3 +4496,5 @@ Publication follow-up — 2026-11-22T09:14:52Z: Implementation commit `d7751abbf
 - **follow_up:** Bind EV-0108 to the implementation commit and continue the next P0 protocol requirement.
 
 Evidence follow-up — 2026-11-22T09:36:37Z: EV-0108 binds the unknown-outcome regression to implementation commit `6a4ad7afdb6fb22d0c206a9fb924beadb2292818`; the capability remains partial. Remaining mutating Gateway operations, live Gateway behavior, packaged Windows behavior and pinned-source acceptance are open.
+
+Publication follow-up — 2026-11-22T09:37:33Z: Implementation commit `6a4ad7afdb6fb22d0c206a9fb924beadb2292818` and evidence commit `f0994d17476b896832ef3ad7f08a015994d6053f` were pushed to `origin/main`. A fresh fetch confirmed local and remote main equal `f0994d17476b896832ef3ad7f08a015994d6053f`.
