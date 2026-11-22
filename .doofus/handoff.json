@@ -369,6 +369,12 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
+      "path": "32-view",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
       "status": "??"
     },
@@ -389,16 +395,22 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0095.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet; cargo check -p hermes-native --all-targets --features agent-automation --locked; cargo fmt --all -- --check; git diff --check; python apps/hermes-native/tools/test_doofus_task.py; python apps/hermes-native/tools/doofus_task.py validate; python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py; python apps/hermes-native/docs/reference/Hermes_Upstream_UI_DoofusDock_Rust_Parity_2026-11-13/tools/validate_package.py",
+    "command": "cargo check --all-targets --locked --features agent-automation",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0094.json#EV-0094"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0095.json#EV-0095"
     ],
-    "state": "in_progress",
-    "summary": "PAR-0051 missing durable row-ID edit fallback implemented and validated; EV-0094 is bound to 5eaf031 and both implementation/evidence commits are on origin/main at 9867567. Full locked suite 550+15+3, all-target check, format/diff, 19 continuity tests, task schema and root/archival package validators pass. PAR-0051 remains partial; live Gateway, packaged Windows, concurrent pagination stability, and formal source-pair acceptance remain open. Operator work/ preserved.",
-    "verified_at": "2026-11-22T04:06:49Z"
+    "state": "tested",
+    "summary": "PAR-0060 draft persistence implemented and headless-validated; requirement remains partial until packaged Windows and pinned-source acceptance.",
+    "verified_at": "2026-11-22T04:36:34Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -419,6 +431,7 @@
     "hermes-par-0052",
     "hermes-par-0057",
     "hermes-par-0058",
+    "hermes-par-0060",
     "hermes-par-0062",
     "hermes-par-0063",
     "hermes-par-0064",
@@ -458,7 +471,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T05:06:49Z",
+    "lease_expires_at": "2026-11-22T05:36:34Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1729,9 +1742,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "d78e5465-fa08-42e7-9407-57040a3f3364",
+  "last_event_id": "hermes-par0060-checkpoint-20261122",
   "last_operation": {
-    "request_id": "d78e5465-fa08-42e7-9407-57040a3f3364",
+    "request_id": "hermes-par0060-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1750,7 +1763,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue the next dependency-ready core chat/tool workflow gap from progress and pinned-source evidence; preserve work/, keep source acceptance separate, and publish completed slices to main.",
+  "recommended_next_action": "Continue next dependency-ready chat/tool requirement; keep source-paired and packaged Windows acceptance visible as separate remaining work.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1795,7 +1808,6 @@
     "hermes-par-0055",
     "hermes-par-0056",
     "hermes-par-0059",
-    "hermes-par-0060",
     "hermes-par-0061",
     "hermes-par-0066",
     "hermes-par-0068",
@@ -2203,7 +2215,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "847818afe33699f731f683d226b3ef421549dd4fcdbf3c54794e15afc0d6f68c",
+    "change_fingerprint": "c7137761d32f1e427fc1cff1ef0ee32928f3fd5170430f96f6c963c3c94d3c58",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2216,6 +2228,10 @@
       {
         "path": ".doofus/task-ledger.json",
         "status": " M"
+      },
+      {
+        "path": "32-view",
+        "status": "??"
       },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -2232,19 +2248,23 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0095.json",
+        "status": "??"
       }
     ],
-    "head_commit": "9867567ce156337c3a29e4caad151b10770c4d46",
+    "head_commit": "32d59b04453134876562ab4de8a87f70d0167245",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 651,
+  "revision": 655,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 651,
+  "state_revision": 655,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0051",
-  "task_ledger_revision": 105,
+  "task_id": "hermes-par-0060",
+  "task_ledger_revision": 107,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3730,9 +3750,14 @@
       "command": "Full locked suite and all available headless/package/continuity validation",
       "result": "PASS: 543 library + 15 protocol + 3 launcher; all-target check, fmt/diff, progress generators, 19 continuity tests, task state, root package (77 receipts), archival package (491 pending); optional PyYAML parse skipped.",
       "timestamp": "2026-11-22T03:30:27Z"
+    },
+    {
+      "command": "556 library + 15 protocol + 3 launcher tests",
+      "result": "PASS full locked suite; all-target check; rustfmt/diff; both progress generators; 19 task continuity tests; task schema; 79-receipt pinned package and 491-row archival package validators",
+      "timestamp": "2026-11-22T04:36:34Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T04:06:49Z"
+  "updated_at": "2026-11-22T04:36:34Z"
 }

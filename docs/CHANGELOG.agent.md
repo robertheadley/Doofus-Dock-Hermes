@@ -4236,3 +4236,6 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 ### PAR-0060 composer draft persistence — 2026-11-22
 
 Added bounded atomic text-draft storage and protected nonempty draft views from LRU eviction. Validation passes: 556 library + 15 protocol + 3 launcher tests, all-target check, rustfmt and diff checks. Attachments remain session-memory-only; live Gateway and packaged Windows acceptance remain open.
+
+
+PAR-0060 was committed on main as 32d59b04453134876562ab4de8a87f70d0167245; partial evidence EV-0095 is bound to that code commit. Task checkpoint revision 655 records the passed 556 + 15 + 3 suite and remaining packaged/source-paired acceptance.

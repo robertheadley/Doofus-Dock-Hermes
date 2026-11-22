@@ -3107,3 +3107,6 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 ### PAR-0060 independent composer drafts — 2026-11-22
 
 Added atomic bounded text-draft persistence keyed by Gateway connection, profile and session; New Chat drafts are scoped too. Empty drafts clear their persisted record, app-instance restart restores unsent text, and nonempty draft/attachment views survive beyond the ordinary 32-view cache limit. Attachment data remains memory-only. Validation: 556 library + 15 protocol + 3 launcher tests, all-target check, formatting and diff checks pass. The initial full run exposed first-render restoration overwriting an already-populated draft; that guard is fixed and the rerun passes. Live Gateway and packaged Windows checks remain separate.
+
+
+PAR-0060 evidence update: EV-0095 is bound to implementation commit 32d59b04453134876562ab4de8a87f70d0167245. Generated progress now records 98/499 overall requirements reviewed (6 implemented, 91 partial, 1 not implemented, 401 unknown) and 64/176 chat/tool requirements mapped (1 implemented, 62 partial, 1 not implemented, 112 unknown). These are evidence coverage counts, not percent completion.

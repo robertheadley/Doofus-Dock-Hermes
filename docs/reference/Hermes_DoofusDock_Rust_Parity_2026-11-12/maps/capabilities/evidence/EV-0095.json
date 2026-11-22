@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0095",
+  "capability_id": "ui-maintain-independent-per-session-draft",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "independent_plain_text_composer_drafts_restore_across_restart_and_cache_eviction",
+  "locator": "apps/hermes-native/src/app.rs#composer_draft_survives_app_restart_and_isolated_by_profile",
+  "date": "2026-11-22",
+  "commit": "32d59b04453134876562ab4de8a87f70d0167245",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Rust/egui tests validate bounded atomic text storage (50 records, 256 KiB per draft), clear-on-empty, malformed/oversized rejection, owner isolation, restart restore, New Chat restore and clear on accepted session creation, no-submit restore behavior, and protection of 40 nonempty session views beyond the ordinary 32-view cache. Full locked suite passes 556 library + 15 protocol + 3 launcher tests; all-target check, formatting, diff, both progress generators, 19 task continuity tests, task state schema and pinned/archival package validators pass.",
+  "notes": "Partial native evidence only. Only plain text is persisted; attachments remain memory-only. No live Gateway was needed or contacted. Packaged Windows behavior, multi-window/process races and formal pinned-source acceptance remain open."
+}

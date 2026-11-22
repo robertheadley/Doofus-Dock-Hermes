@@ -1,5 +1,5 @@
 {
-  "revision": 105,
+  "revision": 107,
   "schema_version": 1,
   "tasks": [
     {
@@ -2040,7 +2040,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -2049,11 +2049,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T04:36:24Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-maintain-independent-per-session-draft",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -2064,10 +2064,13 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0060",
               "title": "PAR-0060 Maintain independent per-session draft",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/docs/PLAN.md#Revision 309",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0095.json#EV-0095"
+              ]
             },
             {
               "agent_identity": {
@@ -16375,5 +16378,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T04:06:34Z"
+  "updated_at": "2026-11-22T04:36:24Z"
 }
