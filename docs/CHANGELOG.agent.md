@@ -4092,3 +4092,14 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No polling or additional RPC on successful edits; one interrupt and one retry occur only after a definitive Gateway busy refusal.
 - **risks:** Historical attachment behavior during prior-message edits and live Gateway response timing remain unverified.
 - **follow_up:** Bind partial evidence to the implementation commit, refresh generated progress, validate the durable task state, and publish to main while preserving all existing work.
+
+- **id:** hermes-par0051-busy-retry-evidence-20261122
+- **timestamp:** 2026-11-22T01:23:57Z
+- **what:** Added EV-0089 for the bounded Gateway 4009 edit recovery, bound to implementation commit f104e1b4ad20217a3cc96a1b958db106b446935e, and refreshed broad/scoped progress overlays.
+- **why:** Keep implementation, automated regression evidence, and partial capability status linked to an immutable code revision.
+- **components:** Capability evidence package, progress overlays, and durable task checkpoint.
+- **type:** Partial evidence and documentation update.
+- **validation:** PASS root package (565 behavior rows, 15 source inspection receipts, 73 implementation receipts); archival package (491 pending capabilities); task-state validation. Evidence coverage remains 95/499 broad and 61/176 chat/tool; source/live acceptance remains pending.
+- **performance:** No runtime change.
+- **risks:** Receipt validator initially rejected a short SHA; EV-0089 now uses the full SHA and both package validators pass. PyYAML remains unavailable, so the root validator skipped direct YAML parsing.
+- **follow_up:** Publish the implementation and evidence commits to main, then continue the attachment-semantics and live-Gateway audit.

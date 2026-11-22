@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0089",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "gateway_busy_4009_interrupts_then_retries_prior_message_edit_once",
+  "locator": "apps/hermes-native/src/app.rs#busy_edit_interrupts_then_retries_once_and_preserves_history_on_second_refusal",
+  "date": "2026-11-22",
+  "commit": "f104e1b4ad20217a3cc96a1b958db106b446935e",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui app regression plus local Gateway JSON-RPC WebSocket fixture. The regression proves a definitive 4009 edit refusal queues one owner-scoped interrupt, waits for its receipt, retries the same truncating edit once, then restores the edit dialog and preserves transcript history after a second busy refusal. The parser regression proves code 4009 is retained while preserving the existing refusal prefix. Full locked agent-automation suite passed 528 library, 15 protocol and 3 launcher tests; all-target cargo check, rustfmt and diff checks passed.",
+  "notes": "Partial implementation evidence only. No live Gateway, packaged Windows, historical attachment behavior, or pinned-source acceptance was verified. PAR-0051 remains partial."
+}
