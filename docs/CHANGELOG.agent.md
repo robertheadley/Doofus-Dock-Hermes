@@ -4350,3 +4350,7 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmarked performance change; state calculations are constant time per rendered transcript.
 - **risks:** Partial in-process behavior only; no restart persistence, explicit older-history prepend anchoring, physical Windows input, live Gateway, packaged Windows or formal source-paired acceptance. Optional PyYAML/UCM YAML parse skipped. Existing `handle_server_event` dead-code warning remains.
 - **follow_up:** Bind EV-0101 to implementation commit `dee655dbaf82017c2b15eef903800448b37ef6b2`, validate evidence/map, publish to main, then continue the next dependency-ready agent workflow. Preserve all functional work.
+
+### PAR-0055 published to main — 2026-11-22T06:47:57Z
+
+Implementation commit `dee655dbaf82017c2b15eef903800448b37ef6b2` and evidence/task checkpoint commit `2f64e4821668f42fe6f9c9d84e1fadbcf8632655` were pushed to `origin/main`. Fresh fetch confirmed local and remote `main` exactly equal at `2f64e4821668f42fe6f9c9d84e1fadbcf8632655`. PAR-0055 remains partial. The operator-owned `apps/hermes-native/work/` was left untracked and untouched.
