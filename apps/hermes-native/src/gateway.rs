@@ -3001,6 +3001,13 @@ pub(crate) enum TestGatewayCommand {
         truncate_before_row_id: u64,
         confirm_deep_truncate: bool,
     },
+    InterruptSession {
+        request_id: String,
+        session_id: String,
+        stored_session_id: Option<String>,
+        profile: Option<String>,
+        execution_generation: Option<u64>,
+    },
     Other,
 }
 
@@ -3087,6 +3094,19 @@ impl GatewayDiscovery {
                         text,
                         truncate_before_row_id,
                         confirm_deep_truncate,
+                    }),
+                    GatewayCommand::InterruptSession {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                        execution_generation,
+                    } => Some(TestGatewayCommand::InterruptSession {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                        execution_generation,
                     }),
                     _ => None,
                 };

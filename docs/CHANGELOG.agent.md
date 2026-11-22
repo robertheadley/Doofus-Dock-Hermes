@@ -4070,3 +4070,14 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No benchmark-sensitive hot path changed; an edit control is rendered only for transcript user rows with a unique positive row_id.
 - **risks:** Refusal leaves the existing transcript untouched and uncertain admission keeps the old transcript while awaiting recovery; live recovery, in-flight response interruption and historical attachment semantics need more coverage.
 - **follow_up:** Finish full validation, record evidence and task checkpoint, then publish this slice to main with all existing functional work preserved.
+
+- **id:** hermes-par0051-edit-running-turn-20261122
+- **timestamp:** 2026-11-22T00:54:01Z
+- **what:** Extended prior-message editing to admitted active turns by waiting for the matching owner-scoped interrupt receipt before prompt truncation. Unknown interrupt/edit outcomes preserve history and do not use ordinary-message retry; definite refusal restores edit text while retaining the active composer draft and attachments.
+- **why:** Match the pinned edit-during-stream lifecycle without risking a stale owner, dropping local history, or replaying a destructive edit with plain-submit parameters.
+- **components:** Transcript edit control, edit/interrupt follow-up state, Gateway interruption receipt handling, prompt admission lifecycle and headless regressions.
+- **type:** Additive workflow extension and recovery safety.
+- **validation:** PASS focused active-turn interrupt ordering, uncertain no-send, refusal composer preservation, stale-turn revalidation and edit admission tests; full locked suite (526 library + 15 protocol + 3 launcher); all-target cargo check; rustfmt; diff check; progress generators; durable task validation; root package validation (565 behaviors, 15 source inspections, 71 receipts); archival package validation (491 pending capabilities). PyYAML is unavailable, so root YAML parsing was skipped. Live Gateway, Windows package and pinned-source acceptance remain open.
+- **performance:** No benchmark-sensitive path changed; only one per-session active pending record and one edit continuation are tracked.
+- **risks:** Pinned stop-cooldown and busy 4009 retry behavior, historical attachment semantics, live Gateway, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** Complete full validation, add EV-0088 bound to the implementation commit, update progress and publish to main.

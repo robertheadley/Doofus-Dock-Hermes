@@ -1331,6 +1331,12 @@ struct MessageEditDraft {
 }
 
 #[derive(Clone, Debug)]
+struct PendingMessageEditInterrupt {
+    request_id: String,
+    edit: MessageEditDraft,
+}
+
+#[derive(Clone, Debug)]
 struct FallbackRouteDraft {
     /// Retains route-specific keys (for example base_url or api_key_ref) that
     /// this editor does not own.
@@ -1862,6 +1868,7 @@ pub struct HermesNativeApp {
     chat_policy_error: Option<String>,
     chat_model_confirmation: Option<PendingModelConfirmation>,
     message_edit: Option<MessageEditDraft>,
+    pending_message_edit_interrupt: Option<PendingMessageEditInterrupt>,
     chat_custom_model_input: String,
     cron_blueprints: Option<Vec<CronBlueprint>>,
     cron_blueprints_request: Option<(String, Option<String>)>,
@@ -2063,7 +2070,7 @@ pub struct HermesNativeApp {
     pending_create: Option<(String, String)>,
     untouched_blank_session: Option<(String, Option<String>)>,
     pending_submissions: BTreeMap<String, PendingPrompt>,
-    pending_message_edits: BTreeMap<String, (u64, String)>,
+    pending_message_edits: BTreeMap<String, MessageEditDraft>,
     recent_completed_admissions: VecDeque<String>,
     pending_interrupt: Option<(String, String)>,
     pending_session_pins: BTreeMap<String, String>,
@@ -4328,6 +4335,7 @@ fn render_message() -> &'static str {
             chat_policy_error: None,
             chat_model_confirmation: None,
             message_edit: None,
+            pending_message_edit_interrupt: None,
             chat_custom_model_input: String::new(),
             cron_blueprints: None,
             cron_blueprints_request: None,
@@ -7107,15 +7115,24 @@ fn render_message() -> &'static str {
             if scroll_target.is_some_and(|index| index < messages.len()) {
                 self.find_in_page_scroll_pending = false;
             }
-            let retry_pending =
-                self.active_runtime_session_id
-                    .as_deref()
-                    .is_some_and(|runtime_id| {
-                        let key = self.session_identity_key(
-                            runtime_id,
-                            self.active_session_profile.as_deref(),
-                        );
-                        self.pending_submissions.contains_key(&key)
+            let active_pending = self
+                .active_runtime_session_id
+                .as_deref()
+                .and_then(|runtime_id| {
+                    let key = self
+                        .session_identity_key(runtime_id, self.active_session_profile.as_deref());
+                    self.pending_submissions.get(&key).cloned()
+                });
+            let retry_pending = active_pending.is_some();
+            let edit_action_enabled = self.gateway_connected
+                && active_pending
+                    .as_ref()
+                    .is_none_or(|pending| !pending.uncertain && pending.admission_id.is_some())
+                && !self
+                    .pending_interrupt
+                    .as_ref()
+                    .is_some_and(|(_, pending_session)| {
+                        Some(pending_session.as_str()) == self.active_runtime_session_id.as_deref()
                     });
             let mut retry_failed_submission = None;
             let active_profile = self.active_session_profile.clone();
@@ -7195,7 +7212,10 @@ fn render_message() -> &'static str {
                                     == 1
                             {
                                 let edit = ui
-                                    .add_enabled(!retry_pending, egui::Button::new("Edit message"))
+                                    .add_enabled(
+                                        edit_action_enabled,
+                                        egui::Button::new("Edit message"),
+                                    )
                                     .accessible_name("Edit this sent message");
                                 if edit.clicked() {
                                     open_message_edit = Some((row_id, body.clone(), index));
@@ -15432,7 +15452,12 @@ fn render_message() -> &'static str {
             if waiting_for_this_session {
                 let uncertain = pending.as_ref().is_some_and(|pending| pending.uncertain);
                 if uncertain {
-                    if ui
+                    let uncertain_edit = pending.as_ref().is_some_and(|pending| {
+                        self.pending_message_edits.contains_key(&pending.submission_id)
+                    });
+                    if uncertain_edit {
+                        ui.label(RichText::new("Edit admission is unknown. Refresh and verify session history before continuing; it will not be resent automatically.").size(11.0).color(Color32::YELLOW));
+                    } else if ui
                         .add_enabled(
                             self.gateway_connected,
                             egui::Button::new("Retry same message"),
@@ -17749,9 +17774,52 @@ fn render_message() -> &'static str {
             return;
         }
         let pending_key = self.session_identity_key(&edit.session_id, edit.profile.as_deref());
-        if self.pending_submissions.contains_key(&pending_key) {
-            self.status =
-                "Finish or recover this session's pending message before editing history".into();
+        if let Some(pending) = self.pending_submissions.get(&pending_key).cloned() {
+            if pending.uncertain || pending.admission_id.is_none() {
+                self.status =
+                    "Wait for Hermes to confirm this response before editing history".into();
+                return;
+            }
+            if self.pending_interrupt.is_some() {
+                self.status = "A Hermes stop or edit interrupt is already in progress".into();
+                return;
+            }
+            let stored_session_id =
+                self.stored_session_id_for_runtime(&edit.session_id, edit.profile.as_deref());
+            let execution_generation = pending.execution_generation.or_else(|| {
+                self.transcript.iter().rev().find_map(|message| {
+                    (message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                        && message
+                            .get("streaming")
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(true))
+                    .then(|| {
+                        message
+                            .get("execution_generation")
+                            .and_then(serde_json::Value::as_u64)
+                    })
+                    .flatten()
+                })
+            });
+            let request_id = operation_id("edit-interrupt");
+            let Some(gateway) = &self.gateway_discovery else {
+                self.status = "Hermes gateway writer is unavailable".into();
+                return;
+            };
+            if let Err(error) = gateway.interrupt_session(
+                request_id.clone(),
+                edit.session_id.clone(),
+                stored_session_id,
+                edit.profile.clone(),
+                execution_generation,
+            ) {
+                self.status = error;
+                return;
+            }
+            self.pending_interrupt = Some((request_id.clone(), edit.session_id.clone()));
+            self.pending_message_edit_interrupt =
+                Some(PendingMessageEditInterrupt { request_id, edit });
+            self.status = "Stopping Hermes response before editing…".into();
             return;
         }
         let Some(gateway) = &self.gateway_discovery else {
@@ -17771,7 +17839,7 @@ fn render_message() -> &'static str {
             return;
         }
         self.pending_message_edits
-            .insert(submission_id.clone(), (edit.row_id, text.clone()));
+            .insert(submission_id.clone(), edit.clone());
         self.pending_submissions.insert(
             pending_key,
             PendingPrompt {
@@ -17990,6 +18058,13 @@ fn render_message() -> &'static str {
         if !pending.uncertain {
             return;
         }
+        if self
+            .pending_message_edits
+            .contains_key(&pending.submission_id)
+        {
+            self.status = "Edit admission is unknown; the edit will not be replayed automatically. Verify session history before continuing.".into();
+            return;
+        }
         let Some(gateway) = &self.gateway_discovery else {
             self.status = "Hermes gateway is unavailable".into();
             return;
@@ -18034,9 +18109,9 @@ fn render_message() -> &'static str {
                 status,
                 execution_generation,
             }) => {
-                if let Some((row_id, edited_text)) =
-                    self.pending_message_edits.remove(&submission_id)
-                {
+                if let Some(edit) = self.pending_message_edits.remove(&submission_id) {
+                    let row_id = edit.row_id;
+                    let edited_text = edit.text.trim().to_owned();
                     if let Some(transcript) =
                         self.transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
                     {
@@ -18133,7 +18208,7 @@ fn render_message() -> &'static str {
                 if error.starts_with("Hermes prompt.submit refused:")
                     || error == "Hermes session profile scope is invalid" =>
             {
-                self.pending_message_edits.remove(&submission_id);
+                let edit = self.pending_message_edits.remove(&submission_id);
                 let message = if pending.retrying_failed_turn {
                     None
                 } else {
@@ -18151,7 +18226,9 @@ fn render_message() -> &'static str {
                         })
                 };
                 if is_active {
-                    if message.is_some() {
+                    if let Some(edit) = edit {
+                        self.message_edit = Some(edit);
+                    } else if message.is_some() {
                         self.draft = pending.display_text.clone();
                     }
                 } else if message.is_some() {
@@ -18167,12 +18244,20 @@ fn render_message() -> &'static str {
                 }
             }
             Err(error) => {
+                let is_edit = self.pending_message_edits.contains_key(&submission_id);
                 if let Some(pending) = self.pending_submissions.get_mut(&key) {
                     pending.uncertain = true;
                 }
                 if is_active {
-                    self.status =
-                        format!("Message admission unknown; retry the same message: {error}");
+                    if is_edit {
+                        self.message_edit = self.pending_message_edits.get(&submission_id).cloned();
+                        self.status = format!(
+                            "Edit admission is unknown; do not resend until session history is verified: {error}"
+                        );
+                    } else {
+                        self.status =
+                            format!("Message admission unknown; retry the same message: {error}");
+                    }
                 }
             }
         }
@@ -23366,25 +23451,87 @@ fn render_message() -> &'static str {
             }
         }
         self.pending_interrupt = None;
+        let pending_edit = self
+            .pending_message_edit_interrupt
+            .take()
+            .filter(|pending| pending.request_id == request_id);
+        let is_edit_interrupt = pending_edit.is_some();
+        let transcript_runtime_id = recovered_session_id.as_deref().unwrap_or(&session_id);
+        let edit_result = result.clone();
         match result {
             Ok(true) => {
-                if let Some(message) = self.transcript.iter_mut().rev().find(|message| {
+                if is_edit_interrupt {
+                    if let Some(transcript) =
+                        self.transcript_for_runtime_mut(transcript_runtime_id, profile.as_deref())
+                        && let Some(message) = transcript.iter_mut().rev().find(|message| {
+                            message.get("role").and_then(|value| value.as_str())
+                                == Some("assistant")
+                                && message.get("streaming").and_then(|value| value.as_bool())
+                                    == Some(true)
+                        })
+                    {
+                        message["streaming"] = serde_json::Value::Bool(false);
+                        message["interrupted"] = serde_json::Value::Bool(true);
+                    }
+                } else if let Some(message) = self.transcript.iter_mut().rev().find(|message| {
                     message.get("role").and_then(|value| value.as_str()) == Some("assistant")
                         && message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
                 }) {
                     message["streaming"] = serde_json::Value::Bool(false);
                     message["interrupted"] = serde_json::Value::Bool(true);
                 }
-                self.pending_submissions
-                    .retain(|_, pending| pending.session_id != session_id);
-                self.status = "Hermes response stopped".into();
+                self.pending_submissions.retain(|_, pending| {
+                    pending.session_id != session_id
+                        || (is_edit_interrupt && pending.profile != profile)
+                });
+                if !is_edit_interrupt
+                    || (self.active_runtime_session_id.as_deref() == Some(transcript_runtime_id)
+                        && self.active_session_profile == profile)
+                {
+                    self.status = "Hermes response stopped".into();
+                }
             }
             Ok(false) => {
-                self.pending_submissions
-                    .retain(|_, pending| pending.session_id != session_id);
-                self.status = "Hermes reported no active response".into();
+                self.pending_submissions.retain(|_, pending| {
+                    pending.session_id != session_id
+                        || (is_edit_interrupt && pending.profile != profile)
+                });
+                if !is_edit_interrupt
+                    || (self.active_runtime_session_id.as_deref() == Some(transcript_runtime_id)
+                        && self.active_session_profile == profile)
+                {
+                    self.status = "Hermes reported no active response".into();
+                }
             }
             Err(error) => self.status = error,
+        }
+        if let Some(mut pending_edit) = pending_edit {
+            match edit_result {
+                Ok(_) => {
+                    if let Some(recovered_session_id) = recovered_session_id {
+                        pending_edit.edit.session_id = recovered_session_id;
+                    }
+                    let owner_matches = self.active_runtime_session_id.as_deref()
+                        == Some(pending_edit.edit.session_id.as_str())
+                        && self.active_session_profile == pending_edit.edit.profile
+                        && self
+                            .gateway_discovery
+                            .as_ref()
+                            .and_then(|gateway| gateway.connection_id())
+                            == pending_edit.edit.connection_id.as_deref();
+                    if owner_matches {
+                        self.submit_message_edit(pending_edit.edit);
+                    } else {
+                        self.status = "Hermes stopped the response, but the active session changed; the edit was not sent".into();
+                    }
+                }
+                Err(error) => {
+                    self.message_edit = Some(pending_edit.edit);
+                    self.status = format!(
+                        "Could not confirm the Hermes stop; the edit was not sent: {error}"
+                    );
+                }
+            }
         }
     }
 
@@ -31161,6 +31308,9 @@ fn render_message() -> &'static str {
                     self.command_center_system_action_pending = None;
                     self.command_center_system_next_poll = None;
                     self.pending_interrupt = None;
+                    if let Some(pending_edit) = self.pending_message_edit_interrupt.take() {
+                        self.message_edit = Some(pending_edit.edit);
+                    }
                     for prompt in self.approval_prompts.values_mut() {
                         prompt.response_pending = None;
                     }
@@ -34262,6 +34412,23 @@ mod tests {
             serde_json::json!({"row_id":32,"role":"assistant","content":"first answer"}),
             serde_json::json!({"row_id":33,"role":"user","content":"second question"}),
         ];
+        let pending_key = app.session_identity_key("runtime-session", Some("work"));
+        app.pending_submissions.insert(
+            pending_key,
+            PendingPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                submission_id: "submit-active".into(),
+                text: "second question".into(),
+                display_text: "second question".into(),
+                attachments: Vec::new(),
+                uncertain: false,
+                admission_id: Some("admission-active".into()),
+                execution_generation: Some(2),
+                resolving_unknown: false,
+                retrying_failed_turn: false,
+            },
+        );
         let app = Rc::new(RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
@@ -34391,6 +34558,264 @@ mod tests {
         assert_eq!(app.transcript.len(), 2);
         assert_eq!(app.transcript[0]["content"], "target");
         assert!(app.status.contains("conversation changed"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn editing_during_a_running_turn_interrupts_before_truncating_submit() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({"row_id":71,"role":"user","content":"running question"}),
+            serde_json::json!({"row_id":72,"role":"assistant","content":"partial answer","streaming":true,"execution_generation":9}),
+        ];
+        let pending_key = app.session_identity_key("runtime-session", Some("work"));
+        app.pending_submissions.insert(
+            pending_key,
+            PendingPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                submission_id: "submit-running".into(),
+                text: "running question".into(),
+                display_text: "running question".into(),
+                attachments: Vec::new(),
+                uncertain: false,
+                admission_id: Some("admission-running".into()),
+                execution_generation: Some(9),
+                resolving_unknown: false,
+                retrying_failed_turn: false,
+            },
+        );
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 71,
+            original_text: "running question".into(),
+            text: "edited running question".into(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+        });
+        let TestGatewayCommand::InterruptSession {
+            request_id,
+            session_id,
+            execution_generation,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("interrupt first")
+        else {
+            panic!("editing an active response must interrupt before prompt.submit");
+        };
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(execution_generation, Some(9));
+        assert!(
+            commands.try_recv().is_err(),
+            "truncating submit must wait for interrupt receipt"
+        );
+        events
+            .send(GatewayEvent::SessionInterrupted {
+                request_id,
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                stored_session_id: Some("stored-session".into()),
+                connection_id: None,
+                recovered_session_id: None,
+                result: Ok(true),
+            })
+            .expect("deliver interrupt receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        let TestGatewayCommand::EditPrompt {
+            session_id,
+            profile,
+            text,
+            truncate_before_row_id,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("edit after interrupt receipt")
+        else {
+            panic!("matching interrupt receipt should queue the edit");
+        };
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert_eq!(text, "edited running question");
+        assert_eq!(truncate_before_row_id, 71);
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "local history is retained until prompt admission"
+        );
+        let edit_submission_id = app
+            .pending_submissions
+            .values()
+            .find(|pending| pending.text == text)
+            .unwrap()
+            .submission_id
+            .clone();
+        events
+            .send(GatewayEvent::PromptSubmitted {
+                session_id: "runtime-session".into(),
+                submission_id: edit_submission_id.clone(),
+                result: Ok(PromptSubmitReceipt::Admitted {
+                    admission_id: "admission-edit-running".into(),
+                    status: "started".into(),
+                    execution_generation: Some(10),
+                }),
+            })
+            .expect("deliver edit admission receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(app.transcript[0]["content"], "edited running question");
+        assert!(
+            app.pending_submissions
+                .values()
+                .any(|pending| pending.submission_id == edit_submission_id)
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({"row_id":81,"role":"user","content":"question"}),
+            serde_json::json!({"row_id":82,"role":"assistant","content":"partial","streaming":true}),
+        ];
+        let pending_key = app.session_identity_key("runtime-session", Some("work"));
+        app.pending_submissions.insert(
+            pending_key,
+            PendingPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                submission_id: "submit-unknown".into(),
+                text: "question".into(),
+                display_text: "question".into(),
+                attachments: Vec::new(),
+                uncertain: false,
+                admission_id: Some("admission-unknown".into()),
+                execution_generation: Some(12),
+                resolving_unknown: false,
+                retrying_failed_turn: false,
+            },
+        );
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 81,
+            original_text: "question".into(),
+            text: "edited question".into(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+        });
+        let TestGatewayCommand::InterruptSession { request_id, .. } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("interrupt command")
+        else {
+            panic!("active-turn edit should begin with an interrupt");
+        };
+        events
+            .send(GatewayEvent::SessionInterrupted {
+                request_id,
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                stored_session_id: Some("stored-session".into()),
+                connection_id: None,
+                recovered_session_id: None,
+                result: Err("interrupt transport outcome unknown".into()),
+            })
+            .expect("deliver uncertain interrupt result");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            commands.try_recv().is_err(),
+            "uncertain interrupt must never auto-submit the destructive edit"
+        );
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0]["content"], "question");
+        assert!(
+            app.message_edit.is_some(),
+            "the typed edit remains available for explicit review"
+        );
+        assert!(
+            app.pending_submissions
+                .values()
+                .any(|pending| pending.submission_id == "submit-unknown")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn refused_prior_message_edit_preserves_composer_and_restores_edit_text() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "current unrelated draft".into();
+        app.composer_attachments.push(ComposerAttachment {
+            path: "attachments/current.pdf".into(),
+            source_path: "C:/current.pdf".into(),
+            name: "current.pdf".into(),
+            is_image: false,
+            mime: "application/pdf".into(),
+            attached_session_id: Some("runtime-session".into()),
+            ref_text: Some("@file:attachments/current.pdf".into()),
+            request_id: None,
+            error: None,
+        });
+        app.transcript = vec![serde_json::json!({"row_id":91,"role":"user","content":"original"})];
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 91,
+            original_text: "original".into(),
+            text: "revised".into(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+        });
+        let TestGatewayCommand::EditPrompt {
+            session_id,
+            submission_id,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("edit request")
+        else {
+            panic!("expected edit prompt");
+        };
+        events
+            .send(GatewayEvent::PromptSubmitted {
+                session_id,
+                submission_id,
+                result: Err("Hermes prompt.submit refused: stale row".into()),
+            })
+            .expect("deliver definitive refusal");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.draft, "current unrelated draft");
+        assert_eq!(app.composer_attachments.len(), 1);
+        assert_eq!(app.transcript[0]["content"], "original");
+        assert_eq!(
+            app.message_edit.as_ref().map(|edit| edit.text.as_str()),
+            Some("revised")
+        );
+        assert!(app.pending_submissions.is_empty());
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

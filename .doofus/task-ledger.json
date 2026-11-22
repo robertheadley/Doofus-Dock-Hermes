@@ -1,5 +1,5 @@
 {
-  "revision": 98,
+  "revision": 99,
   "schema_version": 1,
   "tasks": [
     {
@@ -1733,7 +1733,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-22T00:53:56Z",
+              "last_updated_at": "2026-11-22T01:08:22Z",
               "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-edit-a-previous-user-message",
               "outputs": [],
@@ -1754,7 +1754,10 @@
               "title": "PAR-0051 Edit a previous user message",
               "verification_evidence": [
                 "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
-                "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation"
+                "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
+                "apps/hermes-native/src/app.rs#editing_during_a_running_turn_interrupts_before_truncating_submit",
+                "apps/hermes-native/src/app.rs#unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt",
+                "apps/hermes-native/src/app.rs#refused_prior_message_edit_preserves_composer_and_restores_edit_text"
               ]
             },
             {
@@ -16353,5 +16356,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T00:53:56Z"
+  "updated_at": "2026-11-22T01:08:22Z"
 }

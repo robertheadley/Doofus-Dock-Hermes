@@ -1071,6 +1071,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
             "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
             "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
+            "apps/hermes-native/src/app.rs#editing_during_a_running_turn_interrupts_before_truncating_submit",
+            "apps/hermes-native/src/app.rs#unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt",
+            "apps/hermes-native/src/app.rs#refused_prior_message_edit_preserves_composer_and_restores_edit_text",
             "apps/hermes-native/src/gateway.rs#prompt_edit_uses_stable_row_and_explicit_deep_cut_confirmation",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0087.json#EV-0087",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planConfirmedEdit",
@@ -1079,7 +1082,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": [
             "live Gateway admission/refusal/uncertain recovery and stale-confirmation races remain unverified",
-            "editing during a running response does not yet interrupt the turn before rewind",
+            "recent-stop cooldown and busy 4009 interrupt-and-retry behavior are not yet implemented",
             "historical message attachment preservation semantics need source-paired review",
             "packaged Windows behavior and formal pinned-source acceptance remain open",
         ],
