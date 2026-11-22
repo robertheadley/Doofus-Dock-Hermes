@@ -4609,3 +4609,8 @@ Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d004
 ### PAR-0527 — Reject malformed successful session refreshes — 2026-11-22
 
 Native rejects a sidebar success response that omits `recents.sessions` without explicit profile failure details. A malformed all-profile refresh leaves cached sessions visible and reports the error; valid empty results and explicit profile failures are unchanged. Focused and full headless tests pass. Live Gateway and packaged Windows acceptance remain open.
+
+
+### PAR-0527 evidence — 2026-11-22
+
+EV-0113 binds the malformed-sidebar cache-preservation regression to `b1baf05e20c02b8e28638c93db0236a2119b6eb2`. The UCM capability is partial with a passing headless scenario; live Gateway and packaged Windows behavior are unverified. Completion overlays now report 112/499 broad and 78/176 chat/tool evidence coverage.

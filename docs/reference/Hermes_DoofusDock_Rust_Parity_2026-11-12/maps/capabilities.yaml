@@ -10329,7 +10329,7 @@ capabilities:
   name: Avoid destructive fallback on malformed responses
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can avoid destructive fallback on malformed responses.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10342,8 +10342,14 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0113
+  verification:
+    scenarios:
+    - id: malformed-sidebar-response-preserves-sessions
+      description: Reject an incomplete successful session-list payload, preserve cached sessions, and keep valid empty and explicit failed slices distinct.
 - id: ui-preserve-backend-native-model-and-profile-policy
   name: Preserve backend-native model and profile policy
   area: protocol-reliability

@@ -3224,3 +3224,17 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No additional requests or runtime work; one in-memory response-shape check per sidebar refresh.
 - **risks:** Live authenticated Gateway and packaged Windows behavior are unverified.
 - **follow_up:** Bind commit-specific partial EV-0113, checkpoint PAR-0527, and publish to `main`.
+
+
+### PAR-0527 evidence — 2026-11-22
+
+- **id:** PAR-0527-EV-0113
+- **timestamp:** 2026-11-22T11:39:29Z
+- **what:** Bound the app cache-preservation regression to implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and added EV-0113 for `malformed-sidebar-response-preserves-sessions`. Updated the crosswalk and progress generator; the map remains partial.
+- **why:** Make the tested slice visible in current completion reporting without implying full capability completion.
+- **components:** UCM capability/evidence, implementation progress generator, crosswalk, completion overview, task ledger.
+- **type:** evidence and progress record
+- **validation:** Scenario passes; task checkpoint revision 763 validates. Progress now reports 112/499 broad and 78/176 chat/tool evidence mappings. Root package validator passes 565 behaviors, 15 source inspections and 97 implementation receipts; archival package passes with 491 pending.
+- **performance:** No runtime behavior changed.
+- **risks:** Canonical UCM package-wide check retains 162 legacy errors and 11 unrelated reconciliation items; no EV-0113-specific issue. Live Gateway and packaged Windows remain unverified.
+- **follow_up:** Publish implementation and evidence to main, then verify exact origin/main equality.

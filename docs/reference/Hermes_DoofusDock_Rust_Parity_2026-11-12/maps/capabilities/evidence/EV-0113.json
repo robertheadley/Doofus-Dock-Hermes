@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0113",
+  "capability_id": "ui-avoid-destructive-fallback-on-malformed-responses",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "malformed-sidebar-response-preserves-sessions",
+  "locator": "apps/hermes-native/src/app.rs::malformed_all_profile_refresh_preserves_cached_sessions_and_surfaces_error",
+  "date": "2026-11-22",
+  "commit": "b1baf05e20c02b8e28638c93db0236a2119b6eb2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless app regression proves a malformed all-profile refresh preserves both cached profile rows and surfaces the error. Gateway shape regression rejects {} and {\"recents\":{}} while accepting an authoritative empty sessions array and a source-shaped explicit failed slice. The full locked suite passes 592 library + 15 protocol + 3 launcher tests; all-target check, task continuity, ledger and package validation, progress generators, formatting and diff checks pass.",
+  "notes": "Partial evidence only. Validates the native sidebar response boundary and cache preservation; does not prove authenticated live Gateway behavior, packaged Windows interaction, or full malformed-response coverage for other Hermes UI workflows."
+}

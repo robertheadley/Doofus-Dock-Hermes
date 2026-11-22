@@ -1367,6 +1367,23 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "pinned Hermes pytest and formal source-paired acceptance were not run",
         ],
     },
+    "PAR-0527": {
+        "state": "partial",
+        "level": "headless_malformed_sidebar_response_and_cache_preservation",
+        "refs": [
+            ".staging/hermes-pinned-878305/hermes_cli/web_routers/profiles.py#def _failed_load_slice",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/session.ts#carryForwardFailedProfileSessions",
+            "apps/hermes-native/src/gateway.rs#sidebar_response_has_valid_recent_slice",
+            "apps/hermes-native/src/gateway.rs#command_center_sidebar_rejects_incomplete_success_but_accepts_empty_and_explicit_failure",
+            "apps/hermes-native/src/app.rs#malformed_all_profile_refresh_preserves_cached_sessions_and_surfaces_error",
+            "apps/hermes-native/docs/PLAN.md#Revision 334",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0113.json#EV-0113",
+        ],
+        "gaps": [
+            "authenticated live Gateway behavior and packaged Windows refresh behavior remain unverified",
+            "malformed-response safeguards for other UI workflows are outside this focused sidebar slice",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",
