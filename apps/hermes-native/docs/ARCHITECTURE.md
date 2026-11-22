@@ -340,3 +340,7 @@ The active session model is changed through an owner-scoped `ChatPolicyMutated` 
 ## Tool results and inline diffs
 
 `tool.complete` remains the authoritative completion event. The transcript reducer stores the complete payload fields, while the view presents `result_text`/`summary` independently from `inline_diff` (or the legacy `diff` field). Inline unified diffs are rendered in an expanded-by-default, accessible disclosure with bounded text and line counts; additions, removals, hunk headers and file headers have distinct presentation. Structured `success:true`/`ok:true` takes precedence over stale error metadata; explicit failure fields render as errors; otherwise the row remains `complete` without guessing from free-form text or a stopped turn. Raw arguments, results and diffs are available in Advanced tool payload details. Headless transcript and reducer tests cover these paths; live Gateway and packaged Windows behavior remain unverified.
+
+## Gateway request cancellation
+
+The normal Gateway event channel handles `request.cancel` by exact server request ID. It removes a matching approval or batch-clarification prompt and, when present, requires the event profile to match the prompt profile. Missing IDs, unknown IDs, and owner mismatches are no-ops. Later response acknowledgements for a canceled card do not recreate it. The native client currently does not render the sensitive request methods that the pinned Desktop handler can also cancel.

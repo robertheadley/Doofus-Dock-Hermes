@@ -241,4 +241,8 @@ Independent plain-text composer drafts now persist across app restarts and remai
 
 PAR-0061 now records partial evidence for model-change draft preservation. The rendered model picker and matching mutation receipts preserve the unsent text and attachment across success, refusal and confirmation-required states; a stale profile receipt is ignored without consuming the active pending model mutation. This adds evidence coverage, not full live or source-paired acceptance.
 
+### Progress update — 2026-11-22
+
+PAR-0521 adds headless coverage for exact-ID `request.cancel` handling on approval and batch-clarification prompts, with optional profile-owner matching. Current chat/tool evidence overlay: **1 implemented, 70 partial, 1 not implemented, 104 unknown**; **72/176** have mapped evidence. Live-runtime verification and source-paired acceptance remain **0/176**. These are evidence-coverage counts, not a feature-completion percentage.
+
 PAR-0056 update (2026-11-22): The profile/connection-scoped metadata prompt index now has explicit refresh and selects unloaded prompts through the pinned bounded around-row API. App tests prove the active owner window is displayed and a stale connection response cannot replace the active chat. Automatic cache invalidation, active-marker tracking, live Gateway and packaged/source-paired acceptance remain open.

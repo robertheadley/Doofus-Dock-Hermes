@@ -398,3 +398,8 @@ PAR-0060 implementation update (2026-11-22): atomic bounded text drafts now rest
 
 
 PAR-0061 update (2026-11-22): rendered model selection now has headless evidence that accepted changes, refusal, confirmation-required and stale profile receipts preserve unsent text and attachment chips. A stale receipt no longer clears the current pending mutation. Full locked suite passes (557 + 15 + 3). Live Gateway, packaged Windows and pinned-source acceptance remain open.
+
+
+### PAR-0521 — Withdrawn Gateway request handling (2026-11-22)
+
+Native clears only the matching approval or batch-clarification prompt when Hermes emits `request.cancel`; a supplied profile must also match the prompt owner. Missing/unknown IDs are safe no-ops. Remaining: sensitive prompt handlers, authenticated live Gateway, packaged Windows interaction, and pinned-source acceptance.

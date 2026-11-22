@@ -4462,3 +4462,18 @@ Validation follow-up — 2026-11-22T08:55:18Z: PASS full `cargo test -p hermes-n
 Evidence follow-up — 2026-11-22T08:57:45Z: EV-0106 is bound to implementation commit `b24bd31861cf749545f7bb2345a2145cc598b80d`, linked from the PAR-0057 capability, and keeps its overall status `partial`. The root evidence package now validates 90 implementation receipts; the archival package remains 491 pending. YAML syntax parsing remains skipped by the root validator because PyYAML is absent.
 
 Publication follow-up — 2026-11-22T08:59:23Z: Implementation commit `b24bd31861cf749545f7bb2345a2145cc598b80d` and EV-0106 evidence commit `cf849723e3b1a631e981a1e081b64bb69dad2ab3` were pushed to `origin/main`. A fresh fetch confirmed exact local/remote main equality at `cf849723e3b1a631e981a1e081b64bb69dad2ab3`. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
+
+## PAR-0521 — Clear withdrawn Gateway requests — 2026-11-22
+
+- **id:** PAR-0521
+- **timestamp:** 2026-11-22T09:08:54Z
+- **what:** Added `request.cancel` event handling that removes only the approval or batch-clarification prompt whose server request ID matches the cancellation. When the event includes a profile, the prompt's profile must match too. Missing IDs and mismatches are no-ops.
+- **why:** A withdrawn approval or clarification should no longer remain actionable in the native chat.
+- **components:** `apps/hermes-native/src/app.rs`, progress generator and overlays, `apps/hermes-native/docs/PLAN.md`, `BACKLOG.md`, `ARCHITECTURE.md`, `COMPLETION_OVERVIEW.md`, `README.md`, root changelog and execution log.
+- **type:** additive Gateway event handling, regression coverage, progress evidence and documentation.
+- **validation:** PASS focused `request_cancel_clears_only_the_matching_approval_and_clarify_request`; full suite and publication pending.
+- **performance:** Bounded map lookup by request ID; no network request or added polling.
+- **risks:** Sensitive request card handlers are not implemented; live Gateway, packaged Windows and pinned-source acceptance remain open.
+- **follow_up:** Run full locked validation, bind evidence to the implementation commit, and publish to `main`.
+
+Validation follow-up — 2026-11-22T09:08:54Z: PASS focused request-cancel test; PASS full locked all-target suite (583 library + 15 automation protocol + 3 launcher), locked all-target check, rustfmt/diff checks, 19 task-continuity tests, both progress generators, canonical task-state validation and root/archival source package validators. The root validator skipped YAML parsing because PyYAML is absent. Live Gateway, packaged Windows and pinned-source acceptance remain open.

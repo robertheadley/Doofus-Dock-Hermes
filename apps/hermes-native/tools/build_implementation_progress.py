@@ -1265,6 +1265,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "authenticated live Gateway behavior, packaged Windows interaction, and source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0521": {
+        "state": "partial",
+        "level": "headless_server_request_cancellation_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/ui-tui/src/app/createGatewayEventHandler.ts#request.cancel",
+            ".staging/hermes-pinned-878305/ui-tui/src/__tests__/createGatewayEventHandler.test.ts#clears only the card whose request the gateway withdrew",
+            "apps/hermes-native/src/app.rs#handle_server_event_from_connection",
+            "apps/hermes-native/src/app.rs#handle_server_request_cancelled",
+            "apps/hermes-native/src/app.rs#request_cancel_clears_only_the_matching_approval_and_clarify_request",
+            "apps/hermes-native/docs/PLAN.md#Revision 326",
+        ],
+        "gaps": [
+            "native currently displays only approval and batch-clarify server requests; cancellation of sensitive prompt cards is not implemented",
+            "authenticated live Gateway delivery, packaged Windows behavior, and formal source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",

@@ -2030,3 +2030,10 @@ When the visible transcript is an around-row history window, “Show earlier mes
 An older around-window is merged with the visible page only when the returned offset and message count touch the current window offset. When a long turn leaves a gap, the view switches to the separate older window and scrolls to its anchor rather than presenting a discontinuous transcript as continuous. The existing offset-based pagination remains available for tail transcripts. Headless regressions cover predecessor choice, index paging, gap replacement and boundary continuity.
 
 PAR-0057 remains partial. Backend cancellation is not available through this REST bridge, the UI does not yet provide explicit cancellation/latest-request replacement for an in-flight reveal, and scroll-position preservation during a contiguous prepend has not been proven with physical input. Authenticated live Gateway, packaged Windows behavior and formal source-paired acceptance remain open.
+
+
+### Revision 326 — Clear withdrawn approval and clarification requests — 2026-11-22
+
+The pinned Gateway event handler consumes `request.cancel` by request ID and removes only the matching approval, clarification, or sensitive-prompt card. Native now performs the same ID-correlated removal for the approval and batch-clarification server requests it currently presents. If a cancellation includes a profile, native requires that it match the prompt owner; missing IDs, unknown IDs, and mismatched profiles leave prompts unchanged. The operation is idempotent, including when a response completion arrives after the card has been withdrawn.
+
+One headless regression covers missing and unrelated IDs, removal of only the matching approval, profile mismatch protection, and clarification removal. PAR-0521 remains partial because native sensitive prompt handlers are not implemented, and live Gateway, packaged Windows, and formal source-paired acceptance remain unverified.

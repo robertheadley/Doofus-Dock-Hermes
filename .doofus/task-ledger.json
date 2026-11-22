@@ -1,5 +1,5 @@
 {
-  "revision": 126,
+  "revision": 128,
   "schema_version": 1,
   "tasks": [
     {
@@ -14886,7 +14886,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -14895,12 +14895,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T09:12:38Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-handle-request-cancellation",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "validation",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -14908,12 +14909,14 @@
                 "source_pair_state": "pending",
                 "visual_pair_state": "not_paired"
               },
-              "size_units": null,
+              "size_units": 1.0,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0521",
               "title": "PAR-0521 Handle request cancellation",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#request_cancel_clears_only_the_matching_approval_and_clarify_request"
+              ]
             },
             {
               "agent_identity": {
@@ -16404,5 +16407,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T08:34:02Z"
+  "updated_at": "2026-11-22T09:12:38Z"
 }

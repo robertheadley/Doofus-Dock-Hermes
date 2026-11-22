@@ -19735,6 +19735,42 @@ fn render_message() -> &'static str {
         self.status = "A tool approval is waiting for your decision".into();
     }
 
+    fn handle_server_request_cancelled(
+        &mut self,
+        payload: &serde_json::Value,
+        event_profile: Option<&str>,
+    ) {
+        let Some(server_request_id) = payload
+            .get("id")
+            .and_then(|value| value.as_str())
+            .filter(|id| !id.is_empty())
+        else {
+            return;
+        };
+
+        if let Some(prompt) = self.batch_clarify_prompts.get(server_request_id)
+            && event_profile.is_none_or(|profile| prompt.profile.as_deref() == Some(profile))
+        {
+            self.batch_clarify_prompts.remove(server_request_id);
+            self.status = "Hermes withdrew the clarification request".into();
+            return;
+        }
+
+        let approval_prompt_id = self
+            .approval_prompts
+            .iter()
+            .find_map(|(prompt_id, prompt)| {
+                (prompt.server_request_id.as_deref() == Some(server_request_id)
+                    && event_profile
+                        .is_none_or(|profile| prompt.profile.as_deref() == Some(profile)))
+                .then(|| prompt_id.clone())
+            });
+        if let Some(prompt_id) = approval_prompt_id {
+            self.approval_prompts.remove(&prompt_id);
+            self.status = "Hermes withdrew the tool approval request".into();
+        }
+    }
+
     fn session_runtime_is_known(&self, runtime_session_id: &str, profile: Option<&str>) -> bool {
         if let (Some(request_profile), Some(endpoint)) = (profile, self.gateway_endpoint.as_ref())
             && request_profile != endpoint.profile_id
@@ -20145,6 +20181,14 @@ fn render_message() -> &'static str {
             .get("payload")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+        if event_type == "request.cancel" {
+            let event_profile = event
+                .get("profile")
+                .or_else(|| payload.get("profile"))
+                .and_then(|value| value.as_str());
+            self.handle_server_request_cancelled(&payload, event_profile);
+            return;
+        }
         if event_type == "session.info" {
             self.capture_session_backend_metadata(&event, connection_id, &payload);
         } else if event_type == "session.usage" {
@@ -51441,6 +51485,93 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn request_cancel_clears_only_the_matching_approval_and_clarify_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.handle_server_request(
+            "approval-wire-1".into(),
+            "approval".into(),
+            json!({
+                "session_id":"runtime-session",
+                "request_id":"approval-prompt-1",
+                "choices":["once","deny"]
+            }),
+        );
+        app.handle_server_request(
+            "approval-wire-2".into(),
+            "approval".into(),
+            json!({
+                "session_id":"runtime-session",
+                "request_id":"approval-prompt-2",
+                "choices":["once","deny"]
+            }),
+        );
+        app.handle_server_request(
+            "clarify-wire-1".into(),
+            "clarify".into(),
+            json!({
+                "session_id":"runtime-session",
+                "questions":[{"qid":"q1","question":"Choose","choices":["A","B"]}]
+            }),
+        );
+        app.approval_prompts
+            .get_mut("approval-prompt-2")
+            .expect("second approval prompt")
+            .profile = Some("work".into());
+        app.batch_clarify_prompts
+            .get_mut("clarify-wire-1")
+            .expect("clarify prompt")
+            .profile = Some("work".into());
+
+        app.handle_server_event(json!({
+            "type":"request.cancel",
+            "payload":{"id":"unknown-wire-id","method":"approval","reason":"timeout"}
+        }));
+        app.handle_server_event(json!({
+            "type":"request.cancel",
+            "payload":{"method":"approval","reason":"timeout"}
+        }));
+        assert!(app.approval_prompts.contains_key("approval-prompt-1"));
+        assert!(app.approval_prompts.contains_key("approval-prompt-2"));
+
+        app.handle_server_event(json!({
+            "type":"request.cancel",
+            "payload":{"id":"approval-wire-1","method":"approval","reason":"timeout"}
+        }));
+        assert!(!app.approval_prompts.contains_key("approval-prompt-1"));
+        assert!(app.approval_prompts.contains_key("approval-prompt-2"));
+
+        app.handle_server_event(json!({
+            "type":"request.cancel",
+            "profile":"personal",
+            "payload":{"id":"approval-wire-2","method":"approval","reason":"interrupted"}
+        }));
+        assert!(app.approval_prompts.contains_key("approval-prompt-2"));
+        app.handle_server_event(json!({
+            "type":"request.cancel",
+            "profile":"work",
+            "payload":{"id":"approval-wire-2","method":"approval","reason":"interrupted"}
+        }));
+        assert!(!app.approval_prompts.contains_key("approval-prompt-2"));
+
+        app.handle_server_event(json!({
+            "type":"request.cancel",
+            "profile":"personal",
+            "payload":{"id":"clarify-wire-1","method":"clarify","reason":"interrupted"}
+        }));
+        assert!(app.batch_clarify_prompts.contains_key("clarify-wire-1"));
+        app.handle_server_event(json!({
+            "type":"request.cancel",
+            "profile":"work",
+            "payload":{"id":"clarify-wire-1","method":"clarify","reason":"interrupted"}
+        }));
+        assert!(!app.batch_clarify_prompts.contains_key("clarify-wire-1"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
