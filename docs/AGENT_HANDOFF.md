@@ -1,6 +1,6 @@
 # Agent handoff and task recovery
 
-This repository uses portable, versioned records under `.doofus/`. They contain task state and evidence references, never conversation transcripts, credentials, machine-specific absolute paths, or a local SQLite database. The 499-row pinned Hermes Desktop matrix remains the parity denominator; the separate 33/59 checklist figure is preserved only as a user-supplied historical metric whose source has not yet been located.
+This repository uses portable, versioned records under `.doofus/`. They contain task state and evidence references, never conversation transcripts, credentials, machine-specific absolute paths, or a local SQLite database. The active milestone is a first usable native agent-workflow UI for pinned Hermes source: model/provider connection, chat/prompt lifecycle, tools/results/approvals, skills, plugins/MCP, and required context/attachments. The 499-row Desktop matrix is a reference inventory, not the goal denominator; the separate 33/59 checklist remains an unverified historical metric.
 
 ## Startup procedure for every provider
 
@@ -42,9 +42,9 @@ python apps/hermes-native/tools/doofus_task.py recover-lock --provider codex --c
 - `.doofus/task-ledger.json` is the versioned hierarchical task tree, including every fixed PAR requirement.
 - `.doofus/events.jsonl` is a bounded, append-only JSONL audit of prepared, committed and explicitly reconciled operations.
 - `.doofus/schemas/*.schema.json` are the versioned data contracts.
-- `apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv` remains the evidence-backed implementation overlay; handoff tooling reads it but does not change source acceptance. The `progress --json` `parity_scope.total` is the fixed 499-row denominator. `tasks.total` counts all hierarchy nodes, including project/parity parent nodes and the separate continuity task; it is not a replacement denominator. Reviewed-row coverage is evidence coverage, not product completion.
+- `apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv` remains the evidence-backed reference inventory overlay; handoff tooling reads it but does not change source acceptance. The `progress --json` `parity_scope.total` field is a legacy count of 499 source rows, not the agent-workflow completion denominator. `tasks.total` counts all hierarchy nodes, including project and source-requirement nodes; it is not a feature-completion measure. Reviewed-row coverage is evidence coverage, not product completion.
 
-The current project has no measured phase-specific task-size/effort sample set. Therefore remaining-effort ETA is **unavailable / insufficient evidence**. A phase-aware EWMA with alpha 0.2 becomes eligible only after at least three completed, measured, size-normalized samples for that phase. The report includes a qualitative confidence and uncertainty explanation; an eligible EWMA is still labeled `limited` because duration variance and external acceptance work are not calibrated. Do not use the 33/59 checklist or 499-row acceptance count as elapsed-time or effort data.
+The current project has no measured phase-specific task-size/effort sample set. Therefore remaining-effort ETA is **unavailable / insufficient evidence**. A phase-aware EWMA with alpha 0.2 becomes eligible only after at least three completed, measured, size-normalized samples for that phase. The report includes a qualitative confidence and uncertainty explanation; an eligible EWMA is still labeled `limited` because duration variance and external acceptance work are not calibrated. Do not use the 33/59 checklist or 499-row reference inventory as elapsed-time or effort data.
 
 ## Known protocol limits
 

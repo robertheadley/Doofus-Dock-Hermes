@@ -969,6 +969,26 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "zoom and pan gestures, image load retry, live Gateway behavior, installed Windows interaction, and source-paired acceptance remain open",
         ],
     },
+    "PAR-0045": {
+        "state": "partial",
+        "level": "headless_rendered_inline_tool_diff_with_explicit_outcome_status",
+        "refs": [
+            ".staging/hermes-pinned-878305/tui_gateway/contracts/events.py#ToolCompletePayload",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback.tsx#FileDiffPanel",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/tool/fallback-model/index.ts#toolStatus",
+            "apps/hermes-native/src/app.rs#tool_completion_status",
+            "apps/hermes-native/src/app.rs#tool_inline_diff",
+            "apps/hermes-native/src/app.rs#render_tool_inline_diff",
+            "apps/hermes-native/src/app.rs#inline_tool_diff_is_visible_alongside_result_and_has_outcome_status",
+            "apps/hermes-native/src/app.rs#tool_completion_status_uses_explicit_failure_and_success_precedence",
+            "apps/hermes-native/src/app.rs#tool_inline_diff_accepts_legacy_field_and_bounds_large_payloads",
+            "apps/hermes-native/docs/PLAN.md#Revision 313",
+        ],
+        "gaps": [
+            "headless UI and event fixtures do not prove live Hermes Gateway result envelopes or packaged Windows rendering",
+            "formal pinned-source acceptance remains pending; diffs are bounded to 80,000 characters and 1,500 rendered lines",
+        ],
+    },
     "PAR-0046": {
         "state": "partial",
         "level": "headless_ui_gateway_config_and_stream_reducer",

@@ -330,3 +330,7 @@ Plain-text composer drafts are stored under the app's user data directory in a d
 ## Model changes and composer state
 
 The active session model is changed through an owner-scoped `ChatPolicyMutated` request/receipt. Composer text and attachment chips are app-owned state separate from the model options snapshot; model success updates the session options without rebuilding or clearing the composer. Confirmation-required responses retain the selection as a pending confirmation, and refusal surfaces an error while preserving composer state. Receipt ownership is checked before removing the pending mutation, so a stale profile/session/connection response cannot consume the current operation.
+
+## Tool results and inline diffs
+
+`tool.complete` remains the authoritative completion event. The transcript reducer stores the complete payload fields, while the view presents `result_text`/`summary` independently from `inline_diff` (or the legacy `diff` field). Inline unified diffs are rendered in an expanded-by-default, accessible disclosure with bounded text and line counts; additions, removals, hunk headers and file headers have distinct presentation. Structured `success:true`/`ok:true` takes precedence over stale error metadata; explicit failure fields render as errors; otherwise the row remains `complete` without guessing from free-form text or a stopped turn. Raw arguments, results and diffs are available in Advanced tool payload details. Headless transcript and reducer tests cover these paths; live Gateway and packaged Windows behavior remain unverified.

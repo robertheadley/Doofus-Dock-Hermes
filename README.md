@@ -1,6 +1,6 @@
 # Hermes · DoofusDock
 
-The Messaging route reads profile-scoped channels and pairing queues, applies approved requests with matching receipts, and confirms revocation. Its metadata-driven forms keep secret drafts blank and support normalized allowlists. Telegram QR setup now supports start, status polling, QR display, allowlist configuration, apply and cancel, with profile-bound requests and local HTTP fixtures. Gateway restart execution now follows setup receipts and monitors action status. Bot management and source-paired visual acceptance remain open; this is not a one-to-one replacement yet.
+The active milestone is a first usable native Hermes agent-workflow UI against pinned downloaded source `8783054ef6cbafd86f10892241436862c1171a66`: model/provider connection, chat and prompt lifecycle, tools and approvals, skills, plugins/MCP, and required context/attachments. Functional feature coverage is the target; pixel parity and unrelated Desktop administration are deferred. The broader source inventory and all previously implemented features are retained as references and supporting work. Detailed progress and remaining gaps are in [the completion overview](apps/hermes-native/docs/COMPLETION_OVERVIEW.md).
 
 Native Rust and egui desktop shell for Hermes, using DoofusDock's persisted `LayoutDocument` as the workspace geometry authority.
 

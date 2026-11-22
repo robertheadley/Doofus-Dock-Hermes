@@ -7231,7 +7231,11 @@ fn render_message() -> &'static str {
                             frame
                         };
                         let entry = frame.show(ui, |ui| {
-                            ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
+                            ui.label(
+                                RichText::new(speaker.clone())
+                                    .strong()
+                                    .color(transcript_speaker_color(&message)),
+                            );
                             let failed_turn = transcript_failed_user_turn(&messages, index);
                             let durable_row_id = message
                                 .get("row_id")
@@ -7375,6 +7379,12 @@ fn render_message() -> &'static str {
                             } else {
                                 open_transcript_file =
                                     render_transcript_markdown(ui, markdown_cache, &body);
+                            }
+                            if message.get("type").and_then(serde_json::Value::as_str)
+                                == Some("tool_call")
+                                && let Some(diff) = tool_inline_diff(&message)
+                            {
+                                render_tool_inline_diff(ui, &diff, session_id, index);
                             }
                             if let Some(artifact) = tool_image {
                                 let remote = self
@@ -33365,7 +33375,6 @@ fn transcript_message(message: &serde_json::Value) -> (String, String) {
         let content = [
             "result_text",
             "summary",
-            "inline_diff",
             "result",
             "preview",
             "args_text",
@@ -33677,6 +33686,133 @@ fn bounded_status_text(value: &str, max_bytes: usize) -> String {
     sanitized
 }
 
+fn transcript_speaker_color(message: &serde_json::Value) -> Color32 {
+    match message.get("status").and_then(serde_json::Value::as_str) {
+        Some("error") => Color32::from_rgb(238, 105, 105),
+        Some("warning") => Color32::from_rgb(235, 184, 83),
+        _ => ACCENT,
+    }
+}
+
+fn tool_completion_status(payload: &serde_json::Value) -> &'static str {
+    let result = payload.get("result").filter(|value| !value.is_null());
+    let result_record = result.and_then(serde_json::Value::as_object);
+    let explicitly_succeeded = [
+        payload.get("success"),
+        payload.get("ok"),
+        result_record.and_then(|record| record.get("success")),
+        result_record.and_then(|record| record.get("ok")),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|value| value.as_bool() == Some(true));
+    if explicitly_succeeded {
+        return "success";
+    }
+
+    let failure_status = result_record
+        .and_then(|record| record.get("status"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|status| {
+            matches!(
+                status.trim().to_ascii_lowercase().as_str(),
+                "error" | "failed" | "failure" | "fatal" | "exception"
+            )
+        });
+    let explicit_failure = [
+        payload.get("success"),
+        payload.get("ok"),
+        result_record.and_then(|record| record.get("success")),
+        result_record.and_then(|record| record.get("ok")),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|value| value.as_bool() == Some(false));
+    let has_error = [
+        payload.get("error"),
+        result_record.and_then(|record| record.get("error")),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|value| match value {
+        serde_json::Value::Null => false,
+        serde_json::Value::Bool(value) => *value,
+        serde_json::Value::String(value) => !value.trim().is_empty(),
+        serde_json::Value::Array(value) => !value.is_empty(),
+        serde_json::Value::Object(value) => !value.is_empty(),
+        _ => true,
+    });
+    if explicit_failure || failure_status || has_error {
+        "error"
+    } else {
+        "complete"
+    }
+}
+
+fn tool_inline_diff(message: &serde_json::Value) -> Option<String> {
+    let raw = ["inline_diff", "diff"]
+        .iter()
+        .find_map(|key| message.get(*key).and_then(serde_json::Value::as_str))?
+        .trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let cleaned = raw
+        .strip_prefix("┊ review diff")
+        .map(str::trim_start)
+        .unwrap_or(raw);
+    const MAX_INLINE_DIFF_CHARS: usize = 80_000;
+    let mut preview = cleaned
+        .chars()
+        .take(MAX_INLINE_DIFF_CHARS)
+        .collect::<String>();
+    if cleaned.chars().take(MAX_INLINE_DIFF_CHARS + 1).count() > MAX_INLINE_DIFF_CHARS {
+        preview.push_str("\n… Diff preview truncated at 80,000 characters.");
+    }
+    Some(preview)
+}
+
+fn render_tool_inline_diff(ui: &mut Ui, diff: &str, session_id: &str, index: usize) {
+    const MAX_INLINE_DIFF_LINES: usize = 1_500;
+    egui::CollapsingHeader::new("Review changes")
+        .id_salt(("tool-inline-diff", session_id, index))
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(360.0)
+                .show(ui, |ui| {
+                    for line in diff.lines().take(MAX_INLINE_DIFF_LINES) {
+                        let color = if line.starts_with("+++") || line.starts_with("---") {
+                            Color32::from_rgb(172, 180, 192)
+                        } else if line.starts_with('+') {
+                            Color32::from_rgb(113, 203, 132)
+                        } else if line.starts_with('-') {
+                            Color32::from_rgb(239, 120, 120)
+                        } else if line.starts_with("@@") {
+                            Color32::from_rgb(118, 174, 235)
+                        } else {
+                            ui.visuals().text_color()
+                        };
+                        let file_header = line.starts_with("+++") || line.starts_with("---");
+                        let label = if file_header {
+                            line.to_owned()
+                        } else if let Some(added) = line.strip_prefix('+') {
+                            format!("Added: {added}")
+                        } else if let Some(removed) = line.strip_prefix('-') {
+                            format!("Removed: {removed}")
+                        } else {
+                            line.to_owned()
+                        };
+                        ui.label(RichText::new(line).monospace().color(color))
+                            .accessible_name(label);
+                    }
+                    if diff.lines().count() > MAX_INLINE_DIFF_LINES {
+                        ui.label("Diff preview truncated after 1,500 lines.");
+                    }
+                });
+        });
+}
+
 fn bounded_transcript_value(value: &serde_json::Value, max_chars: usize) -> String {
     let text = value.as_str().map(str::to_owned).unwrap_or_else(|| {
         serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
@@ -33690,9 +33826,16 @@ fn bounded_transcript_value(value: &serde_json::Value, max_chars: usize) -> Stri
 }
 
 fn tool_payload_present(message: &serde_json::Value) -> bool {
-    ["args", "args_text", "result", "result_text"]
-        .iter()
-        .any(|key| message.get(*key).is_some_and(|value| !value.is_null()))
+    [
+        "args",
+        "args_text",
+        "result",
+        "result_text",
+        "inline_diff",
+        "diff",
+    ]
+    .iter()
+    .any(|key| message.get(*key).is_some_and(|value| !value.is_null()))
 }
 
 fn tool_image_reference(message: &serde_json::Value) -> Option<String> {
@@ -33808,12 +33951,19 @@ fn tool_payload_trace(message: &serde_json::Value) -> Option<String> {
         .get("result")
         .filter(|value| !value.is_null())
         .or_else(|| message.get("result_text").filter(|value| !value.is_null()));
-    let mut sections = Vec::with_capacity(2);
+    let inline_diff = message
+        .get("inline_diff")
+        .filter(|value| !value.is_null())
+        .or_else(|| message.get("diff").filter(|value| !value.is_null()));
+    let mut sections = Vec::with_capacity(3);
     if let Some(args) = args {
         sections.push(format!("Arguments:\n{}", pretty_tool_payload_value(args)));
     }
     if let Some(result) = result {
         sections.push(format!("Result:\n{}", pretty_tool_payload_value(result)));
+    }
+    if let Some(diff) = inline_diff {
+        sections.push(format!("Inline diff:\n{}", pretty_tool_payload_value(diff)));
     }
     if sections.is_empty() {
         return None;
@@ -33903,7 +34053,7 @@ fn upsert_tool_row(
             }
         }
     } else {
-        row["status"] = serde_json::json!("complete");
+        row["status"] = serde_json::json!(tool_completion_status(payload));
         row.as_object_mut()
             .expect("tool transcript row is an object")
             .remove("tool_progress");
@@ -33913,6 +34063,7 @@ fn upsert_tool_row(
             "result_text",
             "summary",
             "inline_diff",
+            "diff",
             "duration_s",
             "todos",
             "revision",
@@ -51333,6 +51484,156 @@ mod tests {
     }
 
     #[test]
+    fn inline_tool_diff_is_visible_alongside_result_and_has_outcome_status() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.handle_server_event(serde_json::json!({
+            "type":"tool.start",
+            "session_id":"runtime-session",
+            "execution_generation":7,
+            "payload":{"tool_id":"edit-call","name":"patch","args":{"path":"src/lib.rs"}}
+        }));
+        app.handle_server_event(serde_json::json!({
+            "type":"tool.complete",
+            "session_id":"runtime-session",
+            "execution_generation":7,
+            "payload":{
+                "tool_id":"edit-call",
+                "name":"patch",
+                "summary":"Updated src/lib.rs",
+                "result":{"success":true},
+                "inline_diff":"--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-old_value\n+new_value"
+            }
+        }));
+        app.handle_server_event(serde_json::json!({
+            "type":"tool.complete",
+            "session_id":"runtime-session",
+            "execution_generation":7,
+            "payload":{
+                "tool_id":"failed-call",
+                "name":"write_file",
+                "result":{"success":false,"message":"permission denied"}
+            }
+        }));
+        app.transcript.push(serde_json::json!({
+            "type":"tool_call",
+            "tool_call_id":"diff-only-call",
+            "name":"patch",
+            "status":"complete",
+            "diff":"--- a/only.txt\n+++ b/only.txt\n+diff-only-line"
+        }));
+
+        assert_eq!(app.transcript.len(), 3);
+        assert_eq!(
+            app.transcript[0]["inline_diff"],
+            "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-old_value\n+new_value"
+        );
+        assert_eq!(app.transcript[0]["status"], "success");
+        assert_eq!(app.transcript[1]["status"], "error");
+        assert_eq!(
+            transcript_message(&app.transcript[0]).1,
+            "Updated src/lib.rs"
+        );
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1200.0))
+            .build_ui(|ui| app.draw(ui));
+        let labels = harness
+            .query_all_by(|_| true)
+            .filter_map(|node| node.accesskit_node().label())
+            .collect::<Vec<_>>();
+        assert!(
+            labels.iter().any(|label| label.contains("patch · success")),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label.contains("write_file · error")),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels.iter().any(|label| label == "Review changes"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label.contains("Added: new_value")),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label.contains("Removed: old_value")),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label.contains("+++ b/src/lib.rs")),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label.contains("Added: diff-only-line")),
+            "labels: {labels:?}"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn tool_completion_status_uses_explicit_failure_and_success_precedence() {
+        assert_eq!(
+            tool_completion_status(&serde_json::json!({"result":{"success":false}})),
+            "error"
+        );
+        assert_eq!(
+            tool_completion_status(
+                &serde_json::json!({"result":{"status":"failed","message":"denied"}})
+            ),
+            "error"
+        );
+        assert_eq!(
+            tool_completion_status(
+                &serde_json::json!({"error":"permission denied","result":{"success":true}})
+            ),
+            "success"
+        );
+        assert_eq!(
+            tool_completion_status(
+                &serde_json::json!({"result":{"ok":true,"error":"stale outer error"}})
+            ),
+            "success"
+        );
+        assert_eq!(
+            tool_completion_status(&serde_json::json!({"inline_diff":"+changed"})),
+            "complete"
+        );
+        assert_eq!(
+            tool_completion_status(
+                &serde_json::json!({"result_text":"File not found: src/missing.rs"})
+            ),
+            "complete"
+        );
+    }
+
+    #[test]
+    fn tool_inline_diff_accepts_legacy_field_and_bounds_large_payloads() {
+        let legacy = serde_json::json!({"diff":"┊ review diff\n+change"});
+        assert_eq!(tool_inline_diff(&legacy).as_deref(), Some("+change"));
+        let large = serde_json::json!({"inline_diff":"+".repeat(90_000)});
+        let large_preview = tool_inline_diff(&large).expect("diff present");
+        assert!(large_preview.starts_with(&"+".repeat(80_000)));
+        assert!(large_preview.contains("Diff preview truncated at 80,000 characters."));
+    }
+
+    #[test]
     fn tool_payload_disclosure_expands_arguments_and_result_accessibly() {
         let (mut app, profile_dir) = isolated_app();
         app.workspace.preferences.mode = InterfaceMode::Advanced;
@@ -51464,6 +51765,12 @@ mod tests {
             Some("Arguments:\nfallback args\n\nResult:\nfallback result")
         );
         assert_eq!(tool_payload_trace(&json!({"type":"tool_call"})), None);
+        let diff_only = json!({"inline_diff":"--- a/a.txt\n+++ b/a.txt\n+added"});
+        assert_eq!(tool_payload_present(&diff_only), true);
+        assert_eq!(
+            tool_payload_trace(&diff_only).as_deref(),
+            Some("Inline diff:\n--- a/a.txt\n+++ b/a.txt\n+added")
+        );
 
         let large = json!({
             "type":"tool_call",

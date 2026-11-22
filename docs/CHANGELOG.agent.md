@@ -4251,3 +4251,16 @@ PAR-0061 partial receipt EV-0096 is bound to implementation commit 8c19b9cf5ec5f
 
 
 PAR-0061 implementation and EV-0096/checkpoint are published to `origin/main`; fresh fetch verified `10968d89f501073e1521751e2d07153e3953a633`.
+
+### PAR-0045 inline tool diffs and completion status — 2026-11-22
+
+- **id:** hermes-par0045-inline-diff-20261122
+- **timestamp:** 2026-11-22T05:14:14Z
+- **what:** Rendered bounded inline diffs in an accessible, expanded-by-default Changes section beside tool summaries. Added/removed lines are distinguished; Advanced tool payload details include the diff. Completion status now reflects explicit structured failures and success, with success taking precedence over stale error metadata.
+- **why:** Tool edits and their outcomes are direct agent-workflow information and were being hidden or rendered as generic text.
+- **components:** Native transcript renderer, tool completion reducer, implementation evidence generator, progress views, architecture/backlog/completion documentation.
+- **type:** Agent feature implementation and evidence mapping.
+- **validation:** PASS focused render/status/diff tests; full locked suite 560 library + 15 protocol + 3 launcher; all-target check; rustfmt and diff checks; both progress generators; 19 continuity tests; task-state validator; root package validator (80 prior implementation receipts); archival package validator (491 pending). PAR-0045 recorded partial; broad reference evidence 100/499 and chat/tool evidence 66/176.
+- **performance:** Diff preview is bounded to 80,000 characters and 1,500 rendered rows; no benchmark was required or run.
+- **risks:** Fixtures do not prove live Gateway result envelopes or packaged Windows rendering. Formal pinned-source acceptance remains pending. Previously working features and operator-owned work were preserved.
+- **follow_up:** Create commit-bound partial evidence, update task checkpoint, validate package receipts, publish to main, then continue with the next agent-workflow P0 gap.
