@@ -1,6 +1,16 @@
 {
   "active_processes": [
     {
+      "kind": "cli_agent",
+      "model": null,
+      "note": "Headless Antigravity CLI ran in plan-only mode. It printed an initial audit-start message but exited without a final report; no edits were observed.",
+      "observed_at": "2026-11-21T23:56:49Z",
+      "pid": null,
+      "process_id": "agy:read-only-connection-switch-audit-20261121",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
       "kind": "delegated_agent",
       "model": null,
       "note": "Bounded source-contract audit was interrupted after pinned use-prompt-actions and upload path inspection; native attachment implementation not started. Exact upload methods and path-vs-bytes policy were partially confirmed directly.",
@@ -37,6 +47,16 @@
       "observed_at": "2026-11-21T23:38:20Z",
       "pid": null,
       "process_id": "subagent:connection-picker-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Read-only full app request/cache ownership audit completed. Concluded toolbar-only saved connection switching is unsafe until connection-scoped pending state/caches receive comprehensive reset or generation fencing; no edits or tests.",
+      "observed_at": "2026-11-21T23:56:47Z",
+      "pid": null,
+      "process_id": "subagent:connection_switch_lifecycle_review",
       "provider": "codex",
       "state": "stopped"
     },
@@ -274,55 +294,7 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/tools/build_implementation_progress.py",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
       "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
       "status": " M"
     },
     {
@@ -348,23 +320,17 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0085.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --locked --features agent-automation",
+    "command": "headless agy --mode plan; Codex subagent read-only lifecycle audit",
     "evidence": [
-      "apps/hermes-native/src/app.rs#saved_remote_connection_without_credentials_does_not_fall_back_to_local",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0085.json#EV-0085"
+      "apps/hermes-native/src/app.rs#start_saved_gateway_connection",
+      "apps/hermes-native/src/app.rs#saved_remote_connection_without_credentials_does_not_fall_back_to_local"
     ],
     "state": "in_progress",
-    "summary": "Saved remote Gateway startup now fails closed when its endpoint-matched token and OAuth session are both absent; no local actor is created under a remote owner. The behavior is committed at ec26ba3 and partial evidence EV-0085 maps PAR-0240. Focused/full tests and validators pass.",
-    "verified_at": "2026-11-21T23:52:21Z"
+    "summary": "Published remote startup fail-closed fix and EV-0085 on main. Two read-only lifecycle reviews show a toolbar-only saved-connection picker would lose or strand pending operations and expose stale profile-keyed caches; safe switching requires comprehensive result fencing/reset. No unsafe picker shipped.",
+    "verified_at": "2026-11-21T23:59:38Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -421,7 +387,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T00:52:21Z",
+    "lease_expires_at": "2026-11-22T00:59:38Z",
     "lease_id": "f0fdf59a-2e2d-4773-97c6-26a5156d7688",
     "model": null,
     "ownership_state": "active",
@@ -1680,9 +1646,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0510-failclosed-checkpoint-20261121",
+  "last_event_id": "hermes-par0510-switch-audit-checkpoint-20261121",
   "last_operation": {
-    "request_id": "hermes-par0510-failclosed-checkpoint-20261121",
+    "request_id": "hermes-par0510-switch-audit-checkpoint-20261121",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1701,7 +1667,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Implement the saved-connection picker only with safe pending-operation handling, draft preservation, and owner-fenced lifecycle; continue live reattach proof after that.",
+  "recommended_next_action": "Continue agent-focused feature parity. For saved connections, first design comprehensive connection-owned pending operation/result and cache lifecycle; otherwise take a bounded chat/context capability. Preserve all already functional behavior.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2157,7 +2123,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "2860d443d95a5cdf0335ce021592115e2c4c20d9ef60c96c3f112047a8b16487",
+    "change_fingerprint": "e3ecc66612a331b93b7293133e6b4feed1540d2573370d684d0e4bbdf5b8388e",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -2168,39 +2134,7 @@
         "status": " M"
       },
       {
-        "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/tools/build_implementation_progress.py",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
         "path": "docs/EXECUTION_LOGS.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/full_program_capability_map.json",
         "status": " M"
       },
       {
@@ -2218,20 +2152,16 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0085.json",
-        "status": "??"
       }
     ],
-    "head_commit": "ec26ba3b8fa7d6241d5856e94903ad93f40bb6c2",
+    "head_commit": "8a2899459b14940593bc5837c9a134f3f3b5bcfc",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 593,
+  "revision": 597,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 593,
+  "state_revision": 597,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0510",
   "task_ledger_revision": 94,
@@ -3620,9 +3550,14 @@
       "command": "app::tests::saved_remote_connection_without_credentials_does_not_fall_back_to_local",
       "result": "PASS focused regression; full package suite 517 library + 15 protocol + 3 launcher; all-target check; UCM 69 receipts; broad progress 93/499; task schema validated.",
       "timestamp": "2026-11-21T23:52:21Z"
+    },
+    {
+      "command": "app::tests::saved_remote_connection_without_credentials_does_not_fall_back_to_local",
+      "result": "PASS 517 library + 15 protocol + 3 launcher; all-target check; rustfmt; root UCM 69 receipts; broad overlay 93/499; task state valid revision 593.",
+      "timestamp": "2026-11-21T23:53:04Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T23:52:21Z"
+  "updated_at": "2026-11-21T23:59:38Z"
 }
