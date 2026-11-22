@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0094",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "prior_message_edit_missing_local_row_id_uses_bounded_history_or_safe_plain_submit_fallback",
+  "locator": "apps/hermes-native/src/app.rs#edit_without_durable_row_waits_for_history_then_uses_resolved_truncation_id",
+  "date": "2026-11-22",
+  "commit": "5eaf03190a498e0bbf45d0c3bfdde6e3cd4860df",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui/Gateway HTTP fixtures. The pinned REST route returns messages[].content and limit/offset/order pagination. Native bounds the profile-scoped read to 100 pages, 500 rows per page, 50,000 rows total and 16 MB; checks returned session/profile/page metadata; matches exact trimmed durable user text; accepts duplicates only when the target is the proven newest persisted user row; and otherwise sends ordinary prompt.submit without truncation. App regressions verify lookup-before-submit, resolved stable truncation ID, safe unresolved fallback, and stale-owner no-submit. Full locked suite passes 550 library + 15 protocol + 3 launcher; all-target check, formatting/diff, progress generation, 19 task-continuity checks, task-state schema, root capability package and archival package validators pass.",
+  "notes": "Partial implementation evidence only. No live Hermes Gateway was contacted. REST offset pagination does not provide a transcript snapshot, so concurrent history mutation, live admission/refusal/race behavior, packaged Windows interaction, and formal source-paired acceptance remain unverified."
+}
