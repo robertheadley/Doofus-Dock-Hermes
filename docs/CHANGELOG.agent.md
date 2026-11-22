@@ -4591,3 +4591,16 @@ Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d004
 - **performance:** No runtime behavior changed in the evidence step.
 - **risks:** UCM shows a promotion suggestion based on headless test evidence; status remains partial because live Gateway, packaged Windows and source-paired acceptance are still open. The map-wide checker retains 162 legacy errors and 11 unrelated reconciliation items.
 - **follow_up:** Commit evidence and checkpoint, publish PAR-0526 to origin/main, then continue the next P0 agent-workflow gap.
+
+### PAR-0526 publication — 2026-11-22
+
+- **id:** PAR-0526-PUBLISH
+- **timestamp:** 2026-11-22T11:20:19Z
+- **what:** Published implementation commit 58aa11c445c8624b9128cdf148be7d2e9a8bf180 and evidence commit d97a88aa919f0757ca658b7599f54a6fcc54cca9.
+- **why:** Deliver the tested native error distinction and its partial UCM evidence on the requested main branch.
+- **components:** Hermes transcript error presentation, UCM, task ledger.
+- **type:** publication
+- **validation:** Fresh fetch confirmed local main and origin/main both equal d97a88aa919f0757ca658b7599f54a6fcc54cca9.
+- **performance:** No runtime behavior changed during publication.
+- **risks:** Live Gateway, packaged Windows, and source-paired acceptance are still pending.
+- **follow_up:** Continue with PAR-0527, preventing destructive fallback on malformed responses.

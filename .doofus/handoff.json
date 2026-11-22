@@ -363,13 +363,13 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
+      "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
@@ -395,23 +395,16 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0112.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+    "command": "git push origin main && git fetch origin main && compare main SHAs",
     "evidence": [
-      "apps/hermes-native/src/app.rs#structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0112.json#EV-0112"
+      "docs/EXECUTION_LOGS.md#hermes-par0526-main-publication-20261122"
     ],
-    "state": "tested",
-    "summary": "PAR-0526 implementation 58aa11c445c8624b9128cdf148be7d2e9a8bf180 adds distinct headless-visible policy refusal, rejected sign-in, provider timeout, endpoint, and dropped-stream copy. Full native suite and all-target check pass; EV-0112 binds partial evidence. Live Gateway, packaged Windows, and source-paired acceptance remain open.",
-    "verified_at": "2026-11-22T11:19:01Z"
+    "state": "in_progress",
+    "summary": "PAR-0526 implementation and EV-0112 are published through d97a88aa919f0757ca658b7599f54a6fcc54cca9 with local main and origin/main equal. PAR-0527 is selected as the next P0 malformed-response safety guard.",
+    "verified_at": "2026-11-22T11:20:51Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -484,7 +477,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T12:19:01Z",
+    "lease_expires_at": "2026-11-22T12:20:51Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1906,9 +1899,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "fe2b5239-05f9-4be6-843b-5ecd792eb73d",
+  "last_event_id": "baf1680e-97ac-4c11-a128-402533891308",
   "last_operation": {
-    "request_id": "fe2b5239-05f9-4be6-843b-5ecd792eb73d",
+    "request_id": "baf1680e-97ac-4c11-a128-402533891308",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1927,7 +1920,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit EV-0112 and the task/evidence checkpoint, push PAR-0526 to origin/main, and verify exact SHA equality.",
+  "recommended_next_action": "Audit pinned fallback behavior and native error/restore fallbacks for PAR-0527; implement and headlessly validate a malformed-input case that must not destructively reset or discard state.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2367,7 +2360,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "34a3f4f059de3404d277a45a824cc8c971403200bd8d275f55002a4993cb5925",
+    "change_fingerprint": "3ca8d1aa97061625bd2fe7fe59afb9b9c1806efe6ff904e79c520a5bb12e2286",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2378,11 +2371,11 @@
         "status": " M"
       },
       {
-        "path": ".doofus/task-ledger.json",
+        "path": "docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2400,22 +2393,18 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0112.json",
-        "status": "??"
       }
     ],
-    "head_commit": "58aa11c445c8624b9128cdf148be7d2e9a8bf180",
+    "head_commit": "d97a88aa919f0757ca658b7599f54a6fcc54cca9",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 758,
+  "revision": 760,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 758,
+  "state_revision": 760,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0526",
+  "task_id": "hermes-par-0527",
   "task_ledger_revision": 136,
   "tests_executed": [
     {
@@ -4197,9 +4186,14 @@
       "command": "apps/hermes-native/src/app.rs::structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details",
       "result": "PASS 590 library + 15 protocol + 3 launcher; all-target cargo check, 19 continuity tests, package/task validators, progress generators, rustfmt and diff check pass. Pinned pytest and authenticated live Gateway were not run.",
       "timestamp": "2026-11-22T11:19:01Z"
+    },
+    {
+      "command": "EV-0112 scoped UCM report; source package validator; task ledger validator",
+      "result": "PASS scenario coverage and no EV-0112-specific UCM findings; source package validator passes 565 target behaviors, 15 source inspections, 96 implementation receipts; task checkpoint revision 758 validated.",
+      "timestamp": "2026-11-22T11:20:51Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T11:19:01Z"
+  "updated_at": "2026-11-22T11:20:51Z"
 }
