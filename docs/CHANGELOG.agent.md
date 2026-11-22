@@ -4565,3 +4565,16 @@ Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d004
 - **performance:** No runtime changes in the publication step.
 - **risks:** The capability remains partial pending pinned formatter tests and live Gateway/package acceptance.
 - **follow_up:** Continue with PAR-0526, distinguishing permission rejection from network failure.
+
+### PAR-0526 — Distinguish permission rejection from network error — 2026-11-22
+
+- **id:** PAR-0526
+- **timestamp:** 2026-11-22T11:16:03Z
+- **what:** Extended the chat transcript error presenter to use Hermes' structured error layer/code for policy and safety refusals, rejected credentials, provider timeouts, unreachable custom endpoints, and dropped streams. Added a rendered headless regression beside existing model-not-found, partial output, and Continue coverage.
+- **why:** Users need a clear explanation of whether Hermes or a provider refused the request or the network failed, so they can choose the right recovery.
+- **components:** assistant transcript error presentation, implementation progress generator, README, architecture, backlog, plan, completion overview, generated progress CSVs.
+- **type:** feature and headless UI regression
+- **validation:** PASS full locked suite (590 library, 15 automation protocol, 3 launcher); focused rendered test; cargo check all targets; 19 task continuity tests; task ledger validator; source package validator (565 behaviors, 15 inspection receipts, 95 implementation receipts); progress generators; rustfmt and diff checks.
+- **performance:** No runtime request or rendering work was added; the presenter reads fields already in each transcript row.
+- **risks:** Live authenticated error-surface events, packaged Windows interaction and formal pinned-source acceptance remain unverified.
+- **follow_up:** Add commit-bound partial UCM evidence, publish PAR-0526 to main, and continue the next dependency-ready agent-workflow gap.

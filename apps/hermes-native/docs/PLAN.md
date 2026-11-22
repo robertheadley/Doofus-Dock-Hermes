@@ -2065,3 +2065,7 @@ Headless tests cover config parsing/default, sparse profile patch payload, authe
 ### Revision 331 — Bind PAR-0525 profile-redaction evidence — 2026-11-22
 
 PAR-0525 implementation commit `9d7ffe786e35126c2f2335ce9720fada0d11a0a9` is now linked to EV-0111 for the `profile-redaction-preference` scenario. The UCM capability remains partial: native config and Settings tests pass, but pinned formatter execution, authenticated live Gateway, and packaged Windows acceptance are open. The package validator and task-state validator pass. The global UCM report retains 162 legacy errors and 11 unrelated reconciliation items; no EV-0111-specific finding was reported.
+
+### Revision 332 — Distinguish policy refusal from network failure — 2026-11-22
+
+The native transcript now reads the pinned structured error layer/code and renders distinct copy for provider policy refusal, content safety refusal, rejected sign-in, provider timeout, custom endpoint reachability, and dropped response streams. The rendered headless regression confirms refusal, timeout and auth messages are distinct and preserves the existing model-not-found/Continue behavior. PAR-0526 remains partial pending authenticated live Gateway events, packaged Windows interaction, and formal source-paired acceptance.

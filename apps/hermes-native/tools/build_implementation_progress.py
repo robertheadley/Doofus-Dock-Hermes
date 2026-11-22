@@ -1352,6 +1352,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "authenticated live Gateway behavior, packaged Windows behavior, and formal pinned-source acceptance remain unverified",
         ],
     },
+    "PAR-0526": {
+        "state": "partial",
+        "level": "headless_structured_policy_auth_and_network_error_rendering",
+        "refs": [
+            ".staging/hermes-pinned-878305/agent/error_surface.py#build_error_surface_from_result",
+            ".staging/hermes-pinned-878305/apps/desktop/src/i18n/en_error_layers.ts#enErrorLayers",
+            ".staging/hermes-pinned-878305/apps/desktop/src/i18n/en_error_codes.ts#enErrorCodes",
+            "apps/hermes-native/src/app.rs#structured_turn_error_presentation",
+            "apps/hermes-native/src/app.rs#structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details",
+        ],
+        "gaps": [
+            "authenticated live Gateway error-surface events and packaged Windows interaction remain unverified",
+            "pinned Hermes pytest and formal source-paired acceptance were not run",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",
@@ -1703,7 +1718,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
         "level": "headless_structured_model_provider_error_cards",
         "refs": [
             "apps/hermes-native/docs/PLAN.md#Revision 282",
-            "apps/hermes-native/src/app.rs#structured_provider_error_presentation",
+            "apps/hermes-native/src/app.rs#structured_turn_error_presentation",
             "apps/hermes-native/src/app.rs#structured_model_and_provider_errors_render_actionable_copy_with_collapsed_details",
             ".staging/hermes-pinned-878305/apps/desktop/src/lib/error-surface-copy.ts#errorCardText",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.tsx#const ErrorCard",

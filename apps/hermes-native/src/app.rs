@@ -7368,7 +7368,7 @@ fn render_message() -> &'static str {
                     ui.set_max_width(ui.available_width().min(860.0));
                     for (index, message) in messages.iter().cloned().enumerate() {
                         let (speaker, body) = transcript_message(&message);
-                        let structured_error = structured_provider_error_presentation(&message);
+                        let structured_error = structured_turn_error_presentation(&message);
                         let error_detail = message
                             .get("error")
                             .and_then(serde_json::Value::as_str)
@@ -34628,7 +34628,7 @@ fn timestamps_status(enabled: bool) -> String {
     )
 }
 
-fn structured_provider_error_presentation(message: &serde_json::Value) -> Option<(String, String)> {
+fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(String, String)> {
     let raw_error = message
         .get("error")
         .and_then(serde_json::Value::as_str)
@@ -34649,11 +34649,18 @@ fn structured_provider_error_presentation(message: &serde_json::Value) -> Option
         .map(|value| value.rsplit('/').next().unwrap_or(value))
         .unwrap_or("the selected model");
 
+    let layer = surface.get("layer").and_then(serde_json::Value::as_str);
     match code {
         "model_not_found" => Some((
             "Model not found".into(),
             format!(
                 "Hermes could not find {model} on {provider}. Choose a model configured for this provider."
+            ),
+        )),
+        "auth" | "auth_permanent" => Some((
+            "Sign-in problem".into(),
+            format!(
+                "The AI service rejected your sign-in for {provider}. Check this provider's credentials, then send your message again."
             ),
         )),
         "provider_policy_blocked" => Some((
@@ -34662,7 +34669,46 @@ fn structured_provider_error_presentation(message: &serde_json::Value) -> Option
                 "{provider} blocked {model} under its current policy. Review the provider's settings or choose another model."
             ),
         )),
-        _ if surface.get("layer").and_then(serde_json::Value::as_str) == Some("provider") => {
+        "content_policy_blocked" => Some((
+            "Provider safety policy refused this message".into(),
+            format!(
+                "{provider}'s safety filter refused this message. Edit the message and send it again."
+            ),
+        )),
+        "timeout" => Some((
+            format!("Can't reach {provider}"),
+            format!(
+                "Hermes could not reach {provider}. Check your connection, then retry."
+            ),
+        )),
+        "ssl_cert_verification" => Some((
+            format!("Can't verify {provider}'s connection"),
+            format!(
+                "A proxy or certificate store blocked the secure connection to {provider}. Check the network certificate setup, then retry."
+            ),
+        )),
+        "stream_drop" if layer == Some("streaming") => Some((
+            "The reply was cut off".into(),
+            "The network connection dropped before the reply finished. Retry to send it again."
+                .into(),
+        )),
+        _ if layer == Some("auth") => Some((
+            "Sign-in problem".into(),
+            format!(
+                "The AI service rejected your sign-in for {provider}. Check this provider's credentials, then send your message again."
+            ),
+        )),
+        _ if layer == Some("endpoint") => Some((
+            "Can't reach your model server".into(),
+            "Hermes can't reach the configured model server. Check that it is running and reachable, then send your message again."
+                .into(),
+        )),
+        _ if layer == Some("streaming") => Some((
+            "The reply was cut off".into(),
+            "The network connection dropped before the reply finished. Retry to send it again."
+                .into(),
+        )),
+        _ if layer == Some("provider") => {
             Some((
                 "Provider compatibility error".into(),
                 format!("Hermes could not complete this request with {model} through {provider}."),
@@ -37403,6 +37449,14 @@ mod tests {
                 "error_surface":{"layer":"provider","code":"provider_policy_blocked","retryable":false,"provider":"openrouter","model":"vendor/private-model"}
             }),
             serde_json::json!({
+                "role":"assistant","error":"request timed out",
+                "error_surface":{"layer":"provider","code":"timeout","retryable":true,"provider":"openrouter","providerLabel":"OpenRouter","model":"vendor/slow-model"}
+            }),
+            serde_json::json!({
+                "role":"assistant","error":"invalid API key",
+                "error_surface":{"layer":"auth","code":"auth","retryable":false,"provider":"openrouter","providerLabel":"OpenRouter","model":"vendor/private-model"}
+            }),
+            serde_json::json!({
                 "role":"assistant","error":"Maximum output length reached",
                 "error_surface":{"layer":"provider","code":"truncated","retryable":true,"provider":"openrouter","model":"vendor/long-output"}
             }),
@@ -37427,6 +37481,20 @@ mod tests {
         assert!(
             harness
                 .query_by_label("Provider policy blocked this request")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Can't reach OpenRouter").is_some());
+        assert!(
+            harness
+                .query_by_label(
+                    "Hermes could not reach OpenRouter. Check your connection, then retry."
+                )
+                .is_some()
+        );
+        assert!(harness.query_by_label("Sign-in problem").is_some());
+        assert!(
+            harness
+                .query_by_label("The AI service rejected your sign-in for OpenRouter. Check this provider's credentials, then send your message again.")
                 .is_some()
         );
         assert!(harness.query_by_label("Partial response").is_some());
