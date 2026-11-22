@@ -367,12 +367,6 @@
       "status": " M"
     },
     {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
-    },
-    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -395,23 +389,17 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0101.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked --features agent-automation --all-targets --quiet",
+    "command": "Pinned source read-only audit: timeline.tsx, timeline-rail.tsx, timeline-data.ts, timeline-position.ts, and timeline.test.ts",
     "evidence": [
-      "apps/hermes-native/src/app.rs#transcript_read_position_is_session_owned_and_restores_from_bottom",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0101.json#EV-0101"
+      ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/timeline.tsx#ThreadTimeline",
+      "apps/hermes-native/src/app.rs#session_content"
     ],
-    "state": "tested",
-    "summary": "PAR-0055 has a bounded in-process per-session bottom-or-offset scroll state and headless ownership/restore regression; EV-0101 will bind this evidence to the tested implementation.",
-    "verified_at": "2026-11-22T06:46:16Z"
+    "state": "in_progress",
+    "summary": "PAR-0056 pinned-source audit confirms Desktop has an accessible virtualized prompt timeline with owner-local viewport jumps and historical index lookup; native currently has transcript find/search and older pagination but no timeline rail or prompt-index history path. PAR-0055 is published and remains partial.",
+    "verified_at": "2026-11-22T06:50:02Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -478,7 +466,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T07:46:16Z",
+    "lease_expires_at": "2026-11-22T07:50:02Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1749,9 +1737,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "945e9a1b-a09d-4d20-93c2-9fb4db687666",
+  "last_event_id": "16d7cb0d-9d39-45c3-aaf0-741e198fbc79",
   "last_operation": {
-    "request_id": "945e9a1b-a09d-4d20-93c2-9fb4db687666",
+    "request_id": "16d7cb0d-9d39-45c3-aaf0-741e198fbc79",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1770,7 +1758,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue the next dependency-ready P0 chat/tool requirement without removing functional agent workflows; reconcile historical scroll-prepend/restart gaps when revisiting PAR-0055.",
+  "recommended_next_action": "Plan a bounded native prompt timeline for loaded messages first; inspect existing accessibility/layout surfaces, then decide whether older-prompt indexing is a separate dependency or future gap. Preserve existing search, transcript, history loading and scroll behavior.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2216,7 +2204,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "83d4c74e2e09c9de1dd59f071929e91343a07a5e44e4dca26b81247f9f64f2f7",
+    "change_fingerprint": "029d82e8c4e503bb3a8874627fa1efe730a6feba9cd3d934c3c6cde04726e407",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2228,10 +2216,6 @@
       },
       {
         "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
         "status": " M"
       },
       {
@@ -2249,23 +2233,19 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0101.json",
-        "status": "??"
       }
     ],
-    "head_commit": "dee655dbaf82017c2b15eef903800448b37ef6b2",
+    "head_commit": "1e93624d48552db8640154c4881f0b82535d1183",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 688,
+  "revision": 691,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 688,
+  "state_revision": 691,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0055",
-  "task_ledger_revision": 121,
+  "task_id": "hermes-par-0056",
+  "task_ledger_revision": 122,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3915,5 +3895,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T06:46:16Z"
+  "updated_at": "2026-11-22T06:50:02Z"
 }

@@ -1,5 +1,5 @@
 {
-  "revision": 121,
+  "revision": 122,
   "schema_version": 1,
   "tasks": [
     {
@@ -1917,7 +1917,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1926,12 +1926,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T06:49:16Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-jump-to-earlier-prompt-by-timeline-marker",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "03-chat",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -1941,7 +1942,7 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "in_progress",
               "task_id": "hermes-par-0056",
               "title": "PAR-0056 Jump to earlier prompt by timeline marker",
               "verification_evidence": []
@@ -16396,5 +16397,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T06:46:02Z"
+  "updated_at": "2026-11-22T06:49:16Z"
 }

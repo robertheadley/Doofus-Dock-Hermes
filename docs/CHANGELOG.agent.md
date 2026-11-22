@@ -4354,3 +4354,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 ### PAR-0055 published to main — 2026-11-22T06:47:57Z
 
 Implementation commit `dee655dbaf82017c2b15eef903800448b37ef6b2` and evidence/task checkpoint commit `2f64e4821668f42fe6f9c9d84e1fadbcf8632655` were pushed to `origin/main`. Fresh fetch confirmed local and remote `main` exactly equal at `2f64e4821668f42fe6f9c9d84e1fadbcf8632655`. PAR-0055 remains partial. The operator-owned `apps/hermes-native/work/` was left untracked and untouched.
+
+### PAR-0056 prompt timeline source audit — 2026-11-22T06:49:48Z
+
+- **id:** `hermes-par0056-source-audit-checkpoint-20261122`
+- **timestamp:** 2026-11-22T06:49:48Z
+- **what:** Selected PAR-0056 and audited the pinned timeline component, rail, data helpers and viewport position reader. Checkpointed the task in progress with the exact next implementation slice.
+- **why:** Prompt timeline navigation is a P0 chat workflow in the pinned source; existing native search and older-page controls do not provide a timeline rail.
+- **components:** `.doofus/handoff.json`, `.doofus/task-ledger.json`, `.doofus/events.jsonl`.
+- **type:** source audit and task-state transition.
+- **validation:** `doofus_task.py validate` passed at state revision 691 / ledger revision 123. No product code changed.
+- **performance:** No runtime behavior changed.
+- **risks:** Native has no indexed prompt timeline/history window yet; no behavior was claimed as implemented.
+- **follow_up:** Add an owner-scoped prompt timeline for loaded messages, then separately account for historical-index loading and installation/runtime validation.
