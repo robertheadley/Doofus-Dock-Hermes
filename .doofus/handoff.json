@@ -349,30 +349,6 @@
   ],
   "changed_files": [
     {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/events.jsonl",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -398,11 +374,13 @@
     }
   ],
   "checkpoint": {
-    "command": "task select",
-    "evidence": [],
-    "state": "unknown",
-    "summary": "Implement pinned Gateway request.cancel handling for native approval and clarification prompts, preserving request identity and surfacing mapped timeout notices.",
-    "verified_at": "2026-11-22T09:06:11Z"
+    "command": null,
+    "evidence": [
+      "apps/hermes-native/src/app.rs#request_cancel_clears_only_the_matching_approval_and_clarify_request"
+    ],
+    "state": "in_progress",
+    "summary": "Completed PAR-0521 request cancellation with exact-ID/profile ownership, full locked validation, evidence EV-0107, and publication to main. Goal remains active; 72/176 chat/tool requirements are evidence-mapped, and runtime/source-paired acceptance remains open.",
+    "verified_at": "2026-11-22T09:16:07Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -470,7 +448,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T09:59:55Z",
+    "lease_expires_at": "2026-11-22T10:16:07Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1892,11 +1870,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "f99fd973-d74f-4122-a373-3ec72f7e2c0f",
+  "last_event_id": "fe2cf6d9-9803-4337-acc9-c7c48825adac",
   "last_operation": {
-    "request_id": "f99fd973-d74f-4122-a373-3ec72f7e2c0f",
+    "request_id": "fe2cf6d9-9803-4337-acc9-c7c48825adac",
     "state": "committed",
-    "type": "task.state_updated"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1913,7 +1891,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Trace owner-scoped prompt state and add exact-ID cancellation with focused regressions.",
+  "recommended_next_action": "Select the next dependency-ready P0 agent-workflow requirement from the pinned source; do not modify the pinned snapshot.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2358,24 +2336,8 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "405cec19de1b06b89d684a275229a88b00029069b163694b3a6226a278f5c256",
+    "change_fingerprint": "6be050da095aea49976ef2c9b36f5fd3bf2af8e5bf63bd0b1cc154410f81dc8c",
     "changed_files": [
-      {
-        "path": ".doofus/events.jsonl",
-        "status": " M"
-      },
-      {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
-        "status": " M"
-      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2393,14 +2355,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "cf849723e3b1a631e981a1e081b64bb69dad2ab3",
+    "head_commit": "b238720786239ea839ed63c967522cd7f03883d5",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 735,
+  "revision": 736,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 735,
+  "state_revision": 736,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0521",
   "task_ledger_revision": 128,
@@ -4139,9 +4101,14 @@
       "command": "git push origin main; git fetch origin main; compare HEAD with origin/main",
       "result": "PASS local main and freshly fetched origin/main both equal cf849723e3b1a631e981a1e081b64bb69dad2ab3",
       "timestamp": "2026-11-22T08:59:55Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS 583 library + 15 automation protocol + 3 launcher tests; all-target check, fmt, continuity, task and source package validators pass.",
+      "timestamp": "2026-11-22T09:16:07Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T09:12:38Z"
+  "updated_at": "2026-11-22T09:16:07Z"
 }
