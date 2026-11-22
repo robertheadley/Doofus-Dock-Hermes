@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0117",
+  "capability_id": "ui-answer-gateway-server-initiated-approval-request",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "server_initiated_tool_approval_ui_choice_reaches_gateway",
+  "locator": "../../../../apps/hermes-native/src/app.rs::approval_card_sends_only_supported_choices_to_its_gateway_request",
+  "date": "2026-11-22",
+  "commit": "54264d37983773fe080664f8d1ce2d6896944355",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless app/Gateway command fixture. An approval request for the active profile shows only backend-permitted choices; the UI sends allow-once and deny as the exact response to the originating server request, and refuses an unsupported always choice before sending. Existing WebSocket actor fixture verifies a server-initiated approval request is delivered to the UI event channel and its response is returned on the same socket. The accessible approval card test and generation-scoped approval response/refusal fixture pass. Full locked suite passes 599 library + 15 protocol + 3 launcher tests; all-target cargo check, rustfmt/diff and 19 task continuity tests pass.",
+  "notes": "Partial headless evidence only. Authenticated live Gateway approval queue behavior, packaged Windows interaction, and formal source-paired acceptance remain open."
+}

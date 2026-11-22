@@ -10061,7 +10061,7 @@ capabilities:
   name: Answer gateway server-initiated approval request
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can answer gateway server-initiated approval request.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10074,8 +10074,14 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0117
+  verification:
+    scenarios:
+    - id: server_initiated_tool_approval_ui_choice_reaches_gateway
+      description: Show only backend-permitted approval choices, return allow/deny to the originating Gateway request, and reject unsupported choices before sending.
 - id: ui-answer-gateway-clarify-request
   name: Answer gateway clarify request
   area: protocol-reliability

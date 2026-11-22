@@ -396,6 +396,11 @@ Eligible prior user messages without a local durable row ID now use bounded prof
 PAR-0051 offset-page mutation guard: full locked tests pass (598 library + 15 protocol + 3 launcher), all-target check and 19/19 task continuity tests pass. The additive change preserves the current edit, attachment, confirmation, recovery and admission behavior. EV-0116 records partial evidence for overlap and shifted-boundary refusal; the pinned endpoint has no snapshot cursor, so writes during a single-page read or after lookup remain open.
 
 
+### PAR-0514 — Answer server-initiated approval requests — 2026-11-22
+
+The existing approval card's permitted choices now have a headless regression proving `once` and `deny` reach the originating Gateway request with its exact request ID and profile; unsupported choices send nothing. Same-socket actor response and generation-scoped receipt tests cover the Gateway path. EV-0117 records partial evidence. Remaining: authenticated live Gateway approval flow, packaged Windows interaction, and formal pinned-source acceptance.
+
+
 PAR-0060 implementation update (2026-11-22): atomic bounded text drafts now restore by connection/profile/session, clear when empty, and remain protected from view-cache eviction. Six focused tests and the full 556 + 15 + 3 Rust suite pass. Source-paired acceptance and packaged Windows validation remain open.
 
 

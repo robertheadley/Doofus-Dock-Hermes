@@ -4689,3 +4689,27 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Each history page after the first shifts the next request by one row; page count and payload remain within the existing 100-page, 50,000-unique-row and 16 MB bounds. No benchmark was run.
 - **risks:** The endpoint cannot provide a stable snapshot; writes within a single-page read or after lookup, live Gateway races, packaged Windows behavior and formal source-paired acceptance remain open.
 - **follow_up:** Validate package/UCM evidence, checkpoint PAR-0051, and publish implementation plus evidence/docs to main.
+
+
+### PAR-0051 main publication — 2026-11-22
+
+- **id:** PAR-0051-PUBLISH-MAIN
+- **timestamp:** 2026-11-22T13:11:51Z
+- **what:** Published implementation `eb41edfa7a6af9439afb7d9143b61fedee6d5f13` and EV-0116/progress/docs commit `9efc7d25ee8f6f16458402a3561e9b5be6653284` to `origin/main`.
+- **why:** Deliver the verified additive pagination guard and preserve auditable partial evidence on the user's requested branch.
+- **components:** `robertheadley/Doofus-Dock-Hermes`, `main`, PAR-0051, UCM EV-0116, task checkpoint revision 792.
+- **type:** publication
+- **validation:** Push succeeded; fresh fetch confirmed local main and origin/main both equal `9efc7d25ee8f6f16458402a3561e9b5be6653284`.
+- **performance:** No runtime benchmark was run.
+- **risks:** Single-page/post-lookup history writes, live Gateway, packaged Windows and formal source acceptance remain open; operator-owned `apps/hermes-native/work/` remains untouched.
+- **follow_up:** Continue the first usable agent-workflow goal with the next dependency-ready P0 feature; retain PAR-0051's remaining external acceptance gates.
+- **id:** hermes-par0514-approval-ui-gateway-20261122
+- **timestamp:** 2026-11-22T13:24:51Z
+- **what:** Added commit-bound partial evidence and regenerated the implementation progress overlay for the existing approval card's supported-choice-to-Gateway behavior.
+- **why:** Make the approval interaction traceable without removing or replacing any previously functional code or evidence.
+- **components:** PAR-0514, native approval card, Gateway server-request actor, EV-0117, progress overlay, plan/backlog/docs.
+- **type:** evidence_and_docs
+- **validation:** Full locked suite 599 library + 15 protocol + 3 launcher; all-target check; rustfmt/diff; 19 task-continuity checks; implementation progress generator passed with 114/499 reviewed.
+- **performance:** No runtime benchmark was run.
+- **risks:** Authenticated live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open.
+- **follow_up:** Keep the task partial; continue the first dependency-ready agent-workflow gap.

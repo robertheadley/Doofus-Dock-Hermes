@@ -231,3 +231,5 @@ The Settings Security tab reads and saves Hermes' profile-scoped security.redact
 ### Model settings
 
 Settings → Main model loads the selected Hermes profile's provider/model catalog and can save its `scope=main` default for future sessions. Hermes remains authoritative: a `confirm_required` response pauses the save and requires a second explicit action, denials remain visible, and stale profile/connection receipts cannot update the displayed default. This setting does not modify existing chats or replace their session-local model choice. New Chat separately supports manual model/provider and reasoning-effort overrides. Headless egui and authenticated HTTP-fixture tests cover both flows; live Gateway, packaged Windows, and formal pinned-source acceptance remain open.
+
+Approval cards also have a headless app-to-Gateway regression: only backend-permitted choices can be sent, and a response retains its originating request ID and profile. Live Gateway and packaged Windows approval behavior remain to be verified.

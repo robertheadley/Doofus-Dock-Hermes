@@ -1523,6 +1523,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["deduplication retains only the latest 8,192 canonical identities, so much older retransmissions can repeat", "live Gateway reconnect/replay has not been verified", "Windows runtime and formal pinned-source acceptance remain pending"],
     },
+    "PAR-0514": {
+        "state": "partial",
+        "level": "headless_gateway_server_approval_ui_choice_and_owner_response",
+        "refs": [
+            ".staging/hermes-pinned-878305/tui_gateway/methods_prompt.py#approval.respond",
+            ".staging/hermes-pinned-878305/tui_gateway/server.py#_approval_request_payload",
+            "apps/hermes-native/src/app.rs#approval_card_sends_only_supported_choices_to_its_gateway_request",
+            "apps/hermes-native/src/app.rs#inbound_approval_request_uses_the_accessible_active_session_card",
+            "apps/hermes-native/src/gateway.rs#idle_actor_routes_approval_server_request_and_returns_result_on_same_socket",
+            "apps/hermes-native/src/gateway.rs#approval_response_is_generation_scoped_and_rejects_mismatched_receipt",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0117.json#EV-0117",
+            "apps/hermes-native/docs/PLAN.md#Revision 337",
+        ],
+        "gaps": ["authenticated live Gateway approval queue behavior", "packaged Windows interaction", "formal pinned-source acceptance"],
+    },
     "PAR-0075": {
         "state": "implemented",
         "level": "headless_protocol_and_persistence_test",

@@ -366,3 +366,7 @@ The New Chat composer reads `/api/model/options` for the selected single profile
 ### Profile main-model settings
 
 Settings → Main model reads the selected profile's `/api/model/options` catalog and sends `POST /api/model/set?profile=...` with `scope=main`. The Gateway's `confirm_required` receipt is shown as an explicit confirmation step; the client resubmits with `confirm_expensive_model=true` only after the user confirms. A success receipt updates only the local profile catalog snapshot. Denials and stale request/profile/connection results cannot change that snapshot. New-chat model/reasoning overrides remain separate and continue to apply only to the created session. Headless rendered tests and a token-authenticated HTTP fixture cover confirm, accept, deny and stale-connection paths; live Gateway and packaged acceptance remain open.
+
+### Approval choice command boundary
+
+The approval card derives actions from the choice list supplied by Hermes. Headless interaction coverage verifies that unsupported actions emit no Gateway command and supported actions carry the exact server request ID, profile, and choice. The request actor returns the server response on the same socket; receipt generation checks prevent stale acknowledgements from clearing current approval state. Live Gateway and packaged Windows interaction remain unverified.
