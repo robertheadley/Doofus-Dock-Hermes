@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0106",
+  "capability_id": "ui-paginate-older-transcript-history",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "older-page-predecessor-index-contiguity",
+  "locator": "apps/hermes-native/src/app.rs::show_earlier_pages_the_timeline_index_until_it_reaches_the_window_anchor",
+  "date": "2026-11-22",
+  "commit": "b24bd31861cf749545f7bb2345a2145cc598b80d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless regressions cover shared-index predecessor selection, fetching index pages until the visible anchor is reached, replacing a noncontiguous older window, and offset-based continuity checks. Full locked all-target suite passes 582 library + 15 protocol + 3 launcher tests; all-target check, rustfmt, diff check, 19 task-continuity tests, both progress generators, task validation, and the root and archival package validators pass.",
+  "notes": "Partial evidence only. The REST bridge cannot cancel backend reads; explicit UI cancel-and-replace and physical scroll-anchor preservation remain open. Authenticated live Gateway, packaged Windows interaction and fixed-source source-paired acceptance were not exercised. Existing EV-0034 through EV-0105 remain unchanged."
+}

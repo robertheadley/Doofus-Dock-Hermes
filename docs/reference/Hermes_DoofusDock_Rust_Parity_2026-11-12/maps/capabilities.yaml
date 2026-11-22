@@ -1378,6 +1378,8 @@ capabilities:
     backend: unknown
     ui: not_implemented
     tests: not_implemented
+  evidence:
+  - EV-0106
 - id: ui-search-rendered-transcript-and-highlight-matches
   name: Search rendered transcript and highlight matches
   area: chat-transcript
