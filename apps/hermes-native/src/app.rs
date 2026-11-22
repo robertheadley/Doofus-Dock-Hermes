@@ -1328,6 +1328,7 @@ struct MessageEditDraft {
     text: String,
     later_user_turns: usize,
     confirm_deep_cut: bool,
+    busy_retry_attempted: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -7431,6 +7432,7 @@ fn render_message() -> &'static str {
                     original_text,
                     later_user_turns,
                     confirm_deep_cut: false,
+                    busy_retry_attempted: false,
                 });
             }
             self.render_message_edit_dialog(ui.ctx());
@@ -17859,6 +17861,70 @@ fn render_message() -> &'static str {
         self.status = "Sending edited message to Hermes…".into();
     }
 
+    fn queue_busy_edit_interrupt(&mut self, pending_key: &str, submission_id: &str) -> bool {
+        let Some(mut edit) = self.pending_message_edits.get(submission_id).cloned() else {
+            return false;
+        };
+        if edit.busy_retry_attempted || self.pending_interrupt.is_some() {
+            return false;
+        }
+        let owner_matches = self.active_runtime_session_id.as_deref()
+            == Some(edit.session_id.as_str())
+            && self.active_session_profile == edit.profile
+            && self
+                .gateway_discovery
+                .as_ref()
+                .and_then(|gateway| gateway.connection_id())
+                == edit.connection_id.as_deref();
+        if !owner_matches || !self.gateway_connected {
+            return false;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            return false;
+        };
+        let pending = self.pending_submissions.get(pending_key);
+        let execution_generation = pending
+            .and_then(|pending| pending.execution_generation)
+            .or_else(|| {
+                self.transcript.iter().rev().find_map(|message| {
+                    (message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                        && message
+                            .get("streaming")
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(true))
+                    .then(|| {
+                        message
+                            .get("execution_generation")
+                            .and_then(serde_json::Value::as_u64)
+                    })
+                    .flatten()
+                })
+            });
+        let stored_session_id =
+            self.stored_session_id_for_runtime(&edit.session_id, edit.profile.as_deref());
+        let request_id = operation_id("busy-edit-interrupt");
+        if gateway
+            .interrupt_session(
+                request_id.clone(),
+                edit.session_id.clone(),
+                stored_session_id,
+                edit.profile.clone(),
+                execution_generation,
+            )
+            .is_err()
+        {
+            return false;
+        }
+        edit.busy_retry_attempted = true;
+        self.pending_submissions.remove(pending_key);
+        self.pending_message_edits.remove(submission_id);
+        self.pending_interrupt = Some((request_id.clone(), edit.session_id.clone()));
+        self.pending_message_edit_interrupt =
+            Some(PendingMessageEditInterrupt { request_id, edit });
+        self.status = "Hermes is busy; stopping the prior turn before one safe edit retry…".into();
+        true
+    }
+
     fn continue_cut_off_reply(&mut self) {
         let ready_to_submit = self.gateway_connected
             && self.draft.trim().is_empty()
@@ -18208,6 +18274,12 @@ fn render_message() -> &'static str {
                 if error.starts_with("Hermes prompt.submit refused:")
                     || error == "Hermes session profile scope is invalid" =>
             {
+                if error.contains("(code 4009)")
+                    && self.pending_message_edits.contains_key(&submission_id)
+                    && self.queue_busy_edit_interrupt(&key, &submission_id)
+                {
+                    return;
+                }
                 let edit = self.pending_message_edits.remove(&submission_id);
                 let message = if pending.retrying_failed_turn {
                     None
@@ -34490,6 +34562,7 @@ mod tests {
             text: "revised question".into(),
             later_user_turns: 1,
             confirm_deep_cut: true,
+            busy_retry_attempted: false,
         });
         let command = commands
             .recv_timeout(std::time::Duration::from_secs(1))
@@ -34550,6 +34623,7 @@ mod tests {
             text: "revised".into(),
             later_user_turns: 0,
             confirm_deep_cut: false,
+            busy_retry_attempted: false,
         });
         assert!(
             commands.try_recv().is_err(),
@@ -34601,6 +34675,7 @@ mod tests {
             text: "edited running question".into(),
             later_user_turns: 0,
             confirm_deep_cut: false,
+            busy_retry_attempted: false,
         });
         let TestGatewayCommand::InterruptSession {
             request_id,
@@ -34683,6 +34758,109 @@ mod tests {
     }
 
     #[test]
+    fn busy_edit_interrupts_then_retries_once_and_preserves_history_on_second_refusal() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({"row_id":76,"role":"user","content":"question"}),
+            serde_json::json!({"row_id":77,"role":"assistant","content":"recent answer","streaming":true,"execution_generation":14}),
+        ];
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 76,
+            original_text: "question".into(),
+            text: "edited question".into(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+            busy_retry_attempted: false,
+        });
+        let TestGatewayCommand::EditPrompt {
+            submission_id: first_submission_id,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first edit submission")
+        else {
+            panic!("expected first edit submission");
+        };
+        events
+            .send(GatewayEvent::PromptSubmitted {
+                session_id: "runtime-session".into(),
+                submission_id: first_submission_id,
+                result: Err("Hermes prompt.submit refused: session busy (code 4009)".into()),
+            })
+            .expect("deliver busy refusal");
+        app.update_gateway_discovery(&egui::Context::default());
+        let TestGatewayCommand::InterruptSession {
+            request_id,
+            session_id,
+            execution_generation,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("interrupt after busy refusal")
+        else {
+            panic!("busy refusal should interrupt before retrying");
+        };
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(execution_generation, Some(14));
+        assert!(app.pending_submissions.is_empty());
+        assert_eq!(app.transcript[0]["content"], "question");
+        events
+            .send(GatewayEvent::SessionInterrupted {
+                request_id,
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                stored_session_id: Some("stored-session".into()),
+                connection_id: None,
+                recovered_session_id: None,
+                result: Ok(false),
+            })
+            .expect("deliver stop receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        let TestGatewayCommand::EditPrompt {
+            submission_id: retry_submission_id,
+            truncate_before_row_id,
+            text,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("single bounded retry")
+        else {
+            panic!("matching interrupt receipt should queue one edit retry");
+        };
+        assert_eq!(truncate_before_row_id, 76);
+        assert_eq!(text, "edited question");
+        events
+            .send(GatewayEvent::PromptSubmitted {
+                session_id: "runtime-session".into(),
+                submission_id: retry_submission_id,
+                result: Err("Hermes prompt.submit refused: session busy (code 4009)".into()),
+            })
+            .expect("deliver second busy refusal");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            commands.try_recv().is_err(),
+            "the retry is strictly bounded"
+        );
+        assert_eq!(app.transcript[0]["content"], "question");
+        assert_eq!(
+            app.message_edit.as_ref().map(|edit| edit.text.as_str()),
+            Some("edited question")
+        );
+        assert!(app.pending_submissions.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
@@ -34721,6 +34899,7 @@ mod tests {
             text: "edited question".into(),
             later_user_turns: 0,
             confirm_deep_cut: false,
+            busy_retry_attempted: false,
         });
         let TestGatewayCommand::InterruptSession { request_id, .. } = commands
             .recv_timeout(std::time::Duration::from_secs(1))
@@ -34789,6 +34968,7 @@ mod tests {
             text: "revised".into(),
             later_user_turns: 0,
             confirm_deep_cut: false,
+            busy_retry_attempted: false,
         });
         let TestGatewayCommand::EditPrompt {
             session_id,

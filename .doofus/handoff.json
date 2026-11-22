@@ -280,6 +280,66 @@
   "blockers": [],
   "changed_files": [
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "EADME.md",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -305,14 +365,14 @@
     }
   ],
   "checkpoint": {
-    "command": null,
+    "command": "cargo fmt --check; cargo test --locked --features agent-automation; cargo check --all-targets --locked --features agent-automation; git diff --check",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0088.json#EV-0088",
-      "apps/hermes-native/src/app.rs#editing_during_a_running_turn_interrupts_before_truncating_submit"
+      "apps/hermes-native/src/app.rs#busy_edit_interrupts_then_retries_once_and_preserves_history_on_second_refusal",
+      "apps/hermes-native/src/gateway.rs#rpc_preserves_gateway_busy_code_for_bounded_prompt_recovery"
     ],
     "state": "in_progress",
-    "summary": "Published PAR-0051 stable-row and active-turn edit slices with commit-bound partial evidence EV-0087/EV-0088. All existing functional work and operator-owned work directory are preserved.",
-    "verified_at": "2026-11-22T01:10:10Z"
+    "summary": "Added one bounded owner-scoped interrupt-and-retry for definitive Gateway 4009 prior-message edit refusals. Focused and full validation pass; existing features and operator-owned work are preserved.",
+    "verified_at": "2026-11-22T01:22:28Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -370,7 +430,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T02:10:10Z",
+    "lease_expires_at": "2026-11-22T02:22:28Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1629,9 +1689,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "70c8e05e-55e4-4f60-b1d1-60c096b50877",
+  "last_event_id": "hermes-par0051-busy-retry-checkpoint-20261122",
   "last_operation": {
-    "request_id": "70c8e05e-55e4-4f60-b1d1-60c096b50877",
+    "request_id": "hermes-par0051-busy-retry-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1650,7 +1710,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue PAR-0051 with pinned recent-stop cooldown and Gateway busy 4009 retry behavior; then audit historical user-message attachment semantics and validate live Gateway behavior where available.",
+  "recommended_next_action": "Commit implementation; add commit-bound EV-0089; regenerate scoped and broad evidence; validate/publish to main. Then audit historical message attachment semantics and live Gateway feasibility.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2105,8 +2165,48 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "cbddf2db9c6f3393f98c32fc19c39443e639dfac52e467d3a1c93145ea1b72a3",
+    "change_fingerprint": "26d70a2bda27b79dc4386d254c569adf405c751997a40b456c04377c0d9ff775",
     "changed_files": [
+      {
+        "path": "EADME.md",
+        "status": "M "
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2124,14 +2224,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "6c3f97947e4d62a98b5024c055975c8a93809741",
+    "head_commit": "b3168789882444fcb4e8214a41da8e62b642e670",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 614,
+  "revision": 615,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 614,
+  "state_revision": 615,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0051",
   "task_ledger_revision": 99,
@@ -3559,5 +3659,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T01:10:10Z"
+  "updated_at": "2026-11-22T01:22:28Z"
 }

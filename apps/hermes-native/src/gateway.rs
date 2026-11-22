@@ -15481,6 +15481,9 @@ fn rpc_with_events_timeout(
                 .and_then(|data| data.get("reason"))
                 .and_then(|reason| reason.as_str())
                 .unwrap_or("request_failed");
+            if error.get("code").and_then(serde_json::Value::as_i64) == Some(4009) {
+                return Err(format!("Hermes {method} refused: {reason} (code 4009)"));
+            }
             return Err(format!("Hermes {method} refused: {reason}"));
         }
         return frame
@@ -22268,6 +22271,47 @@ mod tests {
         );
         drop(commands);
         actor.join().expect("actor exits");
+        server.join().expect("fixture exits");
+    }
+
+    #[test]
+    fn rpc_preserves_gateway_busy_code_for_bounded_prompt_recovery() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected text request, got {other:?}"),
+            };
+            let id = request["id"].as_u64().expect("JSON-RPC request id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"error":{
+                        "code":4009,"message":"session busy",
+                        "data":{"reason":"session busy"}
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send busy refusal");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        let error = rpc_with_events_timeout(
+            &mut socket,
+            1,
+            "prompt.submit",
+            json!({"session_id":"runtime-1"}),
+            Duration::from_secs(2),
+            None,
+        )
+        .expect_err("busy Gateway response should remain a refusal");
+        assert_eq!(
+            error,
+            "Hermes prompt.submit refused: session busy (code 4009)"
+        );
         server.join().expect("fixture exits");
     }
 

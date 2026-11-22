@@ -4081,3 +4081,14 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No benchmark-sensitive path changed; only one per-session active pending record and one edit continuation are tracked.
 - **risks:** Pinned stop-cooldown and busy 4009 retry behavior, historical attachment semantics, live Gateway, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** Complete full validation, add EV-0088 bound to the implementation commit, update progress and publish to main.
+
+- **id:** hermes-par0051-busy-retry-20261122
+- **timestamp:** 2026-11-22T01:20:53Z
+- **what:** Preserved Gateway JSON-RPC error code 4009 and added one owner-scoped interrupt-and-retry for definitive busy refusals while editing a prior message. A retry flag prevents loops; a second refusal restores the edit and preserves transcript history.
+- **why:** Match Hermes' recent-stop cooldown behavior without dropping truncation parameters, replaying uncertain work, or overwriting the user's composer.
+- **components:** Gateway JSON-RPC refusal handling, prior-message edit lifecycle, regression tests, completion docs, and progress evidence.
+- **type:** Additive agent chat workflow recovery.
+- **validation:** PASS focused Gateway and app lifecycle regressions; full locked suite (528 library + 15 protocol + 3 launcher); all-target check; rustfmt check; diff check. Live Gateway, packaged Windows, and pinned-source acceptance remain open.
+- **performance:** No polling or additional RPC on successful edits; one interrupt and one retry occur only after a definitive Gateway busy refusal.
+- **risks:** Historical attachment behavior during prior-message edits and live Gateway response timing remain unverified.
+- **follow_up:** Bind partial evidence to the implementation commit, refresh generated progress, validate the durable task state, and publish to main while preserving all existing work.
