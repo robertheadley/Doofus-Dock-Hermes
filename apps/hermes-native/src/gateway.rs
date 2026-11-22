@@ -2253,6 +2253,16 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<Vec<serde_json::Value>, String>,
     },
+    RedactSecretsConfigLoaded {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<bool, String>,
+    },
+    RedactSecretsConfigSaved {
+        request_id: String,
+        profile: Option<String>,
+        result: Result<bool, String>,
+    },
     RepoDiscoveryCompleted {
         request_id: String,
         profile: String,
@@ -3000,6 +3010,15 @@ enum GatewayHttpCommand {
         request_id: String,
         profile: Option<String>,
         routes: Vec<serde_json::Value>,
+    },
+    LoadRedactSecretsConfig {
+        request_id: String,
+        profile: Option<String>,
+    },
+    SaveRedactSecretsConfig {
+        request_id: String,
+        profile: Option<String>,
+        enabled: bool,
     },
     SaveAgentPluginSettingSecret {
         request_id: String,
@@ -5474,6 +5493,34 @@ impl GatewayDiscovery {
                 request_id,
                 profile,
                 routes,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn load_redact_secrets_config(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadRedactSecretsConfig {
+                request_id,
+                profile,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn save_redact_secrets_config(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        enabled: bool,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::SaveRedactSecretsConfig {
+                request_id,
+                profile,
+                enabled,
             })
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
@@ -10850,6 +10897,23 @@ fn gateway_http_actor(
                 profile: profile.clone(),
                 result: save_fallback_providers_http(&endpoint, profile.as_deref(), &routes),
             },
+            GatewayHttpCommand::LoadRedactSecretsConfig {
+                request_id,
+                profile,
+            } => GatewayEvent::RedactSecretsConfigLoaded {
+                request_id,
+                profile: profile.clone(),
+                result: load_redact_secrets_http(&endpoint, profile.as_deref()),
+            },
+            GatewayHttpCommand::SaveRedactSecretsConfig {
+                request_id,
+                profile,
+                enabled,
+            } => GatewayEvent::RedactSecretsConfigSaved {
+                request_id,
+                profile: profile.clone(),
+                result: save_redact_secrets_http(&endpoint, profile.as_deref(), enabled),
+            },
             GatewayHttpCommand::SaveAgentPluginSettingSecret {
                 request_id,
                 profile,
@@ -15187,6 +15251,82 @@ fn fallback_providers_are_bounded(routes: &[serde_json::Value]) -> bool {
 
 fn fallback_providers_config_patch(routes: &[serde_json::Value]) -> serde_json::Value {
     serde_json::json!({"config": {"fallback_providers": routes}})
+}
+
+fn redact_secrets_from_config(config: &serde_json::Value) -> Result<bool, String> {
+    let Some(security) = config.get("security") else {
+        return Ok(true);
+    };
+    let Some(security) = security.as_object() else {
+        return Err("Hermes security settings must be an object".into());
+    };
+    match security.get("redact_secrets") {
+        None => Ok(true),
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| "Hermes security.redact_secrets must be a boolean".into()),
+    }
+}
+
+fn redact_secrets_config_patch(enabled: bool) -> serde_json::Value {
+    serde_json::json!({"config":{"security":{"redact_secrets":enabled}}})
+}
+
+fn load_redact_secrets_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+) -> Result<bool, String> {
+    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let url = format!(
+        "{}/api/config{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let config: serde_json::Value = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json(endpoint, &url)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes security settings require the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        request_gateway_json(&endpoint.api_origin, ticket.as_str(), &url)?
+    };
+    redact_secrets_from_config(&config)
+}
+
+fn save_redact_secrets_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+    enabled: bool,
+) -> Result<bool, String> {
+    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let url = format!(
+        "{}/api/config{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let body = redact_secrets_config_patch(enabled);
+    let response: serde_json::Value = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_mutation(endpoint, "PUT", &url, body)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes security settings require the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        cron_local_gateway_http_request_with_ticket(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            "PUT",
+            &url,
+            Some(body),
+        )?
+    };
+    if response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err("Hermes did not confirm the security setting was saved".into());
+    }
+    Ok(enabled)
 }
 
 fn read_display_timestamps(
@@ -20746,6 +20886,89 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn redact_secrets_config_defaults_on_and_validates_the_profile_value() {
+        assert!(redact_secrets_from_config(&json!({})).expect("default redaction setting"));
+        assert!(
+            redact_secrets_from_config(&json!({"security":{}}))
+                .expect("missing value uses secure default")
+        );
+        assert!(
+            redact_secrets_from_config(&json!({"security":{"redact_secrets":true}}))
+                .expect("redaction enabled")
+        );
+        assert!(
+            !redact_secrets_from_config(&json!({"security":{"redact_secrets":false}}))
+                .expect("explicit profile opt-out")
+        );
+        assert!(
+            redact_secrets_from_config(&json!({"security":{"redact_secrets":"false"}})).is_err()
+        );
+        assert!(redact_secrets_from_config(&json!({"security":false})).is_err());
+        assert_eq!(
+            redact_secrets_config_patch(false),
+            json!({"config":{"security":{"redact_secrets":false}}})
+        );
+    }
+
+    #[test]
+    fn redact_secrets_remote_config_reads_and_writes_only_the_requested_profile() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind redaction config fixture");
+        let address = listener.local_addr().expect("redaction fixture address");
+        let server = thread::spawn(move || {
+            let (mut read_stream, _) = listener.accept().expect("accept security config read");
+            let read_request = read_http_fixture_request(&mut read_stream);
+            assert!(read_request.starts_with("GET /hermes/api/config?profile=work HTTP/1.1\r\n"));
+            assert!(
+                read_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let config = json!({"security":{"redact_secrets":false}}).to_string();
+            write!(read_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", config.len(), config)
+                .expect("write security config response");
+
+            let (mut save_stream, _) = listener.accept().expect("accept security config save");
+            let save_request = read_http_fixture_request(&mut save_stream);
+            assert!(save_request.starts_with("PUT /hermes/api/config?profile=work HTTP/1.1\r\n"));
+            assert!(
+                save_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let body = save_request
+                .split_once("\r\n\r\n")
+                .expect("security config body")
+                .1;
+            let patch: serde_json::Value = serde_json::from_str(body).expect("security patch JSON");
+            assert_eq!(patch["config"]["security"]["redact_secrets"], true);
+            let receipt = r#"{"ok":true}"#;
+            write!(save_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", receipt.len(), receipt)
+                .expect("write security save receipt");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "default".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        assert!(
+            !load_redact_secrets_http(&endpoint, Some("work"))
+                .expect("load profile security setting")
+        );
+        assert!(
+            save_redact_secrets_http(&endpoint, Some("work"), true)
+                .expect("save profile security setting")
+        );
+        server.join().expect("security config fixture exits");
     }
 
     #[test]

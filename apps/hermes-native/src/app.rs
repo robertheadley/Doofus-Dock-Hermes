@@ -1912,6 +1912,12 @@ pub struct HermesNativeApp {
     fallback_routes_request: Option<(String, String)>,
     fallback_routes_save_request: Option<(String, String, Vec<serde_json::Value>)>,
     fallback_routes_error: Option<String>,
+    redact_secrets: Option<bool>,
+    redact_secrets_confirmed: Option<bool>,
+    redact_secrets_profile: Option<String>,
+    redact_secrets_request: Option<(String, String)>,
+    redact_secrets_save_request: Option<(String, String, bool)>,
+    redact_secrets_error: Option<String>,
     fallback_model_options: Option<ModelOptionsSnapshot>,
     fallback_model_options_profile: Option<String>,
     fallback_model_options_request: Option<(String, String)>,
@@ -1921,6 +1927,7 @@ pub struct HermesNativeApp {
     keybindings_panel: KeybindingsPanel,
     settings_keybindings_active: bool,
     settings_fallbacks_active: bool,
+    settings_security_active: bool,
     keybinding_consumed_combos: BTreeSet<String>,
     session_filter: String,
     session_search_changed_at: Option<std::time::Instant>,
@@ -4383,6 +4390,12 @@ fn render_message() -> &'static str {
             fallback_routes_request: None,
             fallback_routes_save_request: None,
             fallback_routes_error: None,
+            redact_secrets: None,
+            redact_secrets_confirmed: None,
+            redact_secrets_profile: None,
+            redact_secrets_request: None,
+            redact_secrets_save_request: None,
+            redact_secrets_error: None,
             fallback_model_options: None,
             fallback_model_options_profile: None,
             fallback_model_options_request: None,
@@ -4392,6 +4405,7 @@ fn render_message() -> &'static str {
             keybindings_panel: KeybindingsPanel::new(),
             settings_keybindings_active: false,
             settings_fallbacks_active: false,
+            settings_security_active: false,
             keybinding_consumed_combos: BTreeSet::new(),
             session_filter: String::new(),
             session_search_changed_at: None,
@@ -25570,7 +25584,9 @@ fn render_message() -> &'static str {
         ui.horizontal(|ui| {
             if ui
                 .selectable_label(
-                    !self.settings_keybindings_active && !self.settings_fallbacks_active,
+                    !self.settings_keybindings_active
+                        && !self.settings_fallbacks_active
+                        && !self.settings_security_active,
                     "Workspace",
                 )
                 .accessible_name("Workspace settings")
@@ -25578,6 +25594,7 @@ fn render_message() -> &'static str {
             {
                 self.settings_keybindings_active = false;
                 self.settings_fallbacks_active = false;
+                self.settings_security_active = false;
                 self.keybindings_panel.cancel_capture();
             }
             if ui
@@ -25587,6 +25604,17 @@ fn render_message() -> &'static str {
             {
                 self.settings_keybindings_active = false;
                 self.settings_fallbacks_active = true;
+                self.settings_security_active = false;
+                self.keybindings_panel.cancel_capture();
+            }
+            if ui
+                .selectable_label(self.settings_security_active, "Security")
+                .accessible_name("Security settings")
+                .clicked()
+            {
+                self.settings_keybindings_active = false;
+                self.settings_fallbacks_active = false;
+                self.settings_security_active = true;
                 self.keybindings_panel.cancel_capture();
             }
             if ui
@@ -25596,10 +25624,13 @@ fn render_message() -> &'static str {
             {
                 self.settings_keybindings_active = true;
                 self.settings_fallbacks_active = false;
+                self.settings_security_active = false;
             }
         });
         ui.separator();
-        if self.settings_keybindings_active {
+        if self.settings_security_active {
+            self.show_security_settings(ui);
+        } else if self.settings_keybindings_active {
             if let Some(error) = self.keybindings_error.as_deref() {
                 ui.colored_label(Color32::LIGHT_RED, error);
                 if ui.button("Retry keybindings").clicked() {
@@ -25624,6 +25655,149 @@ fn render_message() -> &'static str {
             self.show_fallback_routes_settings(ui);
         } else {
             self.show_repo_scan_settings(ui);
+        }
+    }
+
+    fn ensure_redact_secrets_config_loaded(&mut self) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            self.redact_secrets_error =
+                Some("Security settings require a single Hermes profile".into());
+            return;
+        }
+        if self
+            .redact_secrets_profile
+            .as_deref()
+            .is_some_and(|loaded| loaded != profile)
+        {
+            self.redact_secrets = None;
+            self.redact_secrets_confirmed = None;
+            self.redact_secrets_profile = None;
+            self.redact_secrets_error = None;
+        }
+        if self
+            .redact_secrets_request
+            .as_ref()
+            .is_some_and(|(_, requested)| requested != &profile)
+        {
+            self.redact_secrets_request = None;
+        }
+        if self
+            .redact_secrets_save_request
+            .as_ref()
+            .is_some_and(|(_, requested, _)| requested != &profile)
+        {
+            self.redact_secrets_save_request = None;
+            self.redact_secrets = None;
+            self.redact_secrets_confirmed = None;
+            self.redact_secrets_profile = None;
+            self.redact_secrets_error = None;
+            self.status = "A security setting save may still be settling for the previous profile; reopen Security there to confirm its stored value.".into();
+        }
+        if self.redact_secrets_request.is_some()
+            || self.redact_secrets_profile.as_deref() == Some(profile.as_str())
+            || (self.redact_secrets_profile.is_none() && self.redact_secrets_error.is_some())
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.redact_secrets_error = Some("Hermes gateway reader is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("security-redact-secrets-load");
+        match gateway.load_redact_secrets_config(request_id.clone(), Some(profile.clone())) {
+            Ok(()) => {
+                self.redact_secrets_request = Some((request_id, profile));
+                self.redact_secrets_error = None;
+            }
+            Err(error) => self.redact_secrets_error = Some(error),
+        }
+    }
+
+    fn save_redact_secrets_config(&mut self, enabled: bool) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.redact_secrets_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            self.redact_secrets_error =
+                Some("Security settings require a single Hermes profile".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.redact_secrets_error = Some("Hermes gateway writer is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("security-redact-secrets-save");
+        match gateway.save_redact_secrets_config(request_id.clone(), Some(profile.clone()), enabled)
+        {
+            Ok(()) => {
+                self.redact_secrets_save_request = Some((request_id, profile, enabled));
+                self.redact_secrets_error = None;
+            }
+            Err(error) => self.redact_secrets_error = Some(error),
+        }
+    }
+
+    fn show_security_settings(&mut self, ui: &mut Ui) {
+        self.ensure_redact_secrets_config_loaded();
+        ui.heading("Security");
+        ui.label(RichText::new(
+            "Hide detected secrets from model-visible content when possible. Hermes applies this profile setting to its agent and log redaction.",
+        ).color(MUTED));
+        if let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.as_str())
+        {
+            ui.label(RichText::new(format!("Profile · {profile}")).color(MUTED));
+        } else {
+            ui.label(RichText::new("Connect to Hermes to edit security settings.").color(MUTED));
+        }
+        let busy =
+            self.redact_secrets_request.is_some() || self.redact_secrets_save_request.is_some();
+        if let Some(mut enabled) = self.redact_secrets {
+            let response =
+                ui.add_enabled(!busy, egui::Checkbox::new(&mut enabled, "Redact secrets"));
+            response
+                .clone()
+                .on_hover_text("Redaction is on by default. Changing this option affects the selected Hermes profile.");
+            if response.changed() {
+                self.redact_secrets = Some(enabled);
+            }
+            let dirty = self.redact_secrets_confirmed != self.redact_secrets;
+            if ui
+                .add_enabled(!busy && dirty, egui::Button::new("Save security setting"))
+                .clicked()
+            {
+                self.save_redact_secrets_config(enabled);
+            }
+            if busy {
+                ui.label(
+                    RichText::new("Saving or loading profile security settings…").color(MUTED),
+                );
+            }
+        } else if self.redact_secrets_request.is_some() {
+            ui.label(RichText::new("Loading profile security settings…").color(MUTED));
+        } else if self.redact_secrets_error.is_none() {
+            ui.label(RichText::new("Security settings have not been loaded.").color(MUTED));
+        }
+        if let Some(error) = self.redact_secrets_error.as_deref() {
+            ui.colored_label(Color32::LIGHT_RED, error);
+            if self.redact_secrets.is_none() && ui.button("Retry security settings").clicked() {
+                self.redact_secrets_error = None;
+                self.ensure_redact_secrets_config_loaded();
+            }
         }
     }
 
@@ -32101,6 +32275,85 @@ fn render_message() -> &'static str {
                             self.status = "Model fallback routes saved".into();
                         }
                         Err(error) => self.fallback_routes_error = Some(error),
+                    }
+                }
+                GatewayEvent::RedactSecretsConfigLoaded {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile)) = self.redact_secrets_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_id != request_id {
+                        continue;
+                    }
+                    let current_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.as_str());
+                    if profile.as_deref() != Some(expected_profile.as_str())
+                        || current_profile != Some(expected_profile.as_str())
+                    {
+                        self.redact_secrets_request = None;
+                        self.redact_secrets = None;
+                        self.redact_secrets_confirmed = None;
+                        self.redact_secrets_profile = None;
+                        continue;
+                    }
+                    self.redact_secrets_request = None;
+                    match result {
+                        Ok(enabled) => {
+                            self.redact_secrets = Some(enabled);
+                            self.redact_secrets_confirmed = Some(enabled);
+                            self.redact_secrets_profile = Some(expected_profile);
+                            self.redact_secrets_error = None;
+                        }
+                        Err(error) => {
+                            self.redact_secrets_error = Some(error);
+                            self.redact_secrets_profile = None;
+                        }
+                    }
+                }
+                GatewayEvent::RedactSecretsConfigSaved {
+                    request_id,
+                    profile,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile, _requested_enabled)) =
+                        self.redact_secrets_save_request.clone()
+                    else {
+                        continue;
+                    };
+                    if expected_id != request_id {
+                        continue;
+                    }
+                    let current_profile = self
+                        .gateway_endpoint
+                        .as_ref()
+                        .map(|endpoint| endpoint.profile_id.as_str());
+                    if profile.as_deref() != Some(expected_profile.as_str())
+                        || current_profile != Some(expected_profile.as_str())
+                    {
+                        self.redact_secrets_save_request = None;
+                        self.redact_secrets = None;
+                        self.redact_secrets_confirmed = None;
+                        self.redact_secrets_profile = None;
+                        self.redact_secrets_error = None;
+                        self.status = "A security settings save settled for the previous profile; reopen Security there to confirm its stored value.".into();
+                        continue;
+                    }
+                    self.redact_secrets_save_request = None;
+                    match result {
+                        Ok(enabled) => {
+                            self.redact_secrets = Some(enabled);
+                            self.redact_secrets_confirmed = Some(enabled);
+                            self.redact_secrets_profile = Some(expected_profile);
+                            self.redact_secrets_error = None;
+                            self.status = "Hermes security setting saved".into();
+                        }
+                        Err(error) => self.redact_secrets_error = Some(error),
                     }
                 }
                 GatewayEvent::RepoDiscoveryCompleted {
@@ -39282,6 +39535,45 @@ mod tests {
                     .next()
                     .is_some(),
                 "settings overlay exposes {label}"
+            );
+        }
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn security_settings_expose_profile_scoped_secret_redaction() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Settings;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.redact_secrets = Some(true);
+        app.redact_secrets_confirmed = Some(true);
+        app.redact_secrets_profile = Some("work".into());
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().show_settings(ui));
+        harness.run();
+        harness.get_by_label("Security settings").click();
+        harness.run();
+        for label in ["Redact secrets", "Save security setting"] {
+            assert!(
+                harness
+                    .query_all_by(|node| node.label().as_deref() == Some(label))
+                    .next()
+                    .is_some(),
+                "security settings expose {label}"
             );
         }
         drop(harness);

@@ -4526,3 +4526,16 @@ Publication follow-up — 2026-11-22T09:37:33Z: Implementation commit `6a4ad7afd
 - **risks:** Other mutating Gateway operations remain unaudited; live authenticated Gateway, packaged Windows and pinned-source acceptance are not verified.
 - **follow_up:** Continue the P0 stale-owner audit from the next dependency-ready request/result path.
 Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d0049269a7b10cd58e42ec37a4c and evidence commit 31436dd6f964ec8428a205efbea53e03c401393f were pushed to origin/main; fresh fetch confirms local and remote main are equal.
+
+### PAR-0525 — Expose profile secret redaction — 2026-11-22T10:46:10Z
+
+- **id:** PAR-0525
+- **timestamp:** 2026-11-22T10:46:10Z
+- **what:** Added a native Settings Security tab that reads/saves Hermes' profile-scoped security.redact_secrets preference; unset values default on and explicit opt-out is retained.
+- **why:** Secret redaction is an agent safety control and is part of the pinned Hermes profile configuration used by backend log formatting.
+- **components:** Gateway config HTTP path, Settings UI, architecture/plan/backlog/completion docs, implementation progress evidence builder.
+- **type:** feature and security preference port
+- **validation:** PASS 590 library + 15 protocol + 3 launcher tests; all-target check; 19 continuity tests; root and archival package validators; progress generators; rustfmt and diff check.
+- **performance:** No benchmark applicable; one small profile-scoped config read/write was added on explicit Settings entry/save.
+- **risks:** Pinned pytest could not start because  ruamel.yaml is missing in the available Python environment; live Gateway and packaged Windows behavior remain unverified.
+- **follow_up:** Add commit-bound UCM evidence and continue with the next agent-workflow gap.

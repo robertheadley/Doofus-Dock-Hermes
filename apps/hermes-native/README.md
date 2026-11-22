@@ -223,3 +223,5 @@ Ambiguous approval and clarification response transport outcomes remain visible 
 Approval and clarification prompts now retain their originating Gateway connection and profile through display, response, and cancellation. Owner-qualified prompt IDs allow separate Gateways to reuse request IDs without replacing or answering another connection's prompt. Headless regressions cover the boundary; live Gateway, packaged Windows, and pinned-source acceptance remain open. Other mutating Gateway commands still need an equivalent connection/profile audit.
 
 Gateway server-request answer receipts are owner-scoped by both connection and profile. A response for a reused request ID clears only the matching approval or clarification prompt; missing owner data on a tagged receipt cannot clear profile-owned state.
+
+The Settings Security tab reads and saves Hermes' profile-scoped security.redact_secrets preference. Missing values default to on, while an explicit profile opt-out is preserved so log and model-content redaction continue to follow Hermes policy.

@@ -1334,6 +1334,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified",
         ],
     },
+    "PAR-0525": {
+        "state": "partial",
+        "level": "headless_profile_security_setting_and_log_redaction_contract_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/agent/redact.py#RedactingFormatter",
+            ".staging/hermes-pinned-878305/hermes_logging.py#setup_logging",
+            ".staging/hermes-pinned-878305/hermes_cli/web_routers/status.py#get_logs",
+            "apps/hermes-native/src/gateway.rs#load_redact_secrets_http",
+            "apps/hermes-native/src/gateway.rs#save_redact_secrets_http",
+            "apps/hermes-native/src/app.rs#show_security_settings",
+            "apps/hermes-native/src/app.rs#security_settings_expose_profile_scoped_secret_redaction",
+            "apps/hermes-native/src/gateway.rs#redact_secrets_remote_config_reads_and_writes_only_the_requested_profile",
+        ],
+        "gaps": [
+            "pinned Hermes source tests could not run in the available Python environment because ruamel.yaml is absent; native tests cover the config client and UI but not backend log formatter execution",
+            "authenticated live Gateway behavior, packaged Windows behavior, and formal pinned-source acceptance remain unverified",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",
