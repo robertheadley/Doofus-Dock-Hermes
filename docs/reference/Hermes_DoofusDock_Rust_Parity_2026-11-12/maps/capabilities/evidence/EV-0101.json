@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0101",
+  "capability_id": "ui-preserve-historical-read-position",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "transcript-session-read-position",
+  "locator": "apps/hermes-native/src/app.rs#transcript_read_position_is_session_owned_and_restores_from_bottom",
+  "date": "2026-11-22",
+  "commit": "dee655dbaf82017c2b15eef903800448b37ef6b2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless regression verifies independent scroll offsets for same-ID sessions owned by different profiles, restores each offset, classifies positions within eight points of the bottom as follow intent, and calculates a restored top offset from a changed transcript extent. Full locked agent-automation suite passes (564 library + 15 protocol + 3 launcher tests); all-target locked check, rustfmt/diff, 19 continuity tests, task validation, both progress generators, root package validator (84 implementation receipts), and archival package validator (491 pending) pass.",
+  "notes": "Partial in-process state evidence only. Restart persistence, explicit anchoring when older history is prepended, physical Windows input, live Gateway, packaged Windows behavior, and formal pinned-source acceptance were not exercised. The original UCM YAML parse was skipped because PyYAML is not installed; package validators passed."
+}

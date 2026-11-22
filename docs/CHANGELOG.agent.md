@@ -4337,3 +4337,16 @@ EV-0100 binds the transcript follow regression to implementation commit `0474320
 ### PAR-0054 published to main — 2026-11-22T06:32:23Z
 
 Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbebacf43ca75ef6` and evidence/task checkpoint commit `e22e4e1c774015f1ae1528a0e0e24c2fc963cbf2` to `origin/main`. Fresh fetch confirms exact local/remote equality at `e22e4e1c774015f1ae1528a0e0e24c2fc963cbf2`. PAR-0054 remains partial: headless egui state proves bottom-follow, history offset preservation, and relock, while physical Windows input, live Gateway streaming, packaged behavior and formal source acceptance remain open. `apps/hermes-native/work/` remains operator-owned and untouched.
+
+### PAR-0055 session-scoped transcript read position — 2026-11-22T06:46:20Z
+
+- **id:** `hermes-par0055-implementation-evidence-20261122`
+- **timestamp:** 2026-11-22T06:46:20Z
+- **what:** Added bottom-intent or distance-from-bottom scroll state to each existing profile/connection/session-owned chat view. The active view carries it forward when the chat cache is saved. Added headless owner-isolation, threshold, restore and content-extent transformation coverage; mapped PAR-0055 partial with EV-0101.
+- **why:** Pinned Hermes keeps transcript reading position per session, distinct from its follow-bottom behavior. Existing work remains intact.
+- **components:** `apps/hermes-native/src/app.rs`, progress generator and CSV overlays, `apps/hermes-native/docs/PLAN.md`, `BACKLOG.md`, `COMPLETION_OVERVIEW.md`, capability map/evidence.
+- **type:** feature and regression evidence.
+- **validation:** focused regression; 564 library + 15 protocol + 3 launcher tests; all-target locked check; rustfmt/diff; 19 task continuity tests; task validation; both progress generators; root capability validator (84 implementation receipts before EV-0101) and archival validator (491 pending).
+- **performance:** No benchmarked performance change; state calculations are constant time per rendered transcript.
+- **risks:** Partial in-process behavior only; no restart persistence, explicit older-history prepend anchoring, physical Windows input, live Gateway, packaged Windows or formal source-paired acceptance. Optional PyYAML/UCM YAML parse skipped. Existing `handle_server_event` dead-code warning remains.
+- **follow_up:** Bind EV-0101 to implementation commit `dee655dbaf82017c2b15eef903800448b37ef6b2`, validate evidence/map, publish to main, then continue the next dependency-ready agent workflow. Preserve all functional work.
