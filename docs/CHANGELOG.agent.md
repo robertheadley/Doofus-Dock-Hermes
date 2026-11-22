@@ -4046,3 +4046,16 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** Event capture is a bounded JSON projection and one unique owner lookup; no additional polling or RPC was added.
 - **risks:** Live Gateway payload timing, disconnected-window UX, packaged Windows rendering and pinned-source pair acceptance remain unverified.
 - **follow_up:** Continue with the next dependency-ready P0 agent-workflow capability from the pinned ledger; preserve existing functional work and keep live/source-paired proof separate.
+
+### hermes-par0051-edit-safety-audit-20261121
+
+- **id:** hermes-par0051-edit-safety-audit-20261121
+- **timestamp:** 2026-11-22T00:22:02Z
+- **what:** Audited the pinned prior-message edit workflow and native Gateway path. Recorded a safe implementation boundary in PLAN.md Revision 297 and selected PAR-0051 as the next chat workflow. No functional source changed in this audit.
+- **why:** Editing earlier prompts truncates transcript history and must not lose drafts, attachments, or unconfirmed later turns.
+- **components:** Fixed-source workflow references, native chat/Gateway task plan and durable handoff state.
+- **type:** Read-only design audit and next-task checkpoint.
+- **validation:** PASS durable task-state validation and `git diff --check`; no code tests run because no product code changed.
+- **performance:** No runtime change.
+- **risks:** The prior-message editing implementation and its destructive confirmation behavior remain incomplete.
+- **follow_up:** Implement stable-row targeting, preserve drafts/attachments, confirm deep cuts, revalidate after confirmation, and add owner-fenced protocol/render tests.

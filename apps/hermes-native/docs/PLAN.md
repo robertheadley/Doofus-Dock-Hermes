@@ -706,6 +706,12 @@ PAR-0048 now captures `session.usage` for a uniquely matched active Gateway conn
 
 Validation: PASS focused usage parse/merge and rendered owner-fencing tests; full locked `agent-automation` suite (519 library + 15 protocol + 3 launcher); `cargo check --all-targets --locked --features agent-automation`; rustfmt check and `git diff --check`. Live Gateway, packaged Windows, and source-paired acceptance remain open.
 
+### Revision 297 — Plan safe prior-message edits (2026-11-21)
+
+PAR-0051 is selected for the next chat workflow. The pinned Desktop edits a user prompt by resubmitting with truncation parameters; its canonical adapter translates that to an owner rewind followed by plain submission. Hermes' Gateway contract supports `truncate_before_row_id` and deep-truncation confirmation on `prompt.submit`. The native implementation has neither an edit action nor truncation parameters yet. The safe first slice will address only persisted user rows with a positive stable `row_id`, preserve the current draft and attachments through edit/cancel, explicitly confirm cuts that archive later user turns, and revalidate the exact target and later-turn count before sending. Unsaved/ambiguous rows and uncertain destructive retries must not guess or replay.
+
+Validation: read-only source and native-path audit only; no product code changed and no tests run for PAR-0051. Implementation and owner-fenced protocol/render regressions remain next.
+
 ### Revision 147 — attach the tested remote gateway
 
 After a payload-matched Test, Apply starts the remote gateway worker with the matching token or OAuth session. Token mode connects to `/api/ws?token=...`; OAuth mode mints a single-use `/api/auth/ws-ticket` and connects with `/api/ws?ticket=...`. The client advertises `desktop_local:false`, reads `runtime.describe`, and loads `session.list`. Startup loads a saved URL-scoped credential and uses the same attach flow. Credentials remain redacted in Debug output. Validate compilation, setup egui coverage, and all-target tests. Remote HTTP-backed operations, runtime OAuth refresh persistence, live remote-service verification, remaining parity rows, and local bootstrap remain open.

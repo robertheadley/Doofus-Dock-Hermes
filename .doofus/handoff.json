@@ -280,6 +280,24 @@
   "blockers": [],
   "changed_files": [
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "doofus/events.jsonl",
+      "status": "M "
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -305,13 +323,14 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --locked --features agent-automation; cargo check --manifest-path apps/hermes-native/Cargo.toml --all-targets --locked --features agent-automation; cargo fmt --check; UCM root and pinned package validators",
+    "command": "Read pinned apps/desktop user-message-edit.tsx, rewind.ts, canonical-protocol.ts and Gateway prompt submit contract; inspect native app/gateway submission and transcript rendering.",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0086.json#EV-0086"
+      ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#runRewindSubmit",
+      ".staging/hermes-pinned-878305/apps/shared/src/usage-tick.ts#usageFromTick"
     ],
-    "state": "tested",
-    "summary": "Implemented PAR-0048 session usage in the native chat toolbar; nested and canonical counters merge per owner, focused/full tests pass, EV-0086 partial evidence is published to main at c66fcde. Live Gateway, packaged Windows and pinned-source paired acceptance remain open. Existing operator work/ is preserved.",
-    "verified_at": "2026-11-22T00:21:56Z"
+    "state": "in_progress",
+    "summary": "Selected PAR-0051 after publishing PAR-0048. Read-only audit confirms user-message editing is a destructive edit-and-resubmit flow with stable row_id targeting, confirmation when later user turns would be archived, and post-confirm target/count revalidation. Pinned direct Gateway prompt.submit supports truncation flags; canonical Desktop redirects truncate submits to a rewind mutation then plain submit. Native code has no edit workflow yet; no functional code was modified during this audit.",
+    "verified_at": "2026-11-22T00:27:14Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -369,7 +388,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T01:21:56Z",
+    "lease_expires_at": "2026-11-22T01:27:14Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1628,9 +1647,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0048-complete-checkpoint-20261122",
+  "last_event_id": "hermes-par0051-audit-checkpoint-20261122",
   "last_operation": {
-    "request_id": "hermes-par0048-complete-checkpoint-20261122",
+    "request_id": "hermes-par0051-audit-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1649,7 +1668,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue with the next dependency-ready P0 agent-workflow capability from the pinned ledger; preserve existing functional work and keep live/source-paired proof separate.",
+  "recommended_next_action": "Implement an additive stable-row edit flow that preserves the active draft/attachments, gates deep cuts with explicit consent, revalidates the target and later-user-turn count, and sends the pinned truncation payload through native prompt.submit. Add owner-fenced protocol and rendered regressions; do not guess row IDs or replay uncertain destructive submissions.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2104,8 +2123,20 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "c50f04bc4886973fd2a6501a1d6a90ad3f2b5163300b09ab2470760186d51bf8",
+    "change_fingerprint": "fef59e7566bc7d53ff453730ce067e3192b66871aced0690294a7bae9f9ae9a2",
     "changed_files": [
+      {
+        "path": "doofus/events.jsonl",
+        "status": "M "
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2123,17 +2154,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "c66fcde73c91d507f53e0c024078c9a659638b0b",
+    "head_commit": "303639e4739a2e134a7c01753636c682731fc230",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 602,
+  "revision": 605,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 602,
+  "state_revision": 605,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0048",
-  "task_ledger_revision": 95,
+  "task_id": "hermes-par-0051",
+  "task_ledger_revision": 96,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3533,5 +3564,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T00:21:56Z"
+  "updated_at": "2026-11-22T00:27:14Z"
 }
