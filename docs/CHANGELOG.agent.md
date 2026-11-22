@@ -4781,3 +4781,14 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No runtime benchmark was run.
 - **risks:** Live authenticated Gateway, packaged Windows, endpoint migration and strict source acceptance remain open.
 - **follow_up:** Continue the next dependency-ready P0 agent-workflow gap; preserve partial labels until runtime evidence exists.
+
+- **id:** hermes-par0508-publish-evidence-main-20261122
+- **timestamp:** 2026-11-22T23:11:30Z
+- **what:** Published PAR-0508/PAR-0511 implementation evidence, progress records and UCM reconciliation to `main`.
+- **why:** Keep the user-selected shared branch current and make implementation state auditable against the pinned source.
+- **components:** Doofus-Dock-Hermes main, commit `4e6614c`, EV-0122, EV-0123, progress ledgers.
+- **type:** publication
+- **validation:** `git push` succeeded; fresh `origin/main` fetch exactly matches local main at `4e6614c04eab33d98d2d0e3a8557777043dd3f40`.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live Gateway and packaged Windows reconnect acceptance remain open; operator-owned runtime data was excluded.
+- **follow_up:** Review and implement the selected next P0 Gateway capability, PAR-0503.
