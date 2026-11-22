@@ -374,11 +374,13 @@
     }
   ],
   "checkpoint": {
-    "command": "task select",
-    "evidence": [],
-    "state": "unknown",
-    "summary": "Handle indeterminate Gateway server-request response writes as unknown, never as definitively failed or successful; prevent unsafe duplicate approval/clarify responses and preserve clear recovery semantics.",
-    "verified_at": "2026-11-22T09:17:53Z"
+    "command": null,
+    "evidence": [
+      "apps/hermes-native/src/app.rs#uncertain_prompt_responses_stay_visible_and_cannot_be_retried"
+    ],
+    "state": "in_progress",
+    "summary": "PAR-0522 is implemented, fully headlessly validated, evidence-bound, and published. Ambiguous approval/clarification outcomes remain unknown and non-retryable; explicit refusals are distinct. Broader mutation uncertainty and live/package acceptance remain open.",
+    "verified_at": "2026-11-22T09:38:14Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -447,7 +449,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T10:16:07Z",
+    "lease_expires_at": "2026-11-22T10:38:14Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1869,11 +1871,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "cf312d1a-fe0f-49f4-8864-a6eaf1208868",
+  "last_event_id": "c4980bf8-87cf-46d5-9455-67fadf77479b",
   "last_operation": {
-    "request_id": "cf312d1a-fe0f-49f4-8864-a6eaf1208868",
+    "request_id": "c4980bf8-87cf-46d5-9455-67fadf77479b",
     "state": "committed",
-    "type": "task.state_updated"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1890,7 +1892,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Trace server-request response write outcomes, pending action state, disconnect reconciliation, and existing UI disabled/status affordances.",
+  "recommended_next_action": "Select the next dependency-ready P0 agent-workflow requirement from the pinned source; do not modify the pinned snapshot.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2334,7 +2336,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "6be050da095aea49976ef2c9b36f5fd3bf2af8e5bf63bd0b1cc154410f81dc8c",
+    "change_fingerprint": "292c5fc00c0665c13aa408676882812c49bb4308ff4920d39bd22e2e4ec6bee9",
     "changed_files": [
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -2353,14 +2355,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "b238720786239ea839ed63c967522cd7f03883d5",
+    "head_commit": "d5eec2d1466d93a1f7a1c474b504fc057e6d769c",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 739,
+  "revision": 740,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 739,
+  "state_revision": 740,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0522",
   "task_ledger_revision": 130,
@@ -4104,9 +4106,14 @@
       "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
       "result": "PASS 583 library + 15 automation protocol + 3 launcher tests; all-target check, fmt, continuity, task and source package validators pass.",
       "timestamp": "2026-11-22T09:16:07Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS 585 library + 15 automation protocol + 3 launcher tests; all-target check, fmt, continuity, task and source package validators pass.",
+      "timestamp": "2026-11-22T09:38:14Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T09:35:23Z"
+  "updated_at": "2026-11-22T09:38:14Z"
 }
