@@ -1134,6 +1134,8 @@ struct SessionChatViewState {
     resume_error: Option<String>,
     transcript: Vec<serde_json::Value>,
     transcript_scroll_position: TranscriptScrollPosition,
+    active_prompt_message_index: Option<usize>,
+    active_prompt_row_id: Option<u64>,
     usage: Option<SessionUsageSnapshot>,
     transcript_message_count: usize,
     transcript_has_more: bool,
@@ -1156,6 +1158,8 @@ struct PromptTimelineState {
     window_request: Option<(String, String, Option<String>, Option<String>, u64)>,
     window: Option<PromptTimelineWindowInfo>,
     window_error: Option<String>,
+    stale: bool,
+    owner: Option<(String, Option<String>, Option<String>)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -7199,11 +7203,18 @@ fn render_message() -> &'static str {
                 ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
             }
             let messages = self.transcript.clone();
+            let timeline_owner_key =
+                self.session_identity_key(session_id, self.active_session_profile.as_deref());
+            let active_prompt_message_index = self
+                .session_chat_views
+                .get(&timeline_owner_key)
+                .and_then(|view| view.active_prompt_message_index);
             if let Some(target) = render_transcript_prompt_timeline(
                 ui,
-                &self.session_identity_key(session_id, self.active_session_profile.as_deref()),
+                &timeline_owner_key,
                 &messages,
                 self.find_in_page_target,
+                active_prompt_message_index,
             ) {
                 self.find_in_page_target = Some(target);
                 self.find_in_page_scroll_pending = true;
@@ -7215,7 +7226,14 @@ fn render_message() -> &'static str {
                 .get(&owner_key)
                 .cloned()
                 .unwrap_or_default();
-            if let Some(action) = render_prompt_history_index(ui, &owner_key, &timeline_state) {
+            if let Some(action) = render_prompt_history_index(
+                ui,
+                &owner_key,
+                &timeline_state,
+                self.session_chat_views
+                    .get(&owner_key)
+                    .and_then(|view| view.active_prompt_row_id),
+            ) {
                 match action {
                     PromptTimelineAction::Load | PromptTimelineAction::LoadMore => {
                         self.load_prompt_timeline_page(session_id.to_owned());
@@ -7232,6 +7250,13 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+            }
+            let should_refresh_stale_timeline =
+                self.prompt_timelines.get(&owner_key).is_some_and(|state| {
+                    state.stale && state.request.is_none() && state.error.is_none()
+                });
+            if should_refresh_stale_timeline {
+                self.refresh_prompt_timeline(session_id.to_owned());
             }
             let mut open_message_edit: Option<(u64, String, usize, bool, Option<String>, bool)> =
                 None;
@@ -7314,6 +7339,7 @@ fn render_message() -> &'static str {
             } else {
                 transcript_scroll = transcript_scroll.stick_to_bottom(true);
             }
+            let mut transcript_prompt_tops = Vec::new();
             let transcript_scroll_output = transcript_scroll
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
@@ -7631,6 +7657,9 @@ fn render_message() -> &'static str {
                                 format!("{speaker}: {body}"),
                             )
                         });
+                        if message.get("role").and_then(serde_json::Value::as_str) == Some("user") {
+                            transcript_prompt_tops.push((index, entry.response.rect.top()));
+                        }
                         if scroll_target == Some(index) {
                             entry.response.scroll_to_me(Some(egui::Align::Center));
                         }
@@ -7640,16 +7669,31 @@ fn render_message() -> &'static str {
             let max_offset = (transcript_scroll_output.content_size.y
                 - transcript_scroll_output.inner_rect.height())
             .max(0.0);
-            self.session_chat_views
+            let scroll_offset = transcript_scroll_output.state.clamped_offset().y;
+            let follows_bottom = max_offset - scroll_offset <= 8.0;
+            let active_prompt_message_index = active_transcript_prompt_index(
+                &transcript_prompt_tops,
+                transcript_scroll_output.inner_rect.top(),
+                follows_bottom,
+            );
+            let active_prompt_row_id = active_prompt_message_index.and_then(|index| {
+                messages
+                    .get(index)
+                    .and_then(|message| message.get("row_id"))
+                    .and_then(serde_json::Value::as_u64)
+                    .filter(|row_id| *row_id > 0)
+            });
+            let chat_view = self
+                .session_chat_views
                 .entry(transcript_scroll_key.clone())
                 .or_insert_with(|| SessionChatViewState {
                     profile: self.active_session_profile.clone(),
                     ..SessionChatViewState::default()
-                })
-                .transcript_scroll_position = TranscriptScrollPosition::from_metrics(
-                transcript_scroll_output.state.clamped_offset().y,
-                max_offset,
-            );
+                });
+            chat_view.transcript_scroll_position =
+                TranscriptScrollPosition::from_metrics(scroll_offset, max_offset);
+            chat_view.active_prompt_message_index = active_prompt_message_index;
+            chat_view.active_prompt_row_id = active_prompt_row_id;
             if let Some(destination) = open_transcript_file {
                 self.open_transcript_local_file_preview(session_id, &destination);
             }
@@ -15958,6 +16002,7 @@ fn render_message() -> &'static str {
         let request_id = operation_id("prompt-timeline");
         let after_row_id = state.cursor.unwrap_or(0);
         let connection_id = gateway.connection_id().map(str::to_owned);
+        state.owner = Some((session_id.clone(), profile.clone(), connection_id.clone()));
         if let Err(error) = gateway.load_prompt_timeline(
             request_id.clone(),
             session_id.clone(),
@@ -15972,6 +16017,25 @@ fn render_message() -> &'static str {
         state.request = Some((request_id, session_id, profile, connection_id, after_row_id));
     }
 
+    fn invalidate_prompt_timelines_for_session(
+        &mut self,
+        session_id: &str,
+        profile: Option<&str>,
+        alternate_session_id: Option<&str>,
+    ) {
+        for state in self.prompt_timelines.values_mut() {
+            let Some((owner_session, owner_profile, _)) = &state.owner else {
+                continue;
+            };
+            let session_matches = owner_session == session_id
+                || alternate_session_id.is_some_and(|alternate| owner_session == alternate);
+            if session_matches && owner_profile.as_deref() == profile {
+                state.stale = true;
+                state.error = None;
+            }
+        }
+    }
+
     fn refresh_prompt_timeline(&mut self, session_id: String) {
         let profile = self.active_session_profile.clone();
         let owner_key = self.session_identity_key(&session_id, profile.as_deref());
@@ -15982,11 +16046,9 @@ fn render_message() -> &'static str {
         if state.request.is_some() {
             return;
         }
-        state.entries.clear();
         state.cursor = None;
-        state.has_more = false;
-        state.total = None;
         state.error = None;
+        state.stale = true;
         self.load_prompt_timeline_page(session_id);
     }
 
@@ -19109,6 +19171,21 @@ fn render_message() -> &'static str {
                 user_row_id,
                 survivor_row_id_map,
             }) => {
+                let alternate_session_id = if is_active {
+                    match &self.route {
+                        AppRoute::Session(stored_id) if stored_id != &session_id => {
+                            Some(stored_id.clone())
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                self.invalidate_prompt_timelines_for_session(
+                    &session_id,
+                    pending.profile.as_deref(),
+                    alternate_session_id.as_deref(),
+                );
                 let edit = self.pending_message_edits.remove(&submission_id);
                 let is_rewrite = edit.is_some();
                 let is_regenerate = edit.as_ref().is_some_and(|edit| edit.is_regenerate);
@@ -21084,6 +21161,9 @@ fn render_message() -> &'static str {
                             .map_or(TranscriptScrollPosition::Bottom, |view| {
                                 view.transcript_scroll_position
                             }),
+                        active_prompt_message_index: previous
+                            .and_then(|view| view.active_prompt_message_index),
+                        active_prompt_row_id: previous.and_then(|view| view.active_prompt_row_id),
                         transcript_message_count: self.transcript_message_count,
                         transcript_has_more: self.transcript_has_more,
                         older_transcript_request: self.older_transcript_request.clone(),
@@ -28648,14 +28728,19 @@ fn render_message() -> &'static str {
                                         page.profile.as_deref() == Some(expected)
                                     }) =>
                             {
-                                let mut known = state
-                                    .entries
-                                    .iter()
-                                    .map(|entry| entry.row_id)
-                                    .collect::<BTreeSet<_>>();
-                                for entry in page.entries {
-                                    if known.insert(entry.row_id) {
-                                        state.entries.push(entry);
+                                if after_row_id == 0 {
+                                    state.entries = page.entries;
+                                    state.stale = false;
+                                } else {
+                                    let mut known = state
+                                        .entries
+                                        .iter()
+                                        .map(|entry| entry.row_id)
+                                        .collect::<BTreeSet<_>>();
+                                    for entry in page.entries {
+                                        if known.insert(entry.row_id) {
+                                            state.entries.push(entry);
+                                        }
                                     }
                                 }
                                 state.cursor = page.next_cursor;
@@ -33983,6 +34068,7 @@ fn render_transcript_prompt_timeline(
     owner_key: &str,
     messages: &[serde_json::Value],
     selected_message: Option<usize>,
+    active_message: Option<usize>,
 ) -> Option<usize> {
     let mut selected = None;
     ui.collapsing("Prompt timeline", |ui| {
@@ -34001,15 +34087,20 @@ fn render_transcript_prompt_timeline(
             .show_rows(ui, 26.0, entries.len(), |ui, rows| {
                 for row in rows {
                     let (message_index, preview) = &entries[row];
-                    let response = ui
-                        .selectable_label(
-                            selected_message == Some(*message_index),
-                            format!("{:03}  {preview}", row + 1),
-                        )
-                        .accessible_name(format!("Jump to prompt {}: {preview}", row + 1));
-                    if response.clicked() {
-                        selected = Some(*message_index);
-                    }
+                    ui.horizontal(|ui| {
+                        let response = ui
+                            .selectable_label(
+                                selected_message == Some(*message_index),
+                                format!("{:03}  {preview}", row + 1),
+                            )
+                            .accessible_name(format!("Jump to prompt {}: {preview}", row + 1));
+                        if response.clicked() {
+                            selected = Some(*message_index);
+                        }
+                        if active_message == Some(*message_index) {
+                            ui.weak("Current");
+                        }
+                    });
                 }
             });
     });
@@ -34020,6 +34111,7 @@ fn render_prompt_history_index(
     ui: &mut Ui,
     owner_key: &str,
     state: &PromptTimelineState,
+    active_row_id: Option<u64>,
 ) -> Option<PromptTimelineAction> {
     let mut action = None;
     ui.collapsing("All session prompts", |ui| {
@@ -34033,7 +34125,13 @@ fn render_prompt_history_index(
             }
         }
         if state.request.is_some() {
-            ui.label("Loading prompt history…");
+            ui.label(if state.stale {
+                "Refreshing prompt history…"
+            } else {
+                "Loading prompt history…"
+            });
+        } else if state.stale && state.total.is_some() {
+            ui.weak("Prompt history may be out of date; refresh is pending.");
         }
         if state.window_request.is_some() {
             ui.label("Loading the selected conversation window…");
@@ -34088,16 +34186,21 @@ fn render_prompt_history_index(
             .show_rows(ui, 26.0, state.entries.len(), |ui, rows| {
                 for index in rows {
                     let entry = &state.entries[index];
-                    let response = ui
-                        .button(format!("{:03}  {}", index + 1, entry.preview))
-                        .accessible_name(format!(
-                            "Jump to indexed prompt {}: {}",
-                            index + 1,
-                            entry.preview
-                        ));
-                    if response.clicked() {
-                        action = Some(PromptTimelineAction::SelectRow(entry.row_id));
-                    }
+                    ui.horizontal(|ui| {
+                        let response = ui
+                            .button(format!("{:03}  {}", index + 1, entry.preview))
+                            .accessible_name(format!(
+                                "Jump to indexed prompt {}: {}",
+                                index + 1,
+                                entry.preview
+                            ));
+                        if response.clicked() {
+                            action = Some(PromptTimelineAction::SelectRow(entry.row_id));
+                        }
+                        if active_row_id == Some(entry.row_id) {
+                            ui.weak("Current");
+                        }
+                    });
                 }
             });
         if state.has_more && state.request.is_none() && state.error.is_none() {
@@ -34111,6 +34214,22 @@ fn render_prompt_history_index(
         }
     });
     action
+}
+
+fn active_transcript_prompt_index(
+    prompt_tops: &[(usize, f32)],
+    viewport_top: f32,
+    follows_bottom: bool,
+) -> Option<usize> {
+    if follows_bottom {
+        return prompt_tops.last().map(|(index, _)| *index);
+    }
+    prompt_tops
+        .iter()
+        .rev()
+        .find(|(_, top)| *top <= viewport_top + 8.0)
+        .or_else(|| prompt_tops.first())
+        .map(|(index, _)| *index)
 }
 
 fn transcript_index_for_row_id(messages: &[serde_json::Value], row_id: u64) -> Option<usize> {
@@ -36364,6 +36483,7 @@ mod tests {
                     "work/connection-a/session-a",
                     &frame_transcript,
                     None,
+                    None,
                 ) {
                     frame_selected.set(Some(index));
                 }
@@ -36831,6 +36951,14 @@ mod tests {
             serde_json::json!({"row_id":20,"role":"user","content":"rerun this"}),
             serde_json::json!({"row_id":21,"role":"assistant","content":"old answer"}),
         ];
+        app.prompt_timelines.insert(
+            "regeneration-index".into(),
+            PromptTimelineState {
+                owner: Some(("runtime-session".into(), Some("work".into()), None)),
+                total: Some(4),
+                ..PromptTimelineState::default()
+            },
+        );
         let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
         app.gateway_discovery = Some(gateway);
         app.submit_message_edit(MessageEditDraft {
@@ -36905,6 +37033,10 @@ mod tests {
         assert_eq!(app.transcript[1]["row_id"], 101);
         assert_eq!(app.transcript[2]["row_id"], 30);
         assert_eq!(app.transcript[2]["content"], "rerun this");
+        assert!(
+            app.prompt_timelines["regeneration-index"].stale,
+            "an admitted regeneration invalidates the matching cached prompt index"
+        );
         assert_eq!(app.draft, "keep this draft");
         assert_eq!(app.composer_attachments.len(), 1);
         drop(app);
@@ -41426,6 +41558,137 @@ mod tests {
     }
 
     #[test]
+    fn active_transcript_prompt_tracks_viewport_and_follow_to_bottom() {
+        let tops = [(2, 120.0), (5, 228.0), (9, 480.0)];
+        assert_eq!(active_transcript_prompt_index(&tops, 200.0, false), Some(2));
+        assert_eq!(active_transcript_prompt_index(&tops, 225.0, false), Some(5));
+        assert_eq!(active_transcript_prompt_index(&tops, 900.0, true), Some(9));
+        assert_eq!(active_transcript_prompt_index(&[], 0.0, true), None);
+        assert_eq!(
+            active_transcript_prompt_index(&[(4, 300.0)], 100.0, false),
+            Some(4),
+            "when no prompt intersects the viewport, use the first available prompt"
+        );
+    }
+
+    #[test]
+    fn prompt_timeline_invalidation_matches_session_profile_and_stored_alias() {
+        let (mut app, profile_dir) = isolated_app();
+        app.prompt_timelines.insert(
+            "runtime-owner".into(),
+            PromptTimelineState {
+                owner: Some((
+                    "runtime-session".into(),
+                    Some("work".into()),
+                    Some("conn-a".into()),
+                )),
+                total: Some(2),
+                ..PromptTimelineState::default()
+            },
+        );
+        app.prompt_timelines.insert(
+            "stored-alias-owner".into(),
+            PromptTimelineState {
+                owner: Some((
+                    "stored-session".into(),
+                    Some("work".into()),
+                    Some("conn-b".into()),
+                )),
+                total: Some(1),
+                ..PromptTimelineState::default()
+            },
+        );
+        app.prompt_timelines.insert(
+            "different-profile-owner".into(),
+            PromptTimelineState {
+                owner: Some((
+                    "runtime-session".into(),
+                    Some("personal".into()),
+                    Some("conn-a".into()),
+                )),
+                total: Some(7),
+                ..PromptTimelineState::default()
+            },
+        );
+
+        app.invalidate_prompt_timelines_for_session(
+            "runtime-session",
+            Some("work"),
+            Some("stored-session"),
+        );
+
+        assert!(app.prompt_timelines["runtime-owner"].stale);
+        assert!(app.prompt_timelines["stored-alias-owner"].stale);
+        assert!(!app.prompt_timelines["different-profile-owner"].stale);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn prompt_timeline_refresh_keeps_old_rows_until_first_page_replaces_them() {
+        let (mut app, profile_dir) = isolated_app();
+        let session_id = "timeline-refresh-session";
+        app.route = AppRoute::Session(session_id.into());
+        let owner_key = app.session_identity_key(session_id, None);
+        app.prompt_timelines.insert(
+            owner_key.clone(),
+            PromptTimelineState {
+                entries: vec![crate::gateway::PromptTimelineEntry {
+                    row_id: 10,
+                    preview: "Previously loaded prompt".into(),
+                    timestamp: Some(10.0),
+                }],
+                cursor: Some(10),
+                total: Some(1),
+                ..PromptTimelineState::default()
+            },
+        );
+        let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        app.refresh_prompt_timeline(session_id.into());
+        let request = app.prompt_timelines[&owner_key]
+            .request
+            .clone()
+            .expect("refresh request is in flight");
+        assert_eq!(app.prompt_timelines[&owner_key].entries[0].row_id, 10);
+        assert!(app.prompt_timelines[&owner_key].stale);
+        let (request_id, pending_session, profile, connection_id, after_row_id) = request;
+        assert_eq!(after_row_id, 0);
+
+        events
+            .send(GatewayEvent::PromptTimelineLoaded {
+                request_id,
+                session_id: pending_session,
+                profile: profile.clone(),
+                connection_id,
+                after_row_id,
+                result: Ok(crate::gateway::PromptTimelinePage {
+                    session_id: session_id.into(),
+                    profile,
+                    entries: vec![crate::gateway::PromptTimelineEntry {
+                        row_id: 20,
+                        preview: "Fresh prompt after rewrite".into(),
+                        timestamp: Some(20.0),
+                    }],
+                    next_cursor: None,
+                    has_more: false,
+                    total: 1,
+                }),
+            })
+            .expect("deliver refreshed prompt index");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        let refreshed = &app.prompt_timelines[&owner_key];
+        assert_eq!(refreshed.entries.len(), 1);
+        assert_eq!(refreshed.entries[0].row_id, 20);
+        assert_eq!(refreshed.entries[0].preview, "Fresh prompt after rewrite");
+        assert!(!refreshed.stale);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn transcript_find_opens_searches_cycles_highlights_and_closes_from_keyboard() {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Session("find-session".into());
@@ -41518,7 +41781,7 @@ mod tests {
             .with_size(egui::vec2(700.0, 360.0))
             .build_ui(move |ui| {
                 if let Some(selected) =
-                    render_prompt_history_index(ui, "owner-session", &frame_state)
+                    render_prompt_history_index(ui, "owner-session", &frame_state, Some(42))
                 {
                     *frame_action.borrow_mut() = Some(selected);
                 }
@@ -41526,6 +41789,7 @@ mod tests {
         harness.run();
         harness.get_by_label("All session prompts").click();
         harness.run();
+        harness.get_by_label("Current");
         harness
             .get_by_label("Jump to indexed prompt 1: Earlier indexed question")
             .click();

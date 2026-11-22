@@ -4422,3 +4422,20 @@ Implementation commit `ea90619cc3b924c80960844f37ba8ecf082fff48` and evidence/do
 Validation follow-up — 2026-11-22T07:57:56Z: Full locked test suite passes (575 library + 15 protocol + 3 launcher); all-target cargo check, rustfmt/diff check, 19 task continuity tests, generated implementation/chat progress, and root plus archival package validators pass. PAR-0056 remains partial pending automatic cache invalidation, active-marker tracking and live/package/source-paired validation.
 
 Publication follow-up — 2026-11-22T08:03:48Z: Implementation commit `3071c0984337897630c9551d9129267876d82817` and evidence commit `1bdf82017eb42062c1ae2d0fa008338f9d7c5d29` are published on `origin/main`. Fresh fetch verified exact local/remote equality at `1bdf82017eb42062c1ae2d0fa008338f9d7c5d29`. `EV-0103` is preserved unchanged and `EV-0104` is additive. The operator-owned `apps/hermes-native/work/` remains untouched.
+
+
+### PAR-0056 prompt history freshness and active marker — 2026-11-22T08:20:46Z
+
+- **id:** `hermes-par0056-history-freshness-active-marker-20261122`
+- **timestamp:** `2026-11-22T08:20:46Z`
+- **what:** Admitted prompt changes now invalidate the matching metadata index. Refresh preserves existing markers while fetching a new first page, then replaces them. The loaded timeline and indexed history expose a Current marker selected from transcript viewport position and bottom-follow state. Added focused headless regressions and additive EV-0105 capability evidence.
+- **why:** Keep historical prompt navigation useful after sends, edits and regenerations while showing which prompt the reader is currently viewing.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/BACKLOG.md`, `apps/hermes-native/docs/ARCHITECTURE.md`, `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml`, `docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0105.json`.
+- **type:** additive behavior and regression evidence.
+- **validation:** Targeted timeline tests pass (7); active viewport test passes (1); all-target locked cargo check passes. Full suite and package validators are pending.
+- **performance:** Refresh is a single metadata first-page request after local admission; existing rows remain visible. Viewport tracking examines the already-rendered transcript frames and adds no Gateway reads.
+- **risks:** Time-based expiry and mutations from other clients are not detected. Live authenticated Gateway, packaged Windows, physical scroll input and formal pinned-source acceptance remain open.
+- **follow_up:** Run full validation, bind EV-0105 to the tested implementation commit, regenerate coverage, checkpoint task state and publish to `main`.
+
+
+Validation follow-up — 2026-11-22T08:27:07Z: PAR-0056 freshness/active-marker regressions pass. The full locked Rust suite passes 578 library + 15 protocol + 3 launcher tests; all-target locked check, rustfmt, 19 task-continuity tests, both progress generators, canonical task validation, and the archival package validator (491 pending) pass. The root evidence package validator awaits EV-0105's implementation commit binding. Existing `handle_server_event` dead-code warning remains.

@@ -2012,3 +2012,12 @@ PAR-0056 remains partial. Native uses a bounded older-page scan instead of the p
 PAR-0056 now requests the pinned `/api/sessions/{id}/messages/around` endpoint with a bounded 120-message page when the selected prompt is not in the loaded transcript. Native validates session, profile, anchor row, ordering, returned count and pagination bounds. The response updates only the matching profile/connection/session cache; it replaces the displayed transcript only while that same owner remains active, then scrolls to the selected durable row. The prompt index has an accessible explicit refresh action. Existing transcript paging and loaded-prompt navigation remain available. Gateway route/decoder tests and app event tests pass; the app tests cover both matching active ownership and a late result from a stale connection. Automatic cache invalidation, active-marker tracking, authenticated live Gateway, packaged Windows, physical input and formal pinned-source acceptance remain open.
 
 Validation: focused `prompt_history_window` Gateway tests (2) and app ownership tests (2) pass. Full locked suite and package validation are pending.
+
+
+### Revision 324 — Refresh prompt history and track the active prompt — 2026-11-22
+
+Successful prompt admission now invalidates cached prompt metadata for the matching session/profile, including its stored-session alias. The active index automatically requests a fresh first page and retains the existing marker rows until that response succeeds; the new first page replaces the prior entries so edits and transcript truncation do not leave obsolete markers. Refresh failures preserve the stale entries and expose the existing retry path.
+
+The transcript captures user-message frame positions and applies the pinned Desktop viewport rule: choose the last prompt at or above viewport top plus eight points, fall back to the first prompt when no prompt is above, and choose the last prompt while following bottom. The active entry is marked Current in the loaded timeline and indexed history when it has a durable row ID. Existing search-selection and jump actions remain distinct.
+
+Three headless regressions cover viewport selection, session/profile invalidation and refresh preservation/replacement. This detects admitted mutations through this client; time-based expiry and changes from another client remain open. Live authenticated Gateway, packaged Windows, physical scroll input and formal pinned-source acceptance remain unverified.
