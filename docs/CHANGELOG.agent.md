@@ -4494,3 +4494,5 @@ Publication follow-up — 2026-11-22T09:14:52Z: Implementation commit `d7751abbf
 - **performance:** No added polling or network requests; outcome classification is performed on the existing Gateway request response path.
 - **risks:** Uncertainty classification is not yet applied to every mutating Gateway operation. Live Gateway, packaged Windows, and formal pinned-source acceptance remain open.
 - **follow_up:** Bind EV-0108 to the implementation commit and continue the next P0 protocol requirement.
+
+Evidence follow-up — 2026-11-22T09:36:37Z: EV-0108 binds the unknown-outcome regression to implementation commit `6a4ad7afdb6fb22d0c206a9fb924beadb2292818`; the capability remains partial. Remaining mutating Gateway operations, live Gateway behavior, packaged Windows behavior and pinned-source acceptance are open.

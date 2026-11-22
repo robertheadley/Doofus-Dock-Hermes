@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0108",
+  "capability_id": "ui-treat-unknown-request-results-as-unknown-not-failed-or-succeeded",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "ambiguous-approval-clarification-response-outcomes",
+  "locator": "apps/hermes-native/src/app.rs::uncertain_prompt_responses_stay_visible_and_cannot_be_retried",
+  "date": "2026-11-22",
+  "commit": "6a4ad7afdb6fb22d0c206a9fb924beadb2292818",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Rust regressions cover uncertain transport/receipt outcomes, explicit JSON-RPC refusal as definite failure, accessible unknown status and disabled duplicate response actions for approval and batch clarification, disconnect preservation, and approval/clarification RPC event classification. Full locked all-target suite passes 585 library + 15 protocol + 3 launcher tests; all-target check, rustfmt, 19 task-continuity tests, task validation, both progress generators, and root and archival source package validators pass.",
+  "notes": "Partial evidence only. The typed unknown-outcome policy currently covers approval, clarification, and clarification-lock responses; other mutating Gateway operations still need a consistent outcome model. No authenticated live Gateway or packaged Windows behavior was exercised. Formal pinned-source acceptance remains pending. The root validator skipped YAML parsing because PyYAML is absent."
+}
