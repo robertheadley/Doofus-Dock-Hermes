@@ -4217,3 +4217,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime benchmark was requested or changed.
 - **risks:** Live Gateway, packaged Windows, concurrent offset-page stability and formal pinned-source acceptance remain unverified.
 - **follow_up:** Bind partial evidence to the implementation commit, publish to main, and continue remaining agent-workflow gaps.
+
+
+## PAR-0051 history-row resolution publication — 2026-11-22
+
+- **id:** hermes-par0051-history-row-resolution-publication-20261122
+- **timestamp:** 2026-11-22T04:07:04Z
+- **what:** Published implementation commit 5eaf03190a498e0bbf45d0c3bfdde6e3cd4860df and EV-0094 evidence commit to main.
+- **why:** Keep the validated partial agent-chat workflow current on the canonical branch.
+- **components:** Prior-message edit lifecycle, evidence receipt, capability crosswalk/progress, task handoff checkpoint.
+- **type:** Main publication and checkpoint.
+- **validation:** Push succeeded; fresh fetch confirms local main and origin/main both equal 9867567ce156337c3a29e4caad151b10770c4d46. Task checkpoint revision 651 / ledger revision 104 validates, with PAR-0051 still in progress.
+- **performance:** No runtime behavior changed during publication.
+- **risks:** Live Gateway, packaged Windows, concurrent offset-page stability and formal source acceptance remain open.
+- **follow_up:** Continue the next dependency-ready agent-workflow gap; keep the overall goal active and protect apps/hermes-native/work/.

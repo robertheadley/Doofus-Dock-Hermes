@@ -1,5 +1,5 @@
 {
-  "revision": 104,
+  "revision": 105,
   "schema_version": 1,
   "tasks": [
     {
@@ -1733,7 +1733,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-22T03:30:25Z",
+              "last_updated_at": "2026-11-22T04:06:34Z",
               "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-edit-a-previous-user-message",
               "outputs": [],
@@ -1763,7 +1763,8 @@
                 "apps/hermes-native/src/app.rs#failed_turn_without_row_id_exposes_edit_dialog_without_truncation_warning",
                 "apps/hermes-native/src/app.rs#failed_turn_without_durable_row_uses_plain_submit_and_replaces_only_after_admission",
                 "apps/hermes-native/src/app.rs#refused_failed_turn_edit_keeps_original_error_and_draft_for_retry",
-                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0093.json#EV-0093"
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0093.json#EV-0093",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0094.json#EV-0094"
               ]
             },
             {
@@ -16374,5 +16375,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T03:30:25Z"
+  "updated_at": "2026-11-22T04:06:34Z"
 }
