@@ -3185,3 +3185,7 @@ EV-0099 binds the passing headless interaction test to implementation commit `c6
 ### PAR-0053 task checkpoint — 2026-11-22T06:07:49Z
 
 `hermes-par-0053` is tested with EV-0099 at state revision 676 / task ledger revision 117. The durable progress report now records the current validation run (312 pass, 0 fail, 2 other) and the next step is selecting the next dependency-ready P0 chat/tool requirement. Broad evidence mapping remains 102/499 and scoped chat/tool evidence 68/176; neither count is overall completion. Root and archival package validators pass. The project-owned UCM package remains valid under its local validator; the canonical UCM checker still exits 1 on pre-existing package-wide legacy issues, while reporting no PAR-0053 errors.
+
+### PAR-0053 published to main — 2026-11-22T06:09:24Z
+
+Published implementation/test commit `c6d355dc6cf6dbc5af2e0238638ef68f42e9b0cb` and evidence/task checkpoint commit `1bc2312ca281983c7092a607370b36725d0a1095` to `origin/main`. A fresh fetch confirmed exact local/remote equality at `1bc2312ca281983c7092a607370b36725d0a1095`. EV-0099 remains partial evidence: it proves the explicit confirmation UI and request contract headlessly; live Gateway, packaged Windows and formal pinned-source acceptance are still open. The operator-owned `apps/hermes-native/work/` path remains untouched and excluded.
