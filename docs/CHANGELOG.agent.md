@@ -4748,3 +4748,14 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No runtime benchmark was run.
 - **risks:** A normal JSON string copy exists transiently during response serialization/send; live authenticated Gateway, packaged Windows and formal pinned-source acceptance remain open.
 - **follow_up:** Verify authenticated local/remote Gateway behavior and continue the next dependency-ready agent-workflow gap.
+
+- **id:** hermes-par0517-publication-20261122
+- **timestamp:** 2026-11-22T22:30:20Z
+- **what:** Published the vault unlock and server-request capability implementation with its evidence and current progress overview to `main`.
+- **why:** Keep the shared repository current and preserve auditable feature status.
+- **components:** PAR-0517, PAR-0520, EV-0120, EV-0121, `main`.
+- **type:** publication
+- **validation:** Fresh fetch confirmed local main and origin/main both equal `4f8eeb7ff81d9963fa7314c64e759a0974306486`.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live Gateway and packaged Windows acceptance remain open; operator-owned runtime work was preserved.
+- **follow_up:** Continue with PAR-0508 bounded Gateway reconnect, replay/resume and duplicate-submit safeguards.
