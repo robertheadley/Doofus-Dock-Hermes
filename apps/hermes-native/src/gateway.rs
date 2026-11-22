@@ -6408,6 +6408,13 @@ fn attach_gateway() -> Result<(ConnectedGateway, GatewaySocket), String> {
     Ok((ConnectedGateway { endpoint, sessions }, socket))
 }
 
+fn client_capabilities_params(desktop_local: bool) -> serde_json::Value {
+    serde_json::json!({
+        "server_requests": true,
+        "desktop_local": desktop_local,
+    })
+}
+
 fn connect_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<GatewaySocket, String> {
     if endpoint.remote_auth.is_some() {
         return connect_remote_gateway_endpoint(endpoint);
@@ -6452,10 +6459,7 @@ fn connect_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<GatewaySocket,
         &mut socket,
         1,
         "client.capabilities",
-        serde_json::json!({
-            "server_requests": false,
-            "desktop_local": true
-        }),
+        client_capabilities_params(true),
     )?;
     let runtime = rpc(&mut socket, 2, "runtime.describe", serde_json::json!({}))?;
     if runtime.get("instance_id").and_then(|value| value.as_str()) != Some(&endpoint.instance_id)
@@ -6504,7 +6508,7 @@ fn attach_remote_gateway(
         &mut socket,
         1,
         "client.capabilities",
-        serde_json::json!({"server_requests": false, "desktop_local": false}),
+        client_capabilities_params(false),
     )?;
     let runtime = rpc(&mut socket, 2, "runtime.describe", serde_json::json!({}))?;
     endpoint.profile_id = runtime
@@ -8347,7 +8351,10 @@ fn gateway_actor(
             Ok(Message::Text(text)) => {
                 if let Ok(frame) = serde_json::from_str::<serde_json::Value>(&text) {
                     if let Some((id, method, params)) = server_request_parts(&frame) {
-                        if matches!(method.as_str(), "approval" | "clarify" | "sudo") {
+                        if matches!(
+                            method.as_str(),
+                            "approval" | "clarify" | "sudo" | "vault.unlock_prompt"
+                        ) {
                             let _ = events.send(GatewayEvent::ServerRequestReceived {
                                 id,
                                 method,
@@ -20415,6 +20422,87 @@ mod tests {
         assert_eq!(result["instance_id"], "fixture");
         assert!(received_events.try_recv().is_err());
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn client_capabilities_advertise_server_requests_without_claiming_remote_locality() {
+        assert_eq!(
+            client_capabilities_params(true),
+            json!({"server_requests":true,"desktop_local":true})
+        );
+        assert_eq!(
+            client_capabilities_params(false),
+            json!({"server_requests":true,"desktop_local":false})
+        );
+    }
+
+    #[test]
+    fn idle_actor_routes_vault_unlock_request_and_returns_value_on_same_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":"vault-unlock-wire-1",
+                        "method":"vault.unlock_prompt",
+                        "params":{"session_id":"runtime-1","backend":"bitwarden","display_name":"Bitwarden"}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send vault unlock request");
+            let request_reply: serde_json::Value = match socket.read().expect("read request reply")
+            {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request reply"),
+                other => panic!("expected JSON-RPC response, got {other:?}"),
+            };
+            assert_eq!(request_reply["id"], "vault-unlock-wire-1");
+            assert_eq!(request_reply["result"], json!({"value":"fixture-master"}));
+            socket.close(None).expect("close fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (commands, command_receiver) = mpsc::channel();
+        let (events, event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let request = event_receiver
+            .recv_timeout(Duration::from_secs(3))
+            .expect("vault unlock request reaches the UI event channel");
+        assert!(matches!(
+            request,
+            GatewayEvent::ServerRequestReceived { id, method, params, .. }
+                if id == "vault-unlock-wire-1"
+                    && method == "vault.unlock_prompt"
+                    && params["session_id"] == "runtime-1"
+                    && params["backend"] == "bitwarden"
+                    && params["display_name"] == "Bitwarden"
+        ));
+        commands
+            .send(GatewayCommand::RespondServerRequest {
+                id: "vault-unlock-wire-1".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":"fixture-master"})),
+            })
+            .expect("queue vault unlock response");
+        let receipt = event_receiver
+            .recv_timeout(Duration::from_secs(3))
+            .expect("vault unlock response receipt");
+        assert!(matches!(
+            receipt,
+            GatewayEvent::ServerRequestAnswered { id, result: Ok(()), .. }
+                if id == "vault-unlock-wire-1"
+        ));
+        actor.join().expect("Gateway actor exits");
+        server.join().expect("fixture gateway exits");
     }
 
     #[test]

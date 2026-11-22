@@ -1716,6 +1716,18 @@ struct SudoPrompt {
     response_unknown: bool,
 }
 
+struct VaultUnlockPrompt {
+    session_id: String,
+    profile: Option<String>,
+    connection_id: Option<String>,
+    server_request_id: String,
+    backend: String,
+    display_name: String,
+    password: Zeroizing<String>,
+    response_pending: bool,
+    response_unknown: bool,
+}
+
 #[derive(Clone, Debug)]
 struct ClarifyPrompt {
     session_id: String,
@@ -2266,6 +2278,7 @@ pub struct HermesNativeApp {
     pending_session_closes: VecDeque<PanelId>,
     approval_prompts: BTreeMap<String, ApprovalPrompt>,
     sudo_prompts: BTreeMap<String, SudoPrompt>,
+    vault_unlock_prompts: BTreeMap<String, VaultUnlockPrompt>,
     clarify_prompts: BTreeMap<String, ClarifyPrompt>,
     batch_clarify_prompts: BTreeMap<String, BatchClarifyPrompt>,
     panel_drag: Option<DragSession<PanelDropTarget>>,
@@ -4760,6 +4773,7 @@ fn render_message() -> &'static str {
             pending_session_closes: VecDeque::new(),
             approval_prompts: BTreeMap::new(),
             sudo_prompts: BTreeMap::new(),
+            vault_unlock_prompts: BTreeMap::new(),
             clarify_prompts: BTreeMap::new(),
             batch_clarify_prompts: BTreeMap::new(),
             panel_drag: None,
@@ -7104,6 +7118,7 @@ fn render_message() -> &'static str {
 
     fn workspace_content(&mut self, ui: &mut egui::Ui) {
         self.clear_inactive_sudo_passwords(ui);
+        self.clear_inactive_vault_unlock_passwords(ui);
         if self.route.is_overlay() {
             return;
         }
@@ -7130,6 +7145,7 @@ fn render_message() -> &'static str {
         if matches!(self.route, AppRoute::NewChat | AppRoute::Session(_)) {
             self.approval_cards(ui);
             self.sudo_cards(ui);
+            self.vault_unlock_cards(ui);
             self.clarify_cards(ui);
             self.batch_clarify_cards(ui);
             self.composer(ui);
@@ -8010,6 +8026,29 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn clear_inactive_vault_unlock_passwords(&mut self, ui: &Ui) {
+        let session_id = self.active_runtime_session_id.clone();
+        let profile = self.active_session_profile.clone();
+        let active_connection = self.active_gateway_connection_id().to_owned();
+        let connection_id = (!active_connection.is_empty()).then_some(active_connection);
+        let chat_route = matches!(self.route, AppRoute::NewChat | AppRoute::Session(_));
+        for (key, prompt) in &mut self.vault_unlock_prompts {
+            let visible_owner = chat_route
+                && self.gateway_connected
+                && session_id.as_deref() == Some(prompt.session_id.as_str())
+                && profile.as_deref() == prompt.profile.as_deref()
+                && connection_id.as_deref() == prompt.connection_id.as_deref();
+            if !visible_owner {
+                prompt.password.zeroize();
+                let widget_id = ui.make_persistent_id(("vault-unlock-password", key.as_str()));
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), widget_id) {
+                    state.clear_undoer();
+                    state.store(ui.ctx(), widget_id);
+                }
+            }
+        }
+    }
+
     fn sudo_cards(&mut self, ui: &mut Ui) {
         let session_id = self.active_runtime_session_id.clone();
         let profile = self.active_session_profile.clone();
@@ -8123,6 +8162,124 @@ fn render_message() -> &'static str {
                     Zeroizing::new(String::new())
                 };
                 if let Err(error) = self.respond_to_sudo(&prompt_key, password) {
+                    self.status = error;
+                }
+            }
+        }
+    }
+
+    fn vault_unlock_cards(&mut self, ui: &mut Ui) {
+        let session_id = self.active_runtime_session_id.clone();
+        let profile = self.active_session_profile.clone();
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let connection_id = (!connection_id.is_empty()).then_some(connection_id);
+        for prompt in self.vault_unlock_prompts.values_mut() {
+            let visible_owner = session_id.as_deref() == Some(prompt.session_id.as_str())
+                && profile == prompt.profile
+                && prompt.connection_id.as_deref() == connection_id.as_deref();
+            if !visible_owner || !self.gateway_connected {
+                prompt.password.zeroize();
+            }
+        }
+        let Some(session_id) = session_id else {
+            return;
+        };
+        let prompt_keys = self
+            .vault_unlock_prompts
+            .iter()
+            .filter(|(_, prompt)| {
+                prompt.session_id == session_id
+                    && prompt.profile == profile
+                    && prompt.connection_id.as_deref() == connection_id.as_deref()
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for prompt_key in prompt_keys {
+            let password_widget_id =
+                ui.make_persistent_id(("vault-unlock-password", prompt_key.as_str()));
+            let mut submit = false;
+            let mut keep_locked = false;
+            if let Some(prompt) = self.vault_unlock_prompts.get_mut(&prompt_key) {
+                ui.add_space(8.0);
+                ui.group(|ui| {
+                    ui.label(
+                        RichText::new(format!("Unlock {}", prompt.display_name))
+                            .strong()
+                            .color(ACCENT),
+                    )
+                    .accessible_name(format!("Unlock {} password manager", prompt.display_name));
+                    ui.label(format!(
+                        "Hermes needs the master password for {} ({}) for this session.",
+                        prompt.display_name, prompt.backend
+                    ));
+                    let pending = prompt.response_pending || prompt.response_unknown;
+                    ui.add_enabled_ui(self.gateway_connected && !pending, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut *prompt.password)
+                                .id(password_widget_id)
+                                .password(true)
+                                .desired_width(ui.available_width())
+                                .hint_text("Master password"),
+                        )
+                        .accessible_name(format!(
+                            "Master password for {} request {}",
+                            prompt.display_name, prompt.server_request_id
+                        ));
+                        if let Some(mut state) =
+                            egui::TextEdit::load_state(ui.ctx(), password_widget_id)
+                        {
+                            state.clear_undoer();
+                            state.store(ui.ctx(), password_widget_id);
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        let unlock = ui
+                            .add_enabled(
+                                self.gateway_connected && !pending && !prompt.password.is_empty(),
+                                egui::Button::new("Unlock for this session"),
+                            )
+                            .accessible_name(format!(
+                                "Unlock {} for this session, request {}",
+                                prompt.display_name, prompt.server_request_id
+                            ));
+                        submit = unlock.clicked();
+                        let refuse = ui
+                            .add_enabled(
+                                self.gateway_connected && !pending,
+                                egui::Button::new("Keep locked"),
+                            )
+                            .accessible_name(format!(
+                                "Keep {} locked, request {}",
+                                prompt.display_name, prompt.server_request_id
+                            ));
+                        keep_locked = refuse.clicked();
+                        if prompt.response_unknown {
+                            ui.label(
+                                RichText::new(
+                                    "Response outcome unknown — do not resend this password.",
+                                )
+                                .color(Color32::YELLOW),
+                            )
+                            .accessible_name(format!(
+                                "Vault unlock response outcome unknown for request {}",
+                                prompt.server_request_id
+                            ));
+                        } else if prompt.response_pending {
+                            ui.label(RichText::new("Sending secure response…").color(MUTED));
+                        }
+                    });
+                });
+            }
+            if submit || keep_locked {
+                let password = if submit {
+                    self.vault_unlock_prompts
+                        .get_mut(&prompt_key)
+                        .map(|prompt| Zeroizing::new(std::mem::take(&mut *prompt.password)))
+                        .unwrap_or_else(|| Zeroizing::new(String::new()))
+                } else {
+                    Zeroizing::new(String::new())
+                };
+                if let Err(error) = self.respond_to_vault_unlock(&prompt_key, password) {
                     self.status = error;
                 }
             }
@@ -16931,6 +17088,10 @@ fn render_message() -> &'static str {
                     .values()
                     .any(|prompt| prompt.session_id == runtime_session_id)
                 || self
+                    .vault_unlock_prompts
+                    .values()
+                    .any(|prompt| prompt.session_id == runtime_session_id)
+                || self
                     .clarify_prompts
                     .values()
                     .any(|prompt| prompt.session_id == runtime_session_id)
@@ -20229,6 +20390,10 @@ fn render_message() -> &'static str {
             self.handle_sudo_request(server_request_id, params, connection_id);
             return;
         }
+        if method == "vault.unlock_prompt" {
+            self.handle_vault_unlock_request(server_request_id, params, connection_id);
+            return;
+        }
         if method != "approval" {
             self.reject_server_request(
                 server_request_id,
@@ -20402,6 +20567,102 @@ fn render_message() -> &'static str {
         self.status = "Hermes is waiting for administrator input".into();
     }
 
+    fn handle_vault_unlock_request(
+        &mut self,
+        server_request_id: String,
+        params: serde_json::Value,
+        connection_id: Option<String>,
+    ) {
+        let request_profile = params
+            .get("profile")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+        let session_id = params
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty());
+        let Some(session_id) = session_id else {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32602,
+                "Vault unlock request omitted its session ID",
+            );
+            return;
+        };
+        if !self.session_runtime_is_known(session_id, request_profile, connection_id.as_deref()) {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                4404,
+                "This window has no unique open session pane for the vault request",
+            );
+            return;
+        }
+        let backend = params
+            .get("backend")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty());
+        let Some(backend) = backend else {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32602,
+                "Vault unlock request omitted its backend",
+            );
+            return;
+        };
+        let display_name = params
+            .get("display_name")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(backend)
+            .to_owned();
+        let prompt_key = gateway_prompt_key(
+            connection_id.as_deref(),
+            request_profile,
+            &server_request_id,
+        );
+        if let Some(prompt) = self.vault_unlock_prompts.get_mut(&prompt_key) {
+            if prompt.response_unknown {
+                prompt.password.zeroize();
+                prompt.session_id = session_id.to_owned();
+                prompt.backend = backend.to_owned();
+                prompt.display_name = display_name;
+                prompt.response_pending = false;
+                prompt.response_unknown = false;
+                self.status = "Hermes is waiting for the password manager to be unlocked".into();
+                return;
+            }
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32600,
+                "Vault unlock request is already being shown",
+            );
+            return;
+        }
+        self.vault_unlock_prompts.insert(
+            prompt_key,
+            VaultUnlockPrompt {
+                session_id: session_id.to_owned(),
+                profile: request_profile.map(str::to_owned),
+                connection_id,
+                server_request_id,
+                backend: backend.to_owned(),
+                display_name,
+                password: Zeroizing::new(String::new()),
+                response_pending: false,
+                response_unknown: false,
+            },
+        );
+        self.status = "Hermes is waiting for the password manager to be unlocked".into();
+    }
+
     fn handle_server_request_cancelled(
         &mut self,
         payload: &serde_json::Value,
@@ -20437,6 +20698,18 @@ fn render_message() -> &'static str {
         if let Some(prompt_key) = sudo_prompt_key {
             self.sudo_prompts.remove(&prompt_key);
             self.status = "Hermes withdrew the administrator request".into();
+            return;
+        }
+
+        let vault_prompt_key = self.vault_unlock_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == server_request_id
+                && prompt.connection_id.as_deref() == connection_id
+                && prompt.profile.as_deref() == event_profile)
+                .then(|| key.clone())
+        });
+        if let Some(prompt_key) = vault_prompt_key {
+            self.vault_unlock_prompts.remove(&prompt_key);
+            self.status = "Hermes withdrew the password manager unlock request".into();
             return;
         }
 
@@ -20757,6 +21030,35 @@ fn render_message() -> &'static str {
             }
             return;
         }
+
+        let vault_prompt_key = self.vault_unlock_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == id
+                && server_request_owner_matches(
+                    prompt.connection_id.as_deref(),
+                    prompt.profile.as_deref(),
+                    connection_id.as_deref(),
+                    profile.as_deref(),
+                ))
+            .then(|| key.clone())
+        });
+        if let Some(prompt_key) = vault_prompt_key {
+            match result {
+                Ok(()) => {
+                    self.vault_unlock_prompts.remove(&prompt_key);
+                    self.status = "Password manager unlock request answered".into();
+                }
+                Err(_) => {
+                    if let Some(prompt) = self.vault_unlock_prompts.get_mut(&prompt_key) {
+                        prompt.password.zeroize();
+                        prompt.response_unknown = true;
+                    }
+                    self.status =
+                        "Vault unlock response outcome is unknown; do not resend the password."
+                            .into();
+                }
+            }
+            return;
+        }
         let Some(prompt_id) = self
             .approval_prompts
             .iter()
@@ -20805,6 +21107,12 @@ fn render_message() -> &'static str {
             }
         }
         for prompt in self.sudo_prompts.values_mut() {
+            prompt.password.zeroize();
+            if prompt.response_pending {
+                prompt.response_unknown = true;
+            }
+        }
+        for prompt in self.vault_unlock_prompts.values_mut() {
             prompt.password.zeroize();
             if prompt.response_pending {
                 prompt.response_unknown = true;
@@ -21977,6 +22285,10 @@ fn render_message() -> &'static str {
                             .any(|prompt| prompt.session_id == runtime)
                         && !self
                             .sudo_prompts
+                            .values()
+                            .any(|prompt| prompt.session_id == runtime)
+                        && !self
+                            .vault_unlock_prompts
                             .values()
                             .any(|prompt| prompt.session_id == runtime)
                         && !self
@@ -25486,6 +25798,48 @@ fn render_message() -> &'static str {
             prompt.response_pending = true;
         }
         self.status = "Sending secure response to Hermes…".into();
+        Ok(())
+    }
+
+    fn respond_to_vault_unlock(
+        &mut self,
+        prompt_key: &str,
+        password: Zeroizing<String>,
+    ) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before answering the vault unlock prompt".into());
+        }
+        let Some(prompt) = self.vault_unlock_prompts.get(prompt_key) else {
+            return Err("This vault unlock request is no longer pending".into());
+        };
+        if prompt.response_pending || prompt.response_unknown {
+            return Err("This vault unlock response is already pending or unknown".into());
+        }
+        if !self.session_runtime_is_known(
+            &prompt.session_id,
+            prompt.profile.as_deref(),
+            prompt.connection_id.as_deref(),
+        ) {
+            return Err("This vault unlock request no longer maps to a unique open session".into());
+        }
+        if password.len() > 16_384 || password.chars().any(|character| character == '\0') {
+            return Err("Master password must be at most 16384 bytes and contain no NUL".into());
+        }
+        let server_request_id = prompt.server_request_id.clone();
+        let profile = prompt.profile.clone();
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
+            .respond_server_request(
+                server_request_id,
+                profile,
+                Ok(serde_json::json!({"value": password.as_str()})),
+            )?;
+        if let Some(prompt) = self.vault_unlock_prompts.get_mut(prompt_key) {
+            prompt.password.zeroize();
+            prompt.response_pending = true;
+        }
+        self.status = "Sending secure password manager response to Hermes…".into();
         Ok(())
     }
 
@@ -29036,6 +29390,14 @@ fn render_message() -> &'static str {
                         .is_none_or(|owner| owner == connection_id)
             })
             || self.sudo_prompts.values().any(|prompt| {
+                prompt.session_id == runtime
+                    && prompt.profile.as_deref() == profile
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection_id)
+            })
+            || self.vault_unlock_prompts.values().any(|prompt| {
                 prompt.session_id == runtime
                     && prompt.profile.as_deref() == profile
                     && prompt
@@ -54120,6 +54482,22 @@ mod tests {
             .get_mut("clarify-disconnect")
             .expect("clarification prompt")
             .response_pending = true;
+        app.handle_server_request(
+            "vault-disconnect".into(),
+            "vault.unlock_prompt".into(),
+            json!({
+                "session_id":"runtime-session",
+                "backend":"bitwarden",
+                "display_name":"Bitwarden"
+            }),
+        );
+        let vault_key = gateway_prompt_key(None, None, "vault-disconnect");
+        let vault = app
+            .vault_unlock_prompts
+            .get_mut(&vault_key)
+            .expect("vault unlock prompt");
+        vault.password.push_str("fixture-secret");
+        vault.response_pending = true;
 
         app.mark_pending_prompt_responses_unknown();
 
@@ -54129,6 +54507,10 @@ mod tests {
         let clarify = &app.batch_clarify_prompts["clarify-disconnect"];
         assert!(clarify.response_unknown);
         assert!(clarify.response_pending);
+        let vault = &app.vault_unlock_prompts[&vault_key];
+        assert!(vault.response_unknown);
+        assert!(vault.response_pending);
+        assert!(vault.password.is_empty());
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
@@ -54492,6 +54874,359 @@ mod tests {
         let prompt = &app.sudo_prompts[&prompt_key];
         assert!(prompt.response_unknown);
         assert!(prompt.password.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_unlock_prompt_is_masked_ephemeral_and_uses_its_gateway_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "vault-unlock-wire-1".into(),
+            "vault.unlock_prompt".into(),
+            json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "backend":"bitwarden",
+                "display_name":"Bitwarden"
+            }),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-unlock-wire-1",
+        );
+        let prompt = &app.vault_unlock_prompts[&prompt_key];
+        assert_eq!(prompt.backend, "bitwarden");
+        assert_eq!(prompt.display_name, "Bitwarden");
+        assert!(prompt.password.is_empty());
+
+        app.vault_unlock_prompts
+            .get_mut(&prompt_key)
+            .expect("vault unlock prompt")
+            .password
+            .push_str("fixture-master-password");
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref()
+                        == Some("Master password for Bitwarden request vault-unlock-wire-1")
+                })
+                .next()
+                .is_some(),
+            "masked password control is accessible by request and provider"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label()
+                        .is_some_and(|label| label.contains("fixture-master-password"))
+                })
+                .next()
+                .is_none(),
+            "the typed password is not exposed as an accessible label"
+        );
+        drop(harness);
+
+        let password = Zeroizing::new(std::mem::take(
+            &mut *app
+                .vault_unlock_prompts
+                .get_mut(&prompt_key)
+                .expect("vault unlock prompt")
+                .password,
+        ));
+        app.respond_to_vault_unlock(&prompt_key, password)
+            .expect("send password through the exact Gateway request");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("vault unlock response reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "vault-unlock-wire-1".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":"fixture-master-password"})),
+            }
+        );
+        assert!(app.vault_unlock_prompts[&prompt_key].password.is_empty());
+        assert!(app.vault_unlock_prompts[&prompt_key].response_pending);
+        assert!(!app.status.contains("fixture-master-password"));
+        assert!(
+            serde_json::to_string(&app.automation_state())
+                .expect("automation state serializes")
+                .find("fixture-master-password")
+                .is_none(),
+            "automation state never contains the master password"
+        );
+
+        app.handle_server_request_answered_from_connection(
+            "vault-unlock-wire-1".into(),
+            Ok(()),
+            Some("personal".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_unlock_prompts.contains_key(&prompt_key));
+        app.handle_server_request_answered_from_connection(
+            "vault-unlock-wire-1".into(),
+            Ok(()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(!app.vault_unlock_prompts.contains_key(&prompt_key));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_unlock_refusal_is_empty_and_unknown_outcomes_are_not_retried() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "vault-unlock-refuse".into(),
+            "vault.unlock_prompt".into(),
+            json!({"session_id":"runtime-session","profile":"work","backend":"1password","display_name":"1Password"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-unlock-refuse",
+        );
+        app.respond_to_vault_unlock(&prompt_key, Zeroizing::new(String::new()))
+            .expect("keep-locked action sends an empty refusal");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("empty refusal reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "vault-unlock-refuse".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":""})),
+            }
+        );
+        app.handle_server_request_answered_from_connection(
+            "vault-unlock-refuse".into(),
+            Err("connection closed after write".into()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt = &app.vault_unlock_prompts[&prompt_key];
+        assert!(prompt.response_unknown);
+        assert!(prompt.password.is_empty());
+        assert!(
+            app.respond_to_vault_unlock(&prompt_key, Zeroizing::new("must-not-resend".into()))
+                .is_err()
+        );
+
+        // A same-ID request replay is authoritative proof that the Gateway still has it open;
+        // refresh the card with a blank field so the user may answer that pending request.
+        app.handle_server_request_from_connection(
+            "vault-unlock-refuse".into(),
+            "vault.unlock_prompt".into(),
+            json!({"session_id":"runtime-session","profile":"work","backend":"1password","display_name":"1Password"}),
+            Some("gateway-connection-1".into()),
+        );
+        let replayed = &app.vault_unlock_prompts[&prompt_key];
+        assert!(!replayed.response_unknown);
+        assert!(!replayed.response_pending);
+        assert!(replayed.password.is_empty());
+        assert!(
+            commands.try_recv().is_err(),
+            "replay itself never resends a secret"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_unlock_cancel_and_route_change_clear_only_the_exact_prompt() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-a".into());
+        for (connection_id, profile) in [("gateway-a", "work"), ("gateway-b", "personal")] {
+            let key = gateway_prompt_key(Some(connection_id), Some(profile), "reused-vault-id");
+            app.vault_unlock_prompts.insert(
+                key,
+                VaultUnlockPrompt {
+                    session_id: "runtime-session".into(),
+                    profile: Some(profile.into()),
+                    connection_id: Some(connection_id.into()),
+                    server_request_id: "reused-vault-id".into(),
+                    backend: "bitwarden".into(),
+                    display_name: "Bitwarden".into(),
+                    password: Zeroizing::new("local-only-test".into()),
+                    response_pending: false,
+                    response_unknown: false,
+                },
+            );
+        }
+        app.handle_server_request_cancelled(&json!({"id":"reused-vault-id"}), None, None);
+        assert_eq!(app.vault_unlock_prompts.len(), 2);
+        app.handle_server_request_cancelled(
+            &json!({"id":"reused-vault-id"}),
+            Some("work"),
+            Some("gateway-a"),
+        );
+        assert_eq!(app.vault_unlock_prompts.len(), 1);
+        let remaining_key =
+            gateway_prompt_key(Some("gateway-b"), Some("personal"), "reused-vault-id");
+        assert!(app.vault_unlock_prompts.contains_key(&remaining_key));
+
+        app.gateway_connection_id = Some("gateway-b".into());
+        app.active_session_profile = Some("personal".into());
+        app.route = AppRoute::Settings;
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        drop(harness);
+        assert!(app.vault_unlock_prompts[&remaining_key].password.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_unlock_rejects_missing_or_unowned_session_requests() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-a".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        for (request_id, params, connection, expected_code) in [
+            (
+                "vault-missing-session",
+                json!({"profile":"work","backend":"bitwarden"}),
+                "gateway-a",
+                -32602,
+            ),
+            (
+                "vault-wrong-session",
+                json!({"session_id":"runtime-other","profile":"work","backend":"bitwarden"}),
+                "gateway-a",
+                4404,
+            ),
+            (
+                "vault-wrong-profile",
+                json!({"session_id":"runtime-session","profile":"personal","backend":"bitwarden"}),
+                "gateway-a",
+                4404,
+            ),
+        ] {
+            app.handle_server_request_from_connection(
+                request_id.into(),
+                "vault.unlock_prompt".into(),
+                params,
+                Some(connection.into()),
+            );
+            assert!(app.vault_unlock_prompts.is_empty());
+            assert!(matches!(
+                commands
+                    .recv_timeout(std::time::Duration::from_secs(1))
+                    .expect("invalid request receives a refusal"),
+                TestGatewayCommand::RespondServerRequest {
+                    id,
+                    response: Err((code, _)),
+                    ..
+                } if id == request_id && code == expected_code
+            ));
+        }
+
+        app.handle_server_request_from_connection(
+            "vault-wrong-gateway".into(),
+            "vault.unlock_prompt".into(),
+            json!({"session_id":"runtime-session","profile":"work","backend":"bitwarden"}),
+            Some("gateway-b".into()),
+        );
+        assert!(app.vault_unlock_prompts.is_empty());
+        assert!(
+            commands.try_recv().is_err(),
+            "stale connection is not answered by this Gateway"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_unlock_text_undo_is_cleared_and_route_change_erases_the_draft() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-1".into());
+        app.handle_server_request_from_connection(
+            "vault-undo".into(),
+            "vault.unlock_prompt".into(),
+            json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "backend":"bitwarden",
+                "display_name":"Bitwarden"
+            }),
+            Some("gateway-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(Some("gateway-1"), Some("work"), "vault-undo");
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness
+            .get_by_label("Master password for Bitwarden request vault-undo")
+            .click();
+        harness
+            .get_by_label("Master password for Bitwarden request vault-undo")
+            .type_text("fixture-master");
+        harness.run();
+        assert_eq!(
+            app.borrow().vault_unlock_prompts[&prompt_key]
+                .password
+                .as_str(),
+            "fixture-master"
+        );
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::Z);
+        harness.run();
+        assert_eq!(
+            app.borrow().vault_unlock_prompts[&prompt_key]
+                .password
+                .as_str(),
+            "fixture-master",
+            "the text editor cannot restore a prior secret through undo"
+        );
+        app.borrow_mut().route = AppRoute::Settings;
+        harness.run();
+        assert!(
+            app.borrow().vault_unlock_prompts[&prompt_key]
+                .password
+                .is_empty()
+        );
+        drop(harness);
+        let app = match std::rc::Rc::try_unwrap(app) {
+            Ok(app) => app.into_inner(),
+            Err(_) => panic!("headless app should have no remaining frame references"),
+        };
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
@@ -58388,6 +59123,7 @@ impl HermesNativeApp {
                 "interrupt_pending": self.pending_interrupt.is_some(),
                 "approval_pending_count": self.approval_prompts.len(),
                 "sudo_pending_count": self.sudo_prompts.len(),
+                "vault_unlock_pending_count": self.vault_unlock_prompts.len(),
                 "clarify_pending_count": self.clarify_prompts.len() + self.batch_clarify_prompts.len(),
                 "can_stop": self.gateway_connected
                     && self.active_runtime_session_id.as_ref().is_some_and(|session_id| {
