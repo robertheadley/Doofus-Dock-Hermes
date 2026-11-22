@@ -1503,13 +1503,15 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0511": {
         "state": "partial",
-        "level": "headless_replay_gap_active_and_open_tile_recovery",
+        "level": "headless_replay_gap_and_transport_reconnect_event_replay",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/replay-gap.test.tsx#requests an authoritative resume for the affected active route without losing owner scope or its draft",
             "apps/hermes-native/src/app.rs#replay_gap_resumes_active_session_and_preserves_transcript_and_draft",
             "apps/hermes-native/src/app.rs#replay_gap_resumes_only_the_exact_open_session_pane_owner",
+            "apps/hermes-native/src/gateway.rs#reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0123.json#EV-0123",
         ],
-        "gaps": ["automatic WebSocket reconnect is not implemented; recovery currently handles replay-gap events after a Gateway is connected", "live Hermes replay-gap behavior and authoritative resume after a production disconnect are unverified", "ambiguous multi-profile runtime ownership is fail-closed but lacks a targeted regression", "installed Windows, source-paired visual evidence, and formal source acceptance remain pending"],
+        "gaps": ["authenticated live Gateway reconnect/replay and installed Windows behavior remain unverified", "replay cursors are process-local and endpoint changes do not rebind auxiliary HTTP workers", "snapshot-required or unavailable event replay relies on the authoritative transcript resume triggered on reconnect", "formal pinned-source acceptance remains pending"],
     },
     "PAR-0512": {
         "state": "partial",
@@ -1741,6 +1743,26 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#scheduled_jobs_route_renders_profile_owned_list_and_selected_details",
         ],
         "gaps": ["run-row navigation into its session", "live authenticated gateway", "source-paired behavior and visuals"],
+    },
+    "PAR-0508": {
+        "state": "partial",
+        "level": "headless_gateway_transport_retry_replay_no_resubmit",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/shared/src/reconnect-backoff.ts#reconnectBackoffDelayMs",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/gateway-background-reconnect.test.ts#remote turn reconnect",
+            "apps/hermes-native/src/gateway.rs#start_with_attach",
+            "apps/hermes-native/src/gateway.rs#gateway_reconnect_delay_ms",
+            "apps/hermes-native/src/gateway.rs#reconnect_backoff_matches_pinned_full_jitter_ladder_and_stable_reset",
+            "apps/hermes-native/src/gateway.rs#reconnect_stops_on_auth_rejection_and_cancels_backoff_on_shutdown",
+            "apps/hermes-native/src/gateway.rs#reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0122.json#EV-0122",
+        ],
+        "gaps": [
+            "authenticated live Gateway and packaged Windows reconnect behavior are not verified",
+            "auxiliary HTTP/profile workers remain bound to the first endpoint if the Gateway endpoint changes across reconnect",
+            "replay cursors are process-local; snapshot-required or unavailable replay relies on the reconnect transcript resume",
+            "formal pinned-source acceptance remains pending",
+        ],
     },
     "PAR-0510": {
         "state": "partial",

@@ -1,0 +1,15 @@
+{
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-22",
+  "commit": "1412ed8a910e9a5bf001cbd10e4ce0ca82ba518e",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless local WebSocket fixture. The Gateway retries a transient initial attach failure; after a prompt.submit is admitted and the transport is forcibly dropped before its response, it reconnects to the same profile/instance and sends profile/session/replay_epoch-scoped session.events.since from last_seen=2. It replays the missed tool.start exactly once, rejects a wrong-session row, delivers the next live tool.complete event, and never resends prompt.submit. Backoff regressions cover 300ms exponential ceilings, 15s cap, full-jitter bounds, the 5s stable-open reset, terminal HTTP 401/403 classification, and shutdown cancellation. Full locked suite passes 617 library + 15 protocol + 3 launcher tests; all-target check, rustfmt, diff check and 19 task-continuity tests pass.",
+  "uid": "EV-0122",
+  "capability_id": "ui-implement-bounded-retry-with-backoff",
+  "scenario": "headless-loopback-reconnect",
+  "locator": "../../../../apps/hermes-native/src/gateway.rs::tests::reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
+  "notes": "Partial headless evidence. Transport retry, bounded full-jitter backoff, stable-open reset, owner check and event replay are exercised in local fixtures. Auxiliary HTTP/profile workers remain anchored to the first successful endpoint; a reconnect that changes the endpoint needs a fresh worker binding. Authenticated live Gateway behavior, packaged Windows behavior and formal pinned-source acceptance remain open."
+}

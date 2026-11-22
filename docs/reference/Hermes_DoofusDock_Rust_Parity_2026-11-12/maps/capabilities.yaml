@@ -9920,7 +9920,7 @@ capabilities:
   name: Implement bounded retry with backoff
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can implement bounded retry with backoff.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -9932,9 +9932,17 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: headless-loopback-reconnect
+      description: A loopback fixture forces a transport drop after prompt admission, verifies scoped session.events.since replay and confirms the prompt is submitted only once.
+    - id: authenticated-live-reconnect
+      description: Authenticated local and remote Gateways reconnect, refresh credentials and preserve active sessions on Windows.
+  evidence:
+  - EV-0122
 - id: ui-resume-saved-session-with-correct-profile
   name: Resume saved session with correct profile
   area: protocol-reliability
@@ -10016,9 +10024,12 @@ capabilities:
       description: A replay gap for an open session tile requests one owner-scoped authoritative resume and preserves its cached transcript and draft.
     - id: live-reconnect
       description: A real Gateway disconnect and reconnect replays missed transcript events and resolves the authoritative snapshot without duplication.
+    - id: headless-loopback-reconnect
+      description: A loopback fixture forces a drop after prompt admission, replays only owner-matched session events and does not resubmit the prompt.
   evidence:
   - EV-0024
   - EV-0025
+  - EV-0123
 - id: ui-deduplicate-streamed-event-ids
   name: Deduplicate streamed event IDs
   area: protocol-reliability

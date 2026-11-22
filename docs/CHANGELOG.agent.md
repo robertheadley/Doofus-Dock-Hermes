@@ -4759,3 +4759,25 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No runtime benchmark was run.
 - **risks:** Live Gateway and packaged Windows acceptance remain open; operator-owned runtime work was preserved.
 - **follow_up:** Continue with PAR-0508 bounded Gateway reconnect, replay/resume and duplicate-submit safeguards.
+
+- **id:** hermes-par0508-main-publication-20261122
+- **timestamp:** 2026-11-22T23:02:33Z
+- **what:** Published the Gateway reconnect source slice on `main`; partial capability evidence and progress documentation follow in a separate commit.
+- **why:** Keep the user-selected shared branch current while continuing the feature-parity work.
+- **components:** Doofus-Dock-Hermes `main`, PAR-0508, commit `1412ed8`.
+- **type:** publication
+- **validation:** Full locked suite 617 + 15 + 3, all-target check and 19 continuity tests passed; push/fetch verified source commit on origin/main.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live Gateway, packaged Windows, endpoint migration and strict source acceptance remain open.
+- **follow_up:** Publish evidence/docs and continue the next dependency-ready agent-workflow gap.
+
+- **id:** hermes-par0508-evidence-reconcile-20261122
+- **timestamp:** 2026-11-22T23:09:44Z
+- **what:** Reconciled reconnect/replay evidence, UCM capability states, generated status ledgers, and durable task lifecycle for PAR-0508/PAR-0511.
+- **why:** Keep shared progress grounded in the source commit and distinguish headless implementation evidence from live runtime acceptance.
+- **components:** EV-0122, EV-0123, capabilities.yaml, CAPABILITY_CROSSWALK.csv, full_program_capability_map.json, implementation progress, chat/tool progress, .doofus checkpoint.
+- **type:** evidence_and_status_reconciliation
+- **validation:** Progress builders pass (119/499; 85/176); UCM report confirms declared headless scenario coverage and partial state; package validator 491 pending; task continuity 19/19; doofus state valid; git diff --check passes. Existing map-wide checker errors remain baseline and are documented in EXECUTION_LOGS.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live authenticated Gateway, packaged Windows, endpoint migration and strict source acceptance remain open.
+- **follow_up:** Continue the next dependency-ready P0 agent-workflow gap; preserve partial labels until runtime evidence exists.

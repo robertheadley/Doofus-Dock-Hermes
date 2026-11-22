@@ -3352,3 +3352,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime benchmark was run.
 - **risks:** A normal JSON string copy exists transiently during response serialization/send; live authenticated Gateway, packaged Windows and formal pinned-source acceptance remain open.
 - **follow_up:** Verify authenticated local/remote Gateway behavior and continue the next dependency-ready agent-workflow gap.
+
+- **id:** hermes-par0508-gateway-reconnect-20261122
+- **timestamp:** 2026-11-22T23:02:33Z
+- **what:** Added pinned-policy Gateway reconnect, profile/session event replay, and no prompt resubmission after uncertain transport loss.
+- **why:** Preserve agent chat and tool workflows across ordinary Gateway network drops without duplicating user prompts.
+- **components:** PAR-0508, PAR-0511, `GatewayDiscovery`, `session.events.since`, EV-0122, EV-0123.
+- **type:** feature_and_test
+- **validation:** Full locked suite 617 library + 15 protocol + 3 launcher; all-target cargo check; rustfmt/diff; task continuity 19/19.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live Gateway and packaged Windows behavior are unverified; auxiliary HTTP/profile workers do not rebind after endpoint changes.
+- **follow_up:** Verify live local/remote reconnect and rebind secondary workers when the endpoint changes.
