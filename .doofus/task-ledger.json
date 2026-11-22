@@ -1,5 +1,5 @@
 {
-  "revision": 102,
+  "revision": 104,
   "schema_version": 1,
   "tasks": [
     {
@@ -1733,7 +1733,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-22T03:06:46Z",
+              "last_updated_at": "2026-11-22T03:30:25Z",
               "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-edit-a-previous-user-message",
               "outputs": [],
@@ -1758,7 +1758,12 @@
                 "apps/hermes-native/src/app.rs#editing_during_a_running_turn_interrupts_before_truncating_submit",
                 "apps/hermes-native/src/app.rs#unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt",
                 "apps/hermes-native/src/app.rs#refused_prior_message_edit_preserves_composer_and_restores_edit_text",
-                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0092.json#EV-0092"
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0092.json#EV-0092",
+                "apps/hermes-native/docs/PLAN.md#Revision 305",
+                "apps/hermes-native/src/app.rs#failed_turn_without_row_id_exposes_edit_dialog_without_truncation_warning",
+                "apps/hermes-native/src/app.rs#failed_turn_without_durable_row_uses_plain_submit_and_replaces_only_after_admission",
+                "apps/hermes-native/src/app.rs#refused_failed_turn_edit_keeps_original_error_and_draft_for_retry",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0093.json#EV-0093"
               ]
             },
             {
@@ -16369,5 +16374,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T03:06:46Z"
+  "updated_at": "2026-11-22T03:30:25Z"
 }

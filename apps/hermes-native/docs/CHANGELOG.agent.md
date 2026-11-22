@@ -3046,3 +3046,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** No application behavior change.
 - **risks:** None.
 - **follow_up:** Use observed timestamps for subsequent evidence and publication records.
+
+
+## PAR-0051 failed-turn edit publication — 2026-11-22
+
+- **id:** hermes-par0051-failed-turn-edit-publication-20261122
+- **timestamp:** 2026-11-22T03:29:35Z
+- **what:** Published the failed-prompt edit implementation and partial evidence to the user-designated `main` branch.
+- **why:** Keep completed agent-workflow work current on the canonical repository branch.
+- **components:** Native chat edit UI, Gateway submission/reconciliation, tests, progress overlays and EV-0093.
+- **type:** Publication.
+- **validation:** Push succeeded. Fresh `git fetch origin main` confirmed local and remote SHA `8c35b9078d067fb0f22c17b5f32ff804f057594b`. The task handoff checkpoint is being reconciled separately.
+- **performance:** No runtime change in this publication step.
+- **risks:** Live Gateway and packaged Windows validation remain open.
+- **follow_up:** Continue PAR-0051 with history-based durable-row resolution; keep overall project goal active.

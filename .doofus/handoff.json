@@ -123,12 +123,12 @@
     {
       "kind": "delegated_agent",
       "model": null,
-      "note": "Read-only agent-workflow capability priority audit; no source edits or live Gateway calls.",
-      "observed_at": "2026-11-22T03:08:04Z",
+      "note": "Read-only capability audit completed; recommended exact durable-row fallback / failed-turn edit behavior. No edits or live Gateway calls.",
+      "observed_at": "2026-11-22T03:11:10Z",
       "pid": null,
       "process_id": "subagent:next_agent_gap_audit",
       "provider": "codex",
-      "state": "running"
+      "state": "stopped"
     },
     {
       "kind": "delegated_agent",
@@ -183,12 +183,12 @@
     {
       "kind": "delegated_agent",
       "model": null,
-      "note": "Read-only PAR-0051 contract audit; no source edits or live Gateway calls.",
-      "observed_at": "2026-11-22T03:08:05Z",
+      "note": "Read-only PAR-0051 audit completed; identified failed-turn plain-resubmit and missing durable row history fallback. No edits or live Gateway calls.",
+      "observed_at": "2026-11-22T03:11:11Z",
       "pid": null,
       "process_id": "subagent:par0051_next_contract_audit",
       "provider": "codex",
-      "state": "running"
+      "state": "stopped"
     },
     {
       "kind": "delegated_agent",
@@ -367,6 +367,18 @@
       "status": " M"
     },
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -392,16 +404,14 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --locked --features agent-automation; cargo check --manifest-path apps/hermes-native/Cargo.toml --all-targets --locked --features agent-automation",
+    "command": "git fetch origin main; compare exact local and remote main SHA",
     "evidence": [
-      "apps/hermes-native/src/gateway.rs#edit_prompt_resumes_stale_runtime_and_retries_exact_truncation_once",
-      "apps/hermes-native/src/gateway.rs#edit_prompt_does_not_retry_when_resume_returns_the_wrong_owner",
-      "apps/hermes-native/src/app.rs#stale_edit_runtime_rebind_updates_only_the_matching_connection_owner",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0092.json#EV-0092"
+      "apps/hermes-native/docs/PLAN.md#Revision 305",
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0093.json#EV-0093"
     ],
     "state": "in_progress",
-    "summary": "Published PAR-0051 stale-runtime prior-message edit recovery and EV-0092 to main. Pinned, local WebSocket and app owner contracts pass; wrong-owner recovery fails closed; existing chat and attachment work is preserved. Live Gateway, packaged Windows behavior, and source acceptance remain unverified.",
-    "verified_at": "2026-11-22T03:07:07Z"
+    "summary": "PAR-0051 failed-turn edit is validated and published. Implementation 98a33c86 and EV-0093/progress 8c35b90 are on origin/main; fresh fetch confirms exact SHA 8c35b9078d067fb0f22c17b5f32ff804f057594b. Full suite 543+15+3; all-target check; package and task continuity validators pass. Overall goal stays active; live runtime and formal pinned-source acceptance remain pending. Operator work folder and installed Gateway untouched.",
+    "verified_at": "2026-11-22T03:30:27Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -461,7 +471,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T04:07:07Z",
+    "lease_expires_at": "2026-11-22T04:30:27Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1732,11 +1742,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0051-next-contract-agent-start-20261122",
+  "last_event_id": "f0e2613e-0ffa-44fa-b960-b5d532603e7e",
   "last_operation": {
-    "request_id": "hermes-par0051-next-contract-agent-start-20261122",
+    "request_id": "f0e2613e-0ffa-44fa-b960-b5d532603e7e",
     "state": "committed",
-    "type": "process.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1753,7 +1763,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Audit and advance the next source-faithful PAR-0051 edit contract gap without contacting the installed Gateway; keep the active task partial until live/source acceptance is proven.",
+  "recommended_next_action": "Continue PAR-0051 by implementing the pinned session.history durable-row-ID fallback for eligible user rows without row_id; require unambiguous exact matching or provably newest target and fail closed before truncation otherwise. Then test and publish.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2206,7 +2216,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "9b3ce79e67116a9c7d342a1f8636a28ce07acc0c01c3704a8ce2ce037613fdaa",
+    "change_fingerprint": "9a7a2a4f5d99ae041ba9574b2bd4b0714d071678ec05b70aaebdd818d8f8efba",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2218,6 +2228,14 @@
       },
       {
         "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2237,17 +2255,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "d9882a5a6e187e62dc20e6f17c8e4c3589a488b5",
+    "head_commit": "8c35b9078d067fb0f22c17b5f32ff804f057594b",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 642,
+  "revision": 649,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 642,
+  "state_revision": 649,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0051",
-  "task_ledger_revision": 102,
+  "task_ledger_revision": 104,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3723,9 +3741,19 @@
       "command": "full locked agent-automation suite; all-target check; task continuity 19/19; package validator",
       "result": "PASS: 540 library + 15 protocol + 3 launcher; all-target check; rustfmt/diff/progress; continuity 19/19; package validator 76 receipts (optional PyYAML skipped).",
       "timestamp": "2026-11-22T03:07:07Z"
+    },
+    {
+      "command": "Failed-turn rendered action/dialog, plain-submit command, admission replacement and refusal preservation",
+      "result": "PASS 543 library + 15 protocol + 3 launcher; all-target check; fmt/diff; progress generators; task continuity 19/19; task-state schema; root validator 77 receipts; archival validator 491 pending; optional PyYAML skipped.",
+      "timestamp": "2026-11-22T03:28:34Z"
+    },
+    {
+      "command": "Full locked suite and all available headless/package/continuity validation",
+      "result": "PASS: 543 library + 15 protocol + 3 launcher; all-target check, fmt/diff, progress generators, 19 continuity tests, task state, root package (77 receipts), archival package (491 pending); optional PyYAML parse skipped.",
+      "timestamp": "2026-11-22T03:30:27Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T03:08:05Z"
+  "updated_at": "2026-11-22T03:30:27Z"
 }
