@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0107",
+  "capability_id": "ui-handle-request-cancellation",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "gateway-request-cancel-by-id-and-profile",
+  "locator": "apps/hermes-native/src/app.rs::request_cancel_clears_only_the_matching_approval_and_clarify_request",
+  "date": "2026-11-22",
+  "commit": "d7751abbf377aada711e521305e685279e59ff1a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless regression covers missing and unknown request IDs, exact-ID removal for approvals, profile mismatch preservation, and exact-ID/profile removal for batch clarification. Full locked all-target suite passes 583 library + 15 protocol + 3 launcher tests; all-target cargo check, rustfmt, 19 task-continuity tests, task validation, both progress generators, and root and archival source package validators pass.",
+  "notes": "Partial evidence only. Native request cancellation applies to approval and batch-clarification cards currently handled by this client. Pinned sensitive prompt handlers are not implemented. Authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance were not exercised. The root package validator skipped YAML parsing because PyYAML is absent."
+}

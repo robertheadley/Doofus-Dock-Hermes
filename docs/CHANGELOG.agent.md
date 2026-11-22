@@ -4477,3 +4477,5 @@ Publication follow-up — 2026-11-22T08:59:23Z: Implementation commit `b24bd3186
 - **follow_up:** Run full locked validation, bind evidence to the implementation commit, and publish to `main`.
 
 Validation follow-up — 2026-11-22T09:08:54Z: PASS focused request-cancel test; PASS full locked all-target suite (583 library + 15 automation protocol + 3 launcher), locked all-target check, rustfmt/diff checks, 19 task-continuity tests, both progress generators, canonical task-state validation and root/archival source package validators. The root validator skipped YAML parsing because PyYAML is absent. Live Gateway, packaged Windows and pinned-source acceptance remain open.
+
+Evidence follow-up — 2026-11-22: EV-0107 binds the headless cancellation regression to implementation commit `d7751abbf377aada711e521305e685279e59ff1a`. The capability remains partial; the root package validates 91 implementation receipts. Live Gateway, packaged Windows and pinned-source acceptance remain open.
