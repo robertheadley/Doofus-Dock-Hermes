@@ -4245,3 +4245,6 @@ PAR-0060 is published to `origin/main`; fresh fetch confirms main at 618403c88fd
 
 
 PAR-0061 adds native model-change safety evidence: composer text and attachments survive success/refusal/confirmation outcomes, and stale profile receipts do not consume the active model mutation. Headless full suite passes; live Gateway and packaged Windows acceptance remain open.
+
+
+PAR-0061 partial receipt EV-0096 is bound to implementation commit 8c19b9cf5ec5f242dd2d31201176b1a230dafc24. The task checkpoint records full headless validation; live and source-paired acceptance remain open.

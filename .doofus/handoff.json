@@ -369,12 +369,6 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "32-view",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
       "status": "??"
     },
@@ -399,18 +393,18 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0095.json",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0096.json",
       "status": "??"
     }
   ],
   "checkpoint": {
     "command": "cargo check --all-targets --locked --features agent-automation",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0095.json#EV-0095"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0096.json#EV-0096"
     ],
     "state": "tested",
-    "summary": "PAR-0060 draft persistence implemented and headless-validated; requirement remains partial until packaged Windows and pinned-source acceptance.",
-    "verified_at": "2026-11-22T04:36:34Z"
+    "summary": "PAR-0061 rendered model-switch composer preservation is headless-tested and remains partial pending live, packaged and source-paired acceptance.",
+    "verified_at": "2026-11-22T04:52:35Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -432,6 +426,7 @@
     "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0060",
+    "hermes-par-0061",
     "hermes-par-0062",
     "hermes-par-0063",
     "hermes-par-0064",
@@ -471,7 +466,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T05:36:34Z",
+    "lease_expires_at": "2026-11-22T05:52:35Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1742,9 +1737,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0060-checkpoint-20261122",
+  "last_event_id": "hermes-par0061-checkpoint-20261122",
   "last_operation": {
-    "request_id": "hermes-par0060-checkpoint-20261122",
+    "request_id": "hermes-par0061-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1763,7 +1758,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue next dependency-ready chat/tool requirement; keep source-paired and packaged Windows acceptance visible as separate remaining work.",
+  "recommended_next_action": "Continue the next dependency-ready P0 chat/tool capability; keep the broad and chat/tool evidence gaps visible and do not infer runtime parity from headless coverage.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1808,7 +1803,6 @@
     "hermes-par-0055",
     "hermes-par-0056",
     "hermes-par-0059",
-    "hermes-par-0061",
     "hermes-par-0066",
     "hermes-par-0068",
     "hermes-par-0069",
@@ -2215,7 +2209,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "c7137761d32f1e427fc1cff1ef0ee32928f3fd5170430f96f6c963c3c94d3c58",
+    "change_fingerprint": "e50accf12a9a987a8562e0ad1f20b4eff7b3ef2350dd5895a8c448aafbe78959",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2228,10 +2222,6 @@
       {
         "path": ".doofus/task-ledger.json",
         "status": " M"
-      },
-      {
-        "path": "32-view",
-        "status": "??"
       },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -2250,21 +2240,21 @@
         "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0095.json",
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0096.json",
         "status": "??"
       }
     ],
-    "head_commit": "32d59b04453134876562ab4de8a87f70d0167245",
+    "head_commit": "8c19b9cf5ec5f242dd2d31201176b1a230dafc24",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 655,
+  "revision": 659,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 655,
+  "state_revision": 659,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0060",
-  "task_ledger_revision": 107,
+  "task_id": "hermes-par-0061",
+  "task_ledger_revision": 109,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3755,9 +3745,14 @@
       "command": "556 library + 15 protocol + 3 launcher tests",
       "result": "PASS full locked suite; all-target check; rustfmt/diff; both progress generators; 19 task continuity tests; task schema; 79-receipt pinned package and 491-row archival package validators",
       "timestamp": "2026-11-22T04:36:34Z"
+    },
+    {
+      "command": "557 library + 15 protocol + 3 launcher tests",
+      "result": "PASS focused rendered model picker flow, full locked suite, all-target check, rustfmt/diff, progress generators, 19 task continuity tests, task schema, 80-receipt pinned package and 491-row archival package validators",
+      "timestamp": "2026-11-22T04:52:35Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T04:36:34Z"
+  "updated_at": "2026-11-22T04:52:35Z"
 }

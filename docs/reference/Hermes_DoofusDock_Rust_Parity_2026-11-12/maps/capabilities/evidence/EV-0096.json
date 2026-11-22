@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0096",
+  "capability_id": "ui-preserve-unsent-draft-after-model-change",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "model_picker_receipts_preserve_unsent_text_and_attachments_across_owner_scoped_outcomes",
+  "locator": "apps/hermes-native/src/app.rs#model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation",
+  "date": "2026-11-22",
+  "commit": "8c19b9cf5ec5f242dd2d31201176b1a230dafc24",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui app test selects a custom model through the rendered chat composer control. Matching success changes the model while preserving the unsent draft and attachment; a stale profile receipt is ignored without consuming the active model mutation; refusal and confirmation-required results preserve the same composer state; no prompt is submitted. Full locked suite passes 557 library + 15 protocol + 3 launcher tests; all-target check, rustfmt/diff, both progress generators, 19 task-continuity tests, task schema and pinned/archival capability package validators pass.",
+  "notes": "Partial native evidence only. No live Gateway or packaged Windows app was used. Source-paired and runtime acceptance remain open."
+}

@@ -3118,3 +3118,6 @@ PAR-0060 publication: implementation `32d59b04453134876562ab4de8a87f70d0167245` 
 ### PAR-0061 model-change composer preservation — 2026-11-22
 
 Added a rendered model-picker regression proving that an unsent prompt and attached file remain intact after model selection. Matching success changes the model; refusal and confirmation-required receipts preserve composer state; stale-profile receipts are ignored before the active request is consumed. Validation passes: 557 library + 15 protocol + 3 launcher tests, all-target check, rustfmt/diff, progress and task validators, and both capability packages. Live Gateway and packaged Windows behavior remain unverified.
+
+
+PAR-0061 evidence update: EV-0096 is bound to implementation commit 8c19b9cf5ec5f242dd2d31201176b1a230dafc24. Generated evidence coverage now reads 99/499 overall and 65/176 chat/tool requirements; those counts measure mapped review evidence, not feature completion. Task hermes-par-0061 is tested at checkpoint revision 659 and remains partial.
