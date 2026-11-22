@@ -3238,3 +3238,17 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime behavior changed.
 - **risks:** Canonical UCM package-wide check retains 162 legacy errors and 11 unrelated reconciliation items; no EV-0113-specific issue. Live Gateway and packaged Windows remain unverified.
 - **follow_up:** Publish implementation and evidence to main, then verify exact origin/main equality.
+
+
+### PAR-0527 publication — 2026-11-22
+
+- **id:** PAR-0527-PUBLISH
+- **timestamp:** 2026-11-22T11:41:13Z
+- **what:** Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and EV-0113/progress commit `4559146774428da8c59eaa41b96afdb394a90740` to `origin/main`.
+- **why:** Deliver the verified malformed-response safety slice and its partial capability evidence to the requested branch.
+- **components:** Native Gateway sidebar response decoder, session refresh UI, completion progress, UCM and task ledger.
+- **type:** publication
+- **validation:** Fresh fetch confirmed local main and origin/main both equal `4559146774428da8c59eaa41b96afdb394a90740`; task checkpoint revision 764 validates.
+- **performance:** No runtime behavior changed during publication.
+- **risks:** Authenticated live Gateway and packaged Windows acceptance remain open; the capability stays partial.
+- **follow_up:** Select the next dependency-ready agent workflow task from the current progress report.

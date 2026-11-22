@@ -4614,3 +4614,8 @@ Native rejects a sidebar success response that omits `recents.sessions` without 
 ### PAR-0527 evidence — 2026-11-22
 
 EV-0113 binds the malformed-sidebar cache-preservation regression to `b1baf05e20c02b8e28638c93db0236a2119b6eb2`. The UCM capability is partial with a passing headless scenario; live Gateway and packaged Windows behavior are unverified. Completion overlays now report 112/499 broad and 78/176 chat/tool evidence coverage.
+
+
+### PAR-0527 publication — 2026-11-22
+
+Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and EV-0113/progress commit `4559146774428da8c59eaa41b96afdb394a90740` to main. Fresh fetch confirmed exact local/origin SHA equality at `4559146774428da8c59eaa41b96afdb394a90740`.
