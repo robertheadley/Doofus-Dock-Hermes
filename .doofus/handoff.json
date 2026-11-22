@@ -363,7 +363,13 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
@@ -389,22 +395,16 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0105.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked --features agent-automation --all-targets --quiet; cargo check --locked --features agent-automation --all-targets; cargo fmt --all -- --check; python apps/hermes-native/tools/test_doofus_task.py; python apps/hermes-native/tools/build_implementation_progress.py; python apps/hermes-native/tools/build_chat_tool_progress.py; python apps/hermes-native/tools/doofus_task.py validate; python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py; python apps/hermes-native/docs/reference/Hermes_Upstream_UI_DoofusDock_Rust_Parity_2026-11-13/tools/validate_package.py",
+    "command": null,
     "evidence": [
-      "apps/hermes-native/src/app.rs#prompt_timeline_refresh_keeps_old_rows_until_first_page_replaces_them"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0105.json#EV-0105"
     ],
     "state": "tested",
-    "summary": "PAR-0056 prompt history now invalidates matching indexes after successful admissions, preserves cached rows while refreshing, and marks the active prompt from viewport position. Full native suite and capability package validators pass; authenticated live Gateway, packaged Windows, physical scrolling, time-based expiry and cross-client mutation remain unverified.",
-    "verified_at": "2026-11-22T08:27:59Z"
+    "summary": "PAR-0056 prompt-index invalidation and viewport-active markers are implemented, tested, documented, evidence-mapped and published on main. All 578+15+3 locked tests and both capability package validators pass; existing functional workflows remain preserved.",
+    "verified_at": "2026-11-22T08:29:30Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -472,7 +472,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T09:27:59Z",
+    "lease_expires_at": "2026-11-22T09:29:30Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -966,16 +966,18 @@
       "state": "succeeded"
     },
     {
-      "evidence": [],
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0105.json#EV-0105"
+      ],
       "kind": "publication",
-      "note": "Publish tested PAR-0056 history-freshness and active-marker work to main after EV-0105 is bound and both package validators pass.",
-      "observed_at": "2026-11-22T08:28:20Z",
+      "note": "Implementation commit b65bbc4 and evidence/task checkpoint commit 9b7e34a pushed to origin/main; fresh fetch confirms exact local/remote equality.",
+      "observed_at": "2026-11-22T08:28:50Z",
       "operation_id": "hermes-par0056-main-publication-20261122",
       "owner": {
         "model": null,
         "provider": "codex"
       },
-      "state": "running"
+      "state": "succeeded"
     },
     {
       "evidence": [
@@ -1839,11 +1841,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "e617899a-2392-4587-8d37-7f5822c076c6",
+  "last_event_id": "2caa7fad-d306-4d6f-9a1c-03e3df452d0b",
   "last_operation": {
-    "request_id": "e617899a-2392-4587-8d37-7f5822c076c6",
+    "request_id": "2caa7fad-d306-4d6f-9a1c-03e3df452d0b",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1860,7 +1862,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Publish the tested implementation and EV-0105 evidence to main, then select the next P0 agent-workflow gap from canonical progress.",
+  "recommended_next_action": "Inspect canonical progress and source requirements, then select the next dependency-ready P0 feature within model/provider connection, chat, tools/approval, skills, plugins/MCP or context/attachments. Keep the pinned Hermes snapshot fixed.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2305,7 +2307,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "b4cbbcc79daf88c0ffb89e718ed7adb034b457a472965055a67947904b7e80b0",
+    "change_fingerprint": "e962979c3f26e04161490221db613a97723e63b3a7258459f3c6010e0293582a",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2316,7 +2318,11 @@
         "status": " M"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2334,20 +2340,16 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0105.json",
-        "status": "??"
       }
     ],
-    "head_commit": "b65bbc463e521ade6c9fd852dbc34a08aad36837",
+    "head_commit": "9b7e34a13783047bebe273e5048cce2dbf548362",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 717,
+  "revision": 719,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 717,
+  "state_revision": 719,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0056",
   "task_ledger_revision": 125,
@@ -4070,5 +4072,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T08:28:20Z"
+  "updated_at": "2026-11-22T08:29:30Z"
 }

@@ -4439,3 +4439,6 @@ Publication follow-up — 2026-11-22T08:03:48Z: Implementation commit `3071c0984
 
 
 Validation follow-up — 2026-11-22T08:27:07Z: PAR-0056 freshness/active-marker regressions pass. The full locked Rust suite passes 578 library + 15 protocol + 3 launcher tests; all-target locked check, rustfmt, 19 task-continuity tests, both progress generators, canonical task validation, and the archival package validator (491 pending) pass. The root evidence package validator awaits EV-0105's implementation commit binding. Existing `handle_server_event` dead-code warning remains.
+
+
+Publication follow-up — 2026-11-22T08:29:04Z: Implementation commit `b65bbc463e521ade6c9fd852dbc34a08aad36837` and evidence/checkpoint commit `9b7e34a13783047bebe273e5048cce2dbf548362` were pushed to `origin/main`. Fresh fetch verified exact local/remote equality at `9b7e34a13783047bebe273e5048cce2dbf548362`. EV-0105 is bound to the implementation commit; EV-0102 through EV-0104 remain unchanged. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
