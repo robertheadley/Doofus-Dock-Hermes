@@ -4157,3 +4157,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - Behavior commit `759b4a49153deddbd56cb4ae5ca05b1e2a0721c9`; partial evidence receipt EV-0091 and generated overlays committed in `c2a05b656bb8e5aeb9fe25d4374f1699b43127cf`.
 - Both commits were pushed to `main`; fresh fetch confirmed local `main` and `origin/main` equal `c2a05b656bb8e5aeb9fe25d4374f1699b43127cf`.
 - Coverage now records 97/499 broad requirements and 63/176 scoped chat/tool requirements with mapped evidence. All live-runtime and source-paired acceptance remains pending. `apps/hermes-native/work/` was excluded and preserved.
+
+
+## Doofus task Git status parsing — 2026-11-22
+
+- **id:** HERMES-TASK-GITSTATUS-2026-11-22
+- **timestamp:** 2026-11-22T02:38:06Z
+- **what:** Preserve the leading status column from `git status --porcelain` so a leading dot in `.doofus/` paths is not stripped; task progress no longer mistakes Doofus state files for ordinary worktree drift.
+- **why:** Keep portable handoff checkpoints accurate after publication while retaining clear reporting of operator-owned work.
+- **components:** `apps/hermes-native/tools/doofus_task.py`, `apps/hermes-native/tools/test_doofus_task.py`, project journals.
+- **type:** continuity tooling fix and regression test.
+- **validation:** PASS all 19 isolated task continuity tests; post-fix checkpoint and task validator remain to run.
+- **performance:** Adds no repository-scale scans; preserves the existing single porcelain status call.
+- **risks:** None beyond platform-specific porcelain parsing, covered by isolated repository regression.
+- **follow_up:** Recheckpoint after publishing this correction and confirm `git_drift` is false with the operator work folder preserved.

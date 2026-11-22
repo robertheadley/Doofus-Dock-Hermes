@@ -196,6 +196,15 @@ class DoofusTaskTests(unittest.TestCase):
         self.assertEqual(result["current_owner"]["provider"], "antigravity")
         self.assertFalse(task.status_report(self.root)["git_drift"])
 
+    def test_dotdoofus_events_do_not_create_false_git_drift(self) -> None:
+        lease = self.initial["current_owner"]["lease_id"]
+        self.handoff("codex", lease, "antigravity", "hand-dotdoofus-drift")
+        report = task.status_report(self.root)
+        self.assertFalse(report["git_drift"])
+        self.assertTrue(
+            any(item["path"] == ".doofus/events.jsonl" for item in report["changed_files"])
+        )
+
     def test_stale_and_wrong_provider_leases_cannot_update_tasks(self) -> None:
         lease = self.initial["current_owner"]["lease_id"]
         self.handoff("codex", lease, "antigravity", "hand-owner")

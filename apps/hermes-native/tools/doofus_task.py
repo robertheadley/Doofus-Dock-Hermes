@@ -37,11 +37,11 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def git(root: Path, *args: str, check: bool = True) -> str:
+def git(root: Path, *args: str, check: bool = True, preserve_whitespace: bool = False) -> str:
     result = subprocess.run(["git", *args], cwd=root, text=True, encoding="utf-8", errors="replace", capture_output=True)
     if check and result.returncode:
         raise TaskError(f"git {' '.join(args)} failed ({result.returncode}): {result.stderr.strip()}")
-    return result.stdout.strip()
+    return result.stdout.rstrip("\r\n") if preserve_whitespace else result.stdout.strip()
 
 
 def repo_root(start: Path | None = None) -> Path:
@@ -65,7 +65,15 @@ def safe_remote(value: str) -> str:
 
 
 def _status_rows(root: Path) -> list[dict[str, str]]:
-    raw = git(root, "-c", "core.quotepath=false", "status", "--porcelain=v1", "--untracked-files=all")
+    raw = git(
+        root,
+        "-c",
+        "core.quotepath=false",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        preserve_whitespace=True,
+    )
     rows: list[dict[str, str]] = []
     for line in raw.splitlines():
         if len(line) < 4:
