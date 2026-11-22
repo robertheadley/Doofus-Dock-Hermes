@@ -219,3 +219,5 @@ PAR-0061 verifies model switching through the rendered chat control without losi
 Gateway withdrawal events now close only the approval or batch-clarification request identified by the exact server request ID, with a profile check when the event includes an owner. Sensitive request cards and live Gateway verification remain open.
 
 Ambiguous approval and clarification response transport outcomes remain visible as unknown and disable resending; explicit Gateway refusals remain distinguishable. This policy is not yet applied to every mutating Gateway action.
+
+Approval and clarification prompts now retain their originating Gateway connection and profile through display, response, and cancellation. Owner-qualified prompt IDs allow separate Gateways to reuse request IDs without replacing or answering another connection's prompt. Headless regressions cover the boundary; live Gateway, packaged Windows, and pinned-source acceptance remain open. Other mutating Gateway commands still need an equivalent connection/profile audit.

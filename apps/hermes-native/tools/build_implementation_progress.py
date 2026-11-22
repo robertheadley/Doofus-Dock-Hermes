@@ -1299,6 +1299,25 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "authenticated live Gateway, packaged Windows behavior, and formal source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0523": {
+        "state": "partial",
+        "level": "headless_gateway_profile_connection_prompt_ownership_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/gateway.ts#ScopedServerRequest",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/gateway.ts#dispatchServerRequest",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/contrib/session-rpc-dispatcher.ts#exact (connectionId, profile)",
+            "apps/hermes-native/src/gateway.rs#poll_event",
+            "apps/hermes-native/src/app.rs#handle_server_request_from_connection",
+            "apps/hermes-native/src/app.rs#session_runtime_is_known",
+            "apps/hermes-native/src/app.rs#approval_prompts_are_scoped_by_gateway_and_profile",
+            "apps/hermes-native/src/gateway.rs#poll_event_attaches_stable_connection_id_to_session_resume",
+            "apps/hermes-native/docs/PLAN.md#Revision 328",
+        ],
+        "gaps": [
+            "owner-scoped approval and clarification prompts cover the native server-request/event flows, but other mutating Gateway commands still require a full connection/profile request audit",
+            "authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",

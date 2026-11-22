@@ -348,3 +348,7 @@ The normal Gateway event channel handles `request.cancel` by exact server reques
 ## Unknown Gateway response outcomes
 
 Approval, clarification, and clarification-lock RPCs distinguish a definite remote JSON-RPC refusal from an ambiguous transport result. A timeout, disconnect, malformed/missing receipt, or response payload that cannot be validated is not treated as rejection or success. Native keeps the prompt and in-flight response tuple, marks it unknown, disables repeat actions, and exposes an accessible warning. On disconnect, in-flight prompt responses remain unknown instead of returning to an idle/retryable state. A later `request.cancel` clears the exact server-request card. Other mutating Gateway commands still need the same typed outcome policy.
+
+## Gateway prompt ownership
+
+Gateway-originated approval and clarification prompts carry the connection ID and profile that delivered them. Native names prompt-state entries by that owner plus the upstream prompt/request ID, stamps connection ownership onto Gateway request and result events, and checks the owner again when rendering, responding, applying results, and processing `request.cancel`. This permits identical IDs on separate Gateway connections while ensuring an inactive connection's prompt cannot be submitted through the active connection. The scope currently covers approval, single-question clarification, batch clarification, and their cancellation/result paths; unrelated mutating Gateway operations still require an end-to-end owner audit.

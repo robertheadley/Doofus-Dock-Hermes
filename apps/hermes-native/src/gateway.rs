@@ -1970,34 +1970,42 @@ pub enum GatewayEvent {
     ApprovalResponded {
         request_id: String,
         session_id: String,
+        profile: Option<String>,
         prompt_id: String,
         choice: String,
         result: Result<(), String>,
         outcome_unknown: bool,
+        connection_id: Option<String>,
     },
     ClarifyResponded {
         request_id: String,
         session_id: String,
+        profile: Option<String>,
         prompt_id: String,
         answer: String,
         result: Result<(), String>,
         outcome_unknown: bool,
+        connection_id: Option<String>,
     },
     ClarifyLocked {
         request_id: String,
         clarify_request_id: String,
+        profile: Option<String>,
         question_id: String,
         result: Result<ClarifyLockReceipt, String>,
         outcome_unknown: bool,
+        connection_id: Option<String>,
     },
     ServerRequestReceived {
         id: String,
         method: String,
         params: serde_json::Value,
+        connection_id: Option<String>,
     },
     ServerRequestAnswered {
         id: String,
         result: Result<(), String>,
+        connection_id: Option<String>,
     },
     SessionCreated(Result<CreatedSession, String>),
     ServerEvent {
@@ -4481,6 +4489,13 @@ impl GatewayDiscovery {
                 *connection_id = self.connection_id.clone();
             }
             GatewayEvent::ServerEvent { connection_id, .. } => {
+                *connection_id = self.connection_id.clone();
+            }
+            GatewayEvent::ApprovalResponded { connection_id, .. }
+            | GatewayEvent::ClarifyResponded { connection_id, .. }
+            | GatewayEvent::ClarifyLocked { connection_id, .. }
+            | GatewayEvent::ServerRequestReceived { connection_id, .. }
+            | GatewayEvent::ServerRequestAnswered { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
             _ => {}
@@ -7989,10 +8004,12 @@ fn gateway_actor(
                     .send(GatewayEvent::ApprovalResponded {
                         request_id,
                         session_id,
+                        profile,
                         prompt_id,
                         choice,
                         result,
                         outcome_unknown,
+                        connection_id: None,
                     })
                     .is_err()
                 {
@@ -8050,10 +8067,12 @@ fn gateway_actor(
                     .send(GatewayEvent::ClarifyResponded {
                         request_id,
                         session_id,
+                        profile,
                         prompt_id,
                         answer,
                         result,
                         outcome_unknown,
+                        connection_id: None,
                     })
                     .is_err()
                 {
@@ -8106,9 +8125,11 @@ fn gateway_actor(
                     .send(GatewayEvent::ClarifyLocked {
                         request_id,
                         clarify_request_id,
+                        profile,
                         question_id,
                         result,
                         outcome_unknown,
+                        connection_id: None,
                     })
                     .is_err()
                 {
@@ -8135,7 +8156,11 @@ fn gateway_actor(
                     .map_err(|_| "Could not answer Hermes server request".to_owned())
                     .and(result);
                 if events
-                    .send(GatewayEvent::ServerRequestAnswered { id, result })
+                    .send(GatewayEvent::ServerRequestAnswered {
+                        id,
+                        result,
+                        connection_id: None,
+                    })
                     .is_err()
                 {
                     return;
@@ -8157,6 +8182,7 @@ fn gateway_actor(
                                 id,
                                 method,
                                 params,
+                                connection_id: None,
                             });
                         } else if let Some(response) = unhandled_server_request_response(&frame) {
                             if socket
@@ -16689,6 +16715,63 @@ mod tests {
                 && connection_id == "saved-remote-a"
                 && error == "offline"
         ));
+
+        events
+            .send(GatewayEvent::ServerRequestReceived {
+                id: "approval-request".into(),
+                method: "approval".into(),
+                params: serde_json::json!({"session_id":"runtime","profile":"work"}),
+                connection_id: None,
+            })
+            .expect("queue server request");
+        assert!(matches!(
+            discovery.poll_event(),
+            Some(GatewayEvent::ServerRequestReceived {
+                id,
+                connection_id: Some(connection_id),
+                ..
+            }) if id == "approval-request" && connection_id == "saved-remote-a"
+        ));
+
+        events
+            .send(GatewayEvent::ServerRequestAnswered {
+                id: "approval-request".into(),
+                result: Ok(()),
+                connection_id: None,
+            })
+            .expect("queue server request receipt");
+        assert!(matches!(
+            discovery.poll_event(),
+            Some(GatewayEvent::ServerRequestAnswered {
+                id,
+                connection_id: Some(connection_id),
+                ..
+            }) if id == "approval-request" && connection_id == "saved-remote-a"
+        ));
+
+        events
+            .send(GatewayEvent::ApprovalResponded {
+                request_id: "approval-response".into(),
+                session_id: "runtime".into(),
+                profile: Some("work".into()),
+                prompt_id: "prompt".into(),
+                choice: "once".into(),
+                result: Ok(()),
+                outcome_unknown: false,
+                connection_id: None,
+            })
+            .expect("queue approval response receipt");
+        assert!(matches!(
+            discovery.poll_event(),
+            Some(GatewayEvent::ApprovalResponded {
+                request_id,
+                profile: Some(profile),
+                connection_id: Some(connection_id),
+                ..
+            }) if request_id == "approval-response"
+                && profile == "work"
+                && connection_id == "saved-remote-a"
+        ));
     }
 
     #[test]
@@ -19879,7 +19962,7 @@ mod tests {
             .expect("approval request reaches the UI event channel");
         assert!(matches!(
             request,
-            GatewayEvent::ServerRequestReceived { id, method, params }
+            GatewayEvent::ServerRequestReceived { id, method, params, .. }
                 if id == "approval-wire-1"
                     && method == "approval"
                     && params["session_id"] == "runtime-1"
@@ -19895,7 +19978,7 @@ mod tests {
             .expect("server request response receipt");
         assert!(matches!(
             receipt,
-            GatewayEvent::ServerRequestAnswered { id, result: Ok(()) }
+            GatewayEvent::ServerRequestAnswered { id, result: Ok(()), .. }
                 if id == "approval-wire-1"
         ));
         actor.join().expect("gateway actor exits after peer close");
@@ -19945,7 +20028,7 @@ mod tests {
             .expect("clarify request reaches the UI event channel");
         assert!(matches!(
             request,
-            GatewayEvent::ServerRequestReceived { id, method, params }
+            GatewayEvent::ServerRequestReceived { id, method, params, .. }
                 if id == "clarify-wire-1"
                     && method == "clarify"
                     && params["session_id"] == "runtime-1"
@@ -19961,7 +20044,7 @@ mod tests {
             .expect("server request response receipt");
         assert!(matches!(
             receipt,
-            GatewayEvent::ServerRequestAnswered { id, result: Ok(()) }
+            GatewayEvent::ServerRequestAnswered { id, result: Ok(()), .. }
                 if id == "clarify-wire-1"
         ));
         actor.join().expect("gateway actor exits after peer close");

@@ -4498,3 +4498,17 @@ Publication follow-up — 2026-11-22T09:14:52Z: Implementation commit `d7751abbf
 Evidence follow-up — 2026-11-22T09:36:37Z: EV-0108 binds the unknown-outcome regression to implementation commit `6a4ad7afdb6fb22d0c206a9fb924beadb2292818`; the capability remains partial. Remaining mutating Gateway operations, live Gateway behavior, packaged Windows behavior and pinned-source acceptance are open.
 
 Publication follow-up — 2026-11-22T09:37:33Z: Implementation commit `6a4ad7afdb6fb22d0c206a9fb924beadb2292818` and evidence commit `f0994d17476b896832ef3ad7f08a015994d6053f` were pushed to `origin/main`. A fresh fetch confirmed local and remote main equal `f0994d17476b896832ef3ad7f08a015994d6053f`.
+
+
+### PAR-0523 — Scope Gateway prompts by connection and profile — 2026-11-22T10:05:31Z
+
+- **id:** PAR-0523
+- **timestamp:** 2026-11-22T10:05:31Z
+- **what:** Carried Gateway connection and profile identity through approval, clarification, and batch-clarification prompt events, owner-qualified prompt maps, displayed controls, responses, receipts, and cancellation.
+- **why:** The pinned Desktop binds server requests to their source connection and profile; reused IDs must not cross Gateway boundaries.
+- **components:** hermes-native Gateway actor/event polling, chat prompt state and UI, progress overlays, architecture/plan/backlog/completion/README.
+- **type:** correctness and ownership fencing.
+- **validation:** PASS 586 library + 15 protocol + 3 launcher tests; all-target locked check; rustfmt/diff checks; 19 task continuity tests; root and archival package validators; both progress generators.
+- **performance:** No benchmarked performance change; prompt maps remain bounded by the existing in-memory lifecycle.
+- **risks:** Other mutating Gateway operations still need a full connection/profile audit. Authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified.
+- **follow_up:** Add commit-bound EV-0109 and partial capability state, run the UCM/package/task checks, publish to main, then continue the next P0 workflow gap.

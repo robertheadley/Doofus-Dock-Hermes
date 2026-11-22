@@ -1655,6 +1655,7 @@ struct PendingPrompt {
 struct ApprovalPrompt {
     session_id: String,
     profile: Option<String>,
+    connection_id: Option<String>,
     execution_generation: u64,
     prompt_id: String,
     server_request_id: Option<String>,
@@ -1669,6 +1670,7 @@ struct ApprovalPrompt {
 struct ClarifyPrompt {
     session_id: String,
     profile: Option<String>,
+    connection_id: Option<String>,
     execution_generation: u64,
     prompt_id: String,
     question: String,
@@ -1700,6 +1702,7 @@ struct PendingClarifyLock {
 struct BatchClarifyPrompt {
     session_id: String,
     profile: Option<String>,
+    connection_id: Option<String>,
     server_request_id: String,
     questions: Vec<BatchClarifyQuestion>,
     response_pending: bool,
@@ -7828,11 +7831,18 @@ fn render_message() -> &'static str {
         };
         let prompts = self
             .approval_prompts
-            .values()
-            .filter(|prompt| prompt.session_id == session_id)
-            .cloned()
+            .iter()
+            .filter(|(_, prompt)| {
+                prompt.session_id == session_id
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == self.active_gateway_connection_id())
+                    && prompt.profile == self.active_session_profile
+            })
+            .map(|(key, prompt)| (key.clone(), prompt.clone()))
             .collect::<Vec<_>>();
-        for prompt in prompts {
+        for (prompt_key, prompt) in prompts {
             ui.add_space(8.0);
             ui.group(|ui| {
                 ui.label(RichText::new("Permission required").strong().color(ACCENT));
@@ -7860,7 +7870,7 @@ fn render_message() -> &'static str {
                             .accessible_name(format!("{label} approval {}", prompt.prompt_id));
                         if response.clicked() {
                             self.execute_registered_action(RegisteredUiAction::RespondApproval {
-                                prompt_id: prompt.prompt_id.clone(),
+                                prompt_id: prompt_key.clone(),
                                 choice: choice.clone(),
                             })
                             .unwrap_or_else(|error| self.status = error);
@@ -7883,11 +7893,18 @@ fn render_message() -> &'static str {
         };
         let prompts = self
             .clarify_prompts
-            .values()
-            .filter(|prompt| prompt.session_id == session_id)
-            .cloned()
+            .iter()
+            .filter(|(_, prompt)| {
+                prompt.session_id == session_id
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == self.active_gateway_connection_id())
+                    && prompt.profile == self.active_session_profile
+            })
+            .map(|(key, prompt)| (key.clone(), prompt.clone()))
             .collect::<Vec<_>>();
-        for prompt in prompts {
+        for (prompt_key, prompt) in prompts {
             ui.add_space(8.0);
             ui.group(|ui| {
                 ui.label(RichText::new(&prompt.question).strong().color(ACCENT));
@@ -7909,7 +7926,7 @@ fn render_message() -> &'static str {
                             );
                             if response.inner.clicked()
                                 && let Some(current) =
-                                    self.clarify_prompts.get_mut(&prompt.prompt_id)
+                                    self.clarify_prompts.get_mut(&prompt_key)
                             {
                                 if current.multi_select {
                                     if let Some(index) = current
@@ -7931,7 +7948,7 @@ fn render_message() -> &'static str {
                 }
                 let draft = self
                     .clarify_prompts
-                    .get_mut(&prompt.prompt_id)
+                    .get_mut(&prompt_key)
                     .map(|current| &mut current.draft);
                 if let Some(draft) = draft {
                     ui.add(
@@ -7952,7 +7969,7 @@ fn render_message() -> &'static str {
                         .accessible_name(format!("Submit clarify answer {}", prompt.prompt_id));
                     if submit.clicked() {
                         self.execute_registered_action(RegisteredUiAction::RespondClarify {
-                            prompt_id: prompt.prompt_id.clone(),
+                            prompt_id: prompt_key.clone(),
                             answer,
                         })
                         .unwrap_or_else(|error| self.status = error);
@@ -7965,7 +7982,7 @@ fn render_message() -> &'static str {
                         .accessible_name(format!("Skip clarify request {}", prompt.prompt_id));
                     if skip.clicked() {
                         self.execute_registered_action(RegisteredUiAction::RespondClarify {
-                            prompt_id: prompt.prompt_id.clone(),
+                            prompt_id: prompt_key.clone(),
                             answer: String::new(),
                         })
                         .unwrap_or_else(|error| self.status = error);
@@ -7987,11 +8004,18 @@ fn render_message() -> &'static str {
         };
         let prompts = self
             .batch_clarify_prompts
-            .values()
-            .filter(|prompt| prompt.session_id == session_id)
-            .cloned()
+            .iter()
+            .filter(|(_, prompt)| {
+                prompt.session_id == session_id
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == self.active_gateway_connection_id())
+                    && prompt.profile == self.active_session_profile
+            })
+            .map(|(key, prompt)| (key.clone(), prompt.clone()))
             .collect::<Vec<_>>();
-        for prompt in prompts {
+        for (prompt_key, prompt) in prompts {
             ui.add_space(8.0);
             ui.group(|ui| {
                 let answered = prompt
@@ -8045,7 +8069,7 @@ fn render_message() -> &'static str {
                                 if response.inner.clicked()
                                     && let Some(current) = self
                                         .batch_clarify_prompts
-                                        .get_mut(&prompt.server_request_id)
+                                        .get_mut(&prompt_key)
                                     && let Some(current_question) = current
                                         .questions
                                         .iter_mut()
@@ -8071,7 +8095,7 @@ fn render_message() -> &'static str {
                     }
                     let draft = self
                         .batch_clarify_prompts
-                        .get_mut(&prompt.server_request_id)
+                        .get_mut(&prompt_key)
                         .and_then(|current| {
                             current
                                 .questions
@@ -8095,7 +8119,7 @@ fn render_message() -> &'static str {
                             && !question.multi_select
                             && let Some(current) = self
                                 .batch_clarify_prompts
-                                .get_mut(&prompt.server_request_id)
+                                .get_mut(&prompt_key)
                             && let Some(current_question) = current
                                 .questions
                                 .iter_mut()
@@ -8124,7 +8148,7 @@ fn render_message() -> &'static str {
                         && let Some(answer) = answer
                     {
                         self.execute_registered_action(RegisteredUiAction::RespondClarify {
-                            prompt_id: prompt.server_request_id.clone(),
+                            prompt_id: prompt_key.clone(),
                             answer,
                         })
                         .unwrap_or_else(|error| self.status = error);
@@ -8142,7 +8166,7 @@ fn render_message() -> &'static str {
                         ));
                     if skip.clicked() {
                         self.execute_registered_action(RegisteredUiAction::RespondClarify {
-                            prompt_id: prompt.server_request_id.clone(),
+                            prompt_id: prompt_key.clone(),
                             answer: String::new(),
                         })
                         .unwrap_or_else(|error| self.status = error);
@@ -19644,14 +19668,31 @@ fn render_message() -> &'static str {
         }
     }
 
+    #[cfg(test)]
     fn handle_server_request(
         &mut self,
         server_request_id: String,
         method: String,
         params: serde_json::Value,
     ) {
+        self.handle_server_request_from_connection(server_request_id, method, params, None);
+    }
+
+    fn handle_server_request_from_connection(
+        &mut self,
+        server_request_id: String,
+        method: String,
+        params: serde_json::Value,
+        connection_id: Option<String>,
+    ) {
+        if connection_id
+            .as_deref()
+            .is_some_and(|owner| self.gateway_connection_id.as_deref() != Some(owner))
+        {
+            return;
+        }
         if method == "clarify" {
-            self.handle_batch_clarify_request(server_request_id, params);
+            self.handle_batch_clarify_request(server_request_id, params, connection_id);
             return;
         }
         if method != "approval" {
@@ -19682,7 +19723,7 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.as_str())
             });
-        if !self.session_runtime_is_known(session_id, request_profile) {
+        if !self.session_runtime_is_known(session_id, request_profile, connection_id.as_deref()) {
             self.reject_server_request(
                 server_request_id,
                 4404,
@@ -19723,7 +19764,8 @@ fn render_message() -> &'static str {
             );
             return;
         }
-        if self.approval_prompts.contains_key(&prompt_id) {
+        let prompt_key = gateway_prompt_key(connection_id.as_deref(), request_profile, &prompt_id);
+        if self.approval_prompts.contains_key(&prompt_key) {
             self.reject_server_request(
                 server_request_id,
                 -32600,
@@ -19732,10 +19774,11 @@ fn render_message() -> &'static str {
             return;
         }
         self.approval_prompts.insert(
-            prompt_id.clone(),
+            prompt_key,
             ApprovalPrompt {
                 session_id: session_id.to_owned(),
                 profile: request_profile.map(str::to_owned),
+                connection_id,
                 execution_generation: 0,
                 prompt_id,
                 server_request_id: Some(server_request_id),
@@ -19761,6 +19804,7 @@ fn render_message() -> &'static str {
         &mut self,
         payload: &serde_json::Value,
         event_profile: Option<&str>,
+        connection_id: Option<&str>,
     ) {
         let Some(server_request_id) = payload
             .get("id")
@@ -19770,10 +19814,14 @@ fn render_message() -> &'static str {
             return;
         };
 
-        if let Some(prompt) = self.batch_clarify_prompts.get(server_request_id)
-            && event_profile.is_none_or(|profile| prompt.profile.as_deref() == Some(profile))
-        {
-            self.batch_clarify_prompts.remove(server_request_id);
+        let batch_key = self.batch_clarify_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == server_request_id
+                && connection_id.is_none_or(|owner| prompt.connection_id.as_deref() == Some(owner))
+                && event_profile.is_none_or(|profile| prompt.profile.as_deref() == Some(profile)))
+            .then(|| key.clone())
+        });
+        if let Some(batch_key) = batch_key {
+            self.batch_clarify_prompts.remove(&batch_key);
             self.status = "Hermes withdrew the clarification request".into();
             return;
         }
@@ -19783,6 +19831,8 @@ fn render_message() -> &'static str {
             .iter()
             .find_map(|(prompt_id, prompt)| {
                 (prompt.server_request_id.as_deref() == Some(server_request_id)
+                    && connection_id
+                        .is_none_or(|owner| prompt.connection_id.as_deref() == Some(owner))
                     && event_profile
                         .is_none_or(|profile| prompt.profile.as_deref() == Some(profile)))
                 .then(|| prompt_id.clone())
@@ -19793,7 +19843,17 @@ fn render_message() -> &'static str {
         }
     }
 
-    fn session_runtime_is_known(&self, runtime_session_id: &str, profile: Option<&str>) -> bool {
+    fn session_runtime_is_known(
+        &self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+        connection_id: Option<&str>,
+    ) -> bool {
+        if connection_id.is_some_and(|owner| owner != self.active_gateway_connection_id())
+            || connection_id.is_none() && self.gateway_connection_id.is_some()
+        {
+            return false;
+        }
         if let (Some(request_profile), Some(endpoint)) = (profile, self.gateway_endpoint.as_ref())
             && request_profile != endpoint.profile_id
         {
@@ -19811,6 +19871,13 @@ fn render_message() -> &'static str {
         for (key, view) in &self.session_chat_views {
             if view.runtime_session_id.as_deref() == Some(runtime_session_id)
                 && profile.is_none_or(|profile| view.profile.as_deref() == Some(profile))
+                && session_id_from_owner_identity_key(key).is_some_and(|stored_session_id| {
+                    key == &self.session_identity_key_for_connection(
+                        connection_id,
+                        stored_session_id,
+                        view.profile.as_deref(),
+                    )
+                })
             {
                 owners.insert(key.clone());
             }
@@ -19822,6 +19889,7 @@ fn render_message() -> &'static str {
         &mut self,
         server_request_id: String,
         params: serde_json::Value,
+        connection_id: Option<String>,
     ) {
         let session_id = params
             .get("session_id")
@@ -19843,7 +19911,7 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.as_str())
             });
-        if !self.session_runtime_is_known(session_id, request_profile) {
+        if !self.session_runtime_is_known(session_id, request_profile, connection_id.as_deref()) {
             self.reject_server_request(
                 server_request_id,
                 4404,
@@ -19963,7 +20031,12 @@ fn render_message() -> &'static str {
             }
             return;
         }
-        if self.batch_clarify_prompts.contains_key(&server_request_id) {
+        let prompt_key = gateway_prompt_key(
+            connection_id.as_deref(),
+            request_profile,
+            &server_request_id,
+        );
+        if self.batch_clarify_prompts.contains_key(&prompt_key) {
             self.reject_server_request(
                 server_request_id,
                 -32600,
@@ -19972,10 +20045,11 @@ fn render_message() -> &'static str {
             return;
         }
         self.batch_clarify_prompts.insert(
-            server_request_id.clone(),
+            prompt_key,
             BatchClarifyPrompt {
                 session_id: session_id.to_owned(),
                 profile: request_profile.map(str::to_owned),
+                connection_id,
                 server_request_id,
                 questions,
                 response_pending: false,
@@ -19993,13 +20067,25 @@ fn render_message() -> &'static str {
         }
     }
 
+    #[cfg(test)]
     fn handle_server_request_answered(&mut self, id: String, result: Result<(), String>) {
-        if let Some(prompt_id) = self
-            .batch_clarify_prompts
-            .keys()
-            .find(|prompt_id| prompt_id.as_str() == id.as_str())
-            .cloned()
-        {
+        self.handle_server_request_answered_from_connection(id, result, None);
+    }
+
+    fn handle_server_request_answered_from_connection(
+        &mut self,
+        id: String,
+        result: Result<(), String>,
+        connection_id: Option<String>,
+    ) {
+        let batch_key = self.batch_clarify_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == id
+                && connection_id
+                    .as_deref()
+                    .is_none_or(|owner| prompt.connection_id.as_deref() == Some(owner)))
+            .then(|| key.clone())
+        });
+        if let Some(prompt_id) = batch_key {
             match result {
                 Ok(()) => {
                     self.batch_clarify_prompts.remove(&prompt_id);
@@ -20020,7 +20106,11 @@ fn render_message() -> &'static str {
             .approval_prompts
             .iter()
             .find_map(|(prompt_id, prompt)| {
-                (prompt.server_request_id.as_deref() == Some(&id)).then(|| prompt_id.clone())
+                (prompt.server_request_id.as_deref() == Some(&id)
+                    && connection_id
+                        .as_deref()
+                        .is_none_or(|owner| prompt.connection_id.as_deref() == Some(owner)))
+                .then(|| prompt_id.clone())
             })
         else {
             return;
@@ -20085,15 +20175,22 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
-    fn handle_batch_clarify_locked(
+    fn handle_batch_clarify_locked_from_connection(
         &mut self,
         request_id: String,
         clarify_request_id: String,
+        profile: Option<String>,
         question_id: String,
         result: Result<crate::gateway::ClarifyLockReceipt, String>,
         outcome_unknown: bool,
+        connection_id: Option<String>,
     ) {
-        let Some(prompt) = self.batch_clarify_prompts.get(&clarify_request_id) else {
+        let prompt_key = gateway_prompt_key(
+            connection_id.as_deref(),
+            profile.as_deref(),
+            &clarify_request_id,
+        );
+        let Some(prompt) = self.batch_clarify_prompts.get(&prompt_key) else {
             return;
         };
         if prompt.lock_in_flight.as_ref() != Some(&(request_id, question_id.clone()))
@@ -20107,21 +20204,21 @@ fn render_message() -> &'static str {
         }
         match result {
             Ok(receipt) if receipt.expired => {
-                self.batch_clarify_prompts.remove(&clarify_request_id);
+                self.batch_clarify_prompts.remove(&prompt_key);
                 self.status = "Hermes already ended this question".into();
             }
             Ok(_) => {
-                if let Some(prompt) = self.batch_clarify_prompts.get_mut(&clarify_request_id) {
+                if let Some(prompt) = self.batch_clarify_prompts.get_mut(&prompt_key) {
                     prompt.pending_locks.pop_front();
                     prompt.lock_in_flight = None;
                     if prompt.pending_locks.is_empty() {
-                        self.batch_clarify_prompts.remove(&clarify_request_id);
+                        self.batch_clarify_prompts.remove(&prompt_key);
                         self.status = "Hermes received your answers".into();
                         return;
                     }
                 }
-                if let Err(error) = self.send_next_batch_clarify_lock(&clarify_request_id) {
-                    if let Some(prompt) = self.batch_clarify_prompts.get_mut(&clarify_request_id) {
+                if let Err(error) = self.send_next_batch_clarify_lock(&prompt_key) {
+                    if let Some(prompt) = self.batch_clarify_prompts.get_mut(&prompt_key) {
                         prompt.pending_locks.clear();
                         prompt.lock_in_flight = None;
                         prompt.response_pending = false;
@@ -20130,7 +20227,7 @@ fn render_message() -> &'static str {
                 }
             }
             Err(error) => {
-                if let Some(prompt) = self.batch_clarify_prompts.get_mut(&clarify_request_id) {
+                if let Some(prompt) = self.batch_clarify_prompts.get_mut(&prompt_key) {
                     if outcome_unknown {
                         prompt.response_unknown = true;
                     } else {
@@ -20212,6 +20309,7 @@ fn render_message() -> &'static str {
         view.transcript_message_count = view.transcript_message_count.max(view.transcript.len());
     }
 
+    #[cfg(test)]
     fn handle_server_event(&mut self, event: serde_json::Value) {
         self.handle_server_event_from_connection(event, None);
     }
@@ -20221,9 +20319,14 @@ fn render_message() -> &'static str {
         event: serde_json::Value,
         connection_id: Option<&str>,
     ) {
+        if connection_id.is_some_and(|owner| self.gateway_connection_id.as_deref() != Some(owner)) {
+            return;
+        }
+        let connection_id = connection_id.map(str::to_owned);
+        let connection_id_ref = connection_id.as_deref();
         if !self
             .gateway_event_deduplicator
-            .should_deliver(&event, connection_id)
+            .should_deliver(&event, connection_id_ref)
         {
             return;
         }
@@ -20241,13 +20344,13 @@ fn render_message() -> &'static str {
                 .get("profile")
                 .or_else(|| payload.get("profile"))
                 .and_then(|value| value.as_str());
-            self.handle_server_request_cancelled(&payload, event_profile);
+            self.handle_server_request_cancelled(&payload, event_profile, connection_id_ref);
             return;
         }
         if event_type == "session.info" {
-            self.capture_session_backend_metadata(&event, connection_id, &payload);
+            self.capture_session_backend_metadata(&event, connection_id_ref, &payload);
         } else if event_type == "session.usage" {
-            self.capture_session_usage(&event, connection_id, &payload);
+            self.capture_session_usage(&event, connection_id_ref, &payload);
         }
         let failed_prompt = if event_type == "error"
             || event_type == "message.complete"
@@ -20522,20 +20625,24 @@ fn render_message() -> &'static str {
                     (prompt_id, execution_generation)
                     && !choices.is_empty()
                 {
+                    let profile = event
+                        .get("profile")
+                        .or_else(|| payload.get("profile"))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_owned)
+                        .or_else(|| self.active_session_profile.clone());
+                    let prompt_key =
+                        gateway_prompt_key(connection_id_ref, profile.as_deref(), prompt_id);
                     let server_request_id = self
                         .approval_prompts
-                        .get(prompt_id)
+                        .get(&prompt_key)
                         .and_then(|current| current.server_request_id.clone());
                     self.approval_prompts.insert(
-                        prompt_id.to_owned(),
+                        prompt_key,
                         ApprovalPrompt {
                             session_id: active_session.to_owned(),
-                            profile: event
-                                .get("profile")
-                                .or_else(|| payload.get("profile"))
-                                .and_then(|value| value.as_str())
-                                .map(str::to_owned)
-                                .or_else(|| self.active_session_profile.clone()),
+                            profile,
+                            connection_id: connection_id.clone(),
                             execution_generation,
                             prompt_id: prompt_id.to_owned(),
                             server_request_id,
@@ -20563,7 +20670,13 @@ fn render_message() -> &'static str {
                     .or_else(|| payload.get("request_id"))
                     .and_then(|value| value.as_str())
                 {
-                    self.approval_prompts.remove(prompt_id);
+                    let profile = event
+                        .get("profile")
+                        .or_else(|| payload.get("profile"))
+                        .and_then(|value| value.as_str())
+                        .or(self.active_session_profile.as_deref());
+                    let key = gateway_prompt_key(connection_id_ref, profile, prompt_id);
+                    self.approval_prompts.remove(&key);
                 }
             }
             "clarify.request" => {
@@ -20594,14 +20707,18 @@ fn render_message() -> &'static str {
                 if let (Some(prompt_id), Some(execution_generation), Some(question)) =
                     (prompt_id, execution_generation, question)
                 {
+                    let profile = event
+                        .get("profile")
+                        .or_else(|| payload.get("profile"))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_owned)
+                        .or_else(|| self.active_session_profile.clone());
+                    let prompt_key =
+                        gateway_prompt_key(connection_id_ref, profile.as_deref(), prompt_id);
                     let mut clarify = ClarifyPrompt {
                         session_id: active_session.to_owned(),
-                        profile: event
-                            .get("profile")
-                            .or_else(|| payload.get("profile"))
-                            .and_then(|value| value.as_str())
-                            .map(str::to_owned)
-                            .or_else(|| self.active_session_profile.clone()),
+                        profile,
+                        connection_id: connection_id.clone(),
                         execution_generation,
                         prompt_id: prompt_id.to_owned(),
                         question: question.to_owned(),
@@ -20622,7 +20739,7 @@ fn render_message() -> &'static str {
                     {
                         stage_clarify_answer(&mut clarify, answer);
                     }
-                    self.clarify_prompts.insert(prompt_id.to_owned(), clarify);
+                    self.clarify_prompts.insert(prompt_key, clarify);
                     self.status = "Hermes is waiting for your answer".into();
                 }
             }
@@ -20632,7 +20749,13 @@ fn render_message() -> &'static str {
                     .or_else(|| payload.get("request_id"))
                     .and_then(|value| value.as_str())
                 {
-                    self.clarify_prompts.remove(prompt_id);
+                    let profile = event
+                        .get("profile")
+                        .or_else(|| payload.get("profile"))
+                        .and_then(|value| value.as_str())
+                        .or(self.active_session_profile.as_deref());
+                    let key = gateway_prompt_key(connection_id_ref, profile, prompt_id);
+                    self.clarify_prompts.remove(&key);
                 }
             }
             "background.complete" => {
@@ -24659,7 +24782,11 @@ fn render_message() -> &'static str {
         let Some(prompt) = self.approval_prompts.get(&prompt_id) else {
             return Err("This approval is no longer pending".into());
         };
-        if !self.session_runtime_is_known(&prompt.session_id, prompt.profile.as_deref()) {
+        if !self.session_runtime_is_known(
+            &prompt.session_id,
+            prompt.profile.as_deref(),
+            prompt.connection_id.as_deref(),
+        ) {
             return Err("This approval no longer maps to a unique open session pane".into());
         }
         if !matches!(choice.as_str(), "once" | "session" | "always" | "deny")
@@ -24710,7 +24837,11 @@ fn render_message() -> &'static str {
             return Err("Connect to Hermes before answering a question".into());
         }
         if let Some(prompt) = self.batch_clarify_prompts.get(&prompt_id) {
-            if !self.session_runtime_is_known(&prompt.session_id, prompt.profile.as_deref()) {
+            if !self.session_runtime_is_known(
+                &prompt.session_id,
+                prompt.profile.as_deref(),
+                prompt.connection_id.as_deref(),
+            ) {
                 return Err("These questions no longer map to a unique open session pane".into());
             }
             if prompt.response_pending {
@@ -24785,7 +24916,11 @@ fn render_message() -> &'static str {
         let Some(prompt) = self.clarify_prompts.get(&prompt_id) else {
             return Err("This question is no longer pending".into());
         };
-        if !self.session_runtime_is_known(&prompt.session_id, prompt.profile.as_deref()) {
+        if !self.session_runtime_is_known(
+            &prompt.session_id,
+            prompt.profile.as_deref(),
+            prompt.connection_id.as_deref(),
+        ) {
             return Err("This question no longer maps to a unique open session pane".into());
         }
         if prompt.response_pending.is_some() {
@@ -24822,26 +24957,32 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
-    fn handle_clarify_responded(
+    fn handle_clarify_responded_from_connection(
         &mut self,
         request_id: String,
         session_id: String,
+        profile: Option<String>,
         prompt_id: String,
         answer: String,
         result: Result<(), String>,
         outcome_unknown: bool,
+        connection_id: Option<String>,
     ) {
-        let Some(prompt) = self.clarify_prompts.get(&prompt_id) else {
+        let prompt_key =
+            gateway_prompt_key(connection_id.as_deref(), profile.as_deref(), &prompt_id);
+        let Some(prompt) = self.clarify_prompts.get(&prompt_key) else {
             return;
         };
         if prompt.session_id != session_id
+            || prompt.profile != profile
+            || prompt.connection_id != connection_id
             || prompt.response_pending.as_ref() != Some(&(request_id.clone(), answer.clone()))
         {
             return;
         }
         match result {
             Ok(()) => {
-                self.clarify_prompts.remove(&prompt_id);
+                self.clarify_prompts.remove(&prompt_key);
                 self.status = if answer.is_empty() {
                     "Hermes question skipped".into()
                 } else {
@@ -24849,7 +24990,7 @@ fn render_message() -> &'static str {
                 };
             }
             Err(error) => {
-                if let Some(prompt) = self.clarify_prompts.get_mut(&prompt_id) {
+                if let Some(prompt) = self.clarify_prompts.get_mut(&prompt_key) {
                     if outcome_unknown {
                         prompt.response_unknown = true;
                     } else {
@@ -24867,6 +25008,7 @@ fn render_message() -> &'static str {
         }
     }
 
+    #[cfg(test)]
     fn handle_approval_responded(
         &mut self,
         request_id: String,
@@ -24876,21 +25018,54 @@ fn render_message() -> &'static str {
         result: Result<(), String>,
         outcome_unknown: bool,
     ) {
-        let Some(prompt) = self.approval_prompts.get(&prompt_id) else {
+        let (profile, connection_id) = self
+            .approval_prompts
+            .values()
+            .find(|prompt| prompt.prompt_id == prompt_id)
+            .map(|prompt| (prompt.profile.clone(), prompt.connection_id.clone()))
+            .unwrap_or((None, None));
+        self.handle_approval_responded_from_connection(
+            request_id,
+            session_id,
+            profile,
+            prompt_id,
+            choice,
+            result,
+            outcome_unknown,
+            connection_id,
+        );
+    }
+
+    fn handle_approval_responded_from_connection(
+        &mut self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        prompt_id: String,
+        choice: String,
+        result: Result<(), String>,
+        outcome_unknown: bool,
+        connection_id: Option<String>,
+    ) {
+        let prompt_key =
+            gateway_prompt_key(connection_id.as_deref(), profile.as_deref(), &prompt_id);
+        let Some(prompt) = self.approval_prompts.get(&prompt_key) else {
             return;
         };
         if prompt.session_id != session_id
+            || prompt.profile != profile
+            || prompt.connection_id != connection_id
             || prompt.response_pending.as_ref() != Some(&(request_id.clone(), choice.clone()))
         {
             return;
         }
         match result {
             Ok(()) => {
-                self.approval_prompts.remove(&prompt_id);
+                self.approval_prompts.remove(&prompt_key);
                 self.status = "Hermes received the approval decision".into();
             }
             Err(error) => {
-                if let Some(prompt) = self.approval_prompts.get_mut(&prompt_id) {
+                if let Some(prompt) = self.approval_prompts.get_mut(&prompt_key) {
                     if outcome_unknown {
                         prompt.response_unknown = true;
                     } else {
@@ -27673,18 +27848,30 @@ fn render_message() -> &'static str {
                 .pending_interrupt
                 .as_ref()
                 .is_some_and(|(_, session)| session == &runtime)
-            || self
-                .approval_prompts
-                .values()
-                .any(|prompt| prompt.session_id == runtime)
-            || self
-                .clarify_prompts
-                .values()
-                .any(|prompt| prompt.session_id == runtime)
-            || self
-                .batch_clarify_prompts
-                .values()
-                .any(|prompt| prompt.session_id == runtime)
+            || self.approval_prompts.values().any(|prompt| {
+                prompt.session_id == runtime
+                    && prompt.profile.as_deref() == profile
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection_id)
+            })
+            || self.clarify_prompts.values().any(|prompt| {
+                prompt.session_id == runtime
+                    && prompt.profile.as_deref() == profile
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection_id)
+            })
+            || self.batch_clarify_prompts.values().any(|prompt| {
+                prompt.session_id == runtime
+                    && prompt.profile.as_deref() == profile
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection_id)
+            })
     }
 
     fn close_session_pane(&mut self, panel: &PanelId) {
@@ -29282,52 +29469,69 @@ fn render_message() -> &'static str {
                 GatewayEvent::ApprovalResponded {
                     request_id,
                     session_id,
+                    profile,
                     prompt_id,
                     choice,
                     result,
                     outcome_unknown,
-                } => self.handle_approval_responded(
+                    connection_id,
+                } => self.handle_approval_responded_from_connection(
                     request_id,
                     session_id,
+                    profile,
                     prompt_id,
                     choice,
                     result,
                     outcome_unknown,
+                    connection_id,
                 ),
                 GatewayEvent::ClarifyResponded {
                     request_id,
                     session_id,
+                    profile,
                     prompt_id,
                     answer,
                     result,
                     outcome_unknown,
-                } => self.handle_clarify_responded(
+                    connection_id,
+                } => self.handle_clarify_responded_from_connection(
                     request_id,
                     session_id,
+                    profile,
                     prompt_id,
                     answer,
                     result,
                     outcome_unknown,
+                    connection_id,
                 ),
                 GatewayEvent::ClarifyLocked {
                     request_id,
                     clarify_request_id,
+                    profile,
                     question_id,
                     result,
                     outcome_unknown,
-                } => self.handle_batch_clarify_locked(
+                    connection_id,
+                } => self.handle_batch_clarify_locked_from_connection(
                     request_id,
                     clarify_request_id,
+                    profile,
                     question_id,
                     result,
                     outcome_unknown,
+                    connection_id,
                 ),
-                GatewayEvent::ServerRequestReceived { id, method, params } => {
-                    self.handle_server_request(id, method, params)
-                }
-                GatewayEvent::ServerRequestAnswered { id, result } => {
-                    self.handle_server_request_answered(id, result)
-                }
+                GatewayEvent::ServerRequestReceived {
+                    id,
+                    method,
+                    params,
+                    connection_id,
+                } => self.handle_server_request_from_connection(id, method, params, connection_id),
+                GatewayEvent::ServerRequestAnswered {
+                    id,
+                    result,
+                    connection_id,
+                } => self.handle_server_request_answered_from_connection(id, result, connection_id),
                 GatewayEvent::ServerEvent {
                     event,
                     connection_id,
@@ -35834,6 +36038,13 @@ fn compose_edit_prompt_with_attachments(edit: &MessageEditDraft) -> Result<Strin
 
 fn session_identity_key(session_id: &str, profile: Option<&str>) -> String {
     session_owner_identity_key(session_id, profile, None)
+}
+
+fn gateway_prompt_key(connection_id: Option<&str>, profile: Option<&str>, id: &str) -> String {
+    connection_id.map_or_else(
+        || id.to_owned(),
+        |connection_id| session_owner_identity_key(id, profile, Some(connection_id)),
+    )
 }
 
 fn session_id_from_owner_identity_key(key: &str) -> Option<&str> {
@@ -51570,6 +51781,100 @@ mod tests {
     }
 
     #[test]
+    fn approval_prompts_are_scoped_by_gateway_and_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some("gateway-a".into());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+
+        let request = || {
+            json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "request_id":"shared-prompt-id",
+                "choices":["once","deny"]
+            })
+        };
+        app.handle_server_request_from_connection(
+            "shared-server-request".into(),
+            "approval".into(),
+            request(),
+            Some("gateway-b".into()),
+        );
+        assert!(
+            app.approval_prompts.is_empty(),
+            "stale owner must be ignored"
+        );
+
+        app.handle_server_request_from_connection(
+            "shared-server-request".into(),
+            "approval".into(),
+            request(),
+            Some("gateway-a".into()),
+        );
+        let key_a = gateway_prompt_key(Some("gateway-a"), Some("work"), "shared-prompt-id");
+        assert!(app.approval_prompts.contains_key(&key_a));
+
+        app.gateway_connection_id = Some("gateway-b".into());
+        app.handle_server_request_from_connection(
+            "shared-server-request".into(),
+            "approval".into(),
+            request(),
+            Some("gateway-b".into()),
+        );
+        let key_b = gateway_prompt_key(Some("gateway-b"), Some("work"), "shared-prompt-id");
+        assert!(app.approval_prompts.contains_key(&key_a));
+        assert!(app.approval_prompts.contains_key(&key_b));
+
+        let error = app
+            .respond_to_approval(key_a.clone(), "once".into())
+            .expect_err("old connection prompt cannot be sent through the active connection");
+        assert!(error.contains("no longer maps"));
+
+        for key in [&key_a, &key_b] {
+            app.approval_prompts
+                .get_mut(key)
+                .expect("owner-scoped approval")
+                .response_pending = Some(("same-local-request".into(), "once".into()));
+        }
+        app.handle_approval_responded_from_connection(
+            "same-local-request".into(),
+            "runtime-session".into(),
+            Some("work".into()),
+            "shared-prompt-id".into(),
+            "once".into(),
+            Ok(()),
+            false,
+            Some("gateway-a".into()),
+        );
+        assert!(!app.approval_prompts.contains_key(&key_a));
+        assert!(app.approval_prompts.contains_key(&key_b));
+
+        app.handle_server_request_cancelled(
+            &json!({"id":"shared-server-request"}),
+            Some("work"),
+            Some("gateway-b"),
+        );
+        assert!(!app.approval_prompts.contains_key(&key_a));
+        assert!(!app.approval_prompts.contains_key(&key_b));
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn request_cancel_clears_only_the_matching_approval_and_clarify_request() {
         let (mut app, profile_dir) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());
@@ -52058,6 +52363,7 @@ mod tests {
         let prompt = BatchClarifyPrompt {
             session_id: "runtime-session".into(),
             profile: None,
+            connection_id: None,
             server_request_id: "clarify-wire-1".into(),
             questions: vec![
                 BatchClarifyQuestion {
