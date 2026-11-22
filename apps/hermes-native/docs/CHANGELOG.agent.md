@@ -3110,3 +3110,6 @@ Added atomic bounded text-draft persistence keyed by Gateway connection, profile
 
 
 PAR-0060 evidence update: EV-0095 is bound to implementation commit 32d59b04453134876562ab4de8a87f70d0167245. Generated progress now records 98/499 overall requirements reviewed (6 implemented, 91 partial, 1 not implemented, 401 unknown) and 64/176 chat/tool requirements mapped (1 implemented, 62 partial, 1 not implemented, 112 unknown). These are evidence coverage counts, not percent completion.
+
+
+PAR-0060 publication: implementation `32d59b04453134876562ab4de8a87f70d0167245` and EV-0095/checkpoint `618403c88fd5979659937bd7c4571ba44d5fc4ae` are published to `origin/main`; fresh fetch confirmed exact SHA equality. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
