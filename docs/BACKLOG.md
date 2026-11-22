@@ -21,6 +21,8 @@ Messaging progress addendum (HUR-001-170): Telegram setup now starts or monitors
 
 ## Delivered in this slice
 
+- `background.complete` results now appear as persistent, bounded system transcript rows in the originating session. Task IDs suppress replay duplicates; ambiguous profile ownership and ownerless events fail closed. This is headless-validated partial coverage; live Gateway, packaged Windows, and pinned-source-pair acceptance remain open. Cron completion history and persistent subagent completion rows are not claimed by this source-backed event.
+
 - Native Rust/egui window and four-zone workbench.
 - DoofusDock-backed canonical layout, projection, persistence, center-to-tab and edge-split drag operations (wired; live drag/drop not yet verified).
 - Hermes gateway session listing and creation, transcript resume, streamed prompt submission, interruption, approval and clarification responses, capability discovery, and scoped session metadata mutations.

@@ -989,6 +989,23 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "formal pinned-source acceptance remains pending; diffs are bounded to 80,000 characters and 1,500 rendered lines",
         ],
     },
+    "PAR-0059": {
+        "state": "partial",
+        "level": "headless_background_complete_transcript_routing_and_owner_fence",
+        "refs": [
+            ".staging/hermes-pinned-878305/tui_gateway/contracts/events.py#SideAgentCompletePayload",
+            ".staging/hermes-pinned-878305/tui_gateway/contracts/events.py#background.complete",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/gateway-event/status.ts#background.complete",
+            "apps/hermes-native/src/app.rs#append_background_completion_notice",
+            "apps/hermes-native/src/app.rs#background_completion_notice_is_persistent_bounded_and_task_idempotent",
+            "apps/hermes-native/src/app.rs#background_completion_is_routed_by_session_and_profile_owner",
+            "apps/hermes-native/docs/PLAN.md#Revision 314",
+        ],
+        "gaps": [
+            "cron completion history and persistent subagent completion are not part of the pinned Desktop background.complete transcript contract",
+            "live Gateway, packaged Windows, and formal pinned-source acceptance remain open",
+        ],
+    },
     "PAR-0046": {
         "state": "partial",
         "level": "headless_ui_gateway_config_and_stream_reducer",

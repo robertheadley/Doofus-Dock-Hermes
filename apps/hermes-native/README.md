@@ -4,6 +4,8 @@ The delivery goal is verified support for chat, tools, skills, MCP integrations,
 
 Independent native Rust/egui implementation of the stock upstream Hermes Desktop GUI. It uses the Hermes Python gateway as the runtime and DoofusDock for canonical workspace layouts, profiles, docking and presentation.
 
+Pinned `background.complete` results now appear as bounded persistent system notices in their originating transcript. The native UI suppresses empty text and repeated task IDs and fences session/profile ownership; late results still land after Stop. This is local headless evidence, with live Gateway, packaged Windows and source-paired acceptance open.
+
 ## Source pins
 
 - Hermes Agent parity snapshot: `8783054ef6cbafd86f10892241436862c1171a66` (downloaded and fixed on 2026-11-14)

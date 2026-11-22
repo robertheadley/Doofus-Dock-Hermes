@@ -19718,6 +19718,7 @@ fn render_message() -> &'static str {
                 | "reasoning.delta"
                 | "message.interim"
                 | "message.complete"
+                | "background.complete"
                 | "error"
         ) {
             return;
@@ -19744,12 +19745,16 @@ fn render_message() -> &'static str {
         let Some(view) = self.session_chat_views.get_mut(key) else {
             return;
         };
-        apply_stream_event_to_transcript(
-            &mut view.transcript,
-            event_type,
-            payload,
-            execution_generation,
-        );
+        if event_type == "background.complete" {
+            append_background_completion_notice(&mut view.transcript, event, payload);
+        } else {
+            apply_stream_event_to_transcript(
+                &mut view.transcript,
+                event_type,
+                payload,
+                execution_generation,
+            );
+        }
         if let Some(failed_prompt) = failed_prompt {
             attach_failed_retry_context(&mut view.transcript, failed_prompt);
         }
@@ -19828,6 +19833,7 @@ fn render_message() -> &'static str {
                 | "reasoning.delta"
                 | "message.interim"
                 | "message.complete"
+                | "background.complete"
                 | "tool.start"
                 | "tool.complete"
                 | "clarify.request"
@@ -19891,6 +19897,9 @@ fn render_message() -> &'static str {
                 }
             }
         }
+        if event_type == "background.complete" && session_id.is_none() {
+            return;
+        }
         let execution_generation = event
             .get("execution_generation")
             .or_else(|| payload.get("execution_generation"))
@@ -19952,9 +19961,37 @@ fn render_message() -> &'static str {
             self.broadcast_local_sessions_changed();
         }
         let Some(active_session) = self.active_runtime_session_id.as_deref() else {
+            if event_type == "background.complete"
+                && let Some(runtime_session_id) = session_id
+            {
+                self.apply_background_chat_event(
+                    runtime_session_id,
+                    &event,
+                    event_type,
+                    &payload,
+                    execution_generation,
+                    failed_prompt.as_ref(),
+                );
+                self.broadcast_local_transcript_changed(runtime_session_id, event_profile);
+            }
             return;
         };
+        let ambiguous_background_owner = event_type == "background.complete"
+            && event_profile.is_none()
+            && self.session_chat_views.values().any(|view| {
+                view.runtime_session_id.as_deref() == session_id
+                    && view.profile.as_deref() != self.active_session_profile.as_deref()
+            });
+        if ambiguous_background_owner {
+            return;
+        }
         let wrong_profile_tool_progress = event_type == "tool.progress"
+            && event_profile.is_some_and(|profile| {
+                self.active_session_profile
+                    .as_deref()
+                    .is_some_and(|active_profile| active_profile != profile)
+            });
+        let wrong_profile_background_completion = event_type == "background.complete"
             && event_profile.is_some_and(|profile| {
                 self.active_session_profile
                     .as_deref()
@@ -19962,6 +19999,7 @@ fn render_message() -> &'static str {
             });
         if session_id.is_some_and(|session_id| session_id != active_session)
             || wrong_profile_tool_progress
+            || wrong_profile_background_completion
         {
             self.apply_background_chat_event(
                 session_id.unwrap_or_default(),
@@ -19971,8 +20009,10 @@ fn render_message() -> &'static str {
                 execution_generation,
                 failed_prompt.as_ref(),
             );
-            if matches!(event_type, "message.complete" | "error")
-                && let Some(runtime_session_id) = session_id
+            if matches!(
+                event_type,
+                "message.complete" | "background.complete" | "error"
+            ) && let Some(runtime_session_id) = session_id
             {
                 self.broadcast_local_transcript_changed(
                     runtime_session_id,
@@ -20134,6 +20174,9 @@ fn render_message() -> &'static str {
                     self.clarify_prompts.remove(prompt_id);
                 }
             }
+            "background.complete" => {
+                append_background_completion_notice(&mut self.transcript, &event, &payload);
+            }
             "tool.start" | "tool.complete" | "tool.progress" | "message.start"
             | "message.delta" | "reasoning.delta" | "message.interim" | "message.complete" => {
                 apply_stream_event_to_transcript(
@@ -20182,8 +20225,10 @@ fn render_message() -> &'static str {
             }
             _ => {}
         }
-        if matches!(event_type, "message.complete" | "error")
-            && let Some(runtime_session_id) = session_id
+        if matches!(
+            event_type,
+            "message.complete" | "background.complete" | "error"
+        ) && let Some(runtime_session_id) = session_id
         {
             self.broadcast_local_transcript_changed(
                 runtime_session_id,
@@ -32625,6 +32670,72 @@ fn transcript_fingerprint(transcript: &[serde_json::Value]) -> [u8; 32] {
     hasher.finalize().into()
 }
 
+fn append_background_completion_notice(
+    transcript: &mut Vec<serde_json::Value>,
+    event: &serde_json::Value,
+    payload: &serde_json::Value,
+) {
+    let Some(text) = payload
+        .get("text")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    else {
+        return;
+    };
+    let text = bounded_status_text(text, 12_000);
+    if text.is_empty() {
+        return;
+    }
+    let task_id = payload
+        .get("task_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|task_id| !task_id.is_empty())
+        .map(|task_id| bounded_status_text(task_id, 512));
+    if let Some(task_id) = task_id.as_deref()
+        && transcript.iter().any(|message| {
+            message
+                .get("background_task_id")
+                .and_then(serde_json::Value::as_str)
+                == Some(task_id)
+        })
+    {
+        return;
+    }
+    let event_id = event
+        .get("event_id")
+        .or_else(|| event.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(|id| bounded_status_text(id, 512));
+    let timestamp = event
+        .get("timestamp")
+        .and_then(json_epoch_seconds)
+        .unwrap_or_else(unix_now_seconds);
+    let id = task_id
+        .as_ref()
+        .map(|task_id| format!("background-complete-{task_id}"))
+        .or_else(|| event_id.map(|id| format!("background-complete-{id}")))
+        .unwrap_or_else(|| format!("background-complete-{timestamp:.3}"));
+    let content = task_id
+        .as_ref()
+        .map(|task_id| format!("[bg {task_id}]\n{text}"))
+        .unwrap_or(text);
+    let mut row = serde_json::json!({
+        "id": id,
+        "role": "system",
+        "content": content,
+        "timestamp": timestamp,
+        "completedAt": timestamp
+    });
+    if let Some(task_id) = task_id {
+        row["background_task_id"] = serde_json::Value::String(task_id);
+    }
+    transcript.push(row);
+}
+
 fn apply_stream_event_to_transcript(
     transcript: &mut Vec<serde_json::Value>,
     event_type: &str,
@@ -40803,6 +40914,168 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn background_completion_notice_is_persistent_bounded_and_task_idempotent() {
+        let mut transcript = vec![json!({"role":"user","content":"Run this in background"})];
+        let event = json!({"event_id":"event-1","timestamp":101.5});
+        let payload = json!({"task_id":"task-7","text":"  Finished the build.  "});
+        append_background_completion_notice(&mut transcript, &event, &payload);
+        assert_eq!(transcript.len(), 2);
+        assert_eq!(transcript[1]["role"], "system");
+        assert_eq!(transcript[1]["background_task_id"], "task-7");
+        assert_eq!(transcript[1]["content"], "[bg task-7]\nFinished the build.");
+        assert_eq!(transcript[1]["timestamp"], 101.5);
+        assert_eq!(transcript[1]["id"], "background-complete-task-7");
+        assert_eq!(
+            transcript_message(&transcript[1]),
+            ("system".into(), "[bg task-7]\nFinished the build.".into())
+        );
+
+        append_background_completion_notice(&mut transcript, &event, &payload);
+        assert_eq!(transcript.len(), 2, "replayed task completion is ignored");
+
+        append_background_completion_notice(
+            &mut transcript,
+            &json!({"event_id":"event-no-task","timestamp":102.0}),
+            &json!({"task_id":" ","text":"Result without task ID"}),
+        );
+        assert_eq!(transcript.len(), 3);
+        assert_eq!(transcript[2]["content"], "Result without task ID");
+        assert_eq!(transcript[2]["id"], "background-complete-event-no-task");
+
+        append_background_completion_notice(
+            &mut transcript,
+            &event,
+            &json!({"task_id":"empty","text":" \n\t"}),
+        );
+        assert_eq!(transcript.len(), 3, "empty completion text is suppressed");
+
+        append_background_completion_notice(
+            &mut transcript,
+            &json!({"event_id":"oversized","timestamp":106.0}),
+            &json!({"task_id":"bounded","text":"x".repeat(12_001)}),
+        );
+        let bounded = transcript.last().expect("bounded result row")["content"]
+            .as_str()
+            .expect("bounded result content");
+        assert_eq!(bounded.len(), 12_000 + "[bg bounded]\n".len());
+    }
+
+    #[test]
+    fn background_completion_is_routed_by_session_and_profile_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = "conn-a";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.route = AppRoute::Session("stored-active".into());
+        app.active_runtime_session_id = Some("runtime-shared".into());
+        app.active_session_profile = Some("work".into());
+
+        let work_key = app.session_identity_key_for_connection(
+            Some(connection_id),
+            "stored-active",
+            Some("work"),
+        );
+        app.session_chat_views.insert(
+            work_key,
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-shared".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        let personal_key = app.session_identity_key_for_connection(
+            Some(connection_id),
+            "stored-other",
+            Some("personal"),
+        );
+        app.session_chat_views.insert(
+            personal_key.clone(),
+            SessionChatViewState {
+                profile: Some("personal".into()),
+                runtime_session_id: Some("runtime-shared".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.pending_interrupt = Some(("interrupt-1".into(), "runtime-shared".into()));
+        app.handle_server_event_from_connection(
+            json!({
+                "type":"background.complete", "session_id":"runtime-shared", "profile":"work",
+                "timestamp":103.0, "payload":{"task_id":"active-task","text":"Active result"}
+            }),
+            Some(connection_id),
+        );
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(
+            app.transcript[0]["content"],
+            "[bg active-task]\nActive result"
+        );
+        assert!(
+            app.pending_interrupt.is_some(),
+            "late completion remains visible after Stop"
+        );
+        assert!(
+            app.session_chat_views
+                .get(&personal_key)
+                .unwrap()
+                .transcript
+                .is_empty()
+        );
+
+        app.handle_server_event_from_connection(
+            json!({
+                "type":"background.complete", "session_id":"runtime-shared", "profile":"personal",
+                "timestamp":104.0, "payload":{"task_id":"cached-task","text":"Cached result"}
+            }),
+            Some(connection_id),
+        );
+        assert_eq!(
+            app.transcript.len(),
+            1,
+            "wrong-profile event cannot alter active transcript"
+        );
+        let personal = app
+            .session_chat_views
+            .get(&personal_key)
+            .expect("personal cache");
+        assert_eq!(personal.transcript.len(), 1);
+        assert_eq!(
+            personal.transcript[0]["content"],
+            "[bg cached-task]\nCached result"
+        );
+
+        app.handle_server_event_from_connection(
+            json!({
+                "type":"background.complete", "session_id":"runtime-shared",
+                "timestamp":105.0, "payload":{"task_id":"ambiguous-task","text":"Must not guess the profile"}
+            }),
+            Some(connection_id),
+        );
+        assert_eq!(
+            app.transcript.len(),
+            1,
+            "missing profile with colliding runtime ID is ignored"
+        );
+        assert_eq!(
+            app.session_chat_views
+                .get(&personal_key)
+                .unwrap()
+                .transcript
+                .len(),
+            1
+        );
+
+        app.handle_server_event_from_connection(
+            json!({
+                "type":"background.complete", "profile":"work",
+                "payload":{"task_id":"ownerless-task","text":"Must be ignored"}
+            }),
+            Some(connection_id),
+        );
+        assert_eq!(app.transcript.len(), 1, "ownerless event is dropped");
+        let _ = std::fs::remove_dir_all(profile_dir);
     }
 
     #[test]

@@ -3141,3 +3141,16 @@ PAR-0061 publication: implementation `8c19b9cf5ec5f242dd2d31201176b1a230dafc24` 
 PAR-0045 evidence update: EV-0097 is bound to implementation commit `a1570b2030b87c3a1911ab7552f29dbcbd38c41b`. The task is tested at checkpoint revision 663 / ledger revision 111. The generated reference overlays now show 100/499 and 66/176 rows with mapped evidence; these are evidence-review counts, not feature completion. Both capability package validators pass with 81 implementation receipts and 491 archival rows still pending. Live Gateway, packaged Windows, and formal source-paired acceptance remain open.
 
 PAR-0045 main publication: implementation `a1570b2030b87c3a1911ab7552f29dbcbd38c41b` and EV-0097/task checkpoint commit `bff1c6ed57e60b712ecc9ad06d5234241f50776d` were pushed to `origin/main`; fresh fetch confirmed exact equality at bff1c6e. The task remains partial pending live Gateway, packaged Windows and formal source-paired acceptance. The committed task snapshot is consistent; its recorded repository fingerprint predates this publication commit and is reported as Git drift.
+
+### PAR-0059 — Persistent background completion in chat — 2026-11-22T05:39:39Z
+
+- **id:** hermes-par-0059-background-completion-20261122
+- **timestamp:** 2026-11-22T05:39:39Z
+- **what:** Routed `background.complete` events to the originating active or uniquely cached session transcript as bounded persistent system rows. Empty text is suppressed, repeated task IDs are ignored, late results after Stop are retained, and missing/ambiguous session-profile ownership fails closed.
+- **why:** Background agent output must remain visible in the chat that started the work.
+- **components:** Hermes Gateway event router, native transcript reducer and presentation projection, progress evidence generator, architecture/backlog/overview docs.
+- **type:** Agent workflow implementation and evidence mapping.
+- **validation:** PASS 562 library + 15 protocol + 3 launcher tests; all-target locked check; rustfmt/diff; 19 continuity tests; task-state validator; root capability package validator; archival package validator. Generated evidence: 101/499 broad and 67/176 chat/tool rows. These are review coverage, not completion.
+- **performance:** Event result text is bounded to 12,000 bytes and task IDs to 512 bytes; no benchmark was requested or run.
+- **risks:** Headless fixtures do not prove live Gateway delivery or packaged Windows behavior. Cron history and persistent subagent completion notices are outside the pinned `background.complete` contract; formal source-paired acceptance remains open. Existing functional work and operator-owned runtime files were preserved.
+- **follow_up:** Bind partial evidence to the implementation commit, update PAR-0059 checkpoint, validate receipt packages, publish to `main`, then continue with the next dependency-ready P0 agent-workflow feature.
