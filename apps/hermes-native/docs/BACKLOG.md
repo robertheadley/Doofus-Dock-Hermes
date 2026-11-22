@@ -427,3 +427,7 @@ The chat error card now uses Hermes' structured `error_surface` layer/code to di
 ### PAR-0527 — Reject malformed successful session refreshes — 2026-11-22
 
 The sidebar parser rejects `{}` and `{"recents":{}}` as malformed instead of treating them as authoritative empty lists. A malformed all-profile refresh leaves cached sessions intact and surfaces the parse error. Valid authoritative empty lists and source-shaped explicit profile failures remain accepted. Focused headless tests pass; authenticated live Gateway and packaged Windows behavior remain open.
+
+### PAR-0528 — Select model and reasoning before the first prompt — 2026-11-22
+
+New Chat now loads the selected profile's model catalog and allows manual model/provider and reasoning choices before creating the first session. The create payload carries these values only when the active connection and profile match the selection. “Use Hermes default” omits model/provider, preserving backend profile policy. Headless UI, create payload, and cross-profile omission tests pass. Still open: profile-global main-model Settings, authenticated live Gateway behavior, packaged Windows interaction, and formal pinned-source acceptance.

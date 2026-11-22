@@ -4392,6 +4392,8 @@ capabilities:
   evidence:
   - type: test_result
     locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0065.json
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0114.json
 - id: ui-switch-model-in-a-running-session
   name: Switch model in a running session
   area: models-quota

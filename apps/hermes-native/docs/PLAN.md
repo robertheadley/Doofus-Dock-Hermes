@@ -2077,3 +2077,7 @@ EV-0112 binds the rendered policy/auth/timeout regression to implementation comm
 ### Revision 334 — Reject malformed successful sidebar refreshes — 2026-11-22
 
 Pinned Hermes guarantees `recents.sessions` for successful sidebar responses, including authoritative empty lists; a total failure omits `sessions` only while marking `failed` and supplying profile failure details. Native now rejects an empty/missing slice rather than interpreting `{}` or `{"recents":{}}` as an authoritative empty result. The error path retains cached sessions and surfaces the refresh error. Explicit empty results and explicit profile failures remain supported. Gateway decoder and app refresh headless regressions pass. Authenticated live Gateway and packaged Windows acceptance remain open.
+
+### Revision 335 — Choose model and reasoning before the first prompt — 2026-11-22
+
+New Chat now loads model options for its selected profile and exposes manual model/provider plus reasoning-effort choices before `session.create`. Manual selections are included only when their saved connection/profile owner matches the active new chat; “Use Hermes default” omits the model/provider override. The request uses the pinned `model`, `provider`, and `reasoning_effort` create fields and never writes the profile default. Headless egui selection, payload, default-preservation, and wrong-profile omission tests pass. Profile-global main-model settings, authenticated live Gateway and packaged Windows acceptance remain open.

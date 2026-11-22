@@ -4619,3 +4619,17 @@ EV-0113 binds the malformed-sidebar cache-preservation regression to `b1baf05e20
 ### PAR-0527 publication — 2026-11-22
 
 Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and EV-0113/progress commit `4559146774428da8c59eaa41b96afdb394a90740` to main. Fresh fetch confirmed exact local/origin SHA equality at `4559146774428da8c59eaa41b96afdb394a90740`.
+
+
+### PAR-0528 — New-chat model and reasoning selection — 2026-11-22
+
+- **id:** PAR-0528
+- **timestamp:** 2026-11-22T12:04:24Z
+- **what:** Added profile-catalog-backed model/provider and reasoning choices to the New Chat composer and included matching manual overrides in `session.create`.
+- **why:** The pinned Hermes composer allows model selection before the first prompt while keeping manual session choices separate from profile defaults.
+- **components:** Native egui composer, profile model-options request handling, Gateway session creation, headless UI tests, UCM evidence.
+- **type:** feature
+- **validation:** Four focused new-chat tests pass; full locked suite passes 594 library + 15 protocol + 3 launcher tests; all-target cargo check, 19 task continuity tests, task ledger, rustfmt, diff checks and package validator pass. The UCM checker runs with temporary PyYAML but exits 1 on 164 existing map-wide errors and 11 reconciliation items; capability remains partial.
+- **performance:** No benchmark was run; request loading remains one profile-scoped model-options read per new-chat owner.
+- **risks:** Profile-global model Settings, authenticated live Gateway behavior, packaged Windows interaction and formal pinned-source acceptance remain open.
+- **follow_up:** Implement profile-global main-model policy and preserve the distinct new-chat override behavior.

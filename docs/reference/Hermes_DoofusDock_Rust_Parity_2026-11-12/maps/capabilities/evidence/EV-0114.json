@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0114",
+  "capability_id": "ui-show-model-reasoning-controls",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "new-chat-model-selection-is-profile-scoped-and-session-local",
+  "locator": "apps/hermes-native/src/app.rs::new_chat_model_picker_keeps_manual_model_and_reasoning_separate_from_profile_default",
+  "date": "2026-11-22",
+  "commit": "e000cd5a0edfe55dd516a4edccecadbc7af0a4cc",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui interaction selects a new-chat model and reasoning effort while the catalog's profile default remains unchanged. Session-create coverage confirms model/provider and reasoning_effort are sent for the matching connection/profile. A negative create test confirms selections owned by another profile are omitted. Full locked tests pass 594 library + 15 protocol + 3 launcher tests; all-target check, task continuity, ledger validation, formatting, and diff checks pass.",
+  "notes": "Partial evidence only. Profile-global model assignment/settings, authenticated live Gateway behavior, packaged Windows interaction, and formal pinned-source acceptance remain open."
+}
