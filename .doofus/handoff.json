@@ -280,24 +280,6 @@
   "blockers": [],
   "changed_files": [
     {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "doofus/events.jsonl",
-      "status": "M "
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -323,11 +305,13 @@
     }
   ],
   "checkpoint": {
-    "command": "task select",
-    "evidence": [],
-    "state": "unknown",
-    "summary": "Take a bounded P0 chat/context capability while retaining saved-connection lifecycle work. Implement owner-scoped session token/context usage status from Gateway usage events without claiming the broader pinned statusbar feature complete.",
-    "verified_at": "2026-11-22T00:04:33Z"
+    "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --locked --features agent-automation; cargo check --manifest-path apps/hermes-native/Cargo.toml --all-targets --locked --features agent-automation; cargo fmt --check; UCM root and pinned package validators",
+    "evidence": [
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0086.json#EV-0086"
+    ],
+    "state": "tested",
+    "summary": "Implemented PAR-0048 session usage in the native chat toolbar; nested and canonical counters merge per owner, focused/full tests pass, EV-0086 partial evidence is published to main at c66fcde. Live Gateway, packaged Windows and pinned-source paired acceptance remain open. Existing operator work/ is preserved.",
+    "verified_at": "2026-11-22T00:21:56Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -385,7 +369,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T01:00:44Z",
+    "lease_expires_at": "2026-11-22T01:21:56Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1644,11 +1628,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0048-task-tested-20261122",
+  "last_event_id": "hermes-par0048-complete-checkpoint-20261122",
   "last_operation": {
-    "request_id": "hermes-par0048-task-tested-20261122",
+    "request_id": "hermes-par0048-complete-checkpoint-20261122",
     "state": "committed",
-    "type": "task.state_updated"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1665,7 +1649,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect exact pinned usage event and native chat route; add per-session usage capture/display with owner fencing and rendered regression; record partial evidence and keep live Gateway/source-paired acceptance open.",
+  "recommended_next_action": "Continue with the next dependency-ready P0 agent-workflow capability from the pinned ledger; preserve existing functional work and keep live/source-paired proof separate.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2120,16 +2104,8 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "248a01d425cd9c22ca7c719081590d4e3a969795073409c4d4afe9356c722c10",
+    "change_fingerprint": "c50f04bc4886973fd2a6501a1d6a90ad3f2b5163300b09ab2470760186d51bf8",
     "changed_files": [
-      {
-        "path": "doofus/events.jsonl",
-        "status": "M "
-      },
-      {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2147,14 +2123,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "718ba28746d78f56f58647f44b9811e7b752ccf7",
+    "head_commit": "c66fcde73c91d507f53e0c024078c9a659638b0b",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 601,
+  "revision": 602,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 601,
+  "state_revision": 602,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0048",
   "task_ledger_revision": 95,
@@ -3548,9 +3524,14 @@
       "command": "app::tests::saved_remote_connection_without_credentials_does_not_fall_back_to_local",
       "result": "PASS 517 library + 15 protocol + 3 launcher; all-target check; rustfmt; root UCM 69 receipts; broad overlay 93/499; task state valid revision 593.",
       "timestamp": "2026-11-21T23:53:04Z"
+    },
+    {
+      "command": "519 library + 15 protocol + 3 launcher; focused usage tests 2/2",
+      "result": "PASS local/headless; no live Gateway or source-paired acceptance claimed",
+      "timestamp": "2026-11-22T00:21:56Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T00:17:17Z"
+  "updated_at": "2026-11-22T00:21:56Z"
 }
