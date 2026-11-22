@@ -4281,3 +4281,7 @@ PAR-0045 main publication: implementation `a1570b2030b87c3a1911ab7552f29dbcbd38c
 - **performance:** Event result text is bounded to 12,000 bytes and task IDs to 512 bytes; no benchmark was requested or run.
 - **risks:** Headless fixtures do not prove live Gateway delivery or packaged Windows behavior. Cron history and persistent subagent completion notices are outside the pinned `background.complete` contract; formal source-paired acceptance remains open. Existing functional work and operator-owned runtime files were preserved.
 - **follow_up:** Bind partial evidence to the implementation commit, update PAR-0059 checkpoint, validate receipt packages, publish to `main`, then continue with the next dependency-ready P0 agent-workflow feature.
+
+### PAR-0059 evidence checkpoint — 2026-11-22T05:41:50Z
+
+EV-0098 is bound to implementation commit `812292c212627e7f4fabd3b857785de1715f704f`. Task `hermes-par-0059` is tested at checkpoint revision 668 / ledger revision 113. Generated progress reports 101/499 broad rows and 67/176 chat/tool rows with mapped evidence; these counts measure review coverage, not product completion. Root package validation passes with 82 implementation receipts; archival package validation reports 491 pending rows. Live Gateway, packaged Windows, and formal source-paired acceptance remain open. The operator-owned `apps/hermes-native/work/` directory is excluded.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0098",
+  "capability_id": "ui-show-completed-delegated-outputs",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "render_background_completion_notice_in_originating_chat_with_session_and_profile_fencing",
+  "locator": "apps/hermes-native/src/app.rs#background_completion_is_routed_by_session_and_profile_owner",
+  "date": "2026-11-22",
+  "commit": "812292c212627e7f4fabd3b857785de1715f704f",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless native event-routing and transcript presentation regressions cover persistent system row formatting, empty-text suppression, duplicate task ID suppression, missing task ID plain-text fallback, bounds, active and uniquely cached owner routing, cross-profile collision rejection, ownerless event rejection, and a completion arriving after Stop. Full locked suite passes 562 library + 15 protocol + 3 launcher tests; all-target locked check, rustfmt/diff, progress generators, 19 continuity tests, task schema validation, and root plus archival capability validators pass.",
+  "notes": "Partial native evidence for pinned background.complete only. Pinned Desktop appends a role=system row to the originating session. cron.changed is only a refresh signal and subagent.complete is temporary status, so cron history and persistent subagent-completion notices are not claimed. No live Gateway or packaged Windows app was used; formal pinned-source acceptance remains pending."
+}

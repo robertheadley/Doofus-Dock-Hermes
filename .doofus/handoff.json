@@ -392,19 +392,21 @@
     },
     {
       "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0097.json",
+      "owner": "codex",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0098.json",
       "status": "??"
     }
   ],
   "checkpoint": {
     "command": "cargo test --locked --features agent-automation --all-targets --quiet",
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0097.json#uid"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0098.json#EV-0098",
+      "apps/hermes-native/src/app.rs#background_completion_is_routed_by_session_and_profile_owner",
+      "apps/hermes-native/src/app.rs#background_completion_notice_is_persistent_bounded_and_task_idempotent"
     ],
     "state": "tested",
-    "summary": "PAR-0045 inline diffs and explicit completion outcomes are headless-tested and remain partial pending live, packaged and formal source-paired acceptance.",
-    "verified_at": "2026-11-22T05:16:56Z"
+    "summary": "PAR-0059 source-backed background.complete path implemented and headless-validated; EV-0098 is bound to 812292c212627e7f4fabd3b857785de1715f704f. Full locked suite 562+15+3, all-target check, formatting/diff, continuity/schema, progress generators, and both package validators pass. Task revision 667 / ledger 113.",
+    "verified_at": "2026-11-22T05:41:11Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -426,6 +428,7 @@
     "hermes-par-0052",
     "hermes-par-0057",
     "hermes-par-0058",
+    "hermes-par-0059",
     "hermes-par-0060",
     "hermes-par-0061",
     "hermes-par-0062",
@@ -467,7 +470,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T06:16:56Z",
+    "lease_expires_at": "2026-11-22T06:41:11Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1738,9 +1741,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0045-checkpoint-20261122",
+  "last_event_id": "hermes-par0059-checkpoint-20261122",
   "last_operation": {
-    "request_id": "hermes-par0045-checkpoint-20261122",
+    "request_id": "hermes-par0059-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1759,7 +1762,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Publish the implementation, EV-0097 and checkpoint to main, then continue the next P0 chat/tool capability relevant to the agent workflow.",
+  "recommended_next_action": "Select the next dependency-ready P0 feature required for the native agent workflow; preserve all prior functional work and continue against the pinned Hermes snapshot.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1802,7 +1805,6 @@
     "hermes-par-0054",
     "hermes-par-0055",
     "hermes-par-0056",
-    "hermes-par-0059",
     "hermes-par-0066",
     "hermes-par-0068",
     "hermes-par-0069",
@@ -2209,7 +2211,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "777061f9745775a19636cb183e6448188698ab84294cef5afca6a77292850758",
+    "change_fingerprint": "e51fdd56085007a7fde46aece6500bb7a00fd3263c52174485f4a382a4975093",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2240,21 +2242,21 @@
         "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0097.json",
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0098.json",
         "status": "??"
       }
     ],
-    "head_commit": "a1570b2030b87c3a1911ab7552f29dbcbd38c41b",
+    "head_commit": "812292c212627e7f4fabd3b857785de1715f704f",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 663,
+  "revision": 668,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 663,
+  "state_revision": 668,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0045",
-  "task_ledger_revision": 111,
+  "task_id": "hermes-par-0059",
+  "task_ledger_revision": 113,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3755,9 +3757,39 @@
       "command": "inline_tool_diff_is_visible_alongside_result_and_has_outcome_status",
       "result": "PASS 560 library + 15 protocol + 3 launcher tests; all-target check, rustfmt/diff, progress generators, 19 continuity tests and both package validators passed.",
       "timestamp": "2026-11-22T05:16:56Z"
+    },
+    {
+      "command": "apps/hermes-native/src/app.rs#background_completion_is_routed_by_session_and_profile_owner",
+      "result": "PASS root 82 implementation receipts; archival 491 pending",
+      "timestamp": "2026-11-22T05:41:11Z"
+    },
+    {
+      "command": "cargo check --all-targets --locked --features agent-automation",
+      "result": "PASS root 82 implementation receipts; archival 491 pending",
+      "timestamp": "2026-11-22T05:41:11Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check; git diff --check",
+      "result": "PASS root 82 implementation receipts; archival 491 pending",
+      "timestamp": "2026-11-22T05:41:11Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS root 82 implementation receipts; archival 491 pending",
+      "timestamp": "2026-11-22T05:41:11Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS root 82 implementation receipts; archival 491 pending",
+      "timestamp": "2026-11-22T05:41:11Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py; python apps/hermes-native/docs/reference/Hermes_Upstream_UI_DoofusDock_Rust_Parity_2026-11-13/tools/validate_package.py",
+      "result": "PASS root 82 implementation receipts; archival 491 pending",
+      "timestamp": "2026-11-22T05:41:11Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T05:16:56Z"
+  "updated_at": "2026-11-22T05:41:11Z"
 }
