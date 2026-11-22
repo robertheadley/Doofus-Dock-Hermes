@@ -4633,3 +4633,17 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No benchmark was run; request loading remains one profile-scoped model-options read per new-chat owner.
 - **risks:** Profile-global model Settings, authenticated live Gateway behavior, packaged Windows interaction and formal pinned-source acceptance remain open.
 - **follow_up:** Implement profile-global main-model policy and preserve the distinct new-chat override behavior.
+
+
+### PAR-0528 publication — 2026-11-22
+
+- **id:** PAR-0528-PUBLISH
+- **timestamp:** 2026-11-22T12:08:23Z
+- **what:** Published implementation `e000cd5a0edfe55dd516a4edccecadbc7af0a4cc` and EV-0114/evidence checkpoint commit `efb208069d014293c6ab5f5027439d305d744186` to `main`.
+- **why:** Deliver the verified, profile-scoped pre-first-message model/reasoning slice and its honest partial evidence to the canonical repository.
+- **components:** GitHub repository `robertheadley/Doofus-Dock-Hermes`, main branch, task ledger and UCM evidence.
+- **type:** publication
+- **validation:** Push succeeded; fresh fetch confirmed local main and origin/main both equal `efb208069d014293c6ab5f5027439d305d744186`.
+- **performance:** No runtime behavior changed during publication.
+- **risks:** Profile-global main-model Settings and authenticated live/package/source acceptance remain open; `apps/hermes-native/work/` remains operator-owned and untracked.
+- **follow_up:** Continue with profile-global main-model policy and keep it distinct from manual new-chat overrides.

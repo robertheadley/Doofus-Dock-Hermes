@@ -349,84 +349,6 @@
   ],
   "changed_files": [
     {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/events.jsonl",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
-    },
-    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -449,25 +371,17 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0114.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+    "command": "git push origin main; git fetch origin main; compare git rev-parse HEAD with origin/main",
     "evidence": [
-      "apps/hermes-native/src/app.rs#new_chat_model_picker_keeps_manual_model_and_reasoning_separate_from_profile_default",
-      "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id",
-      "apps/hermes-native/src/app.rs#new_chat_create_omits_model_policy_owned_by_another_profile",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0114.json#EV-0114"
+      "docs/EXECUTION_LOGS.md#hermes-par0528-new-chat-model-20261122",
+      "docs/CHANGELOG.agent.md#PAR-0528"
     ],
     "state": "tested",
-    "summary": "PAR-0528 adds connection/profile-scoped New Chat model/provider and reasoning selections; matching picks become session.create overrides and never rewrite profile defaults. Headless UI, payload, profile-isolation, full suite and package checks pass. EV-0114 remains partial because profile-global model settings and live/package acceptance are still open.",
-    "verified_at": "2026-11-22T12:07:10Z"
+    "summary": "Published PAR-0528 implementation e000cd5a and evidence/docs efb2080 to main; fresh fetch confirms local and origin/main equal efb208069d014293c6ab5f5027439d305d744186. EV-0114 remains partial, with profile-global model Settings and live/package/source acceptance open.",
+    "verified_at": "2026-11-22T12:08:21Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -541,7 +455,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T13:07:10Z",
+    "lease_expires_at": "2026-11-22T13:08:21Z",
     "lease_id": "9482315d-a8ca-4d86-b45b-b05ac4a8b4f9",
     "model": null,
     "ownership_state": "active",
@@ -1963,9 +1877,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "ba4efcb4-55c1-4ce8-9ce6-c58a31e9b4a1",
+  "last_event_id": "ab1cffd6-8915-49d0-8ee2-ed0d0da4bf8c",
   "last_operation": {
-    "request_id": "ba4efcb4-55c1-4ce8-9ce6-c58a31e9b4a1",
+    "request_id": "ab1cffd6-8915-49d0-8ee2-ed0d0da4bf8c",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1984,7 +1898,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Implement profile-global main-model settings for the selected Hermes profile while preserving session-local overrides; use the pinned /api/model/set assignment and confirmation contract.",
+  "recommended_next_action": "Implement profile-global main-model settings for a selected Hermes profile from the pinned /api/model/set confirmation contract; preserve session-local new-chat overrides and test stale/denied/confirmed outcomes.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2423,60 +2337,8 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "b29066b3d9de4f8bf4cf90f750ac81bbf5d897684f111992449879259476393f",
+    "change_fingerprint": "db66330a47e3e6c3906ea9de6cb4c308a9b3a37d3755f18df27a5137351932a2",
     "changed_files": [
-      {
-        "path": ".doofus/events.jsonl",
-        "status": " M"
-      },
-      {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/README.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-        "status": " M"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-        "status": " M"
-      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2492,20 +2354,16 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0114.json",
-        "status": "??"
       }
     ],
-    "head_commit": "e000cd5a0edfe55dd516a4edccecadbc7af0a4cc",
+    "head_commit": "efb208069d014293c6ab5f5027439d305d744186",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 770,
+  "revision": 771,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 770,
+  "state_revision": 771,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0528",
   "task_ledger_revision": 138,
@@ -4333,5 +4191,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T12:07:10Z"
+  "updated_at": "2026-11-22T12:08:21Z"
 }
