@@ -4525,3 +4525,4 @@ Publication follow-up — 2026-11-22T09:37:33Z: Implementation commit `6a4ad7afd
 - **performance:** No benchmark applicable; only metadata fields and owner comparisons were added.
 - **risks:** Other mutating Gateway operations remain unaudited; live authenticated Gateway, packaged Windows and pinned-source acceptance are not verified.
 - **follow_up:** Continue the P0 stale-owner audit from the next dependency-ready request/result path.
+Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d0049269a7b10cd58e42ec37a4c and evidence commit 31436dd6f964ec8428a205efbea53e03c401393f were pushed to origin/main; fresh fetch confirms local and remote main are equal.
