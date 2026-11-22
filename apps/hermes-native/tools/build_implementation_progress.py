@@ -1072,6 +1072,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
             "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
             "apps/hermes-native/src/gateway.rs#prompt_edit_uses_stable_row_and_explicit_deep_cut_confirmation",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0087.json#EV-0087",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planConfirmedEdit",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/user-message.tsx#editable={!readOnly}",
             ".staging/hermes-pinned-878305/tui_gateway/methods_prompt.py#_truncate_history_for_submit",

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0087",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "stable_row_prior_message_edit_requires_confirmed_truncation_and_preserves_current_composer",
+  "locator": "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
+  "date": "2026-11-22",
+  "commit": "ec5ad280044929112b60dc142334cc9e07f4d194",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui_kittest and Gateway protocol tests. Tests cover unique stable row eligibility, explicit confirmation for later user turns, stale later-turn-count rejection without a Gateway mutation, profile/connection/session/target revalidation, prompt.submit truncation flags, admission-gated local transcript update, and preservation of current composer text/attachments. Full locked agent-automation suite passed 523 library, 15 protocol, and 3 launcher tests; all-target cargo check, rustfmt and diff checks passed.",
+  "notes": "Partial implementation evidence only. The task remains unaccepted: editing during an in-flight response does not yet interrupt before rewind; historical attachment semantics, live Gateway admission/refusal/uncertain recovery, packaged Windows behavior and pinned-source acceptance remain open. Local transcript history stays unchanged until Gateway admission. PyYAML was unavailable in this environment, so direct YAML parsing was skipped by the package validator."
+}
