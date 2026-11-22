@@ -3102,3 +3102,8 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** No runtime behavior changed during publication.
 - **risks:** Live Gateway, packaged Windows, concurrent offset-page stability and formal source acceptance remain open.
 - **follow_up:** Continue the next dependency-ready agent-workflow gap; keep the overall goal active and protect apps/hermes-native/work/.
+
+
+### PAR-0060 independent composer drafts — 2026-11-22
+
+Added atomic bounded text-draft persistence keyed by Gateway connection, profile and session; New Chat drafts are scoped too. Empty drafts clear their persisted record, app-instance restart restores unsent text, and nonempty draft/attachment views survive beyond the ordinary 32-view cache limit. Attachment data remains memory-only. Validation: 556 library + 15 protocol + 3 launcher tests, all-target check, formatting and diff checks pass. The initial full run exposed first-render restoration overwriting an already-populated draft; that guard is fixed and the rerun passes. Live Gateway and packaged Windows checks remain separate.

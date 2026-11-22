@@ -1545,6 +1545,26 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "packaged Windows behavior and source-paired acceptance remain pending",
         ],
     },
+    "PAR-0060": {
+        "state": "partial",
+        "level": "headless_restart_profile_and_cache_eviction_tests",
+        "refs": [
+            "apps/hermes-native/src/composer_drafts.rs#pub fn load",
+            "apps/hermes-native/src/composer_drafts.rs#pub fn save",
+            "apps/hermes-native/src/composer_drafts.rs#composer_drafts_round_trip_by_full_owner_and_clear_atomically",
+            "apps/hermes-native/src/composer_drafts.rs#composer_draft_store_caps_at_fifty_and_keeps_the_current_write",
+            "apps/hermes-native/src/composer_drafts.rs#malformed_or_oversized_draft_fails_closed_without_returning_text",
+            "apps/hermes-native/src/app.rs#composer_draft_survives_app_restart_and_isolated_by_profile",
+            "apps/hermes-native/src/app.rs#composer_draft_cache_protects_nonempty_views_beyond_thirty_two_sessions",
+            "apps/hermes-native/src/app.rs#new_chat_composer_draft_restores_after_restart_and_clear_removes_storage",
+            "apps/hermes-native/docs/PLAN.md#Revision 310",
+        ],
+        "gaps": [
+            "packaged Windows persistence behavior and multi-process/window races remain unverified",
+            "attachments remain memory-only in this slice",
+            "live Gateway is not required for local storage behavior but Gateway-connected end-to-end acceptance remains separate",
+        ],
+    },
     "PAR-0048": {
         "state": "partial",
         "level": "headless_owner_scoped_session_usage_toolbar",

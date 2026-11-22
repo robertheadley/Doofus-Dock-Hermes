@@ -2064,6 +2064,7 @@ pub struct HermesNativeApp {
     session_chat_views: BTreeMap<String, SessionChatViewState>,
     session_chat_view_order: VecDeque<String>,
     new_chat_draft: String,
+    new_chat_draft_scope: Option<String>,
     transcript: Vec<serde_json::Value>,
     transcript_message_count: usize,
     transcript_has_more: bool,
@@ -4532,6 +4533,7 @@ fn render_message() -> &'static str {
             session_chat_views: BTreeMap::new(),
             session_chat_view_order: VecDeque::new(),
             new_chat_draft: String::new(),
+            new_chat_draft_scope: None,
             transcript: Vec::new(),
             transcript_message_count: 0,
             transcript_has_more: false,
@@ -13985,6 +13987,7 @@ fn render_message() -> &'static str {
     }
 
     fn new_chat_content(&mut self, ui: &mut Ui) {
+        self.restore_new_chat_draft_for_current_owner(false);
         ui.vertical_centered(|ui| {
             ui.add_space((ui.available_height() * 0.15).max(8.0));
             ui.label(
@@ -20593,11 +20596,42 @@ fn render_message() -> &'static str {
         });
     }
 
-    fn cache_session_chat_view(&mut self, key: String, view: SessionChatViewState) {
+    fn cache_session_chat_view(&mut self, key: String, mut view: SessionChatViewState) {
+        let previous_draft = self
+            .session_chat_views
+            .get(&key)
+            .map(|existing| existing.draft.clone());
+        let mut restored_from_store = false;
+        if previous_draft.is_none() && view.draft.is_empty() {
+            match crate::composer_drafts::load(self.workspace.data_directory(), &key) {
+                Ok(Some(draft)) => {
+                    view.draft = draft;
+                    restored_from_store = true;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    self.status = format!("Saved composer draft could not be restored: {error}");
+                }
+            }
+        }
+        let persist = match previous_draft.as_deref() {
+            Some(previous) => previous != view.draft,
+            None => !restored_from_store && !view.draft.is_empty(),
+        };
+        let cached_draft = view.draft.clone();
         self.session_chat_view_order
             .retain(|existing| existing != &key);
         self.session_chat_view_order.push_back(key.clone());
-        self.session_chat_views.insert(key, view);
+        self.session_chat_views.insert(key.clone(), view);
+        if persist {
+            self.persist_composer_draft(&key, &cached_draft);
+        } else if restored_from_store
+            && self.session_identity_key_for_current_route().as_deref() == Some(key.as_str())
+            && self.draft.is_empty()
+            && self.composer_attachments.is_empty()
+        {
+            self.draft.clone_from(&cached_draft);
+        }
         while self.session_chat_views.len() > 32 {
             let active_key = match &self.route {
                 AppRoute::Session(session_id) => Some(
@@ -20615,6 +20649,9 @@ fn render_message() -> &'static str {
                     let Some(view) = self.session_chat_views.get(*candidate) else {
                         return true;
                     };
+                    if !view.draft.is_empty() || !view.composer_attachments.is_empty() {
+                        return false;
+                    }
                     if view.older_transcript_request.is_some()
                         || view.transcript.iter().any(|message| {
                             message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
@@ -20649,6 +20686,58 @@ fn render_message() -> &'static str {
             self.session_chat_view_order.retain(|key| key != &candidate);
             self.session_chat_views.remove(&candidate);
         }
+    }
+
+    fn session_identity_key_for_current_route(&self) -> Option<String> {
+        match &self.route {
+            AppRoute::Session(session_id) => {
+                Some(self.session_identity_key(session_id, self.active_session_profile.as_deref()))
+            }
+            _ => None,
+        }
+    }
+
+    fn persist_composer_draft(&mut self, identity_key: &str, text: &str) {
+        if let Err(error) =
+            crate::composer_drafts::save(self.workspace.data_directory(), identity_key, text)
+        {
+            self.status =
+                format!("Draft is still available in memory but could not be saved: {error}");
+        }
+    }
+
+    fn load_composer_draft(&mut self, identity_key: &str) -> String {
+        match crate::composer_drafts::load(self.workspace.data_directory(), identity_key) {
+            Ok(Some(text)) => text,
+            Ok(None) => String::new(),
+            Err(error) => {
+                self.status = format!("Saved composer draft could not be restored: {error}");
+                String::new()
+            }
+        }
+    }
+
+    fn restore_new_chat_draft_for_current_owner(&mut self, force_visible: bool) {
+        let identity_key =
+            self.session_identity_key("__new__", self.active_session_profile.as_deref());
+        if self.new_chat_draft_scope.as_deref() == Some(identity_key.as_str()) {
+            if force_visible {
+                self.draft.clone_from(&self.new_chat_draft);
+            }
+            return;
+        }
+        if let Some(previous_scope) = self.new_chat_draft_scope.clone() {
+            self.persist_composer_draft(&previous_scope, &self.new_chat_draft.clone());
+        }
+        let initial_in_memory_draft = self.new_chat_draft_scope.is_none() && !self.draft.is_empty();
+        self.new_chat_draft_scope = Some(identity_key.clone());
+        if initial_in_memory_draft {
+            self.new_chat_draft.clone_from(&self.draft);
+            self.persist_composer_draft(&identity_key, &self.new_chat_draft.clone());
+        } else {
+            self.new_chat_draft = self.load_composer_draft(&identity_key);
+        }
+        self.draft.clone_from(&self.new_chat_draft);
     }
 
     fn session_identity_key(&self, session_id: &str, profile: Option<&str>) -> String {
@@ -20730,7 +20819,13 @@ fn render_message() -> &'static str {
                     },
                 );
             }
-            AppRoute::NewChat => self.new_chat_draft.clone_from(&self.draft),
+            AppRoute::NewChat => {
+                self.new_chat_draft.clone_from(&self.draft);
+                let key =
+                    self.session_identity_key("__new__", self.active_session_profile.as_deref());
+                self.new_chat_draft_scope = Some(key.clone());
+                self.persist_composer_draft(&key, &self.new_chat_draft.clone());
+            }
             _ => {}
         }
     }
@@ -21021,7 +21116,7 @@ fn render_message() -> &'static str {
                     self.older_transcript_request = None;
                     self.older_transcript_error = None;
                     self.active_runtime_session_id = None;
-                    self.draft.clear();
+                    self.draft = self.load_composer_draft(&key);
                     self.composer_attachments.clear();
                     self.active_prepared_image_draft_id = None;
                     self.restored_prepared_image_draft_id = None;
@@ -21049,7 +21144,7 @@ fn render_message() -> &'static str {
                     .gateway_endpoint
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.clone());
-                self.draft.clone_from(&self.new_chat_draft);
+                self.restore_new_chat_draft_for_current_owner(true);
             }
             _ => {}
         }
@@ -28040,6 +28135,22 @@ fn render_message() -> &'static str {
                             continue;
                         }
                         let (_, text) = self.pending_create.take().expect("pending create checked");
+                        if matches!(&self.route, AppRoute::NewChat) {
+                            self.new_chat_draft.clear();
+                            let identity_key =
+                                self.new_chat_draft_scope.clone().unwrap_or_else(|| {
+                                    self.session_identity_key(
+                                        "__new__",
+                                        self.active_session_profile.as_deref().or_else(|| {
+                                            self.gateway_endpoint
+                                                .as_ref()
+                                                .map(|endpoint| endpoint.profile_id.as_str())
+                                        }),
+                                    )
+                                });
+                            self.new_chat_draft_scope = Some(identity_key.clone());
+                            self.persist_composer_draft(&identity_key, "");
+                        }
                         let profile = self
                             .gateway_endpoint
                             .as_ref()
@@ -44885,6 +44996,18 @@ mod tests {
         );
         assert_eq!(app.active_session_profile.as_deref(), Some("research"));
         assert!(app.draft.is_empty());
+        assert!(app.new_chat_draft.is_empty());
+        assert_eq!(
+            crate::composer_drafts::load(
+                app.workspace.data_directory(),
+                &app.new_chat_draft_scope
+                    .clone()
+                    .expect("New Chat owner scope")
+            )
+            .unwrap(),
+            None,
+            "an admitted New Chat draft is removed from persistent storage"
+        );
         assert_eq!(app.transcript[0]["role"], "user");
         assert_eq!(app.transcript[0]["content"], "hello Hermes");
         assert_eq!(app.pending_submissions.len(), 1);
@@ -51508,6 +51631,104 @@ mod tests {
                 .contains_key(&session_identity_key("session-0", Some("work")))
         );
         drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
+    fn composer_draft_survives_app_restart_and_isolated_by_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("same-id".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "work draft survives restart".into();
+        app.save_active_chat_view();
+        app.route = AppRoute::Session("same-id".into());
+        app.active_session_profile = Some("personal".into());
+        app.draft = "personal draft survives restart".into();
+        app.save_active_chat_view();
+        drop(app);
+
+        let mut restarted = HermesNativeApp::new_for_automation(profile_dir.clone());
+        restarted.route = AppRoute::Session("same-id".into());
+        restarted.active_session_profile = Some("work".into());
+        restarted.cache_session_chat_view(
+            session_identity_key("same-id", Some("work")),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        assert_eq!(restarted.draft, "work draft survives restart");
+        assert!(restarted.pending_submissions.is_empty());
+
+        restarted.route = AppRoute::Session("same-id".into());
+        restarted.active_session_profile = Some("personal".into());
+        restarted.draft.clear();
+        restarted.cache_session_chat_view(
+            session_identity_key("same-id", Some("personal")),
+            SessionChatViewState {
+                profile: Some("personal".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        assert_eq!(restarted.draft, "personal draft survives restart");
+        assert!(restarted.pending_submissions.is_empty());
+        drop(restarted);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
+    fn composer_draft_cache_protects_nonempty_views_beyond_thirty_two_sessions() {
+        let (mut app, profile_dir) = isolated_app();
+        for index in 0..40 {
+            let id = format!("draft-session-{index}");
+            app.cache_session_chat_view(
+                session_identity_key(&id, Some("work")),
+                SessionChatViewState {
+                    profile: Some("work".into()),
+                    draft: format!("draft-{index}"),
+                    ..SessionChatViewState::default()
+                },
+            );
+        }
+        assert_eq!(app.session_chat_views.len(), 40);
+        for index in 0..40 {
+            let key = session_identity_key(&format!("draft-session-{index}"), Some("work"));
+            assert_eq!(app.session_chat_views[&key].draft, format!("draft-{index}"));
+            assert_eq!(
+                crate::composer_drafts::load(app.workspace.data_directory(), &key).unwrap(),
+                Some(format!("draft-{index}"))
+            );
+        }
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).unwrap();
+    }
+
+    #[test]
+    fn new_chat_composer_draft_restores_after_restart_and_clear_removes_storage() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::NewChat;
+        app.active_session_profile = Some("work".into());
+        app.draft = "new chat draft".into();
+        app.save_active_chat_view();
+        drop(app);
+
+        let mut restarted = HermesNativeApp::new_for_automation(profile_dir.clone());
+        restarted.route = AppRoute::NewChat;
+        restarted.active_session_profile = Some("work".into());
+        restarted.restore_new_chat_draft_for_current_owner(true);
+        assert_eq!(restarted.draft, "new chat draft");
+        assert!(restarted.pending_submissions.is_empty());
+        restarted.draft.clear();
+        restarted.save_active_chat_view();
+        assert_eq!(
+            crate::composer_drafts::load(
+                restarted.workspace.data_directory(),
+                &session_identity_key("__new__", Some("work"))
+            )
+            .unwrap(),
+            None
+        );
+        drop(restarted);
         std::fs::remove_dir_all(profile_dir).unwrap();
     }
 

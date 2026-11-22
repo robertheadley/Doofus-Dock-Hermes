@@ -1,5 +1,6 @@
 pub mod app;
 pub mod artifacts;
+pub mod composer_drafts;
 pub mod files;
 pub mod fonts;
 pub mod gateway;

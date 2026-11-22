@@ -4231,3 +4231,8 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime behavior changed during publication.
 - **risks:** Live Gateway, packaged Windows, concurrent offset-page stability and formal source acceptance remain open.
 - **follow_up:** Continue the next dependency-ready agent-workflow gap; keep the overall goal active and protect apps/hermes-native/work/.
+
+
+### PAR-0060 composer draft persistence — 2026-11-22
+
+Added bounded atomic text-draft storage and protected nonempty draft views from LRU eviction. Validation passes: 556 library + 15 protocol + 3 launcher tests, all-target check, rustfmt and diff checks. Attachments remain session-memory-only; live Gateway and packaged Windows acceptance remain open.

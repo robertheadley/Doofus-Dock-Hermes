@@ -1909,3 +1909,19 @@ Validation: PASS 25 edit-filtered regressions and full locked agent-automation p
 ### Revision 308 — Final validation for durable edit-row resolution (2026-11-22)
 
 Revision 307 validation is complete: PASS 25 edit-filtered tests; PASS full locked suite (550 library + 15 protocol + 3 launcher); PASS all-target locked check, rustfmt and diff check; PASS both progress generators, 19/19 task-continuity tests, task-state schema validation, root capability-package validation (77 receipts; optional YAML parsing skipped because PyYAML is not installed), and the archival package validator (491 pending rows). The broad review remains 97/499 (6 implemented, 90 partial, 1 not implemented, 402 unknown); chat/tool remains 63/176 (1 implemented, 61 partial, 1 not implemented, 113 unknown). Those are evidence-coverage counts, not product completion. PAR-0051 remains partial; Gateway, packaged Windows, concurrent pagination and formal source acceptance remain open.
+
+
+### Revision 309 — Persist independent session drafts (implementation plan) — 2026-11-22
+
+PAR-0060 has a concrete native state-loss gap: drafts survive ordinary in-process session switches, but the 32-entry session-view LRU may evict a nonempty draft, and text drafts are not restored after restart. The pinned source persists up to 50 text drafts per session key; attachments remain renderer-memory-only.
+
+Implementation slice: add an atomic bounded user-data text-draft store keyed by the native connection/profile/stored-session identity; cap at 50 entries and bound each text record; restore it when a session view is first opened; remove the persisted text when the composer clears or is admitted; and keep nonempty text/attachment views out of session-view LRU eviction. Do not persist attachment bytes/references in this slice. Preserve drafts across profile/session switches and process restarts. Storage failure must leave the in-memory draft usable and surface an explicit status.
+
+Validation: store round-trip, clear, cap, corruption and identity-isolation tests; app restore across app instances and profile isolation; regression exceeding 32 cached sessions; no prompt is submitted as a side effect of restore. Run full locked package, all-target check, progress/task validators and pinned/archival package validators. No live Gateway is needed. Remaining source-paired, multi-window race and packaged Windows acceptance stay separate.
+
+
+### Revision 310 — Persist independent session drafts (implementation validation) — 2026-11-22
+
+Implemented a bounded atomic JSON draft store keyed by the existing Gateway connection/profile/session identity. It stores plain text only, rejects malformed and oversized records, caps the store at 50 records, and clears on empty composer state. New Chat and session drafts restore across app instances. Nonempty drafts and attachment views are excluded from 32-entry LRU eviction. A first-render initialization guard preserves already-populated in-memory drafts. Attachments remain memory-only.
+
+Validation: PASS 556 library + 15 protocol + 3 launcher tests; PASS six focused draft tests; PASS all-target locked check; PASS rustfmt and diff checks. The first full run exposed a first-render overwrite and a cleanup assumption in the new tests; both were corrected, and the entire suite then passed. Live Gateway is not required for this local persistence behavior. PAR-0060 remains partial pending source-paired and packaged Windows review.

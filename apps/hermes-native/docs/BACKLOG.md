@@ -378,3 +378,6 @@ PAR-0051 failed-turn update: full locked tests (543 library + 15 protocol + 3 la
 ### PAR-0051 missing durable row-ID recovery — 2026-11-22
 
 Eligible prior user messages without a local durable row ID now use bounded profile-scoped /api/sessions/{id}/messages history lookup. Exact unique matches can use the existing confirmed truncating edit. Duplicate matches resolve only for a locally and durably newest user turn; failures and ambiguity use ordinary prompt.submit. Stale result ownership is rejected. Headless regressions and the full suite pass. Remaining: concurrent REST offset-page mutation behavior, authenticated live Gateway, packaged Windows interaction, and fixed-source acceptance.
+
+
+PAR-0060 implementation update (2026-11-22): atomic bounded text drafts now restore by connection/profile/session, clear when empty, and remain protected from view-cache eviction. Six focused tests and the full 556 + 15 + 3 Rust suite pass. Source-paired acceptance and packaged Windows validation remain open.
