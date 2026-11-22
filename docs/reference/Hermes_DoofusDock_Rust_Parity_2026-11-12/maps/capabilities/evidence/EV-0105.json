@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0105",
+  "capability_id": "ui-jump-to-earlier-prompt-by-timeline-marker",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "prompt-history-freshness-and-active-marker",
+  "locator": "apps/hermes-native/src/app.rs::prompt_timeline_refresh_keeps_old_rows_until_first_page_replaces_them",
+  "date": "2026-11-22",
+  "commit": "b65bbc463e521ade6c9fd852dbc34a08aad36837",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Rust regressions verify matching session/profile invalidation (including actual regeneration admission), preservation of existing index rows during refresh, replacement after the first-page response, the rendered Current marker, and viewport/follow-to-bottom active-prompt selection. Full locked suite passes 578 library + 15 protocol + 3 launcher tests; all-target cargo check, rustfmt, 19 continuity tests, both progress generators and task validation pass.",
+  "notes": "Partial evidence only. Automatic invalidation covers prompt admissions performed through this client; time-based expiry and changes made by another client remain open. No authenticated live Hermes Gateway, packaged Windows, physical scroll input or formal pinned-source acceptance was exercised. EV-0102 through EV-0104 remain unchanged as historical evidence."
+}

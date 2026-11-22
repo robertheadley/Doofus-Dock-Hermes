@@ -1336,6 +1336,7 @@ capabilities:
   - EV-0102
   - EV-0103
   - EV-0104
+  - EV-0105
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1356,6 +1357,8 @@ capabilities:
       description: Render an accessible timeline of loaded user prompts and navigate to a selected transcript message without submitting.
     - id: indexed-unloaded-prompt-history
       description: Fetch owner-scoped prompt metadata pages and navigate to a durable prompt row outside the currently loaded transcript.
+    - id: prompt-history-freshness-and-active-marker
+      description: Invalidate and refresh prompt metadata after an admitted prompt mutation, keep cached rows visible until replacement, and identify the active user prompt from transcript scroll position.
 - id: ui-paginate-older-transcript-history
   name: Paginate older transcript history
   area: chat-transcript
