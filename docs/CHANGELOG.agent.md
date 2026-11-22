@@ -4184,3 +4184,8 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No new polling. Only an explicit stale-runtime refusal adds one `session.resume` and one bounded `prompt.submit` retry.
 - **risks:** Live Hermes Gateway versions may differ in resume response fields; a failed or uncertain resume never triggers a second prompt submission. Live runtime remains unverified.
 - **follow_up:** Bind local evidence to the implementation commit and continue PAR-0051 toward Gateway and packaged Windows acceptance without touching `apps/hermes-native/work/`.
+
+### PAR-0051 stale-runtime recovery publication
+
+- Implementation commit `3a288f867af28b8826cf63f4f7e0a84a9c4eadae` and EV-0092/progress commit `d9882a5a6e187e62dc20e6f17c8e4c3589a488b5` were pushed to `origin/main`; a fresh fetch confirmed local `main` and `origin/main` match exactly.
+- Task `hermes-par-0051` remains in progress under the active Codex lease. Checkpoint revision 640 / task-ledger revision 102 validates with `git_drift: false`, no unresolved operations, and the operator-owned `apps/hermes-native/work/` folder preserved.
