@@ -4125,3 +4125,14 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** Upload requests occur only for files explicitly chosen or dropped in the edit dialog; no new polling was added.
 - **risks:** A canceled in-flight upload may leave an unreferenced file in the session's attachment store, as with the main composer. Runtime ownership is fenced, and the prompt is never sent until all retained uploads have receipts.
 - **follow_up:** Rerun focused and full validation after the rendered-control assertion, add commit-bound partial evidence, update task state, and publish to main. Preserve all existing functionality.
+
+- **id:** hermes-par0051-edit-attachments-evidence-20261122
+- **timestamp:** 2026-11-22T01:45:15Z
+- **what:** Added EV-0090 for the edit-dialog attachment workflow, bound to the implementation commit, and regenerated broad/scoped progress.
+- **why:** Keep the new upload behavior, headless evidence, and capability map connected to the exact implementation revision.
+- **components:** Evidence package, generated progress overlays, and task checkpoint.
+- **type:** Partial implementation evidence.
+- **validation:** PASS root capability package (565 behaviors, 15 source inspections, 74 implementation receipts), archival package (491 pending), and task-state validation. Progress remains 95/499 broad and 61/176 chat/tool; formal and live acceptance remain pending.
+- **performance:** No runtime change.
+- **risks:** Optional direct YAML parsing remains skipped because PyYAML is unavailable. Live Gateway and physical Windows interaction remain unverified.
+- **follow_up:** Checkpoint the current test/evidence state and publish implementation plus EV-0090 to main.

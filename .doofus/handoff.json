@@ -282,43 +282,13 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "EADME.md",
+      "path": "pps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
       "status": "M "
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/src/app.rs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/src/gateway.rs",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
       "status": " M"
     },
     {
@@ -356,18 +326,23 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo fmt --check; cargo test --locked --features agent-automation; cargo check --all-targets --locked --features agent-automation; git diff --check",
+    "command": "cargo test --locked --features agent-automation; cargo check --all-targets --locked --features agent-automation; progress builders; root/archive validators; doofus_task validate",
     "evidence": [
-      "apps/hermes-native/src/app.rs#message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference",
-      "apps/hermes-native/src/app.rs#message_edit_waits_for_new_file_upload_before_sending_truncation",
-      "apps/hermes-native/docs/PLAN.md#Revision 302"
+      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json#EV-0090",
+      "apps/hermes-native/src/app.rs#message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference"
     ],
     "state": "in_progress",
-    "summary": "Added source-aligned new image/file uploads to the isolated prior-message edit dialog; uploaded refs enter truncating text only after owner-scoped receipt, leaving active composer intact. Full validation passes.",
-    "verified_at": "2026-11-22T01:44:57Z"
+    "summary": "Implemented source-aligned image/file upload in prior-message edit dialog; partial EV-0090 is bound to cacf12d and root/archive package validation passes. Existing functionality is preserved.",
+    "verified_at": "2026-11-22T01:47:13Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -425,7 +400,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T02:44:57Z",
+    "lease_expires_at": "2026-11-22T02:47:13Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1684,9 +1659,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0051-edit-attachments-checkpoint-20261122",
+  "last_event_id": "hermes-par0051-edit-attachments-evidence-checkpoint-20261122",
   "last_operation": {
-    "request_id": "hermes-par0051-edit-attachments-checkpoint-20261122",
+    "request_id": "hermes-par0051-edit-attachments-evidence-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1705,7 +1680,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Record the implementation commit, add partial EV-0090 and regenerate evidence overlays; validate durable state and packages; publish to main. Then continue to live Gateway proof or the next core agent-workflow feature.",
+  "recommended_next_action": "Commit EV-0090 and regenerated progress; publish implementation/evidence to main and verify exact remote SHA. Then validate a live Gateway only when an existing safe test instance is available; otherwise continue the next core agent-workflow gap.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2160,34 +2135,14 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "5d2ef28642f841c387d42c1620f485beb7cdef25adbef05f25bc4a3c503ea0a2",
+    "change_fingerprint": "125bc5b51022da7b1057ad368c3d89210dfccdc69751162871a84378cb465ce7",
     "changed_files": [
       {
-        "path": "EADME.md",
+        "path": "pps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
         "status": "M "
       },
       {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/app.rs",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/gateway.rs",
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
         "status": " M"
       },
       {
@@ -2213,16 +2168,20 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json",
+        "status": "??"
       }
     ],
-    "head_commit": "5dad32b00f2e42106840fd1d0f9d343350459bc2",
+    "head_commit": "cacf12d8af5b3fb05c597acbb943b7a5b65deff5",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 621,
+  "revision": 622,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 621,
+  "state_revision": 622,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0051",
   "task_ledger_revision": 99,
@@ -3666,9 +3625,19 @@
       "command": "cargo check --all-targets --locked --features agent-automation",
       "result": "PASS: 530 library + 15 protocol + 3 launcher; all-target check; rustfmt and diff checks passed. Focused prior-message edit tests pass.",
       "timestamp": "2026-11-22T01:44:57Z"
+    },
+    {
+      "command": "cargo test --locked --features agent-automation",
+      "result": "PASS 530 library + 15 protocol + 3 launcher; all-target check; rustfmt and diff check; root UCM 74 receipts; archive 491 pending; task state valid.",
+      "timestamp": "2026-11-22T01:47:13Z"
+    },
+    {
+      "command": "cargo check --all-targets --locked --features agent-automation",
+      "result": "PASS 530 library + 15 protocol + 3 launcher; all-target check; rustfmt and diff check; root UCM 74 receipts; archive 491 pending; task state valid.",
+      "timestamp": "2026-11-22T01:47:13Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T01:44:57Z"
+  "updated_at": "2026-11-22T01:47:13Z"
 }

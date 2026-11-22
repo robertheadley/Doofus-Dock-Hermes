@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0090",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "prior_message_edit_stages_new_files_and_images_without_consuming_main_composer",
+  "locator": "apps/hermes-native/src/app.rs#message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference",
+  "date": "2026-11-22",
+  "commit": "cacf12d8af5b3fb05c597acbb943b7a5b65deff5",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui test. The edit dialog exposes its own attachment action. Image staging uses the existing Gateway attach command; a matching connection/profile/session receipt contributes an @image reference to the truncating prompt. The user composer draft and existing attachment chip remain unchanged. A separate regression proves a pending upload cannot send or truncate history. Full locked agent-automation suite passed 530 library, 15 protocol and 3 launcher tests; all-target check, rustfmt and diff checks passed.",
+  "notes": "Partial implementation evidence only. Old attachments remain dropped from the replacement turn as the pinned source specifies. Live Gateway, physical Windows picker/drop behavior, and pinned-source acceptance were not verified."
+}
