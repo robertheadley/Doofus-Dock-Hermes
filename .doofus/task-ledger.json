@@ -1,5 +1,5 @@
 {
-  "revision": 122,
+  "revision": 123,
   "schema_version": 1,
   "tasks": [
     {
@@ -1926,7 +1926,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-22T06:49:16Z",
+              "last_updated_at": "2026-11-22T07:03:35Z",
               "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-jump-to-earlier-prompt-by-timeline-marker",
               "outputs": [],
@@ -1942,10 +1942,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "in_progress",
+              "state": "tested",
               "task_id": "hermes-par-0056",
               "title": "PAR-0056 Jump to earlier prompt by timeline marker",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#rendered_prompt_timeline_targets_the_existing_transcript_row"
+              ]
             },
             {
               "agent_identity": {
@@ -16397,5 +16399,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T06:49:16Z"
+  "updated_at": "2026-11-22T07:03:35Z"
 }

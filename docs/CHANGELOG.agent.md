@@ -4371,3 +4371,16 @@ Implementation commit `dee655dbaf82017c2b15eef903800448b37ef6b2` and evidence/ta
 ### PAR-0056 checkpoint revision correction — 2026-11-22T06:50:25Z
 
 The prior source-audit changelog entry mistakenly stated ledger revision 123. The successful validator returned state revision 691 and ledger revision 122. The correction is appended here; the original audit record remains unchanged.
+
+### PAR-0056 loaded-prompt timeline — 2026-11-22T07:03:45Z
+
+- **id:** `hermes-par0056-implementation-evidence-20261122`
+- **timestamp:** 2026-11-22T07:03:45Z
+- **what:** Added a collapsible and keyboard-accessible timeline of real user prompts in the loaded transcript. Entries are virtualized and scroll identity is keyed to the profile/connection/session owner. Selecting a marker scrolls the transcript row and does not submit. Empty prompts and pinned background-process notices are excluded. Added widget and full-app egui interaction tests; recorded PAR-0056 as partial with EV-0102.
+- **why:** Prompt navigation is an agent-chat workflow in the pinned Desktop source. It extends existing transcript search, history and bottom-follow behavior without replacing those features.
+- **components:** `apps/hermes-native/src/app.rs`, progress generator and overlays, `apps/hermes-native/docs/PLAN.md`, `BACKLOG.md`, `COMPLETION_OVERVIEW.md`, capability map/evidence.
+- **type:** feature and regression evidence.
+- **validation:** focused widget and app interaction tests; 566 library + 15 protocol + 3 launcher tests; all-target locked check; rustfmt/diff; 19 continuity tests; task validator; both progress generators; root package validator (86 implementation receipts) and archival validator (491 pending).
+- **performance:** Timeline rows are virtualized with `show_rows`; entry generation happens only while expanded.
+- **risks:** Partial only: unloaded history indexing/around-row fetch and active-marker tracking remain absent. No physical Windows, packaged, live Gateway or formal source-paired acceptance. Optional PyYAML/UCM parse skipped.
+- **follow_up:** Publish to main; next add the missing historical-index path while preserving this UI and existing transcript controls.

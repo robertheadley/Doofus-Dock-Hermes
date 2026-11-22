@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0102",
+  "capability_id": "ui-jump-to-earlier-prompt-by-timeline-marker",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "loaded-prompt-timeline-navigation",
+  "locator": "apps/hermes-native/src/app.rs#rendered_prompt_timeline_targets_the_existing_transcript_row",
+  "date": "2026-11-22",
+  "commit": "78f1aa008a5f00a7d6dd8c2d1568d72302d31534",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless full-app egui interaction opens the Prompt timeline, activates an accessible prompt item, targets its transcript row for scrolling, consumes the pending scroll request, and proves no prompt submission is pending. Companion widget test verifies non-user rows, empty prompts and pinned background-process notifications are omitted and that a click resolves to the expected loaded message index. Full locked agent-automation suite passes (566 library + 15 protocol + 3 launcher tests); all-target locked check, rustfmt/diff, task continuity and both progress generators pass.",
+  "notes": "Partial native UI evidence only. The timeline covers the currently loaded transcript; native does not yet index or fetch unloaded historical prompts around a selected row. Active marker tracking during manual scrolling, physical Windows input, packaged behavior, live Gateway and formal pinned-source acceptance were not exercised."
+}

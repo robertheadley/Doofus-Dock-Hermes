@@ -1331,7 +1331,9 @@ capabilities:
   name: Jump to earlier prompt by timeline marker
   area: chat-transcript
   claim: In the new native Rust DoofusDock UI, a user can jump to earlier prompt by timeline marker.
-  status: not_implemented
+  status: partial
+  evidence:
+  - EV-0102
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1344,8 +1346,12 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: loaded-prompt-timeline-navigation
+      description: Render an accessible timeline of loaded user prompts and navigate to a selected transcript message without submitting.
 - id: ui-paginate-older-transcript-history
   name: Paginate older transcript history
   area: chat-transcript
