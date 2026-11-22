@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0088",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "edit_during_active_turn_interrupts_first_and_never_replays_uncertain_destructive_submission",
+  "locator": "apps/hermes-native/src/app.rs#editing_during_a_running_turn_interrupts_before_truncating_submit",
+  "date": "2026-11-22",
+  "commit": "634ade751a6541b05d04fe62002978a9c0d97727",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui_kittest and Gateway actor/event tests. The rendered regression proves Edit stays available for an admitted active response and preserves composer content. Protocol/app regressions prove session.interrupt is queued before the truncating prompt, the matching receipt is required, uncertain interrupt outcome preserves history and sends no edit, and a definitive prompt refusal restores the edit without replacing the unrelated composer draft/attachment. Full locked agent-automation suite passed 526 library, 15 protocol and 3 launcher tests; all-target cargo check, rustfmt and diff checks passed.",
+  "notes": "Partial implementation evidence only. No live Gateway or packaged Windows test was performed. Recent-stop cooldown and busy 4009 retry behavior, historical attachment semantics, live admission/refusal/recovery and pinned-source acceptance remain open. The latest chat/tool progress remains 61/176 evidence-mapped, with all 176 live/source-pair states pending."
+}
