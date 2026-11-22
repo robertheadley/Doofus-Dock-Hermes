@@ -4136,3 +4136,17 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime change.
 - **risks:** Optional direct YAML parsing remains skipped because PyYAML is unavailable. Live Gateway and physical Windows interaction remain unverified.
 - **follow_up:** Checkpoint the current test/evidence state and publish implementation plus EV-0090 to main.
+
+
+## PAR-0052 — Regenerate a previous assistant answer — 2026-11-22
+
+- **id:** PAR-0052
+- **timestamp:** 2026-11-22T02:28:14Z
+- **what:** Added an accessible Regenerate answer action for assistant messages when the nearest preceding user prompt has a unique positive durable row ID. The read-only confirmation dialog requires deep-cut consent, leaves the active composer untouched, submits the owner-scoped Gateway truncation request, and remaps surviving transcript IDs only from the admission receipt; missing replacements remove stale IDs.
+- **why:** Complete a core agent chat lifecycle action using the pinned Hermes snapshot while preserving existing chat and edit behavior.
+- **components:** `apps/hermes-native/src/app.rs`, `src/gateway.rs`, progress generator/ledgers, `README.md`, architecture, plan, backlog, completion overview, and project journals.
+- **type:** feature, Gateway receipt mapping, headless UI/protocol regressions, progress evidence and documentation.
+- **validation:** Full locked suite passed (537 library, 15 protocol, 3 launcher); all-target locked check, rustfmt, diff check, both progress generators, Doofus task validator and pinned-package validator passed (74 implementation receipts). The optional YAML parse was skipped because PyYAML is unavailable. PAR-0052 remains partial; live Gateway behavior, packaged Windows interaction and formal pinned-source acceptance are unverified.
+- **performance:** No benchmark run; row selection and local survivor rebinding are linear in the loaded transcript length, and one truncating submit RPC is issued after consent.
+- **risks:** Hermes rewrites durable rows during truncation. If a receipt lacks a valid replacement row ID, subsequent rewind on that cached row is disabled until history refresh; the feature does not infer IDs.
+- **follow_up:** Verify live Gateway admission and transcript reconciliation in an isolated session, then continue the next agent-workflow gap.

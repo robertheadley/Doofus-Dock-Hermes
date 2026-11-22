@@ -1094,6 +1094,25 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live Gateway behavior, packaged Windows picker/drop interaction, and formal pinned-source acceptance remain unverified",
         ],
     },
+    "PAR-0052": {
+        "state": "partial",
+        "level": "headless_regenerate_previous_answer_with_durable_row_rebinding",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 303",
+            "apps/hermes-native/src/app.rs#regeneration_target_uses_the_nearest_unique_durable_user_row",
+            "apps/hermes-native/src/app.rs#regenerate_action_opens_a_read_only_prompt_and_confirms_deep_cut",
+            "apps/hermes-native/src/app.rs#regeneration_rebinds_survivors_after_admission_and_preserves_composer",
+            "apps/hermes-native/src/gateway.rs#truncating_prompt_receipt_returns_rebound_and_new_user_row_ids",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planReload",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planConfirmedReload",
+            ".staging/hermes-pinned-878305/tui_gateway/methods_prompt.py#_truncate_history_for_submit",
+        ],
+        "gaps": [
+            "live Gateway admission/refusal and post-rewrite transcript reconciliation remain unverified",
+            "regeneration is intentionally unavailable when the prior user prompt lacks a unique positive durable row ID",
+            "packaged Windows interaction and fixed-source acceptance remain open",
+        ],
+    },
     "PAR-0057": {
         "state": "partial",
         "level": "headless_older_transcript_page_and_gateway_scope_tests",

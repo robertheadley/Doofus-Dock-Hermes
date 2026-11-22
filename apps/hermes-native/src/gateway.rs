@@ -1838,6 +1838,8 @@ pub enum PromptSubmitReceipt {
         admission_id: String,
         status: String,
         execution_generation: Option<u64>,
+        user_row_id: Option<u64>,
+        survivor_row_id_map: BTreeMap<u64, Option<u64>>,
     },
     VoiceStopped,
 }
@@ -2599,6 +2601,7 @@ enum GatewayCommand {
         text: String,
         truncate_before_row_id: u64,
         confirm_deep_truncate: bool,
+        rebind_survivor_row_ids: Vec<u64>,
     },
     AttachComposerFile {
         request_id: String,
@@ -3001,6 +3004,7 @@ pub(crate) enum TestGatewayCommand {
         text: String,
         truncate_before_row_id: u64,
         confirm_deep_truncate: bool,
+        rebind_survivor_row_ids: Vec<u64>,
     },
     AttachComposerFile {
         request_id: String,
@@ -3096,6 +3100,7 @@ impl GatewayDiscovery {
                         text,
                         truncate_before_row_id,
                         confirm_deep_truncate,
+                        rebind_survivor_row_ids,
                     } => Some(TestGatewayCommand::EditPrompt {
                         session_id,
                         profile,
@@ -3103,6 +3108,7 @@ impl GatewayDiscovery {
                         text,
                         truncate_before_row_id,
                         confirm_deep_truncate,
+                        rebind_survivor_row_ids,
                     }),
                     GatewayCommand::AttachComposerFile {
                         request_id,
@@ -3210,6 +3216,7 @@ impl GatewayDiscovery {
                         text,
                         truncate_before_row_id,
                         confirm_deep_truncate,
+                        rebind_survivor_row_ids,
                     } => TestGatewayCommand::EditPrompt {
                         session_id,
                         profile,
@@ -3217,6 +3224,7 @@ impl GatewayDiscovery {
                         text,
                         truncate_before_row_id,
                         confirm_deep_truncate,
+                        rebind_survivor_row_ids,
                     },
                     GatewayCommand::AttachComposerFile {
                         request_id,
@@ -4543,6 +4551,7 @@ impl GatewayDiscovery {
         text: String,
         truncate_before_row_id: u64,
         confirm_deep_truncate: bool,
+        rebind_survivor_row_ids: Vec<u64>,
     ) -> Result<(), String> {
         if truncate_before_row_id == 0 {
             return Err("Cannot edit a transcript row without a stable positive row ID".into());
@@ -4555,6 +4564,7 @@ impl GatewayDiscovery {
                 text,
                 truncate_before_row_id,
                 confirm_deep_truncate,
+                rebind_survivor_row_ids,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -7543,6 +7553,7 @@ fn gateway_actor(
                 text,
                 truncate_before_row_id,
                 confirm_deep_truncate,
+                rebind_survivor_row_ids,
             }) => {
                 let params = prompt_edit_rpc_params(
                     &session_id,
@@ -7551,6 +7562,7 @@ fn gateway_actor(
                     &text,
                     truncate_before_row_id,
                     confirm_deep_truncate,
+                    &rebind_survivor_row_ids,
                 );
                 let result = params
                     .and_then(|params| {
@@ -8011,6 +8023,25 @@ fn parse_prompt_submit_receipt(
         admission_id: admission_id.to_owned(),
         status: status.to_owned(),
         execution_generation,
+        user_row_id: reply.get("user_row_id").and_then(serde_json::Value::as_u64),
+        survivor_row_id_map: reply
+            .get("survivor_row_id_map")
+            .and_then(serde_json::Value::as_object)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(|(old_id, new_id)| {
+                        let old_id = old_id.parse::<u64>().ok()?;
+                        let new_id = if new_id.is_null() {
+                            None
+                        } else {
+                            Some(new_id.as_u64()?)
+                        };
+                        Some((old_id, new_id))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 
@@ -8064,13 +8095,23 @@ fn prompt_edit_rpc_params(
     text: &str,
     truncate_before_row_id: u64,
     confirm_deep_truncate: bool,
+    rebind_survivor_row_ids: &[u64],
 ) -> Result<serde_json::Value, String> {
     if truncate_before_row_id == 0 {
         return Err("Cannot edit a transcript row without a stable positive row ID".into());
     }
     let mut payload = prompt_submit_rpc_params(session_id, profile, submission_id, text, &[])?;
     payload["confirm_truncate"] = serde_json::Value::Bool(true);
+    payload["confirm_empty_truncate"] = serde_json::Value::Bool(true);
     payload["truncate_before_row_id"] = serde_json::json!(truncate_before_row_id);
+    let rebind_ids = rebind_survivor_row_ids
+        .iter()
+        .copied()
+        .filter(|row_id| *row_id > 0)
+        .collect::<BTreeSet<_>>();
+    if !rebind_ids.is_empty() {
+        payload["rebind_survivor_row_ids"] = serde_json::json!(rebind_ids);
+    }
     if confirm_deep_truncate {
         payload["confirm_deep_truncate"] = serde_json::Value::Bool(true);
     }
@@ -15731,19 +15772,27 @@ mod tests {
             "updated",
             41,
             false,
+            &[10, 11],
         )
         .unwrap();
         assert_eq!(shallow["session_id"], "runtime-3");
         assert_eq!(shallow["profile"], "profile-3");
         assert_eq!(shallow["confirm_truncate"], true);
+        assert_eq!(shallow["confirm_empty_truncate"], true);
         assert_eq!(shallow["truncate_before_row_id"], 41);
+        assert_eq!(
+            shallow["rebind_survivor_row_ids"],
+            serde_json::json!([10, 11])
+        );
         assert!(shallow.get("confirm_deep_truncate").is_none());
 
         let deep =
-            prompt_edit_rpc_params("runtime-3", None, "edit-2", "updated", 42, true).unwrap();
+            prompt_edit_rpc_params("runtime-3", None, "edit-2", "updated", 42, true, &[]).unwrap();
         assert_eq!(deep["confirm_deep_truncate"], true);
         assert_eq!(deep["truncate_before_row_id"], 42);
-        assert!(prompt_edit_rpc_params("runtime-3", None, "edit-3", "updated", 0, true).is_err());
+        assert!(
+            prompt_edit_rpc_params("runtime-3", None, "edit-3", "updated", 0, true, &[]).is_err()
+        );
     }
 
     #[test]
@@ -22259,6 +22308,26 @@ mod tests {
             Ok(PromptSubmitReceipt::VoiceStopped)
         ));
         assert!(parse_prompt_submit_receipt(&json!({"accepted":true}), "runtime-1").is_err());
+    }
+
+    #[test]
+    fn truncating_prompt_receipt_returns_rebound_and_new_user_row_ids() {
+        let receipt = parse_prompt_submit_receipt(
+            &json!({
+                "admission_id":"admission-1",
+                "ref":{"session_id":"runtime-1"},
+                "status":"started",
+                "user_row_id":91,
+                "survivor_row_id_map":{"10":20,"11":null,"bad":"invalid"}
+            }),
+            "runtime-1",
+        )
+        .expect("valid receipt");
+        assert!(matches!(
+            receipt,
+            PromptSubmitReceipt::Admitted { user_row_id: Some(91), ref survivor_row_id_map, .. }
+                if survivor_row_id_map == &BTreeMap::from([(10, Some(20)), (11, None)])
+        ));
     }
 
     #[test]

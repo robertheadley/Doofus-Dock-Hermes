@@ -1331,6 +1331,8 @@ struct MessageEditDraft {
     later_user_turns: usize,
     confirm_deep_cut: bool,
     busy_retry_attempted: bool,
+    is_regenerate: bool,
+    rebind_survivor_row_ids: Vec<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -7108,6 +7110,7 @@ fn render_message() -> &'static str {
             }
             let messages = self.transcript.clone();
             let mut open_message_edit: Option<(u64, String, usize)> = None;
+            let mut open_message_regenerate: Option<(usize, u64, String)> = None;
             let search_matches = transcript_search_matches(&messages, &self.find_in_page_query);
             let timestamps_enabled = self.timestamps_enabled;
             let technical_tool_payloads =
@@ -7133,6 +7136,14 @@ fn render_message() -> &'static str {
                 && active_pending
                     .as_ref()
                     .is_none_or(|pending| !pending.uncertain && pending.admission_id.is_some())
+                && !self
+                    .pending_interrupt
+                    .as_ref()
+                    .is_some_and(|(_, pending_session)| {
+                        Some(pending_session.as_str()) == self.active_runtime_session_id.as_deref()
+                    });
+            let regenerate_action_enabled = self.gateway_connected
+                && active_pending.is_none()
                 && !self
                     .pending_interrupt
                     .as_ref()
@@ -7224,6 +7235,21 @@ fn render_message() -> &'static str {
                                     .accessible_name("Edit this sent message");
                                 if edit.clicked() {
                                     open_message_edit = Some((row_id, body.clone(), index));
+                                }
+                            }
+                            if message.get("role").and_then(serde_json::Value::as_str)
+                                == Some("assistant")
+                                && let Some((user_index, row_id, prompt)) =
+                                    regeneration_target_before(&messages, index)
+                            {
+                                let regenerate = ui
+                                    .add_enabled(
+                                        regenerate_action_enabled,
+                                        egui::Button::new("Regenerate answer"),
+                                    )
+                                    .accessible_name("Regenerate this Hermes answer");
+                                if regenerate.clicked() {
+                                    open_message_regenerate = Some((user_index, row_id, prompt));
                                 }
                             }
                             if let Some(reasoning) = message
@@ -7438,6 +7464,34 @@ fn render_message() -> &'static str {
                     later_user_turns,
                     confirm_deep_cut: false,
                     busy_retry_attempted: false,
+                    is_regenerate: false,
+                    rebind_survivor_row_ids: durable_row_ids_for_rebind(&messages),
+                });
+            }
+            if let Some((index, row_id, prompt)) = open_message_regenerate {
+                let later_user_turns = messages
+                    .iter()
+                    .skip(index + 1)
+                    .filter(|message| {
+                        message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                    })
+                    .count();
+                self.message_edit = Some(MessageEditDraft {
+                    session_id: session_id.to_owned(),
+                    profile: self.active_session_profile.clone(),
+                    connection_id: self
+                        .gateway_discovery
+                        .as_ref()
+                        .and_then(|gateway| gateway.connection_id().map(str::to_owned)),
+                    row_id,
+                    original_text: prompt.clone(),
+                    text: prompt,
+                    attachments: Vec::new(),
+                    later_user_turns,
+                    confirm_deep_cut: false,
+                    busy_retry_attempted: false,
+                    is_regenerate: true,
+                    rebind_survivor_row_ids: durable_row_ids_for_rebind(&messages),
                 });
             }
             self.render_message_edit_dialog(ui.ctx());
@@ -17752,13 +17806,27 @@ fn render_message() -> &'static str {
         let mut cancel = false;
         let mut submit = false;
         let mut attach_paths = Vec::new();
-        egui::Window::new("Edit sent message")
+        egui::Window::new(if edit.is_regenerate {
+            "Regenerate Hermes answer"
+        } else {
+            "Edit sent message"
+        })
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
             .default_width(560.0)
             .show(ctx, |ui| {
-                ui.label("Editing this message resubmits it and removes the later conversation from Hermes history.");
+                if edit.is_regenerate {
+                    ui.label("Hermes will rerun this prompt and replace the later conversation.");
+                    ui.add(
+                        egui::TextEdit::multiline(&mut edit.text)
+                            .desired_rows(5)
+                            .desired_width(f32::INFINITY)
+                            .interactive(false),
+                    )
+                    .accessible_name("Prompt to regenerate");
+                } else {
+                    ui.label("Editing this message resubmits it and removes the later conversation from Hermes history.");
                 ui.label(RichText::new("Old attachment parts are removed with the original turn. Add replacement files here if needed.").size(11.0).color(MUTED));
                 let attach = ui.add_enabled(self.gateway_connected, egui::Button::new("Attach file"))
                     .accessible_name("Attach a new image or file to the edited message");
@@ -17814,6 +17882,7 @@ fn render_message() -> &'static str {
                 if drop_active && !dropped_paths.is_empty() {
                     attach_paths.extend(dropped_paths);
                 }
+                }
                 if edit.later_user_turns > 0 {
                     ui.colored_label(Color32::YELLOW, format!("This will archive {} later user message(s).", edit.later_user_turns));
                     ui.checkbox(&mut edit.confirm_deep_cut, "I understand that later user turns will be removed");
@@ -17828,9 +17897,14 @@ fn render_message() -> &'static str {
                     let outgoing = compose_edit_prompt_with_attachments(&edit).unwrap_or_default();
                     let enabled = ready
                         && !outgoing.trim().is_empty()
-                        && outgoing.trim() != edit.original_text.trim()
+                        && (edit.is_regenerate || outgoing.trim() != edit.original_text.trim())
                         && (edit.later_user_turns == 0 || edit.confirm_deep_cut);
-                    if ui.add_enabled(enabled, egui::Button::new("Send edited message")).clicked() { submit = true; }
+                    let submit_label = if edit.is_regenerate {
+                        "Regenerate answer"
+                    } else {
+                        "Send edited message"
+                    };
+                    if ui.add_enabled(enabled, egui::Button::new(submit_label)).clicked() { submit = true; }
                     if ui.button("Cancel").clicked() { cancel = true; }
                 });
             });
@@ -18003,13 +18077,23 @@ fn render_message() -> &'static str {
                 return;
             }
         };
-        if text.is_empty() || text == edit.original_text.trim() {
+        if text.is_empty() || (!edit.is_regenerate && text == edit.original_text.trim()) {
+            let is_regenerate = edit.is_regenerate;
             self.message_edit = Some(edit);
-            self.status = "The edited message must contain changed text.".into();
+            self.status = if is_regenerate {
+                "The prompt to regenerate is empty.".into()
+            } else {
+                "The edited message must contain changed text.".into()
+            };
             return;
         }
         let pending_key = self.session_identity_key(&edit.session_id, edit.profile.as_deref());
         if let Some(pending) = self.pending_submissions.get(&pending_key).cloned() {
+            if edit.is_regenerate {
+                self.status =
+                    "Wait for the current Hermes response to finish before regenerating".into();
+                return;
+            }
             if pending.uncertain || pending.admission_id.is_none() {
                 self.status =
                     "Wait for Hermes to confirm this response before editing history".into();
@@ -18069,6 +18153,7 @@ fn render_message() -> &'static str {
             text.clone(),
             edit.row_id,
             later_user_turns > 0,
+            edit.rebind_survivor_row_ids.clone(),
         ) {
             self.status = error;
             return;
@@ -18091,7 +18176,11 @@ fn render_message() -> &'static str {
                 retrying_failed_turn: false,
             },
         );
-        self.status = "Sending edited message to Hermes…".into();
+        self.status = if edit.is_regenerate {
+            "Regenerating Hermes answer…".into()
+        } else {
+            "Sending edited message to Hermes…".into()
+        };
     }
 
     fn queue_busy_edit_interrupt(&mut self, pending_key: &str, submission_id: &str) -> bool {
@@ -18407,8 +18496,13 @@ fn render_message() -> &'static str {
                 admission_id,
                 status,
                 execution_generation,
+                user_row_id,
+                survivor_row_id_map,
             }) => {
-                if let Some(edit) = self.pending_message_edits.remove(&submission_id) {
+                let edit = self.pending_message_edits.remove(&submission_id);
+                let is_rewrite = edit.is_some();
+                let is_regenerate = edit.as_ref().is_some_and(|edit| edit.is_regenerate);
+                if let Some(edit) = edit {
                     let row_id = edit.row_id;
                     let edited_text = edit.text.trim().to_owned();
                     if let Some(transcript) =
@@ -18426,14 +18520,34 @@ fn render_message() -> &'static str {
                             .map(|(index, _)| index)
                             .collect::<Vec<_>>();
                         if let [target_index] = targets.as_slice() {
+                            for message in transcript.iter_mut().take(*target_index) {
+                                let Some(old_row_id) =
+                                    message.get("row_id").and_then(serde_json::Value::as_u64)
+                                else {
+                                    continue;
+                                };
+                                if let Some(Some(new_row_id)) = survivor_row_id_map.get(&old_row_id)
+                                {
+                                    message["row_id"] = serde_json::json!(new_row_id);
+                                } else if let Some(message) = message.as_object_mut() {
+                                    // A truncating submit rewrites durable rows. If Hermes does
+                                    // not return a replacement ID for a survivor, drop the stale
+                                    // ID rather than risking a later rewind at the wrong row.
+                                    message.remove("row_id");
+                                }
+                            }
                             transcript.truncate(*target_index);
-                            transcript.push(serde_json::json!({
-                                "id":submission_id,"submission_id":submission_id,"row_id":row_id,
+                            let mut user_message = serde_json::json!({
+                                "id":submission_id,"submission_id":submission_id,
                                 "admission_id":admission_id,"role":"user","content":edited_text,
                                 "timestamp":unix_now_seconds()
-                            }));
+                            });
+                            if let Some(user_row_id) = user_row_id {
+                                user_message["row_id"] = serde_json::json!(user_row_id);
+                            }
+                            transcript.push(user_message);
                         } else if is_active {
-                            self.status = "Hermes admitted the edit, but the local transcript changed; refreshing history".into();
+                            self.status = "Hermes admitted the transcript rewrite, but its target changed; refreshing history".into();
                         }
                     }
                 }
@@ -18471,15 +18585,28 @@ fn render_message() -> &'static str {
                     self.pending_submissions.remove(&key);
                 }
                 if is_active {
-                    if !self.composer_attachments.is_empty() {
+                    if !is_rewrite && !self.composer_attachments.is_empty() {
                         self.composer_attachments.clear();
                         self.save_active_chat_view();
                     }
-                    self.status = match status.as_str() {
-                        "queued" => "Message queued in Hermes".into(),
-                        "unknown" => "Message admitted; execution outcome needs recovery".into(),
-                        "terminal" => "Hermes message already settled".into(),
-                        _ => "Message accepted by Hermes".into(),
+                    self.status = if is_regenerate {
+                        match status.as_str() {
+                            "queued" => "Regenerated prompt queued in Hermes".into(),
+                            "unknown" => {
+                                "Regeneration admitted; execution outcome needs recovery".into()
+                            }
+                            "terminal" => "Regenerated response already settled".into(),
+                            _ => "Hermes is regenerating the answer".into(),
+                        }
+                    } else {
+                        match status.as_str() {
+                            "queued" => "Message queued in Hermes".into(),
+                            "unknown" => {
+                                "Message admitted; execution outcome needs recovery".into()
+                            }
+                            "terminal" => "Hermes message already settled".into(),
+                            _ => "Message accepted by Hermes".into(),
+                        }
                     };
                     if status == "unknown" {
                         self.resolve_unknown_submission();
@@ -32572,6 +32699,57 @@ fn structured_provider_error_presentation(message: &serde_json::Value) -> Option
     }
 }
 
+fn regeneration_target_before(
+    messages: &[serde_json::Value],
+    assistant_index: usize,
+) -> Option<(usize, u64, String)> {
+    if messages
+        .get(assistant_index)
+        .and_then(|message| message.get("role"))
+        .and_then(serde_json::Value::as_str)
+        != Some("assistant")
+    {
+        return None;
+    }
+    let (index, message) = messages
+        .get(..assistant_index)?
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, message)| {
+            message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+        })?;
+    if message.get("error").is_some_and(|error| !error.is_null()) {
+        return None;
+    }
+    let row_id = message
+        .get("row_id")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|row_id| *row_id > 0)?;
+    if messages
+        .iter()
+        .filter(|candidate| {
+            candidate.get("row_id").and_then(serde_json::Value::as_u64) == Some(row_id)
+        })
+        .count()
+        != 1
+    {
+        return None;
+    }
+    let text = transcript_message(message).1.trim().to_owned();
+    (!text.is_empty()).then_some((index, row_id, text))
+}
+
+fn durable_row_ids_for_rebind(messages: &[serde_json::Value]) -> Vec<u64> {
+    messages
+        .iter()
+        .filter_map(|message| message.get("row_id").and_then(serde_json::Value::as_u64))
+        .filter(|row_id| *row_id > 0)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 fn transcript_message(message: &serde_json::Value) -> (String, String) {
     if message.get("type").and_then(|value| value.as_str()) == Some("tool_call") {
         let name = message
@@ -34812,6 +34990,177 @@ mod tests {
     }
 
     #[test]
+    fn regeneration_target_uses_the_nearest_unique_durable_user_row() {
+        let messages = vec![
+            serde_json::json!({"row_id":10,"role":"user","content":"first prompt"}),
+            serde_json::json!({"role":"assistant","content":"first answer"}),
+            serde_json::json!({"row_id":20,"role":"user","content":"second prompt"}),
+            serde_json::json!({"role":"assistant","content":"second answer"}),
+        ];
+        assert_eq!(
+            regeneration_target_before(&messages, 3),
+            Some((2, 20, "second prompt".into()))
+        );
+        let mut ambiguous = messages.clone();
+        ambiguous.push(serde_json::json!({"row_id":20,"role":"user","content":"duplicate id"}));
+        assert_eq!(regeneration_target_before(&ambiguous, 3), None);
+        let mut missing_row_id = messages;
+        missing_row_id[2].as_object_mut().unwrap().remove("row_id");
+        assert_eq!(regeneration_target_before(&missing_row_id, 3), None);
+    }
+
+    #[test]
+    fn regenerate_action_opens_a_read_only_prompt_and_confirms_deep_cut() {
+        let (mut native_app, profile_dir) = isolated_app();
+        native_app.gateway_connected = true;
+        native_app.active_runtime_session_id = Some("runtime-session".into());
+        native_app.active_session_profile = Some("work".into());
+        native_app.draft = "unfinished composer draft".into();
+        native_app.transcript = vec![
+            serde_json::json!({"row_id":10,"role":"user","content":"first prompt"}),
+            serde_json::json!({"row_id":11,"role":"assistant","content":"first answer"}),
+            serde_json::json!({"row_id":12,"role":"user","content":"second prompt"}),
+            serde_json::json!({"row_id":13,"role":"assistant","content":"second answer"}),
+        ];
+        let app = Rc::new(RefCell::new(native_app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 720.0))
+            .build_ui(move |ui| {
+                frame_app
+                    .borrow_mut()
+                    .session_content(ui, "runtime-session")
+            });
+        harness.run_steps(2);
+        let actions = harness.query_all_by_label("Regenerate this Hermes answer");
+        assert_eq!(actions.count(), 2);
+        harness
+            .query_all_by_label("Regenerate this Hermes answer")
+            .next()
+            .expect("assistant answer exposes regeneration")
+            .click();
+        harness.run();
+        assert!(harness.query_by_label("Prompt to regenerate").is_some());
+        assert!(harness.query_by_label("Regenerate answer").is_some());
+        assert!(
+            harness
+                .query_by_label("I understand that later user turns will be removed")
+                .is_some()
+        );
+        let app_ref = app.borrow();
+        let draft = app_ref.message_edit.as_ref().expect("regeneration draft");
+        assert!(draft.is_regenerate);
+        assert_eq!(draft.row_id, 10);
+        assert_eq!(draft.text, "first prompt");
+        assert_eq!(draft.later_user_turns, 1);
+        assert_eq!(app_ref.draft, "unfinished composer draft");
+        drop(app_ref);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn regeneration_rebinds_survivors_after_admission_and_preserves_composer() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "keep this draft".into();
+        app.composer_attachments.push(ComposerAttachment {
+            path: "attachments/current.pdf".into(),
+            source_path: "C:/current.pdf".into(),
+            name: "current.pdf".into(),
+            is_image: false,
+            mime: "application/pdf".into(),
+            attached_session_id: Some("runtime-session".into()),
+            ref_text: Some("@file:attachments/current.pdf".into()),
+            request_id: None,
+            error: None,
+        });
+        app.transcript = vec![
+            serde_json::json!({"row_id":10,"role":"user","content":"prior prompt"}),
+            serde_json::json!({"row_id":11,"role":"assistant","content":"prior answer"}),
+            serde_json::json!({"row_id":20,"role":"user","content":"rerun this"}),
+            serde_json::json!({"row_id":21,"role":"assistant","content":"old answer"}),
+        ];
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 20,
+            original_text: "rerun this".into(),
+            text: "rerun this".into(),
+            attachments: Vec::new(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+            busy_retry_attempted: false,
+            is_regenerate: true,
+            rebind_survivor_row_ids: vec![10, 11, 20, 21],
+        });
+        let command = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("regenerate command");
+        assert!(matches!(
+            command,
+            TestGatewayCommand::EditPrompt {
+                session_id,
+                profile,
+                text,
+                truncate_before_row_id,
+                confirm_deep_truncate,
+                rebind_survivor_row_ids,
+                ..
+            } if session_id == "runtime-session"
+                && profile.as_deref() == Some("work")
+                && text == "rerun this"
+                && truncate_before_row_id == 20
+                && !confirm_deep_truncate
+                && rebind_survivor_row_ids == vec![10, 11, 20, 21]
+        ));
+        assert_eq!(
+            app.transcript.len(),
+            4,
+            "do not mutate before Gateway admission"
+        );
+        assert_eq!(app.draft, "keep this draft");
+        let submission_id = app
+            .pending_submissions
+            .values()
+            .next()
+            .expect("pending regeneration")
+            .submission_id
+            .clone();
+        app.handle_prompt_submitted(
+            "runtime-session".into(),
+            submission_id,
+            Ok(PromptSubmitReceipt::Admitted {
+                admission_id: "admission-regenerate".into(),
+                status: "started".into(),
+                execution_generation: Some(4),
+                user_row_id: Some(30),
+                survivor_row_id_map: BTreeMap::from([
+                    (10, Some(100)),
+                    (11, Some(101)),
+                    (20, None),
+                    (21, None),
+                ]),
+            }),
+        );
+        assert_eq!(app.transcript.len(), 3);
+        assert_eq!(app.transcript[0]["row_id"], 100);
+        assert_eq!(app.transcript[1]["row_id"], 101);
+        assert_eq!(app.transcript[2]["row_id"], 30);
+        assert_eq!(app.transcript[2]["content"], "rerun this");
+        assert_eq!(app.draft, "keep this draft");
+        assert_eq!(app.composer_attachments.len(), 1);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn edited_message_revalidates_target_and_submits_confirmed_gateway_truncation() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
@@ -34819,6 +35168,7 @@ mod tests {
         app.active_session_profile = Some("work".into());
         app.draft = "keep this draft".into();
         app.transcript = vec![
+            serde_json::json!({"row_id":50,"role":"assistant","content":"prior answer"}),
             serde_json::json!({"row_id":51,"role":"user","content":"old question"}),
             serde_json::json!({"row_id":52,"role":"assistant","content":"old answer"}),
             serde_json::json!({"row_id":53,"role":"user","content":"later question"}),
@@ -34836,6 +35186,8 @@ mod tests {
             later_user_turns: 1,
             confirm_deep_cut: true,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         });
         let command = commands
             .recv_timeout(std::time::Duration::from_secs(1))
@@ -34846,10 +35198,10 @@ mod tests {
         );
         assert_eq!(
             app.transcript.len(),
-            3,
+            4,
             "local history stays intact until Gateway admission"
         );
-        assert_eq!(app.transcript[0]["content"], "old question");
+        assert_eq!(app.transcript[1]["content"], "old question");
         assert_eq!(app.draft, "keep this draft");
         assert_eq!(app.pending_submissions.len(), 1);
         let edit_submission_id = app
@@ -34866,11 +35218,15 @@ mod tests {
                 admission_id: "admission-edit".into(),
                 status: "started".into(),
                 execution_generation: Some(4),
+                user_row_id: None,
+                survivor_row_id_map: BTreeMap::new(),
             }),
         );
-        assert_eq!(app.transcript.len(), 1);
-        assert_eq!(app.transcript[0]["content"], "revised question");
-        assert_eq!(app.transcript[0]["row_id"], 51);
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0]["content"], "prior answer");
+        assert!(app.transcript[0].get("row_id").is_none());
+        assert_eq!(app.transcript[1]["content"], "revised question");
+        assert!(app.transcript[1].get("row_id").is_none());
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
@@ -34898,6 +35254,8 @@ mod tests {
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         });
         assert!(
             commands.try_recv().is_err(),
@@ -34951,6 +35309,8 @@ mod tests {
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         });
         let TestGatewayCommand::InterruptSession {
             request_id,
@@ -35017,6 +35377,8 @@ mod tests {
                     admission_id: "admission-edit-running".into(),
                     status: "started".into(),
                     execution_generation: Some(10),
+                    user_row_id: None,
+                    survivor_row_id_map: BTreeMap::new(),
                 }),
             })
             .expect("deliver edit admission receipt");
@@ -35056,6 +35418,8 @@ mod tests {
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         });
         let TestGatewayCommand::EditPrompt {
             submission_id: first_submission_id,
@@ -35173,6 +35537,8 @@ mod tests {
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         };
         app.attach_message_edit_paths(&mut edit, vec![attachment_path.clone()]);
         let TestGatewayCommand::AttachComposerFile {
@@ -35268,6 +35634,8 @@ mod tests {
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         });
         assert!(
             commands.try_recv().is_err(),
@@ -35325,6 +35693,8 @@ mod tests {
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         });
         let TestGatewayCommand::InterruptSession { request_id, .. } = commands
             .recv_timeout(std::time::Duration::from_secs(1))
@@ -35395,6 +35765,8 @@ mod tests {
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
         });
         let TestGatewayCommand::EditPrompt {
             session_id,
@@ -43476,6 +43848,8 @@ mod tests {
                     admission_id: "admission-created".into(),
                     status: "started".into(),
                     execution_generation: Some(1),
+                    user_row_id: None,
+                    survivor_row_id_map: BTreeMap::new(),
                 }),
             })
             .expect("deliver prompt admission receipt");
@@ -43650,6 +44024,8 @@ mod tests {
                 admission_id: "admission-work".into(),
                 status: "started".into(),
                 execution_generation: Some(3),
+                user_row_id: None,
+                survivor_row_id_map: BTreeMap::new(),
             }),
         );
 
@@ -47340,6 +47716,8 @@ mod tests {
                 admission_id: "admission-1".into(),
                 status: "started".into(),
                 execution_generation: None,
+                user_row_id: None,
+                survivor_row_id_map: BTreeMap::new(),
             }),
         );
         assert_eq!(app.transcript[0]["admission_id"], "admission-1");
@@ -47375,6 +47753,8 @@ mod tests {
                 admission_id: "admission-1".into(),
                 status: "started".into(),
                 execution_generation: None,
+                user_row_id: None,
+                survivor_row_id_map: BTreeMap::new(),
             }),
         );
         assert!(app.pending_submissions.is_empty());

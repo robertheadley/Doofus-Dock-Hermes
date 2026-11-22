@@ -1,5 +1,5 @@
 {
-  "revision": 100,
+  "revision": 101,
   "schema_version": 1,
   "tasks": [
     {
@@ -1763,7 +1763,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1772,11 +1772,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T02:26:24Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-regenerate-a-previous-answer",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -1787,10 +1787,17 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0052",
               "title": "PAR-0052 Regenerate a previous answer",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#regeneration_target_uses_the_nearest_unique_durable_user_row",
+                "apps/hermes-native/src/app.rs#regenerate_action_opens_a_read_only_prompt_and_confirms_deep_cut",
+                "apps/hermes-native/src/app.rs#regeneration_rebinds_survivors_after_admission_and_preserves_composer",
+                "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
+                "apps/hermes-native/src/gateway.rs#truncating_prompt_receipt_returns_rebound_and_new_user_row_ids",
+                "apps/hermes-native/docs/PLAN.md#Revision 303"
+              ]
             },
             {
               "agent_identity": {
@@ -16361,5 +16368,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T01:58:01Z"
+  "updated_at": "2026-11-22T02:26:24Z"
 }
