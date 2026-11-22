@@ -1,5 +1,5 @@
 {
-  "revision": 109,
+  "revision": 111,
   "schema_version": 1,
   "tasks": [
     {
@@ -1518,7 +1518,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1527,12 +1527,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T05:16:33Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-render-inline-diffs-with-status",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "03-chat",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -1542,10 +1543,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0045",
               "title": "PAR-0045 Render inline diffs with status",
-              "verification_evidence": []
+              "verification_evidence": [
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0097.json#uid"
+              ]
             },
             {
               "agent_identity": {
@@ -16381,5 +16384,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T04:52:25Z"
+  "updated_at": "2026-11-22T05:16:33Z"
 }

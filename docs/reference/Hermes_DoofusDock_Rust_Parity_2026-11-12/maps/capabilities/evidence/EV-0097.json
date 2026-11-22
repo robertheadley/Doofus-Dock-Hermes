@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0097",
+  "capability_id": "ui-render-inline-diffs-with-status",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "render_inline_tool_diffs_with_summary_and_explicit_completion_outcomes",
+  "locator": "apps/hermes-native/src/app.rs#inline_tool_diff_is_visible_alongside_result_and_has_outcome_status",
+  "date": "2026-11-22",
+  "commit": "a1570b2030b87c3a1911ab7552f29dbcbd38c41b",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui transcript regression renders a completion summary and inline unified diff together, exposes file headers and added/removed lines, renders diff-only rows, and shows explicit success and failure states. Reducer tests cover explicit failure, explicit success precedence over stale error data, unknown completion, and no inference from result text; oversized diffs are visibly bounded. Full locked suite passes 560 library + 15 protocol + 3 launcher tests; all-target check, rustfmt/diff, both progress generators, 19 continuity tests, task state validation, root and archival capability package validators pass.",
+  "notes": "Partial native implementation evidence only. The implementation retains result summaries separately from diffs and distinguishes explicit structured outcome data. No live Hermes Gateway or packaged Windows app was used; live result envelope behavior and formal pinned-source acceptance remain open. The 80,000-character / 1,500-row preview cap is intentional."
+}

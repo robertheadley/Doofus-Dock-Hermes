@@ -4264,3 +4264,5 @@ PAR-0061 implementation and EV-0096/checkpoint are published to `origin/main`; f
 - **performance:** Diff preview is bounded to 80,000 characters and 1,500 rendered rows; no benchmark was required or run.
 - **risks:** Fixtures do not prove live Gateway result envelopes or packaged Windows rendering. Formal pinned-source acceptance remains pending. Previously working features and operator-owned work were preserved.
 - **follow_up:** Create commit-bound partial evidence, update task checkpoint, validate package receipts, publish to main, then continue with the next agent-workflow P0 gap.
+
+PAR-0045 evidence update: EV-0097 is bound to implementation commit `a1570b2030b87c3a1911ab7552f29dbcbd38c41b`. The task is tested at checkpoint revision 663 / ledger revision 111. The generated reference overlays now show 100/499 and 66/176 rows with mapped evidence; these are evidence-review counts, not feature completion. Both capability package validators pass with 81 implementation receipts and 491 archival rows still pending. Live Gateway, packaged Windows, and formal source-paired acceptance remain open.
