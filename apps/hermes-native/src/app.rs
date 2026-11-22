@@ -1374,6 +1374,28 @@ struct PendingChatModelOptions {
 }
 
 #[derive(Clone, Debug)]
+struct PendingNewChatModelOptions {
+    request_id: String,
+    profile: String,
+    connection_id: String,
+}
+
+#[derive(Clone, Debug)]
+struct OwnedNewChatModelSelection {
+    profile: String,
+    connection_id: String,
+    model: String,
+    provider: String,
+}
+
+#[derive(Clone, Debug)]
+struct OwnedNewChatReasoningSelection {
+    profile: String,
+    connection_id: String,
+    effort: String,
+}
+
+#[derive(Clone, Debug)]
 struct PendingChatPolicyMutation {
     request_id: String,
     session_id: String,
@@ -1971,6 +1993,12 @@ pub struct HermesNativeApp {
     chat_model_options_owner: Option<(String, Option<String>, String)>,
     chat_model_options_pending: Option<PendingChatModelOptions>,
     chat_model_options_error: Option<String>,
+    new_chat_model_options: Option<ModelOptionsSnapshot>,
+    new_chat_model_options_owner: Option<(String, String)>,
+    new_chat_model_options_pending: Option<PendingNewChatModelOptions>,
+    new_chat_model_options_error: Option<String>,
+    new_chat_model_selection: Option<OwnedNewChatModelSelection>,
+    new_chat_reasoning_selection: Option<OwnedNewChatReasoningSelection>,
     chat_reasoning_effort: Option<String>,
     chat_reasoning_effort_wire: Option<String>,
     chat_policy_mutation: Option<PendingChatPolicyMutation>,
@@ -4449,6 +4477,12 @@ fn render_message() -> &'static str {
             chat_model_options_owner: None,
             chat_model_options_pending: None,
             chat_model_options_error: None,
+            new_chat_model_options: None,
+            new_chat_model_options_owner: None,
+            new_chat_model_options_pending: None,
+            new_chat_model_options_error: None,
+            new_chat_model_selection: None,
+            new_chat_reasoning_selection: None,
             chat_reasoning_effort: None,
             chat_reasoning_effort_wire: None,
             chat_policy_mutation: None,
@@ -15344,6 +15378,260 @@ fn render_message() -> &'static str {
         self.chat_model_options_owner = None;
     }
 
+    fn request_new_chat_model_options(&mut self) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        let profile = endpoint.profile_id.clone();
+        if profile.eq_ignore_ascii_case("all") {
+            self.new_chat_model_options_error =
+                Some("Choose a single Hermes profile to select a model".into());
+            return;
+        }
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let owner = (connection_id.clone(), profile.clone());
+        if self.new_chat_model_options_owner.as_ref() == Some(&owner)
+            || self
+                .new_chat_model_options_pending
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.profile == profile && pending.connection_id == connection_id
+                })
+        {
+            return;
+        }
+        self.new_chat_model_options = None;
+        self.new_chat_model_options_owner = None;
+        self.new_chat_model_options_error = None;
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.new_chat_model_options_owner = Some(owner);
+            self.new_chat_model_options_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("new-chat-model-options");
+        if let Err(error) = gateway.load_model_options(request_id.clone(), Some(profile.clone())) {
+            self.new_chat_model_options_error = Some(error);
+            return;
+        }
+        self.new_chat_model_options_pending = Some(PendingNewChatModelOptions {
+            request_id,
+            profile,
+            connection_id,
+        });
+    }
+
+    fn new_chat_model_controls(&mut self, ui: &mut Ui) {
+        self.request_new_chat_model_options();
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        let profile = endpoint.profile_id.clone();
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let owner = (connection_id.clone(), profile.clone());
+        let options = self
+            .new_chat_model_options_owner
+            .as_ref()
+            .filter(|loaded_owner| *loaded_owner == &owner)
+            .and(self.new_chat_model_options.as_ref())
+            .cloned();
+        let selected = self.new_chat_model_selection.as_ref().filter(|selected| {
+            selected.profile == profile && selected.connection_id == connection_id
+        });
+        let has_manual_selection = selected.is_some();
+        let current_model = selected
+            .map(|selected| selected.model.clone())
+            .or_else(|| options.as_ref().and_then(|options| options.model.clone()))
+            .unwrap_or_else(|| "Hermes default".into());
+        let current_provider = selected
+            .map(|selected| selected.provider.clone())
+            .or_else(|| {
+                options
+                    .as_ref()
+                    .and_then(|options| options.provider.clone())
+            })
+            .unwrap_or_default();
+        let selected_effort = self
+            .new_chat_reasoning_selection
+            .as_ref()
+            .filter(|selected| {
+                selected.profile == profile && selected.connection_id == connection_id
+            })
+            .map(|selected| selected.effort.as_str())
+            .unwrap_or("default");
+        let current_capabilities = options
+            .as_ref()
+            .and_then(|options| {
+                options.providers.iter().find(|provider| {
+                    provider.slug == current_provider || provider.name == current_provider
+                })
+            })
+            .and_then(|provider| provider.capabilities.get(&current_model));
+        let supports_reasoning = current_capabilities
+            .map(|capabilities| capabilities.reasoning)
+            .unwrap_or(true);
+        let can_disable_reasoning = current_capabilities
+            .and_then(|capabilities| capabilities.can_disable_reasoning)
+            .unwrap_or(true);
+        let mut picked_model: Option<(String, String)> = None;
+        let mut picked_effort: Option<String> = None;
+        let mut retry = false;
+        let mut use_profile_default = false;
+
+        ui.horizontal_wrapped(|ui| {
+            let model_label = if current_provider.is_empty() {
+                current_model.clone()
+            } else {
+                format!("{current_model} · {current_provider}")
+            };
+            ui.menu_button(format!("Model · {model_label}"), |ui| {
+                if self.new_chat_model_options_pending.is_some() {
+                    ui.label("Loading configured models…");
+                }
+                if ui
+                    .selectable_label(!has_manual_selection, "Use Hermes default")
+                    .clicked()
+                {
+                    use_profile_default = true;
+                    ui.close();
+                }
+                if let Some(options) = &options {
+                    egui::ScrollArea::vertical()
+                        .max_height(320.0)
+                        .show(ui, |ui| {
+                            for provider in &options.providers {
+                                ui.label(RichText::new(&provider.name).strong());
+                                for model in &provider.models {
+                                    let active = model == &current_model
+                                        && (provider.slug == current_provider
+                                            || provider.name == current_provider);
+                                    if ui
+                                        .selectable_label(active, model)
+                                        .on_hover_text(format!(
+                                            "Use {model} from {}",
+                                            provider.name
+                                        ))
+                                        .clicked()
+                                    {
+                                        picked_model = Some((model.clone(), provider.slug.clone()));
+                                        ui.close();
+                                    }
+                                }
+                            }
+                        });
+                }
+                if let Some(error) = &self.new_chat_model_options_error {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+            })
+            .response
+            .accessible_name("Choose model for the new Hermes chat");
+
+            ui.menu_button("Add custom model…", |ui| {
+                ui.label("Enter a model ID supported by a configured provider");
+                ui.text_edit_singleline(&mut self.chat_custom_model_input)
+                    .accessible_name("Custom model ID");
+                let candidate = options.as_ref().and_then(|options| {
+                    custom_model_candidate_native(&self.chat_custom_model_input, &options.providers)
+                });
+                if let (Some(candidate), Some(options)) = (candidate, options.as_ref()) {
+                    let mut providers: Vec<_> = options
+                        .providers
+                        .iter()
+                        .filter(|provider| !provider.models.is_empty())
+                        .collect();
+                    providers.sort_by_key(|provider| {
+                        provider.slug != current_provider && provider.name != current_provider
+                    });
+                    for provider in providers {
+                        if ui
+                            .button(format!("Use {candidate} · {}", provider.name))
+                            .clicked()
+                        {
+                            picked_model = Some((candidate.clone(), provider.slug.clone()));
+                            ui.close();
+                        }
+                    }
+                }
+            });
+
+            if self.new_chat_model_options_error.is_some()
+                && ui.button("Retry model list").clicked()
+            {
+                retry = true;
+            }
+            if supports_reasoning {
+                ui.menu_button(
+                    format!(
+                        "Reasoning · {}",
+                        reasoning_effort_label_native(selected_effort, None)
+                    ),
+                    |ui| {
+                        for (effort, label) in [
+                            ("default", "Hermes default"),
+                            ("none", "Off"),
+                            ("minimal", "Minimal"),
+                            ("low", "Low"),
+                            ("medium", "Medium"),
+                            ("high", "High"),
+                            ("xhigh", "Extra high"),
+                            ("max", "Max"),
+                            ("ultra", "Ultra"),
+                        ] {
+                            if effort == "none" && !can_disable_reasoning {
+                                continue;
+                            }
+                            if ui
+                                .selectable_label(selected_effort == effort, label)
+                                .accessible_name(format!("Set new chat reasoning to {label}"))
+                                .clicked()
+                            {
+                                picked_effort = Some(effort.to_owned());
+                                ui.close();
+                            }
+                        }
+                    },
+                )
+                .response
+                .on_hover_text("Choose reasoning for the first turn in this chat");
+            }
+        });
+
+        if retry {
+            self.new_chat_model_options_owner = None;
+            self.new_chat_model_options_error = None;
+            self.request_new_chat_model_options();
+        }
+        if use_profile_default
+            && self
+                .new_chat_model_selection
+                .as_ref()
+                .is_some_and(|selection| {
+                    selection.profile == profile && selection.connection_id == connection_id
+                })
+        {
+            self.new_chat_model_selection = None;
+        }
+        if let Some((model, provider)) = picked_model {
+            self.new_chat_model_selection = Some(OwnedNewChatModelSelection {
+                profile: profile.clone(),
+                connection_id: connection_id.clone(),
+                model,
+                provider,
+            });
+        }
+        if let Some(effort) = picked_effort {
+            self.new_chat_reasoning_selection = if effort == "default" {
+                None
+            } else {
+                Some(OwnedNewChatReasoningSelection {
+                    profile,
+                    connection_id,
+                    effort,
+                })
+            };
+        }
+    }
+
     fn request_chat_model_options(&mut self) {
         let Some(session_id) = self.active_runtime_session_id.clone() else {
             return;
@@ -15447,8 +15735,10 @@ fn render_message() -> &'static str {
 
     fn composer(&mut self, ui: &mut Ui) {
         self.sync_slash_completion_query();
-        self.request_chat_model_options();
         let session_id = self.active_runtime_session_id.clone();
+        if session_id.is_some() {
+            self.request_chat_model_options();
+        }
         let pending_key = session_id.as_deref().map(|session_id| {
             self.session_identity_key(session_id, self.active_session_profile.as_deref())
         });
@@ -15756,6 +16046,8 @@ fn render_message() -> &'static str {
                         .color(MUTED),
                 );
             }
+        } else {
+            self.new_chat_model_controls(ui);
         }
         let mut dropped_composer_paths = Vec::new();
         let mut composer_drop_requires_path = false;
@@ -16687,12 +16979,30 @@ fn render_message() -> &'static str {
             return;
         };
         let request_id = operation_id("create");
-        let params = serde_json::json!({
+        let profile = endpoint.profile_id.clone();
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let model_selection = self.new_chat_model_selection.as_ref().filter(|selection| {
+            selection.profile == profile && selection.connection_id == connection_id
+        });
+        let reasoning_selection = self
+            .new_chat_reasoning_selection
+            .as_ref()
+            .filter(|selection| {
+                selection.profile == profile && selection.connection_id == connection_id
+            });
+        let mut params = serde_json::json!({
             "cols": 96,
             "source": "desktop",
-            "profile": endpoint.profile_id,
+            "profile": profile,
             "request_id": request_id
         });
+        if let Some(selection) = model_selection {
+            params["model"] = serde_json::json!(selection.model);
+            params["provider"] = serde_json::json!(selection.provider);
+        }
+        if let Some(selection) = reasoning_selection {
+            params["reasoning_effort"] = serde_json::json!(selection.effort);
+        }
         if let Err(error) = gateway.create_session(request_id.clone(), params) {
             self.status = error;
             return;
@@ -31266,6 +31576,45 @@ fn render_message() -> &'static str {
                     profile,
                     result,
                 } => {
+                    if let Some(pending) = self.new_chat_model_options_pending.clone()
+                        && pending.request_id == request_id
+                    {
+                        let active_profile = self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.as_str());
+                        let active_connection = self.active_gateway_connection_id();
+                        if profile.as_deref() != Some(pending.profile.as_str())
+                            || active_profile != Some(pending.profile.as_str())
+                            || active_connection != pending.connection_id
+                        {
+                            self.new_chat_model_options_pending = None;
+                            continue;
+                        }
+                        self.new_chat_model_options_pending = None;
+                        self.new_chat_model_options_owner =
+                            Some((pending.connection_id, pending.profile));
+                        match result {
+                            Ok(mut snapshot) => {
+                                for provider in &mut snapshot.providers {
+                                    for model in
+                                        self.workspace.custom_model_ids(&provider.slug).to_vec()
+                                    {
+                                        if !provider.models.contains(&model) {
+                                            provider.models.push(model);
+                                        }
+                                    }
+                                }
+                                self.new_chat_model_options = Some(snapshot);
+                                self.new_chat_model_options_error = None;
+                            }
+                            Err(error) => {
+                                self.new_chat_model_options = None;
+                                self.new_chat_model_options_error = Some(error);
+                            }
+                        }
+                        continue;
+                    }
                     if let Some((expected_request, expected_profile)) =
                         self.fallback_model_options_request.clone()
                         && expected_request == request_id
@@ -39106,6 +39455,105 @@ mod tests {
                 .query_by_label("Use org/model:v2 · OpenAI")
                 .is_some()
         );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn new_chat_model_picker_keeps_manual_model_and_reasoning_separate_from_profile_default() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::NewChat;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-work".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        app.new_chat_model_options_owner = Some((connection_id.clone(), "work".into()));
+        app.new_chat_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "openai".into(),
+                name: "OpenAI".into(),
+                authenticated: Some(true),
+                models: vec!["m1".into(), "m2".into()],
+                capabilities: BTreeMap::from([(
+                    "m2".into(),
+                    crate::gateway::ModelCapabilities {
+                        fast: false,
+                        ultrafast: false,
+                        daybreak: false,
+                        reasoning: true,
+                        can_disable_reasoning: Some(true),
+                    },
+                )]),
+            }],
+            model: Some("m1".into()),
+            provider: Some("openai".into()),
+        });
+
+        let app = Rc::new(RefCell::new(app));
+        let draw_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 420.0))
+            .build_ui(move |ui| draw_app.borrow_mut().new_chat_model_controls(ui));
+        harness.run_steps(2);
+        assert!(
+            harness
+                .query_by_label("Choose model for the new Hermes chat")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Reasoning · Default").is_some());
+
+        harness
+            .get_by_label("Choose model for the new Hermes chat")
+            .click();
+        harness.run();
+        harness.get_by_label("m2").click();
+        harness.run();
+        harness.get_by_label("Reasoning · Default").click();
+        harness.run();
+        harness
+            .get_by_label("Set new chat reasoning to High")
+            .click();
+        harness.run();
+
+        let selected = app.borrow();
+        assert_eq!(
+            selected
+                .new_chat_model_selection
+                .as_ref()
+                .map(|selection| (selection.model.as_str(), selection.provider.as_str())),
+            Some(("m2", "openai"))
+        );
+        assert_eq!(
+            selected
+                .new_chat_reasoning_selection
+                .as_ref()
+                .map(|selection| selection.effort.as_str()),
+            Some("high")
+        );
+        assert_eq!(
+            selected
+                .new_chat_model_options
+                .as_ref()
+                .and_then(|options| options.model.as_deref()),
+            Some("m1"),
+            "manual new-chat selection does not change Hermes' profile default"
+        );
+        drop(selected);
+        harness
+            .get_by_label("Choose model for the new Hermes chat")
+            .click();
+        harness.run();
+        harness.get_by_label("Use Hermes default").click();
+        harness.run();
+        assert!(app.borrow().new_chat_model_selection.is_none());
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
@@ -47959,6 +48407,18 @@ mod tests {
         app.gateway_connected = true;
         app.route = AppRoute::NewChat;
         app.draft = "hello Hermes".into();
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        app.new_chat_model_selection = Some(OwnedNewChatModelSelection {
+            profile: "research".into(),
+            connection_id: connection_id.clone(),
+            model: "gpt-test-model".into(),
+            provider: "openai".into(),
+        });
+        app.new_chat_reasoning_selection = Some(OwnedNewChatReasoningSelection {
+            profile: "research".into(),
+            connection_id,
+            effort: "high".into(),
+        });
 
         let frame_app = Rc::new(RefCell::new(app));
         let draw_app = Rc::clone(&frame_app);
@@ -47976,6 +48436,9 @@ mod tests {
         };
         assert_eq!(params["profile"], "research");
         assert_eq!(params["source"], "desktop");
+        assert_eq!(params["model"], "gpt-test-model");
+        assert_eq!(params["provider"], "openai");
+        assert_eq!(params["reasoning_effort"], "high");
         events
             .send(GatewayEvent::SessionCreated(Ok(CreatedSession {
                 request_id,
@@ -48047,6 +48510,50 @@ mod tests {
         drop(app);
         drop(harness);
         drop(frame_app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn new_chat_create_omits_model_policy_owned_by_another_profile() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        app.new_chat_model_selection = Some(OwnedNewChatModelSelection {
+            profile: "personal".into(),
+            connection_id: connection_id.clone(),
+            model: "private-profile-model".into(),
+            provider: "custom".into(),
+        });
+        app.new_chat_reasoning_selection = Some(OwnedNewChatReasoningSelection {
+            profile: "personal".into(),
+            connection_id,
+            effort: "ultra".into(),
+        });
+
+        app.begin_create_session("first prompt".into());
+        let TestGatewayCommand::CreateSession { params, .. } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("create request is sent")
+        else {
+            panic!("expected session.create command");
+        };
+        assert_eq!(params["profile"], "research");
+        assert!(params.get("model").is_none());
+        assert!(params.get("provider").is_none());
+        assert!(params.get("reasoning_effort").is_none());
+
+        drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
