@@ -61,6 +61,8 @@ The DoofusDock Files panel now reads the selected session's project `cwd` from H
 
 The transcript keeps message roles visible and supports local per-message timestamps. The selected Hermes profile's `display.timestamps` config is read through authenticated `/api/config`; `/timestamps` toggles timestamps and `/timestamps on|off|status` selects or reports a window-only override. The config defaults off, labels use local millisecond time, and commands never go to the model as prompt text. The `--transcript-timestamps-fixture` option captures the distinct timestamp-on surface. Exact source locale/tooltip formatting, tool-run lifecycle stamps, and source-paired Windows verification remain open.
 
+The active chat toolbar displays session-cumulative token usage and reported context occupancy from Hermes `session.usage` events. It accepts both the pinned Desktop's nested usage projection and canonical top-level counters, merges partial updates, and fences events to their connection/profile/session owner. Estimated context is marked with `~`; sessions without reported usage keep the toolbar clear. Headless tests cover rendering, data parsing, partial updates and stale-owner rejection. Live Gateway and source-paired acceptance remain open.
+
 ## Run on Windows
 
 ```powershell

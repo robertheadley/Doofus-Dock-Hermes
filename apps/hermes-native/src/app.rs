@@ -1132,6 +1132,7 @@ struct SessionChatViewState {
     resume_request_id: Option<String>,
     resume_error: Option<String>,
     transcript: Vec<serde_json::Value>,
+    usage: Option<SessionUsageSnapshot>,
     transcript_message_count: usize,
     transcript_has_more: bool,
     older_transcript_request: Option<(String, String, Option<String>, usize)>,
@@ -1140,6 +1141,120 @@ struct SessionChatViewState {
     composer_attachments: Vec<ComposerAttachment>,
     active_prepared_image_draft_id: Option<String>,
     restored_prepared_image_draft_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct SessionUsageSnapshot {
+    calls: Option<u64>,
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    total_tokens: Option<u64>,
+    context_used: Option<u64>,
+    context_max: Option<u64>,
+    context_percent: Option<u64>,
+    context_estimated: Option<bool>,
+}
+
+impl SessionUsageSnapshot {
+    fn from_event_payload(payload: &serde_json::Value) -> Option<Self> {
+        let usage = payload
+            .get("usage")
+            .filter(|value| value.is_object())
+            .unwrap_or(payload);
+        let value = |keys: &[&str]| {
+            keys.iter()
+                .find_map(|key| usage.get(*key).filter(|value| !value.is_null()))
+        };
+        let count = |keys: &[&str]| {
+            value(keys)
+                .and_then(serde_json::Value::as_u64)
+                .filter(|value| *value <= 1_000_000_000_000)
+        };
+        let context_percent = value(&["context_percent"])
+            .and_then(serde_json::Value::as_f64)
+            .filter(|value| value.is_finite())
+            .map(|value| value.round().clamp(0.0, 100.0) as u64);
+        let context_source = value(&["context_source"]).and_then(serde_json::Value::as_str);
+        let context_estimated = value(&["context_estimated"])
+            .and_then(serde_json::Value::as_bool)
+            .or_else(|| context_source.map(|source| source != "provider_usage"));
+        let snapshot = Self {
+            calls: count(&["calls", "api_calls"]),
+            input_tokens: count(&["input", "input_tokens", "prompt_tokens"]),
+            output_tokens: count(&["output", "output_tokens", "completion_tokens"]),
+            total_tokens: count(&["total", "total_tokens"]),
+            context_used: count(&["context_used", "last_prompt_tokens"]),
+            context_max: count(&["context_max", "context_length"]),
+            context_percent,
+            context_estimated,
+        };
+        [
+            snapshot.calls,
+            snapshot.input_tokens,
+            snapshot.output_tokens,
+            snapshot.total_tokens,
+            snapshot.context_used,
+            snapshot.context_max,
+            snapshot.context_percent,
+        ]
+        .into_iter()
+        .any(|value| value.is_some())
+        .then_some(snapshot)
+    }
+
+    fn merge(&mut self, update: Self) {
+        macro_rules! merge_field {
+            ($field:ident) => {
+                if update.$field.is_some() {
+                    self.$field = update.$field;
+                }
+            };
+        }
+        merge_field!(calls);
+        merge_field!(input_tokens);
+        merge_field!(output_tokens);
+        merge_field!(total_tokens);
+        merge_field!(context_used);
+        merge_field!(context_max);
+        merge_field!(context_percent);
+        merge_field!(context_estimated);
+    }
+
+    fn status_label(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(total) = self.total_tokens {
+            parts.push(format!("Tokens {}", format_compact_count(total)));
+        } else if let (Some(input), Some(output)) = (self.input_tokens, self.output_tokens) {
+            parts.push(format!(
+                "Tokens {} in · {} out",
+                format_compact_count(input),
+                format_compact_count(output)
+            ));
+        }
+        if let Some(maximum) = self.context_max.filter(|value| *value > 0) {
+            let used = self.context_used.unwrap_or_default().min(maximum);
+            let percent = self
+                .context_percent
+                .unwrap_or_else(|| used.saturating_mul(100) / maximum);
+            let estimate = if self.context_estimated == Some(true) {
+                "~"
+            } else {
+                ""
+            };
+            parts.push(format!(
+                "Context {estimate}{} / {} ({percent}%)",
+                format_compact_count(used),
+                format_compact_count(maximum)
+            ));
+        }
+        if let Some(calls) = self.calls {
+            parts.push(format!(
+                "{calls} {}",
+                if calls == 1 { "call" } else { "calls" }
+            ));
+        }
+        parts.join(" · ")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4453,6 +4568,16 @@ fn render_message() -> &'static str {
                     ui.label(RichText::new("Hermes").size(17.0).strong().color(TEXT));
                     ui.add_space(16.0);
                     ui.label(RichText::new(&self.status).size(12.0).color(MUTED));
+                    if let Some(usage) = self.active_session_usage() {
+                        let label = usage.status_label();
+                        if !label.is_empty() {
+                            ui.separator();
+                            ui.label(RichText::new(label).size(12.0).color(MUTED))
+                                .on_hover_text(
+                                    "Latest usage reported for this Hermes session; the reading is cached while disconnected",
+                                );
+                        }
+                    }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if ui.button("New window").clicked() {
                             self.execute_registered_action(RegisteredUiAction::OpenNewWindow)
@@ -18461,6 +18586,8 @@ fn render_message() -> &'static str {
             .unwrap_or(serde_json::Value::Null);
         if event_type == "session.info" {
             self.capture_session_backend_metadata(&event, connection_id, &payload);
+        } else if event_type == "session.usage" {
+            self.capture_session_usage(&event, connection_id, &payload);
         }
         let failed_prompt = if event_type == "error"
             || event_type == "message.complete"
@@ -18946,6 +19073,77 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn capture_session_usage(
+        &mut self,
+        event: &serde_json::Value,
+        connection_id: Option<&str>,
+        payload: &serde_json::Value,
+    ) {
+        let Some(connection_id) = connection_id else {
+            return;
+        };
+        if self.gateway_connection_id.as_deref() != Some(connection_id) {
+            return;
+        }
+        let Some(runtime_session_id) = event.get("session_id").and_then(|value| value.as_str())
+        else {
+            return;
+        };
+        let Some(update) = SessionUsageSnapshot::from_event_payload(payload) else {
+            return;
+        };
+        let event_profile = event
+            .get("profile")
+            .or_else(|| payload.get("profile"))
+            .and_then(|value| value.as_str());
+        let stored_session_id = payload
+            .get("stored_session_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty());
+        let active_matches = self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && event_profile
+                .is_none_or(|profile| self.active_session_profile.as_deref() == Some(profile))
+            && matches!(&self.route, AppRoute::Session(session_id)
+                if stored_session_id.is_none_or(|stored| stored == session_id));
+        if active_matches {
+            self.save_active_chat_view();
+        }
+
+        let matching_keys = self
+            .session_chat_views
+            .iter()
+            .filter(|(key, view)| {
+                if view.runtime_session_id.as_deref() != Some(runtime_session_id)
+                    || event_profile.is_some_and(|profile| view.profile.as_deref() != Some(profile))
+                {
+                    return false;
+                }
+                let Some(stored_id) = session_id_from_owner_identity_key(key) else {
+                    return false;
+                };
+                if stored_session_id.is_some_and(|stored| stored != stored_id) {
+                    return false;
+                }
+                self.session_identity_key_for_connection(
+                    Some(connection_id),
+                    stored_id,
+                    view.profile.as_deref(),
+                )
+                .as_str()
+                    == key.as_str()
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        let [key] = matching_keys.as_slice() else {
+            return;
+        };
+        if let Some(view) = self.session_chat_views.get_mut(key) {
+            view.usage
+                .get_or_insert_with(SessionUsageSnapshot::default)
+                .merge(update);
+        }
+    }
+
     fn settle_failed_turn(
         &mut self,
         runtime_session_id: &str,
@@ -19304,6 +19502,16 @@ fn render_message() -> &'static str {
             .unwrap_or_else(|| self.workspace.selected_gateway_connection_id())
     }
 
+    fn active_session_usage(&self) -> Option<SessionUsageSnapshot> {
+        let AppRoute::Session(session_id) = &self.route else {
+            return None;
+        };
+        let key = self.session_identity_key(session_id, self.active_session_profile.as_deref());
+        self.session_chat_views
+            .get(&key)
+            .and_then(|view| view.usage.clone())
+    }
+
     fn untagged_pane_connection_id(&self) -> Option<&str> {
         let connections = self.workspace.gateway_connections();
         (connections.len() == 1).then(|| connections[0].connection_id.as_str())
@@ -19320,6 +19528,7 @@ fn render_message() -> &'static str {
                     SessionChatViewState {
                         profile: self.active_session_profile.clone(),
                         runtime_session_id: self.active_runtime_session_id.clone(),
+                        usage: previous.and_then(|view| view.usage.clone()),
                         backend_cwd: previous.and_then(|view| view.backend_cwd.clone()),
                         terminal_backend: previous.and_then(|view| view.terminal_backend.clone()),
                         resume_request_id: previous.and_then(|view| view.resume_request_id.clone()),
@@ -43017,6 +43226,146 @@ mod tests {
         assert_eq!(personal.backend_cwd, None);
         assert_eq!(personal.terminal_backend, None);
         let _ = std::fs::remove_dir_all(profile_dir);
+    }
+
+    #[test]
+    fn session_usage_is_owner_scoped_merged_and_rendered_in_chat_toolbar() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = "conn-a";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.route = AppRoute::Session("stored-1".into());
+        app.active_runtime_session_id = Some("runtime-1".into());
+        app.active_session_profile = Some("work".into());
+        let work_key =
+            app.session_identity_key_for_connection(Some(connection_id), "stored-1", Some("work"));
+        app.session_chat_views.insert(
+            work_key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-1".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        let personal_key = app.session_identity_key_for_connection(
+            Some(connection_id),
+            "stored-other",
+            Some("personal"),
+        );
+        app.session_chat_views.insert(
+            personal_key.clone(),
+            SessionChatViewState {
+                profile: Some("personal".into()),
+                runtime_session_id: Some("runtime-1".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        let event = |profile: &str, total: u64| {
+            serde_json::json!({
+                "type": "session.usage",
+                "session_id": "runtime-1",
+                "profile": profile,
+                "payload": {
+                    "stored_session_id": "stored-1",
+                    "usage": {
+                        "calls": 1,
+                        "input": 90,
+                        "output": 20,
+                        "total": total,
+                        "context_used": 20,
+                        "context_max": 200,
+                        "context_percent": 10,
+                        "context_estimated": false
+                    }
+                }
+            })
+        };
+        app.handle_server_event_from_connection(event("work", 110), Some(connection_id));
+        assert_eq!(
+            app.session_chat_views
+                .get(&work_key)
+                .and_then(|view| view.usage.as_ref())
+                .map(SessionUsageSnapshot::status_label)
+                .as_deref(),
+            Some("Tokens 110 · Context 20 / 200 (10%) · 1 call")
+        );
+        assert!(
+            app.session_chat_views
+                .get(&personal_key)
+                .is_some_and(|view| view.usage.is_none())
+        );
+
+        app.handle_server_event_from_connection(event("work", 999), Some("conn-b"));
+        app.handle_server_event_from_connection(event("personal", 888), Some(connection_id));
+        assert_eq!(
+            app.session_chat_views
+                .get(&work_key)
+                .and_then(|view| view.usage.as_ref())
+                .and_then(|usage| usage.total_tokens),
+            Some(110)
+        );
+        assert!(
+            app.session_chat_views
+                .get(&personal_key)
+                .is_some_and(|view| view.usage.is_none())
+        );
+
+        app.save_active_chat_view();
+        assert_eq!(
+            app.session_chat_views
+                .get(&work_key)
+                .and_then(|view| view.usage.as_ref())
+                .and_then(|usage| usage.total_tokens),
+            Some(110)
+        );
+
+        let rendered = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            rendered
+                .query_by_label("Tokens 110 · Context 20 / 200 (10%) · 1 call")
+                .is_some()
+        );
+        drop(rendered);
+        let _ = std::fs::remove_dir_all(profile_dir);
+    }
+
+    #[test]
+    fn session_usage_accepts_top_level_gateway_counters_and_preserves_partial_updates() {
+        let initial = SessionUsageSnapshot::from_event_payload(&serde_json::json!({
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "total_tokens": 150,
+            "last_prompt_tokens": 40,
+            "context_length": 200,
+            "context_source": "estimated"
+        }))
+        .expect("canonical counters");
+        let mut merged = initial;
+        merged.merge(
+            SessionUsageSnapshot::from_event_payload(&serde_json::json!({
+                "usage": { "total": 160 }
+            }))
+            .expect("partial sidecar update"),
+        );
+
+        assert_eq!(merged.input_tokens, Some(120));
+        assert_eq!(merged.output_tokens, Some(30));
+        assert_eq!(merged.total_tokens, Some(160));
+        assert_eq!(merged.context_used, Some(40));
+        assert_eq!(merged.context_max, Some(200));
+        assert_eq!(merged.context_estimated, Some(true));
+        assert_eq!(
+            merged.status_label(),
+            "Tokens 160 · Context ~40 / 200 (20%)"
+        );
+        assert!(
+            SessionUsageSnapshot::from_event_payload(&serde_json::json!({
+                "usage": { "total": -1 }
+            }))
+            .is_none()
+        );
     }
 
     #[test]

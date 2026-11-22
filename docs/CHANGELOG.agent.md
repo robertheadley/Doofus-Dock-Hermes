@@ -4033,3 +4033,16 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** Startup avoids creating the wrong local Gateway actor; no benchmark performed.
 - **risks:** Live remote authentication and packaged Windows startup remain unverified. The saved-connection picker and complete multi-connection lifecycle are still open.
 - **follow_up:** Record partial UCM evidence, publish the validated commits to `main`, then continue owner-safe connection switching and in-flight reattach proof.
+
+### hermes-session-usage-toolbar-20261122
+
+- **id:** hermes-session-usage-toolbar-20261122
+- **timestamp:** 2026-11-22T00:11:51Z
+- **what:** Added owner-scoped capture and display of Hermes session token/context usage in the active chat toolbar. Nested Desktop usage projections and top-level Gateway counters are parsed, sparse updates merge without erasing omitted values, and stale connection/profile/session events are rejected. Added unit and rendered UI regressions; updated README, architecture, backlog and plan.
+- **why:** Session usage is an agent workflow capability; users need the active conversation's token/context state without crossing profiles or Gateway connections.
+- **components:** Hermes Native event reducer, per-session chat view cache, chat toolbar, headless tests and feature documentation.
+- **type:** Additive feature and regression coverage.
+- **validation:** PASS focused usage tests (2); full locked `agent-automation` suite (519 library + 15 protocol + 3 launcher); all-target locked cargo check; rustfmt check; `git diff --check`. Root/archive capability validators and task ledger validation will run with commit-bound evidence.
+- **performance:** Event capture is a bounded JSON projection and one unique owner lookup; no additional polling or RPC was added.
+- **risks:** Live Gateway payload timing, disconnected-window UX, packaged Windows rendering and pinned-source pair acceptance remain unverified.
+- **follow_up:** Run full locked validation; bind partial UCM evidence to the implementation commit; update progress maps and publish validated commits directly to `main`.
