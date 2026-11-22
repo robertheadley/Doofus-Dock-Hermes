@@ -1005,6 +1005,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "formal pinned-source acceptance remains pending",
         ],
     },
+    "PAR-0054": {
+        "state": "partial",
+        "level": "headless_transcript_bottom_follow_and_reader_offset_preservation",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/list.tsx#useStickToBottom",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/list.tsx#thread.runStart",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/scroll-to-bottom-button.tsx#requestScrollToBottom",
+            "apps/hermes-native/src/app.rs#transcript_scroll_area",
+            "apps/hermes-native/src/app.rs#transcript_scroll_follows_growth_until_reader_leaves_and_returns_to_bottom",
+            "apps/hermes-native/docs/PLAN.md#Revision 319",
+        ],
+        "gaps": [
+            "the headless egui state regression does not exercise physical Windows wheel input or a live streaming Gateway",
+            "packaged Windows behavior and formal pinned-source acceptance remain pending",
+        ],
+    },
     "PAR-0059": {
         "state": "partial",
         "level": "headless_background_complete_transcript_routing_and_owner_fence",

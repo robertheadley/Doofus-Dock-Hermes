@@ -3189,3 +3189,16 @@ EV-0099 binds the passing headless interaction test to implementation commit `c6
 ### PAR-0053 published to main — 2026-11-22T06:09:24Z
 
 Published implementation/test commit `c6d355dc6cf6dbc5af2e0238638ef68f42e9b0cb` and evidence/task checkpoint commit `1bc2312ca281983c7092a607370b36725d0a1095` to `origin/main`. A fresh fetch confirmed exact local/remote equality at `1bc2312ca281983c7092a607370b36725d0a1095`. EV-0099 remains partial evidence: it proves the explicit confirmation UI and request contract headlessly; live Gateway, packaged Windows and formal pinned-source acceptance are still open. The operator-owned `apps/hermes-native/work/` path remains untouched and excluded.
+
+### PAR-0054 — Follow live transcript growth — 2026-11-22T06:25:50Z
+
+- **id:** PAR-0054
+- **timestamp:** 2026-11-22T06:25:50Z
+- **what:** Added stable session/profile-keyed egui transcript scroll identity and native stick-to-bottom behavior; added a headless regression for following stream growth, preserving a history offset, and resuming after return to bottom.
+- **why:** The pinned Desktop follows new content only while the reader is at the bottom and yields to explicit history reading.
+- **components:** `apps/hermes-native/src/app.rs`, progress generator, status overlays, PLAN/BACKLOG/COMPLETION_OVERVIEW.
+- **type:** feature and regression evidence.
+- **validation:** 563 library + 15 protocol + 3 launcher tests; all-target locked check; rustfmt/diff; 19 continuity tests; task validation; progress generators. Package validators pending EV-0100.
+- **performance:** No benchmarked performance change; scroll behavior delegates to egui's native ScrollArea.
+- **risks:** No physical Windows wheel, live Gateway stream, packaged app, or formal pinned-source acceptance yet. Existing `handle_server_event` dead-code warning remains.
+- **follow_up:** Bind EV-0100 to the implementation commit, validate the capability package and task ledger, publish to main, then continue the next dependency-ready agent workflow.

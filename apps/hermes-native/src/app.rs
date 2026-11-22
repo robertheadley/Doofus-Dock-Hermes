@@ -7190,12 +7190,14 @@ fn render_message() -> &'static str {
                         .map(|artifact| (index, artifact))
                 })
                 .collect::<BTreeMap<_, _>>();
+            let transcript_scroll_key =
+                self.session_identity_key(session_id, self.active_session_profile.as_deref());
             let markdown_cache = &mut self.markdown_cache;
             let mut open_tool_image = None;
             let mut open_transcript_file = None;
             let mut request_tool_image_previews = Vec::new();
             let mut continue_cut_off_reply = false;
-            egui::ScrollArea::vertical()
+            transcript_scroll_area(&transcript_scroll_key)
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
                     ui.set_max_width(ui.available_width().min(860.0));
@@ -34704,6 +34706,12 @@ fn move_session_id(order: &mut Vec<String>, source: &str, target: &str) -> bool 
     true
 }
 
+fn transcript_scroll_area(session_key: &str) -> egui::ScrollArea {
+    egui::ScrollArea::vertical()
+        .id_salt(("hermes-session-transcript", session_key.to_owned()))
+        .stick_to_bottom(true)
+}
+
 fn composer_attachment_needs_upload(
     path: &str,
     backend_cwd: Option<&str>,
@@ -35633,6 +35641,84 @@ mod tests {
             &profile,
             "connection-b",
         ));
+    }
+
+    #[test]
+    fn transcript_scroll_follows_growth_until_reader_leaves_and_returns_to_bottom() {
+        let ctx = egui::Context::default();
+        let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(500.0, 400.0));
+        let mut time = 0.0;
+        let mut frame = |content_height: f32, offset: Option<f32>| {
+            time += 1.0;
+            let mut metrics = None;
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(screen_rect),
+                    time: Some(time),
+                    ..Default::default()
+                },
+                |ui| {
+                    let mut scroll = transcript_scroll_area("work/session-1");
+                    if let Some(offset) = offset {
+                        // A user scroll gesture clears egui's internal sticky flag. Disable it
+                        // for this frame while moving the test viewport to the reader position.
+                        scroll = scroll.stick_to_bottom(false).vertical_scroll_offset(offset);
+                    }
+                    let output = scroll
+                        .max_height(180.0)
+                        .show(ui, |ui| ui.set_min_height(content_height));
+                    metrics = Some((
+                        output.state.clamped_offset().y,
+                        (output.content_size.y - output.inner_rect.height()).max(0.0),
+                    ));
+                },
+            );
+            output.drop_without_applying_deltas();
+            metrics.expect("transcript scroll metrics")
+        };
+
+        let (initial_offset, initial_bottom) = frame(900.0, None);
+        assert!(
+            initial_bottom > 0.0,
+            "fixture must require transcript scrolling"
+        );
+        assert!(
+            (initial_offset - initial_bottom).abs() <= 1.0,
+            "new transcripts start pinned to the newest messages"
+        );
+
+        let (grown_offset, grown_bottom) = frame(1100.0, None);
+        assert!(grown_bottom > initial_bottom);
+        assert!(
+            (grown_offset - grown_bottom).abs() <= 1.0,
+            "streamed content keeps a reader who is at the bottom pinned"
+        );
+
+        let reading_offset_target = grown_bottom - 240.0;
+        let (reading_offset, reading_bottom) = frame(1100.0, Some(reading_offset_target));
+        assert!(
+            reading_offset < reading_bottom - 1.0,
+            "a reader position away from the bottom releases follow"
+        );
+
+        let (preserved_offset, new_bottom) = frame(1400.0, None);
+        assert!(new_bottom > reading_bottom);
+        assert!(
+            (preserved_offset - reading_offset).abs() <= 1.0,
+            "new streamed content does not yank a reader away from history"
+        );
+
+        let (returned_offset, returned_bottom) = frame(1400.0, Some(new_bottom));
+        assert!(
+            (returned_offset - returned_bottom).abs() <= 1.0,
+            "returning to the latest messages re-enables follow"
+        );
+        let (resumed_offset, resumed_bottom) = frame(1600.0, None);
+        assert!(resumed_bottom > returned_bottom);
+        assert!(
+            (resumed_offset - resumed_bottom).abs() <= 1.0,
+            "streaming follows again after the reader returns to the bottom"
+        );
     }
 
     #[test]
