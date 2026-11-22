@@ -281,3 +281,7 @@ New Chat displays the selected profile's model catalog and accepts manual model/
 ### PAR-0514 — Approval card to Gateway request — 2026-11-22
 
 The headless app regression confirms only backend-permitted approval choices are sent and that the originating request ID and profile are retained; unsupported choices produce no request. Existing Gateway actor and receipt tests cover same-socket delivery and stale-generation refusal. EV-0117 marks partial evidence. Live Gateway, packaged Windows behavior, and formal source acceptance remain open.
+
+### PAR-0515 — Clarification card to Gateway
+
+Headless app tests verify the clarification card sends each answer through `clarify.lock` in question order with the owning profile, waits for receipts, and sends Skip to the exact server request. The pinned backend resolves the batch on the final lock. EV-0118 records partial evidence; live Gateway and packaged Windows interaction remain unverified.

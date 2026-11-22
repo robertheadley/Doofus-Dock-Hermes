@@ -401,6 +401,11 @@ PAR-0051 offset-page mutation guard: full locked tests pass (598 library + 15 pr
 The existing approval card's permitted choices now have a headless regression proving `once` and `deny` reach the originating Gateway request with its exact request ID and profile; unsupported choices send nothing. Same-socket actor response and generation-scoped receipt tests cover the Gateway path. EV-0117 records partial evidence. Remaining: authenticated live Gateway approval flow, packaged Windows interaction, and formal pinned-source acceptance.
 
 
+### PAR-0515 — Answer Gateway clarification requests — 2026-11-22
+
+The existing clarification card now has app-to-Gateway regressions for ordered single/multi-select `clarify.lock` answers and Skip on the exact originating request. Pinned source confirms the final lock settles the batch with its answers; existing actor fixtures verify same-socket routing and lock receipts. EV-0118 records partial evidence. Remaining: authenticated live Gateway, packaged Windows interaction, and formal pinned-source acceptance.
+
+
 PAR-0060 implementation update (2026-11-22): atomic bounded text drafts now restore by connection/profile/session, clear when empty, and remain protected from view-cache eviction. Six focused tests and the full 556 + 15 + 3 Rust suite pass. Source-paired acceptance and packaged Windows validation remain open.
 
 

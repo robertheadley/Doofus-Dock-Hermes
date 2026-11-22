@@ -3318,3 +3318,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime benchmark was run.
 - **risks:** Live Gateway, packaged Windows, and formal source acceptance remain open; existing functionality is retained.
 - **follow_up:** Implement the next dependency-ready scoped agent workflow gap.
+
+- **id:** hermes-par0515-clarify-ui-gateway-20261122
+- **timestamp:** 2026-11-22T13:40:00Z
+- **what:** Added partial evidence for the batch clarification UI sending ordered answers to Gateway and skipping the exact originating request.
+- **why:** Close the missing interaction proof for an existing agent workflow while retaining all current behavior.
+- **components:** PAR-0515, `app.rs`, `gateway.rs`, EV-0118, generated progress records.
+- **type:** evidence_and_docs
+- **validation:** Full locked suite 601 library + 15 protocol + 3 launcher; all-target check; formatting/diff; 19 task continuity tests.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live Gateway, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** Keep PAR-0515 partial and continue the next dependency-ready workflow feature.

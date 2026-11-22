@@ -1538,6 +1538,23 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway approval queue behavior", "packaged Windows interaction", "formal pinned-source acceptance"],
     },
+    "PAR-0515": {
+        "state": "partial",
+        "level": "headless_gateway_server_clarify_answer_and_skip_ui_flow",
+        "refs": [
+            ".staging/hermes-pinned-878305/tui_gateway/contracts/server_requests.py#class ClarifyRequestParams",
+            ".staging/hermes-pinned-878305/tui_gateway/server_requests.py#def lock_answer",
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/canonical-clarify-prompt.test.ts#clarify.lock",
+            "apps/hermes-native/src/app.rs#batch_clarify_answer_action_locks_profile_owned_answers_in_question_order",
+            "apps/hermes-native/src/app.rs#batch_clarify_skip_answers_the_originating_server_request",
+            "apps/hermes-native/src/app.rs#inbound_batch_clarify_request_renders_accessible_question_controls",
+            "apps/hermes-native/src/gateway.rs#idle_actor_routes_batch_clarify_server_request_and_returns_answers",
+            "apps/hermes-native/src/gateway.rs#clarify_lock_rpc_preserves_question_order_and_accepts_the_receipt",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0118.json#EV-0118",
+            "apps/hermes-native/docs/PLAN.md#Revision 338",
+        ],
+        "gaps": ["authenticated live Gateway batch clarification", "packaged Windows interaction", "formal pinned-source acceptance"],
+    },
     "PAR-0075": {
         "state": "implemented",
         "level": "headless_protocol_and_persistence_test",

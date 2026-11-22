@@ -10086,7 +10086,7 @@ capabilities:
   name: Answer gateway clarify request
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can answer gateway clarify request.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10099,8 +10099,14 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0118
+  verification:
+    scenarios:
+    - id: server_initiated_batch_clarify_answers_and_skip_reach_gateway
+      description: Answer profile-owned clarification questions in order, preserve multi-select values, and skip only the originating Gateway request.
 - id: ui-answer-gateway-sudo-request-securely
   name: Answer gateway sudo request securely
   area: protocol-reliability

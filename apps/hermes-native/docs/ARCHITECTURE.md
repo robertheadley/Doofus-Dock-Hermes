@@ -370,3 +370,7 @@ Settings → Main model reads the selected profile's `/api/model/options` catalo
 ### Approval choice command boundary
 
 The approval card derives actions from the choice list supplied by Hermes. Headless interaction coverage verifies that unsupported actions emit no Gateway command and supported actions carry the exact server request ID, profile, and choice. The request actor returns the server response on the same socket; receipt generation checks prevent stale acknowledgements from clearing current approval state. Live Gateway and packaged Windows interaction remain unverified.
+
+### Batch clarification request lifecycle
+
+The server-initiated `clarify` card is keyed by Gateway connection, profile, and original request ID. Confirm validates the answer object against the displayed qids and serializes multi-select choices before issuing ordered `clarify.lock` commands; only a matching receipt advances the queue. Hermes settles the batch when the last answer is locked. Skip returns an empty result to the originating request. App-command and Gateway actor fixtures cover this flow; live Gateway and packaged Windows interaction remain open.

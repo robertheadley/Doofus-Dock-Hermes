@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0118",
+  "capability_id": "ui-answer-gateway-clarify-request",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "server_initiated_batch_clarify_answers_and_skip_reach_gateway",
+  "locator": "../../../../apps/hermes-native/src/app.rs::batch_clarify_answer_action_locks_profile_owned_answers_in_question_order",
+  "date": "2026-11-22",
+  "commit": "bc8afd447f0972f5b83e25e92634808445447ca2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless app/Gateway command fixture. The active-profile clarify card serializes single- and multi-select answers, sends per-question clarify.lock commands to the originating request/profile in question order, waits for each receipt before sending the next, and settles after the final lock. Skip sends an empty response to the exact originating server request. Existing actor tests cover same-socket clarify server requests and clarify.lock wire payload/receipt behavior. Full locked suite passes 601 library + 15 protocol + 3 launcher; all-target cargo check, rustfmt/diff, and 19 task continuity tests pass.",
+  "notes": "Partial headless evidence only. Authenticated live Gateway batch clarification, packaged Windows interaction, and formal source-paired acceptance remain open."
+}

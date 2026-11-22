@@ -4713,3 +4713,14 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No runtime benchmark was run.
 - **risks:** Authenticated live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open.
 - **follow_up:** Keep the task partial; continue the first dependency-ready agent-workflow gap.
+
+- **id:** hermes-par0515-clarify-ui-gateway-20261122
+- **timestamp:** 2026-11-22T13:40:00Z
+- **what:** Added headless app-to-Gateway evidence for ordered clarification answers and Skip, then updated the capability and generated progress records.
+- **why:** Verify the existing batch clarification workflow at its user-action boundary without replacing working behavior.
+- **components:** PAR-0515, clarification card, `clarify.lock`, EV-0118, capability map, progress overlay, architecture and plan docs.
+- **type:** evidence_and_docs
+- **validation:** Full locked suite 601 library + 15 protocol + 3 launcher; all-target check; rustfmt/diff; 19 task continuity tests; progress and package validators pass.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open.
+- **follow_up:** Continue the next dependency-ready agent workflow gap.
