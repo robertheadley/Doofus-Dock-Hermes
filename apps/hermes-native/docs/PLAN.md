@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; continuation authorized by the user on 2026-11-13.
-- **Working revision:** 282 (implementation in progress).
+- **Working revision:** 339 (implementation in progress).
 - **Status:** in progress; current gate is complete, verified chat and tool functionality from the pinned source, not a 1:1 desktop replacement.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -2101,3 +2101,10 @@ Validation: PASS focused approval interaction regression; full locked suite (599
 The pinned Gateway accepts a `clarify` server request containing one to five questions. Native renders an accessible profile-owned card; Confirm serializes every qid, preserves single/multi-select answers, and submits `clarify.lock` calls in question order after each prior receipt. The last successful lock settles the upstream request with its answers; Skip responds to that exact request with an empty result. Added app-to-Gateway-command regressions for ordered locks and Skip, complementing the existing actor socket and `clarify.lock` wire/receipt fixtures. EV-0118 is bound to implementation/test commit `bc8afd447f0972f5b83e25e92634808445447ca2`.
 
 Validation: PASS both focused clarify regressions; full locked suite (601 library + 15 protocol + 3 launcher); all-target locked check, rustfmt, diff check, and 19/19 task-continuity tests. Capability remains partial pending authenticated live Gateway behavior, packaged Windows interaction, and formal pinned-source acceptance.
+
+
+### Revision 339 — Route and answer secure Gateway sudo requests — 2026-11-22
+
+The idle Gateway actor now forwards `sudo` server requests to the active session UI instead of declining them as unsupported. The app renders a masked password field, displays the requested command, binds the prompt to its originating connection/profile/request, sends `{value: password}` or `{value: ""}` for refusal, and blocks retries after an unknown write outcome. egui undo snapshots are cleared each frame; the UI does not persist or log the secret, though the response value is transiently present in memory during JSON-RPC serialization and delivery. Cancellation requires the exact owner tuple, including when IDs are reused.
+
+Validation: PASS focused sudo app/actor regressions; full locked suite (606 library + 15 protocol + 3 launcher); all-target cargo check, rustfmt and diff checks. EV-0119 binds partial headless evidence to implementation commit `d0d6942b033ebea0fc301d91522bdecddf5ae42d`. Authenticated live Gateway behavior, packaged Windows interaction and formal pinned-source acceptance remain open.

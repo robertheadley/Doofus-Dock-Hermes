@@ -443,3 +443,7 @@ The sidebar parser rejects `{}` and `{"recents":{}}` as malformed instead of tre
 ### PAR-0528 — Select model and reasoning before the first prompt — 2026-11-22
 
 New Chat loads the selected profile's model catalog and allows manual model/provider and reasoning choices before creating the first session. The create payload carries these values only when the active connection and profile match the selection. “Use Hermes default” omits model/provider, preserving backend profile policy. Settings → Main model now saves the profile default for future sessions through `/api/model/set`; Hermes-required confirmation is explicit, while denied and stale-connection receipts leave the visible default unchanged. Headless rendered UI, Gateway HTTP contract, and owner-fencing tests pass. Remaining: authenticated live Gateway behavior, packaged Windows interaction, and formal pinned-source acceptance.
+
+### PAR-0516 — Answer Gateway sudo requests securely — 2026-11-22
+
+Headless app and same-socket Gateway tests now cover the masked ephemeral password flow, exact request/profile response, empty-value refusal, strict connection/profile cancellation ownership, and unknown-outcome no-resend behavior. The actor routes `sudo` instead of returning method-not-found. EV-0119 is partial: authenticated live Gateway, packaged Windows, formal pinned-source acceptance and transient secret allocation during JSON-RPC serialization remain open.

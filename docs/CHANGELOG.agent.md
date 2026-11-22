@@ -4724,3 +4724,15 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No runtime benchmark was run.
 - **risks:** Live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open.
 - **follow_up:** Continue the next dependency-ready agent workflow gap.
+
+
+- **id:** hermes-par0516-sudo-ui-gateway-20261122
+- **timestamp:** 2026-11-22T14:08:50Z
+- **what:** Added masked, ephemeral Gateway sudo response UI and actor routing, with connection/profile/request ownership and unknown-outcome protection.
+- **why:** Preserve the pinned Hermes agent's ability to request administrator credentials without declining valid sudo requests.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, PAR-0516, EV-0119.
+- **type:** feature_and_test
+- **validation:** PASS 606 library + 15 protocol + 3 launcher tests; all-target locked cargo check; formatting and diff checks.
+- **performance:** No runtime benchmark was run.
+- **risks:** Live Gateway, packaged Windows and formal pinned-source acceptance remain open; JSON-RPC holds a transient serialized copy in memory.
+- **follow_up:** Continue the agent-workflow scope at its next dependency-ready gap.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0119",
+  "capability_id": "ui-answer-gateway-sudo-request-securely",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "gateway_sudo_password_prompt_masks_input_and_returns_exact_request_value",
+  "locator": "../../../../apps/hermes-native/src/app.rs::sudo_password_is_masked_ephemeral_and_sent_only_to_its_profile_request",
+  "date": "2026-11-22",
+  "commit": "d0d6942b033ebea0fc301d91522bdecddf5ae42d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui app/Gateway fixtures. The sudo password field is masked and accessible, app-owned input is Zeroizing and egui undo snapshots are cleared each frame. The response is scoped to its connection/profile/request and sends {\"value\":password}; empty value refuses. Stale-owner receipts do not clear another prompt, unknown outcomes forbid resend, and reused request IDs do not let an unscoped cancellation remove either owner; leaving the active chat clears the visible draft. The Gateway actor forwards sudo and the same-socket fixture verifies the exact JSON-RPC response. Full locked suite passes 606 library + 15 protocol + 3 launcher tests; all-target cargo check, fmt and diff checks pass.",
+  "notes": "Partial headless evidence only. The value exists transiently in memory while the Gateway JSON-RPC response is prepared/sent; it is not persisted or logged by the UI. Authenticated live Gateway behavior, packaged Windows interaction, and formal pinned-source acceptance remain open."
+}

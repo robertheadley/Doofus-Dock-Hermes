@@ -10111,7 +10111,7 @@ capabilities:
   name: Answer gateway sudo request securely
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can answer gateway sudo request securely.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10124,8 +10124,14 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0119
+  verification:
+    scenarios:
+    - id: gateway_sudo_password_prompt_masks_input_and_returns_exact_request_value
+      description: Route sudo to the unique active session; mask and transiently hold the password; return its value or an empty refusal to the exact owning Gateway request; reject stale/ambiguous owner updates and unsafe retries.
 - id: ui-answer-gateway-vault-unlock-request-securely
   name: Answer gateway vault unlock request securely
   area: protocol-reliability

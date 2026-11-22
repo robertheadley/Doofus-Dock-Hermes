@@ -374,3 +374,8 @@ The approval card derives actions from the choice list supplied by Hermes. Headl
 ### Batch clarification request lifecycle
 
 The server-initiated `clarify` card is keyed by Gateway connection, profile, and original request ID. Confirm validates the answer object against the displayed qids and serializes multi-select choices before issuing ordered `clarify.lock` commands; only a matching receipt advances the queue. Hermes settles the batch when the last answer is locked. Skip returns an empty result to the originating request. App-command and Gateway actor fixtures cover this flow; live Gateway and packaged Windows interaction remain open.
+
+
+### Gateway sudo prompts
+
+The idle Gateway actor routes `sudo` server requests to the UI event loop. A request is shown only on its uniquely matched active session/profile/connection and is answered against the original JSON-RPC request ID. The password field is masked, app-owned input uses `Zeroizing<String>`, and egui undo snapshots are cleared each frame; no password is written to settings, layout, status or automation state. The value exists transiently while the existing `serde_json::Value` response is serialized and sent. An empty `value` refuses the request. Unknown send outcomes remain visible and disable resubmission; cancellations and receipts are owner-scoped. Local fixtures cover the app command boundary and same-socket wire response; live Gateway and packaged Windows behavior remain unverified.

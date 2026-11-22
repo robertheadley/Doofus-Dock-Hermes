@@ -3329,3 +3329,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime benchmark was run.
 - **risks:** Live Gateway, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** Keep PAR-0515 partial and continue the next dependency-ready workflow feature.
+
+- **id:** hermes-par0516-sudo-ui-gateway-20261122
+- **timestamp:** 2026-11-22T14:08:50Z
+- **what:** Routed Gateway sudo requests to a masked, owner-scoped password prompt and exact JSON-RPC response; cleared egui undo snapshots and rejected ambiguous cancellation/retry paths.
+- **why:** Hermes agent workflows need secure, explicit handling of backend administrator prompts instead of automatic method-not-found refusal.
+- **components:** PAR-0516, sudo card, Gateway actor, request/receipt lifecycle, EV-0119.
+- **type:** feature_and_test
+- **validation:** Full locked suite 606 library + 15 protocol + 3 launcher; all-target cargo check; rustfmt/diff checks; focused sudo tests pass.
+- **performance:** No runtime benchmark was run.
+- **risks:** Secret is transiently allocated while JSON-RPC response is serialized and sent; live Gateway, packaged Windows and formal pinned-source acceptance remain open.
+- **follow_up:** Continue the next dependency-ready agent-workflow capability; preserve this feature and its partial evidence.
