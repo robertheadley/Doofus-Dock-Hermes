@@ -4420,3 +4420,5 @@ Implementation commit `ea90619cc3b924c80960844f37ba8ecf082fff48` and evidence/do
 - **follow_up:** Run complete validation, append commit-bound capability evidence, publish on `main`, then verify the canonical task state and remote tip.
 
 Validation follow-up — 2026-11-22T07:57:56Z: Full locked test suite passes (575 library + 15 protocol + 3 launcher); all-target cargo check, rustfmt/diff check, 19 task continuity tests, generated implementation/chat progress, and root plus archival package validators pass. PAR-0056 remains partial pending automatic cache invalidation, active-marker tracking and live/package/source-paired validation.
+
+Publication follow-up — 2026-11-22T08:03:48Z: Implementation commit `3071c0984337897630c9551d9129267876d82817` and evidence commit `1bdf82017eb42062c1ae2d0fa008338f9d7c5d29` are published on `origin/main`. Fresh fetch verified exact local/remote equality at `1bdf82017eb42062c1ae2d0fa008338f9d7c5d29`. `EV-0103` is preserved unchanged and `EV-0104` is additive. The operator-owned `apps/hermes-native/work/` remains untouched.
