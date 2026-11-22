@@ -4661,3 +4661,17 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Requests use the existing bounded HTTP worker and 8-second request timeout; no benchmarked performance change claimed.
 - **risks:** Live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain open; capability stays partial.
 - **follow_up:** Validate updated evidence and project package, publish docs/evidence/checkpoint to main, then select the next goal-relevant agent workflow gap.
+
+
+### PAR-0528 main publication — 2026-11-22
+
+- **id:** PAR-0528-PUBLISH-MAIN-MODEL
+- **timestamp:** 2026-11-22T12:45:03Z
+- **what:** Published implementation `294a88eb73760c14f0e977182d6f4331f956e34e` and evidence/docs/checkpoint commit `1a7f222a211e65745208dad0e7b3507a199360f6` to `origin/main`.
+- **why:** Deliver the verified profile-default model settings slice and its evidence while preserving chat-local model overrides.
+- **components:** `robertheadley/Doofus-Dock-Hermes`, `main`, PAR-0528, UCM EV-0115, task checkpoint revision 779.
+- **type:** publication
+- **validation:** Push succeeded; fresh fetch confirmed local main and origin/main both equal `1a7f222a211e65745208dad0e7b3507a199360f6`.
+- **performance:** No runtime performance change claimed.
+- **risks:** Live Gateway and packaged Windows behavior remain unverified; source-acceptance inventory remains pending; `apps/hermes-native/work/` remains operator-owned and untracked.
+- **follow_up:** Inspect and implement the next goal-relevant P0 chat/prompt lifecycle gap, currently PAR-0051.
