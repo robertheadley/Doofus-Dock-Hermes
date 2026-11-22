@@ -4604,3 +4604,8 @@ Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d004
 - **performance:** No runtime behavior changed during publication.
 - **risks:** Live Gateway, packaged Windows, and source-paired acceptance are still pending.
 - **follow_up:** Continue with PAR-0527, preventing destructive fallback on malformed responses.
+
+
+### PAR-0527 — Reject malformed successful session refreshes — 2026-11-22
+
+Native rejects a sidebar success response that omits `recents.sessions` without explicit profile failure details. A malformed all-profile refresh leaves cached sessions visible and reports the error; valid empty results and explicit profile failures are unchanged. Focused and full headless tests pass. Live Gateway and packaged Windows acceptance remain open.

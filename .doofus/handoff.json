@@ -350,26 +350,38 @@
   "changed_files": [
     {
       "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/events.jsonl",
+      "owner": "codex",
+      "path": "apps/hermes-native/README.md",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/gateway.rs",
       "status": " M"
     },
     {
@@ -398,13 +410,14 @@
     }
   ],
   "checkpoint": {
-    "command": "git push origin main && git fetch origin main && compare main SHAs",
+    "command": "cargo fmt --manifest-path apps/hermes-native/Cargo.toml; focused gateway and app regression tests",
     "evidence": [
-      "docs/EXECUTION_LOGS.md#hermes-par0526-main-publication-20261122"
+      "apps/hermes-native/docs/PLAN.md#Revision 334",
+      "apps/hermes-native/src/gateway.rs#sidebar_response_has_valid_recent_slice"
     ],
     "state": "in_progress",
-    "summary": "PAR-0526 implementation and EV-0112 are published through d97a88aa919f0757ca658b7599f54a6fcc54cca9 with local main and origin/main equal. PAR-0527 is selected as the next P0 malformed-response safety guard.",
-    "verified_at": "2026-11-22T11:20:51Z"
+    "summary": "Implemented malformed sidebar response protection: missing recents.sessions is rejected unless Hermes marks a failed slice and includes profile failure details; valid empty lists remain authoritative. Focused parser and app preservation tests pass.",
+    "verified_at": "2026-11-22T11:31:17Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -477,7 +490,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T12:20:51Z",
+    "lease_expires_at": "2026-11-22T12:31:17Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1899,9 +1912,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "baf1680e-97ac-4c11-a128-402533891308",
+  "last_event_id": "hermes-par0527-implementation-checkpoint-20261122",
   "last_operation": {
-    "request_id": "baf1680e-97ac-4c11-a128-402533891308",
+    "request_id": "hermes-par0527-implementation-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1920,7 +1933,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Audit pinned fallback behavior and native error/restore fallbacks for PAR-0527; implement and headlessly validate a malformed-input case that must not destructively reset or discard state.",
+  "recommended_next_action": "Run full locked test suite and package/task validators; then bind PAR-0527 partial UCM evidence to the implementation commit and publish to main.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2360,22 +2373,30 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "3ca8d1aa97061625bd2fe7fe59afb9b9c1806efe6ff904e79c520a5bb12e2286",
+    "change_fingerprint": "0ce6632e2be8a4557ca4a82b03fe8622634b1fc4d4989ca640d5e9c5f1f2e192",
     "changed_files": [
       {
-        "path": ".doofus/events.jsonl",
+        "path": "apps/hermes-native/README.md",
         "status": " M"
       },
       {
-        "path": ".doofus/handoff.json",
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
         "status": " M"
       },
       {
-        "path": "docs/CHANGELOG.agent.md",
+        "path": "apps/hermes-native/docs/BACKLOG.md",
         "status": " M"
       },
       {
-        "path": "docs/EXECUTION_LOGS.md",
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
         "status": " M"
       },
       {
@@ -2395,14 +2416,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "d97a88aa919f0757ca658b7599f54a6fcc54cca9",
+    "head_commit": "f59bdbd277f26c374aa03683afdb4d146be39052",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 760,
+  "revision": 761,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 760,
+  "state_revision": 761,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0527",
   "task_ledger_revision": 136,
@@ -4191,9 +4212,19 @@
       "command": "EV-0112 scoped UCM report; source package validator; task ledger validator",
       "result": "PASS scenario coverage and no EV-0112-specific UCM findings; source package validator passes 565 target behaviors, 15 source inspections, 96 implementation receipts; task checkpoint revision 758 validated.",
       "timestamp": "2026-11-22T11:20:51Z"
+    },
+    {
+      "command": "apps/hermes-native/src/gateway.rs#command_center_sidebar_rejects_incomplete_success_but_accepts_empty_and_explicit_failure",
+      "result": "PASS focused gateway and app headless regressions (1 each)",
+      "timestamp": "2026-11-22T11:31:17Z"
+    },
+    {
+      "command": "apps/hermes-native/src/app.rs#malformed_all_profile_refresh_preserves_cached_sessions_and_surfaces_error",
+      "result": "PASS focused gateway and app headless regressions (1 each)",
+      "timestamp": "2026-11-22T11:31:17Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T11:20:51Z"
+  "updated_at": "2026-11-22T11:31:17Z"
 }

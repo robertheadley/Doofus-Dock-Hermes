@@ -423,3 +423,7 @@ Native Settings now exposes Hermes' security.redact_secrets setting per profile.
 ### PAR-0526 — Distinguish permission rejection from network error — 2026-11-22
 
 The chat error card now uses Hermes' structured `error_surface` layer/code to distinguish provider policy/safety refusal and invalid credentials from provider timeouts, unreachable custom endpoints and dropped network streams. Raw server details stay in the collapsed Details section. Headless rendered coverage passes; authenticated live Gateway events, packaged Windows behavior, and source-paired acceptance remain open. Current evidence coverage is 77/176 chat/tool rows and 111/499 broad inventory rows; these are not completion percentages.
+
+### PAR-0527 — Reject malformed successful session refreshes — 2026-11-22
+
+The sidebar parser rejects `{}` and `{"recents":{}}` as malformed instead of treating them as authoritative empty lists. A malformed all-profile refresh leaves cached sessions intact and surfaces the parse error. Valid authoritative empty lists and source-shaped explicit profile failures remain accepted. Focused headless tests pass; authenticated live Gateway and packaged Windows behavior remain open.

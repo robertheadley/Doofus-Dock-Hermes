@@ -3210,3 +3210,17 @@ EV-0100 binds the transcript follow regression to implementation commit `0474320
 ### PAR-0054 published to main — 2026-11-22T06:32:23Z
 
 Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbebacf43ca75ef6` and evidence/task checkpoint commit `e22e4e1c774015f1ae1528a0e0e24c2fc963cbf2` to `origin/main`. Fresh fetch confirms exact local/remote equality at `e22e4e1c774015f1ae1528a0e0e24c2fc963cbf2`. PAR-0054 remains partial: headless egui state proves bottom-follow, history offset preservation, and relock, while physical Windows input, live Gateway streaming, packaged behavior and formal source acceptance remain open. `apps/hermes-native/work/` remains operator-owned and untouched.
+
+
+### PAR-0527 — Reject malformed successful session refreshes — 2026-11-22
+
+- **id:** PAR-0527-malformed-sidebar-response
+- **timestamp:** 2026-11-22T11:33:14Z
+- **what:** Required a valid recent-session slice or explicit source-shaped failure details before accepting a sidebar response. Malformed refreshes now return an error without replacing cached sessions; valid empty results and explicit failures retain their semantics.
+- **why:** A JSON `{}` response previously defaulted into an empty success and caused all-profile refresh to hide cached session rows.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, session refresh docs and tests.
+- **type:** behavior and regression coverage
+- **validation:** PASS two focused headless regressions; full locked suite 592 library + 15 protocol + 3 launcher; all-target check; 19 task continuity tests; task/package validators; progress generators; rustfmt and diff check. YAML parsing was skipped because PyYAML is unavailable.
+- **performance:** No additional requests or runtime work; one in-memory response-shape check per sidebar refresh.
+- **risks:** Live authenticated Gateway and packaged Windows behavior are unverified.
+- **follow_up:** Bind commit-specific partial EV-0113, checkpoint PAR-0527, and publish to `main`.

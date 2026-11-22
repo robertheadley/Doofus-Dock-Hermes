@@ -50931,6 +50931,46 @@ mod tests {
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
+    #[test]
+    fn malformed_all_profile_refresh_preserves_cached_sessions_and_surfaces_error() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "all".into(),
+            instance_id: "all-malformed-fixture".into(),
+            authority_epoch: 2,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let cached = vec![
+            session_summary("a-cached", "profile-a", "Cached A"),
+            session_summary("b-cached", "profile-b", "Cached B"),
+        ];
+        app.sessions = cached.clone();
+        app.session_list_refresh_pending = Some(("malformed-refresh".into(), "all".into()));
+
+        app.handle_sessions_refreshed(
+            "malformed-refresh".into(),
+            "all".into(),
+            Err("Hermes Command Center session list response omitted recents.sessions without explicit failure details".into()),
+        );
+
+        assert_eq!(
+            app.sessions, cached,
+            "malformed success cannot evict cached rows"
+        );
+        assert_eq!(
+            app.session_list_error.as_deref(),
+            Some(
+                "Hermes Command Center session list response omitted recents.sessions without explicit failure details"
+            )
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
     #[cfg(feature = "agent-automation")]
     #[test]
     fn first_run_remote_setup_renders_discovered_auth_mode_and_provider() {

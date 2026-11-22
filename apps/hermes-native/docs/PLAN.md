@@ -2073,3 +2073,7 @@ The native transcript now reads the pinned structured error layer/code and rende
 ### Revision 333 — Bind PAR-0526 error distinction evidence — 2026-11-22
 
 EV-0112 binds the rendered policy/auth/timeout regression to implementation commit `58aa11c445c8624b9128cdf148be7d2e9a8bf180`. The scoped UCM report shows the declared scenario passing with no EV-0112-specific schema or reconciliation findings. The capability remains partial because authenticated live Gateway events, endpoint/stream-specific interaction, packaged Windows behavior, and formal source-paired acceptance remain open. The map-wide checker still reports 162 legacy errors and 11 unrelated reconciliation items.
+
+### Revision 334 — Reject malformed successful sidebar refreshes — 2026-11-22
+
+Pinned Hermes guarantees `recents.sessions` for successful sidebar responses, including authoritative empty lists; a total failure omits `sessions` only while marking `failed` and supplying profile failure details. Native now rejects an empty/missing slice rather than interpreting `{}` or `{"recents":{}}` as an authoritative empty result. The error path retains cached sessions and surfaces the refresh error. Explicit empty results and explicit profile failures remain supported. Gateway decoder and app refresh headless regressions pass. Authenticated live Gateway and packaged Windows acceptance remain open.

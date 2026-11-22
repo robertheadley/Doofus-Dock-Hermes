@@ -11226,7 +11226,8 @@ fn load_command_center_sessions_http(
             Err(error) => return Err(error),
         }
     };
-    let mut rows = response.recents.sessions;
+    sidebar_response_has_valid_recent_slice(&response)?;
+    let mut rows = response.recents.sessions.unwrap_or_default();
     let mut sessions = Vec::with_capacity(rows.len());
     for row in rows.drain(..) {
         let mut session = row.into_summary();
@@ -11263,6 +11264,22 @@ fn load_command_center_sessions_http(
         failed_profiles,
         error: (!error.is_empty()).then(|| error.join("; ")),
     })
+}
+
+fn sidebar_response_has_valid_recent_slice(
+    response: &SidebarSessionsResponse,
+) -> Result<(), String> {
+    if response.recents.sessions.is_some() {
+        return Ok(());
+    }
+    let has_failure_details = !response.errors.is_empty()
+        || !response.recents.errors.is_empty()
+        || !response.profiles_failed.is_empty()
+        || !response.recents.profiles_failed.is_empty();
+    if response.recents.failed && has_failure_details {
+        return Ok(());
+    }
+    Err("Hermes Command Center session list response omitted recents.sessions without explicit failure details".into())
 }
 
 fn is_missing_sidebar_endpoint(error: &str) -> bool {
@@ -11326,7 +11343,6 @@ fn load_command_center_sessions_legacy(
 
 #[derive(Deserialize, Default)]
 struct SidebarSessionsResponse {
-    #[serde(default)]
     recents: SidebarSessionSlice,
     #[serde(default)]
     errors: Vec<SidebarSessionError>,
@@ -11336,8 +11352,7 @@ struct SidebarSessionsResponse {
 
 #[derive(Deserialize, Default)]
 struct SidebarSessionSlice {
-    #[serde(default)]
-    sessions: Vec<SessionListRow>,
+    sessions: Option<Vec<SessionListRow>>,
     #[serde(default)]
     profiles_truncated: BTreeMap<String, bool>,
     #[serde(default)]
@@ -20627,6 +20642,30 @@ mod tests {
                 .contains("state database unavailable")
         );
         server.join().expect("sidebar fixture server exits");
+    }
+
+    #[test]
+    fn command_center_sidebar_rejects_incomplete_success_but_accepts_empty_and_explicit_failure() {
+        for body in ["{}", r#"{"recents":{}}"#] {
+            let result = serde_json::from_str::<SidebarSessionsResponse>(body)
+                .map_err(|error| error.to_string())
+                .and_then(|response| sidebar_response_has_valid_recent_slice(&response));
+            assert!(
+                result.is_err(),
+                "incomplete payload must not become an authoritative empty list: {body}"
+            );
+        }
+
+        let empty =
+            serde_json::from_str::<SidebarSessionsResponse>(r#"{"recents":{"sessions":[]}}"#)
+                .expect("decode valid authoritative empty result");
+        assert!(sidebar_response_has_valid_recent_slice(&empty).is_ok());
+
+        let failed = serde_json::from_str::<SidebarSessionsResponse>(
+            r#"{"recents":{"failed":true,"errors":[{"profile":"profile-a","error":"read failed"}]},"errors":[{"profile":"profile-a","error":"read failed"}]}"#,
+        )
+        .expect("decode explicit failed slice");
+        assert!(sidebar_response_has_valid_recent_slice(&failed).is_ok());
     }
 
     #[test]
