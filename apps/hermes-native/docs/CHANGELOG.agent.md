@@ -3363,3 +3363,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime benchmark was run.
 - **risks:** Live Gateway and packaged Windows behavior are unverified; auxiliary HTTP/profile workers do not rebind after endpoint changes.
 - **follow_up:** Verify live local/remote reconnect and rebind secondary workers when the endpoint changes.
+
+- **id:** hermes-par0503-attach-scope-audit-20261122
+- **timestamp:** 2026-11-22T23:21:06Z
+- **what:** Documented the difference between pinned Desktop's host-scoped local Gateway attach and the public profile-scoped `gateway attach --json` CLI.
+- **why:** Avoid replacing working cross-profile UI access with a narrower ticket while implementing agent use.
+- **components:** PAR-0503, `GatewayDiscovery`, `gateway ensure`, public `gateway attach`, profiles.list and profile registry access.
+- **type:** architecture_audit
+- **validation:** Read-only comparison of pinned `gateway_runtime_cli.py`, `gateway_runtime_attach.py`, Gateway internals docs, Desktop local Gateway path, and native `gateway.rs`; durable task state validates at revision 841.
+- **performance:** No runtime benchmark was run.
+- **risks:** Public attach subprocess JSON contract and authenticated live Gateway behavior remain untested.
+- **follow_up:** Inspect native profile registry scopes, then add the public attach path only if host-scoped capability can be preserved or cleanly separated.
