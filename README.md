@@ -68,3 +68,6 @@ Narrow viewport overlays now include the pinned source's built-in Sessions, File
 The Hermes Native composer supports keyboard navigation of Gateway-backed slash suggestions: arrow keys select, Enter/Tab insert into the draft, and choosing a suggestion does not send it. This interaction is headlessly verified; directive chips and live Gateway behavior remain open.
 
 Prior-message edits preserve the current composer, support separately staged replacement files/images, require confirmation before removing later user turns, and update local history only after Gateway admission. A definitive Gateway busy 4009 response causes one interrupt-and-retry attempt; uncertain outcomes do not replay the edit. Pinned behavior replaces the old turn with text and drops its previous attachments. See [the Hermes Native completion overview](apps/hermes-native/docs/COMPLETION_OVERVIEW.md).
+
+
+The native Hermes chat edit flow now resolves a missing local durable row ID through a bounded, authenticated, profile-scoped transcript read. Only a safe exact match can enter the existing truncation path; ambiguous, stale, or failed lookups submit without truncating history. See the PAR-0051 completion evidence in apps/hermes-native/docs/COMPLETION_OVERVIEW.md.

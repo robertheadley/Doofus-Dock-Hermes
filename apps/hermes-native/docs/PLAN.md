@@ -1897,3 +1897,15 @@ Validation: PASS rendered failed-turn edit affordance/dialog, plain-submit routi
 ### Revision 306 — Validate failed-turn editing (2026-11-22)
 
 Validation update for Revision 305: PASS the full locked `agent-automation` suite (543 library + 15 protocol + 3 launcher), all-target locked check, `cargo fmt --all --check`, `git diff --check`, both progress generators, 19/19 task-continuity tests, Doofus task-state schema validation, and both pinned capability-package validators (76 implementation receipts; optional PyYAML parse skipped). Focused rendering, plain-submit routing, admission replacement and refusal-preservation tests all pass. The runtime and formal pinned-source acceptance gaps remain.
+
+
+### Revision 307 — Resolve missing durable row IDs for prior-message edits (2026-11-22)
+
+For a prior user message whose local transcript row has no durable Gateway row ID, native now performs a bounded, authenticated, profile-scoped read of the pinned session messages endpoint. It pages oldest-first in batches of 500, caps history at 50,000 rows / 16 MB / 100 pages, validates session/profile/pagination ownership, and matches exact trimmed user content against durable positive row IDs while excluding typed display-only rows. A unique match follows the existing confirmed truncating edit flow; duplicate text resolves only when both the local target is the latest visible user turn and the durable match is the last persisted user row. Any missing, ambiguous, malformed, over-limit, or failed lookup safely falls back to plain prompt submission with no truncation. Lookup receipts are fenced by request, stored/runtime session, profile, Gateway connection, original text and local owner; stale receipts do not submit.
+
+Validation: PASS 25 edit-filtered regressions and full locked agent-automation package suite (550 library + 15 protocol + 3 launcher); all-target check, rustfmt and diff checks, continuity/state validators, and pinned/archival package validators are pending this record update. Live Gateway, packaged Windows behavior, pagination under concurrent mutation, and formal pinned-source acceptance remain open. PAR-0051 stays partial.
+
+
+### Revision 308 — Final validation for durable edit-row resolution (2026-11-22)
+
+Revision 307 validation is complete: PASS 25 edit-filtered tests; PASS full locked suite (550 library + 15 protocol + 3 launcher); PASS all-target locked check, rustfmt and diff check; PASS both progress generators, 19/19 task-continuity tests, task-state schema validation, root capability-package validation (77 receipts; optional YAML parsing skipped because PyYAML is not installed), and the archival package validator (491 pending rows). The broad review remains 97/499 (6 implemented, 90 partial, 1 not implemented, 402 unknown); chat/tool remains 63/176 (1 implemented, 61 partial, 1 not implemented, 113 unknown). Those are evidence-coverage counts, not product completion. PAR-0051 remains partial; Gateway, packaged Windows, concurrent pagination and formal source acceptance remain open.

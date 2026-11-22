@@ -204,6 +204,6 @@ The installed Skills page also exposes Hermes' profile-scoped “Update installe
 
 ## Latest agent-workflow addition
 
-PAR-0051 now supports editing failed prompts that have a stable local submission ID but no durable Gateway row ID. It resubmits them through ordinary `prompt.submit` without truncating stored history and waits for admission before replacing the local failed row. The focused UI, admission, and refusal tests pass; full validation and commit-bound evidence are pending.
+PAR-0051 also supports failed prompts without durable row IDs through a stable local submission ID and ordinary non-truncating prompt.submit. For existing user rows missing a local row ID, a bounded authenticated history lookup resolves only exact safe matches; all uncertain results use plain submit without truncation. Headless full-suite validation passes; live Gateway, packaged Windows, pagination race behavior and commit-bound evidence remain pending.
 
 Validation update: the failed-turn edit slice now passes the full locked suite (543 library + 15 protocol + 3 launcher), all-target check, formatting/diff checks, progress generators, continuity tests, task-state schema, and pinned capability package validation. Live Gateway and packaged Windows behavior remain unverified.

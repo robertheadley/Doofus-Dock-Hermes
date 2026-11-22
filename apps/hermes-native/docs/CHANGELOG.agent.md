@@ -3060,3 +3060,31 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** No runtime change in this publication step.
 - **risks:** Live Gateway and packaged Windows validation remain open.
 - **follow_up:** Continue PAR-0051 with history-based durable-row resolution; keep overall project goal active.
+
+
+## PAR-0051 missing durable row-ID resolution — 2026-11-22
+
+- **id:** hermes-par0051-history-row-resolution-20261122
+- **timestamp:** 2026-11-22T03:58:54Z
+- **what:** Added bounded profile-scoped persisted-history lookup for prior-message edits whose local user row lacks a durable ID. Exact unique or proven-newest duplicate matches continue through the truncation flow; all uncertain/error outcomes fall back to non-truncating submit, with stale owner receipts rejected.
+- **why:** Support editing ordinary Hermes prompts whose local projection omitted the durable row ID without guessing at destructive history boundaries.
+- **components:** Native edit UI and lifecycle, authenticated Gateway HTTP worker, pinned history API contract, tests, plan/backlog/completion/architecture docs.
+- **type:** Additive chat workflow with fail-closed history mutation.
+- **validation:** PASS 25 edit-related regressions and full locked suite (550 library + 15 protocol + 3 launcher). All-target check, formatting/diff, task continuity/state and root/archival package validators remain to be run for this slice. No live Gateway was contacted.
+- **performance:** Lookup runs on the bounded HTTP worker; at most 100 requests, 50,000 rows and 16 MB are accepted.
+- **risks:** REST offset paging is not snapshot-bound; a changing history can make matching ambiguous. The implementation falls back without truncation when the bounded lookup cannot prove a safe target.
+- **follow_up:** Run final validators, create implementation-bound partial evidence, publish to main, then continue with remaining PAR-0051 acceptance gaps.
+
+
+## PAR-0051 history-row resolution validation — 2026-11-22
+
+- **id:** hermes-par0051-history-row-resolution-validation-20261122
+- **timestamp:** 2026-11-22T04:01:58Z
+- **what:** Recorded final validation for the bounded history-based prior-message edit fallback.
+- **why:** Distinguish complete local headless validation from the still-open runtime and formal acceptance gates.
+- **components:** Native edit path, progress overlays, continuity state, capability package validation.
+- **type:** Validation update.
+- **validation:** PASS 25 edit-filtered tests; 550 library + 15 protocol + 3 launcher; all-target locked check; rustfmt; diff check; both progress generators; 19 continuity tests; task-state validation; root package validation with 77 receipts (YAML parse skipped because PyYAML is unavailable); archival package validation with 491 pending.
+- **performance:** No runtime benchmark was requested or changed.
+- **risks:** Live Gateway, packaged Windows, concurrent offset-page stability and formal pinned-source acceptance remain unverified.
+- **follow_up:** Bind partial evidence to the implementation commit, publish to main, and continue remaining agent-workflow gaps.

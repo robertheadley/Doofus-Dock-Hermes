@@ -315,3 +315,8 @@ The chat composer keeps Gateway-backed slash completions scoped to the active pr
 ## Failed-turn editing
 
 A user transcript row immediately followed by an assistant error can be edited even without a durable Gateway `row_id`, provided the local user row has a stable submission/message ID. The app fences the edit to the current connection, profile and runtime session and rechecks the ID, original text and adjacency at submit time. This is a normal `prompt.submit`, not a `confirm_truncate` operation. Local history changes only after an admission receipt: the failed user/error pair is removed and the newly admitted prompt is appended while subsequent transcript entries and the live composer remain. Definitive refusal keeps the failed row and restores the edit dialog; uncertain admission does not auto-replay.
+
+
+## Prior-message edit target resolution
+
+When an eligible displayed user message lacks a numeric durable row ID, the app queues a separate bounded authenticated REST history lookup. The worker verifies the returned session, profile and pagination contract and matches only exact trimmed user text on durable user rows. It uses the existing truncating edit protocol only for a unique match or a duplicate proven to be the newest user row in both the loaded transcript and stored history. Otherwise the dialog submits as a new prompt without truncating history. Request, source text, local message ID, runtime/stored session, profile and Gateway connection fence the result. This lookup is a best-effort offset-paged read rather than a server-issued transcript snapshot; concurrent history mutation can make it inconclusive, in which case native fails closed to the non-truncating submit path.

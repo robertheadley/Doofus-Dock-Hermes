@@ -1872,6 +1872,15 @@ pub enum GatewayEvent {
         offset: usize,
         result: Result<OlderTranscriptPage, String>,
     },
+    EditTargetResolved {
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        source_text: String,
+        result: Result<Option<u64>, String>,
+    },
     ActiveTranscriptRefreshed {
         request_id: String,
         session_id: String,
@@ -2672,6 +2681,15 @@ enum GatewayHttpCommand {
         profile: Option<String>,
         offset: usize,
     },
+    ResolveEditTarget {
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        source_text: String,
+        latest_user_turn: bool,
+    },
     RefreshActiveTranscript {
         request_id: String,
         session_id: String,
@@ -3016,6 +3034,15 @@ pub(crate) enum TestGatewayCommand {
         confirm_deep_truncate: bool,
         rebind_survivor_row_ids: Vec<u64>,
     },
+    ResolveEditTarget {
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        source_text: String,
+        latest_user_turn: bool,
+    },
     AttachComposerFile {
         request_id: String,
         session_id: String,
@@ -3077,13 +3104,14 @@ impl GatewayDiscovery {
         let (event_sender, event_receiver) = mpsc::channel();
         let (command_sender, command_receiver) = mpsc::channel();
         let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
-        let (http_sender, _http_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
         let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
         let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
         let (artifact_sender, _artifact_receiver) = mpsc::channel();
         let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
         let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
         let (observed_sender, observed_receiver) = mpsc::channel();
+        let observed_http_sender = observed_sender.clone();
         thread::spawn(move || {
             while let Ok(command) = command_receiver.recv() {
                 let observed = match command {
@@ -3156,6 +3184,33 @@ impl GatewayDiscovery {
                     if observed_sender.send(observed).is_err() {
                         break;
                     }
+                }
+            }
+        });
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::ResolveEditTarget {
+                    request_id,
+                    session_id,
+                    stored_session_id,
+                    profile,
+                    connection_id,
+                    source_text,
+                    latest_user_turn,
+                } = command
+                    && observed_http_sender
+                        .send(TestGatewayCommand::ResolveEditTarget {
+                            request_id,
+                            session_id,
+                            stored_session_id,
+                            profile,
+                            connection_id,
+                            source_text,
+                            latest_user_turn,
+                        })
+                        .is_err()
+                {
+                    break;
                 }
             }
         });
@@ -4474,6 +4529,28 @@ impl GatewayDiscovery {
                 session_id,
                 profile,
                 offset,
+            })
+            .map_err(|_| "Hermes transcript reader has closed".to_owned())
+    }
+
+    pub fn resolve_edit_target(
+        &self,
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
+        source_text: String,
+        latest_user_turn: bool,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::ResolveEditTarget {
+                request_id,
+                session_id,
+                stored_session_id,
+                profile,
+                connection_id: self.connection_id.clone(),
+                source_text,
+                latest_user_turn,
             })
             .map_err(|_| "Hermes transcript reader has closed".to_owned())
     }
@@ -10021,6 +10098,29 @@ fn gateway_http_actor(
                 profile,
                 offset,
             },
+            GatewayHttpCommand::ResolveEditTarget {
+                request_id,
+                session_id,
+                stored_session_id,
+                profile,
+                connection_id,
+                source_text,
+                latest_user_turn,
+            } => GatewayEvent::EditTargetResolved {
+                result: resolve_edit_target_http(
+                    &endpoint,
+                    &stored_session_id,
+                    profile.as_deref(),
+                    &source_text,
+                    latest_user_turn,
+                ),
+                request_id,
+                session_id,
+                stored_session_id,
+                profile,
+                connection_id,
+                source_text,
+            },
             GatewayHttpCommand::RefreshActiveTranscript {
                 request_id,
                 session_id,
@@ -11378,6 +11478,159 @@ fn load_all_session_messages_http(
         "Session transcript exceeds the Desktop safe-load limit; use the Web Dashboard export for this session."
             .into(),
     )
+}
+
+fn resolve_edit_target_http(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+    profile: Option<&str>,
+    source_text: &str,
+    latest_user_turn: bool,
+) -> Result<Option<u64>, String> {
+    const PAGE_SIZE: usize = 500;
+    const MAX_JSON_CHARS: usize = 16_000_000;
+    const MAX_PAGES: usize = 100;
+
+    if session_id.is_empty()
+        || session_id.len() > 256
+        || session_id.chars().any(char::is_control)
+        || profile.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > 128
+                || value.chars().any(char::is_control)
+                || value.eq_ignore_ascii_case("all")
+        })
+    {
+        return Err("Hermes edit history request scope is invalid".into());
+    }
+    let wanted = source_text.trim();
+    if wanted.is_empty() || wanted.len() > 32_000 {
+        return Ok(None);
+    }
+    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    if profile_id.eq_ignore_ascii_case("all") {
+        return Err("Hermes edit history requires a concrete profile".into());
+    }
+
+    let origin = endpoint.api_origin.trim_end_matches('/');
+    let mut messages = Vec::new();
+    let mut json_chars = 0usize;
+    let mut offset = 0usize;
+    for _ in 0..MAX_PAGES {
+        let mut url = format!(
+            "{origin}/api/sessions/{}/messages?",
+            encode_query_component(session_id)
+        );
+        if !profile_id.is_empty() && profile_id != "default" {
+            url.push_str(&format!("profile={}&", encode_query_component(profile_id)));
+        }
+        url.push_str(&format!(
+            "limit={PAGE_SIZE}&offset={offset}&order=oldest&include_compacted=true"
+        ));
+        let page: SessionMessagesPageResponse =
+            profile_scoped_gateway_http_request(endpoint, "GET", &url, None)?;
+        if page.session_id != session_id {
+            return Err("Hermes edit history belongs to a different session".into());
+        }
+        if page
+            .profile
+            .as_deref()
+            .is_some_and(|returned| returned != profile_id)
+        {
+            return Err("Hermes edit history belongs to a different profile".into());
+        }
+        let page_chars = serde_json::to_string(&page.messages)
+            .map(|serialized| serialized.len())
+            .unwrap_or(usize::MAX);
+        json_chars = json_chars.saturating_add(page_chars);
+        if json_chars > MAX_JSON_CHARS
+            || messages.len().saturating_add(page.messages.len()) > 50_000
+        {
+            return Err("Hermes edit history exceeds the safe lookup limit".into());
+        }
+        let page_len = page.messages.len();
+        match page.pagination {
+            Some(pagination)
+                if pagination.limit == PAGE_SIZE
+                    && pagination.offset == offset
+                    && pagination.order.as_deref() == Some("oldest")
+                    && pagination.returned == page_len
+                    && page_len <= PAGE_SIZE => {}
+            Some(_) => return Err("Hermes did not confirm the requested edit history page".into()),
+            None if offset == 0 && page_len <= 10_000 => {
+                messages.extend(page.messages);
+                return Ok(resolve_durable_user_row_id(
+                    &messages,
+                    wanted,
+                    latest_user_turn,
+                ));
+            }
+            None => return Err("Hermes returned unbounded or incomplete edit history".into()),
+        }
+        messages.extend(page.messages);
+        if page_len == 0 || page_len < PAGE_SIZE {
+            return Ok(resolve_durable_user_row_id(
+                &messages,
+                wanted,
+                latest_user_turn,
+            ));
+        }
+        offset = offset.saturating_add(page_len);
+    }
+    Err("Hermes edit history exceeds the safe lookup page limit".into())
+}
+
+fn resolve_durable_user_row_id(
+    messages: &[serde_json::Value],
+    source_text: &str,
+    latest_user_turn: bool,
+) -> Option<u64> {
+    let wanted = source_text.trim();
+    if wanted.is_empty() {
+        return None;
+    }
+    let durable_users = messages
+        .iter()
+        .filter(|message| {
+            message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                && !message.get("display_kind").is_some_and(|kind| {
+                    !kind.is_null()
+                        && kind
+                            .as_str()
+                            .is_none_or(|display_kind| !display_kind.is_empty())
+                })
+                && message
+                    .get("row_id")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some_and(|row_id| row_id > 0)
+        })
+        .collect::<Vec<_>>();
+    let matches = durable_users
+        .iter()
+        .filter(|message| {
+            message
+                // The pinned REST history route returns raw message rows with
+                // `content`; `session.history` uses `text`. Accept both wire
+                // shapes so this resolver stays compatible with either source.
+                .get("content")
+                .or_else(|| message.get("text"))
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|text| text.trim() == wanted)
+        })
+        .copied()
+        .collect::<Vec<_>>();
+    let selected = match matches.as_slice() {
+        [only] => *only,
+        [] => return None,
+        _ if latest_user_turn && durable_users.last().copied() == matches.last().copied() => {
+            *matches.last().expect("nonempty duplicate matches")
+        }
+        _ => return None,
+    };
+    selected
+        .get("row_id")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|row_id| *row_id > 0)
 }
 
 fn request_older_transcript_page(
@@ -20593,6 +20846,83 @@ mod tests {
         )
         .expect("confirm archive mutation");
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn durable_edit_row_resolution_requires_exact_unique_persisted_user_match() {
+        let messages = vec![
+            json!({"row_id":11,"role":"user","content":"  exact prompt  "}),
+            json!({"row_id":12,"role":"user","text":"exact prompt","display_kind":"notice"}),
+            json!({"row_id":13,"role":"assistant","content":"exact prompt"}),
+            json!({"row_id":14,"role":"user","content":"different prompt"}),
+        ];
+        assert_eq!(
+            resolve_durable_user_row_id(&messages, " exact prompt ", false),
+            Some(11)
+        );
+        assert_eq!(
+            resolve_durable_user_row_id(&messages, "exact promp", true),
+            None,
+            "matching is exact after trimming"
+        );
+    }
+
+    #[test]
+    fn durable_edit_row_resolution_uses_last_duplicate_only_for_proven_newest_turn() {
+        let messages = vec![
+            json!({"row_id":21,"role":"user","content":"repeat"}),
+            json!({"row_id":22,"role":"assistant","content":"answer"}),
+            json!({"row_id":23,"role":"user","content":"repeat"}),
+        ];
+        assert_eq!(
+            resolve_durable_user_row_id(&messages, "repeat", false),
+            None
+        );
+        assert_eq!(
+            resolve_durable_user_row_id(&messages, "repeat", true),
+            Some(23)
+        );
+        let not_last = vec![
+            json!({"row_id":21,"role":"user","content":"repeat"}),
+            json!({"row_id":22,"role":"user","content":"newer"}),
+            json!({"row_id":23,"role":"user","content":"repeat"}),
+            json!({"row_id":24,"role":"user","content":"latest"}),
+        ];
+        assert_eq!(resolve_durable_user_row_id(&not_last, "repeat", true), None);
+    }
+
+    #[test]
+    fn edit_row_history_lookup_uses_oldest_ordered_profile_scoped_pages() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept edit history lookup");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with(
+                "GET /hermes/api/sessions/stored-42/messages?profile=work&limit=500&offset=0&order=oldest&include_compacted=true HTTP/1.1\r\n"
+            ));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: cron-fixture-token\r\n")
+            );
+            let body = json!({
+                "session_id":"stored-42",
+                "profile":"work",
+            "messages":[{"row_id":55,"role":"user","content":"lost row id"}],
+                "pagination":{"limit":500,"offset":0,"order":"oldest","returned":1}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write edit history page");
+        });
+        let endpoint = cron_remote_fixture_endpoint(address);
+        assert_eq!(
+            resolve_edit_target_http(&endpoint, "stored-42", Some("work"), " lost row id ", false)
+                .expect("resolve remote edit target"),
+            Some(55)
+        );
+        server.join().expect("edit history fixture exits");
     }
 
     #[test]

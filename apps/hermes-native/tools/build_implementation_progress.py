@@ -1065,9 +1065,16 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0051": {
         "state": "partial",
-        "level": "headless_owner_scoped_prior_message_edit_stale_runtime_recovery_and_failed_turn_resubmit",
+        "level": "headless_owner_scoped_prior_message_edit_stale_runtime_recovery_failed_turn_and_history_row_resolution",
         "refs": [
             "apps/hermes-native/docs/PLAN.md#Revision 304",
+            "apps/hermes-native/docs/PLAN.md#Revision 307",
+            "apps/hermes-native/src/app.rs#edit_without_durable_row_waits_for_history_then_uses_resolved_truncation_id",
+            "apps/hermes-native/src/app.rs#unresolved_edit_target_falls_back_to_plain_submit_without_truncation",
+            "apps/hermes-native/src/app.rs#stale_history_resolution_owner_never_submits_an_edit",
+            "apps/hermes-native/src/gateway.rs#durable_edit_row_resolution_requires_exact_unique_persisted_user_match",
+            "apps/hermes-native/src/gateway.rs#durable_edit_row_resolution_uses_last_duplicate_only_for_proven_newest_turn",
+            "apps/hermes-native/src/gateway.rs#edit_row_history_lookup_uses_oldest_ordered_profile_scoped_pages",
             "apps/hermes-native/docs/PLAN.md#Revision 305",
             "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
             "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
@@ -1100,7 +1107,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": [
             "live Gateway stale-runtime resume, admission/refusal, uncertainty and race behavior remain unverified",
-            "live Gateway behavior, packaged Windows picker/drop interaction, and formal pinned-source acceptance remain unverified",
+            "live Gateway behavior, packaged Windows picker/drop interaction, concurrent offset-pagination stability, and formal pinned-source acceptance remain unverified",
         ],
     },
     "PAR-0052": {

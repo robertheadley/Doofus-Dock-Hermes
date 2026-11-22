@@ -373,3 +373,8 @@ The next additive slice supports editing failed user prompts that lack durable r
 
 
 PAR-0051 failed-turn update: full locked tests (543 library + 15 protocol + 3 launcher), all-target check, progress, continuity and package validators now pass. This adds headless evidence only; live Gateway, packaged Windows and formal source-paired acceptance remain open.
+
+
+### PAR-0051 missing durable row-ID recovery — 2026-11-22
+
+Eligible prior user messages without a local durable row ID now use bounded profile-scoped /api/sessions/{id}/messages history lookup. Exact unique matches can use the existing confirmed truncating edit. Duplicate matches resolve only for a locally and durably newest user turn; failures and ambiguity use ordinary prompt.submit. Stale result ownership is rejected. Headless regressions and the full suite pass. Remaining: concurrent REST offset-page mutation behavior, authenticated live Gateway, packaged Windows interaction, and fixed-source acceptance.
