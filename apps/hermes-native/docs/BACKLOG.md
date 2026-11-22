@@ -381,3 +381,6 @@ Eligible prior user messages without a local durable row ID now use bounded prof
 
 
 PAR-0060 implementation update (2026-11-22): atomic bounded text drafts now restore by connection/profile/session, clear when empty, and remain protected from view-cache eviction. Six focused tests and the full 556 + 15 + 3 Rust suite pass. Source-paired acceptance and packaged Windows validation remain open.
+
+
+PAR-0061 update (2026-11-22): rendered model selection now has headless evidence that accepted changes, refusal, confirmation-required and stale profile receipts preserve unsent text and attachment chips. A stale receipt no longer clears the current pending mutation. Full locked suite passes (557 + 15 + 3). Live Gateway, packaged Windows and pinned-source acceptance remain open.

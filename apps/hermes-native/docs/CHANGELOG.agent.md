@@ -3113,3 +3113,8 @@ PAR-0060 evidence update: EV-0095 is bound to implementation commit 32d59b044531
 
 
 PAR-0060 publication: implementation `32d59b04453134876562ab4de8a87f70d0167245` and EV-0095/checkpoint `618403c88fd5979659937bd7c4571ba44d5fc4ae` are published to `origin/main`; fresh fetch confirmed exact SHA equality. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
+
+
+### PAR-0061 model-change composer preservation — 2026-11-22
+
+Added a rendered model-picker regression proving that an unsent prompt and attached file remain intact after model selection. Matching success changes the model; refusal and confirmation-required receipts preserve composer state; stale-profile receipts are ignored before the active request is consumed. Validation passes: 557 library + 15 protocol + 3 launcher tests, all-target check, rustfmt/diff, progress and task validators, and both capability packages. Live Gateway and packaged Windows behavior remain unverified.

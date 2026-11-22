@@ -325,3 +325,8 @@ When an eligible displayed user message lacks a numeric durable row ID, the app 
 ## Composer draft persistence
 
 Plain-text composer drafts are stored under the app's user data directory in a dedicated `composer-drafts` directory. Each atomic JSON record is keyed by the existing Gateway connection/profile/session identity, has a 256 KiB text bound, and includes a schema version and write timestamp. The store retains at most 50 records. Invalid, oversized, or mismatched records fail closed and surface a status message; the in-memory draft remains usable. Empty composer state removes the stored record. Attachment data and temporary attachment references are not persisted. In-memory session views containing draft text or attachments are protected from the 32-entry LRU eviction, so this cache may temporarily exceed 32 entries while all candidates contain unsent user state.
+
+
+## Model changes and composer state
+
+The active session model is changed through an owner-scoped `ChatPolicyMutated` request/receipt. Composer text and attachment chips are app-owned state separate from the model options snapshot; model success updates the session options without rebuilding or clearing the composer. Confirmation-required responses retain the selection as a pending confirmation, and refusal surfaces an error while preserving composer state. Receipt ownership is checked before removing the pending mutation, so a stale profile/session/connection response cannot consume the current operation.

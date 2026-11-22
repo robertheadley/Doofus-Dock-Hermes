@@ -4242,3 +4242,6 @@ PAR-0060 was committed on main as 32d59b04453134876562ab4de8a87f70d0167245; part
 
 
 PAR-0060 is published to `origin/main`; fresh fetch confirms main at 618403c88fd5979659937bd7c4571ba44d5fc4ae. Operator-owned runtime residue remains preserved.
+
+
+PAR-0061 adds native model-change safety evidence: composer text and attachments survive success/refusal/confirmation outcomes, and stale profile receipts do not consume the active model mutation. Headless full suite passes; live Gateway and packaged Windows acceptance remain open.

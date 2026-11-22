@@ -1565,6 +1565,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "live Gateway is not required for local storage behavior but Gateway-connected end-to-end acceptance remains separate",
         ],
     },
+    "PAR-0061": {
+        "state": "partial",
+        "level": "rendered_model_pick_and_owner_scoped_receipt_preserves_draft_and_attachments",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/composer.ts#$composerDraft",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/composer.ts#setComposerDraft",
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/session.ts#setCurrentModel",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-model-controls.ts#paintSelection",
+            "apps/hermes-native/src/app.rs#mutate_chat_policy",
+            "apps/hermes-native/src/app.rs#fn update_gateway_discovery",
+            "apps/hermes-native/src/app.rs#model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation",
+            "apps/hermes-native/docs/PLAN.md#Revision 311",
+        ],
+        "gaps": [
+            "live Gateway model-switch success, denial and confirmation behavior remain unverified",
+            "packaged Windows interaction and source-paired acceptance remain pending",
+        ],
+    },
     "PAR-0048": {
         "state": "partial",
         "level": "headless_owner_scoped_session_usage_toolbar",

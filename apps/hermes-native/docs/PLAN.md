@@ -1925,3 +1925,21 @@ Validation: store round-trip, clear, cap, corruption and identity-isolation test
 Implemented a bounded atomic JSON draft store keyed by the existing Gateway connection/profile/session identity. It stores plain text only, rejects malformed and oversized records, caps the store at 50 records, and clears on empty composer state. New Chat and session drafts restore across app instances. Nonempty drafts and attachment views are excluded from 32-entry LRU eviction. A first-render initialization guard preserves already-populated in-memory drafts. Attachments remain memory-only.
 
 Validation: PASS 556 library + 15 protocol + 3 launcher tests; PASS six focused draft tests; PASS all-target locked check; PASS rustfmt and diff checks. The first full run exposed a first-render overwrite and a cleanup assumption in the new tests; both were corrected, and the entire suite then passed. Live Gateway is not required for this local persistence behavior. PAR-0060 remains partial pending source-paired and packaged Windows review.
+
+
+### Revision 311 — Preserve composer state during model changes (implementation plan) — 2026-11-22
+
+PAR-0061 is P0 for the agent workflow. The pinned Desktop keeps the composer draft in its own composer state while the model pill and session model mutation are separate. Native already renders its session model control independently of `self.draft`; verify that the model-selection UI and its asynchronous receipts never clear or replace unsent text or attachment chips.
+
+Implementation slice: add full-app headless interaction coverage that chooses a different configured model through the rendered model picker and verifies draft plus attachment state after a successful `ChatPolicyMutated` receipt. Cover definitive Gateway refusal and `confirmation_required` as well; in each case the draft and attachments remain unchanged while model/policy status is handled as designed. Make a functional code change only if these tests expose a defect.
+
+Acceptance: model selection originates from the accessible rendered composer control; matching session/profile/connection receipt is used; successful model update changes the displayed model while preserving draft and attachments; refusal and confirmation-required outcomes preserve composer state; stale/wrong-owner result cannot affect the current composer; no prompt is submitted by a model change. Record pinned source pointers and headless evidence. Do not claim live Gateway, packaged Windows, or source-paired acceptance from a fixture.
+
+Validation: focused egui/Gateway regressions, full locked suite, all-target check, formatting/diff, progress generators, task continuity/state and pinned/archival package validators. PAR-0061 remains partial until runtime and source-paired acceptance are established.
+
+
+### Revision 312 — Preserve unsent composer state through model changes (validated) — 2026-11-22
+
+PAR-0061 now has a rendered model-picker test and owner-scoped receipt coverage. The test preserves text and attachment state through an accepted custom model selection, ignores a stale profile receipt without discarding the current pending mutation, preserves state after provider refusal, and preserves state while awaiting guarded confirmation. The stale receipt path was corrected to validate ownership before taking the pending mutation.
+
+Validation: PASS focused PAR-0061 regression; PASS 557 library + 15 protocol + 3 launcher tests; PASS all-target locked check, rustfmt/diff, both progress generators, 19 task continuity tests, task-state validation, pinned package (79 implementation receipts) and archival package (491 pending rows). PAR-0061 remains partial; live Gateway, packaged Windows and source-paired acceptance remain open.

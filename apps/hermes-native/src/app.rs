@@ -30122,7 +30122,7 @@ fn render_message() -> &'static str {
                     profile,
                     result,
                 } => {
-                    let Some(pending) = self.chat_policy_mutation.take() else {
+                    let Some(pending) = self.chat_policy_mutation.as_ref() else {
                         continue;
                     };
                     let active_profile = self.active_session_profile.clone().or_else(|| {
@@ -30144,6 +30144,10 @@ fn render_message() -> &'static str {
                     ) {
                         continue;
                     }
+                    let pending = self
+                        .chat_policy_mutation
+                        .take()
+                        .expect("matching chat policy receipt has a pending mutation");
                     match result {
                         Ok(receipt) if receipt.status == "confirmation_required" => {
                             let model = receipt.model.or_else(|| {
@@ -37039,6 +37043,218 @@ mod tests {
                 .query_by_label("Use org/model:v2 · OpenAI")
                 .is_some()
         );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation() {
+        let (mut native, profile_dir) = isolated_app();
+        let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        native.gateway_discovery = Some(gateway);
+        native.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-work".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        native.gateway_connected = true;
+        native.route = AppRoute::Session("stored-session".into());
+        native.active_runtime_session_id = Some("runtime-session".into());
+        native.active_session_profile = Some("work".into());
+        let connection_id = native.active_gateway_connection_id().to_owned();
+        native.chat_model_options_owner =
+            Some(("runtime-session".into(), Some("work".into()), connection_id));
+        native.chat_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "openai".into(),
+                name: "OpenAI".into(),
+                authenticated: Some(true),
+                models: vec!["m1".into(), "m2".into()],
+                capabilities: BTreeMap::new(),
+            }],
+            model: Some("m1".into()),
+            provider: Some("openai".into()),
+        });
+        native.draft = "keep this unsent prompt".into();
+        native.chat_custom_model_input = "m3".into();
+        native.composer_attachments = vec![ComposerAttachment {
+            path: "attachments/brief.pdf".into(),
+            source_path: "C:/brief.pdf".into(),
+            name: "brief.pdf".into(),
+            is_image: false,
+            mime: "application/pdf".into(),
+            attached_session_id: Some("runtime-session".into()),
+            ref_text: Some("@file:attachments/brief.pdf".into()),
+            request_id: None,
+            error: None,
+        }];
+        let original_attachment = native.composer_attachments[0].clone();
+
+        let app = Rc::new(RefCell::new(native));
+        let draw_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| draw_app.borrow_mut().composer(ui));
+        harness.run_steps(2);
+
+        harness.get_by_label("Add custom model…").click();
+        harness.run();
+        harness.get_by_label("Use m3 · OpenAI").click();
+        harness.run();
+        let (request_id, session_id, profile) = {
+            let borrowed = app.borrow();
+            let pending = borrowed
+                .chat_policy_mutation
+                .as_ref()
+                .expect("model selection sends a session policy mutation");
+            (
+                pending.request_id.clone(),
+                pending.session_id.clone(),
+                pending.profile.clone(),
+            )
+        };
+        assert_eq!(app.borrow().draft, "keep this unsent prompt");
+        assert_eq!(app.borrow().composer_attachments[0], original_attachment);
+        events
+            .send(GatewayEvent::ChatPolicyMutated {
+                request_id: request_id.clone(),
+                session_id: session_id.clone(),
+                profile: Some("personal".into()),
+                result: Ok(crate::gateway::ChatPolicyMutationReceipt {
+                    status: "applied".into(),
+                    model: Some("m2".into()),
+                    provider: Some("openai".into()),
+                    effort: None,
+                    confirm: None,
+                    confirm_message: None,
+                    revision: Some(2),
+                }),
+            })
+            .expect("deliver a stale profile receipt");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert!(app.borrow().chat_policy_mutation.is_some());
+        assert_eq!(
+            app.borrow()
+                .chat_model_options
+                .as_ref()
+                .unwrap()
+                .model
+                .as_deref(),
+            Some("m1")
+        );
+        assert_eq!(app.borrow().draft, "keep this unsent prompt");
+        assert_eq!(app.borrow().composer_attachments[0], original_attachment);
+        events
+            .send(GatewayEvent::ChatPolicyMutated {
+                request_id,
+                session_id,
+                profile,
+                result: Ok(crate::gateway::ChatPolicyMutationReceipt {
+                    status: "applied".into(),
+                    model: Some("m2".into()),
+                    provider: Some("openai".into()),
+                    effort: None,
+                    confirm: None,
+                    confirm_message: None,
+                    revision: Some(2),
+                }),
+            })
+            .expect("deliver accepted model switch");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.borrow()
+                .chat_model_options
+                .as_ref()
+                .unwrap()
+                .model
+                .as_deref(),
+            Some("m2")
+        );
+        assert_eq!(app.borrow().draft, "keep this unsent prompt");
+        assert_eq!(app.borrow().composer_attachments[0], original_attachment);
+
+        app.borrow_mut().mutate_chat_policy(
+            "model",
+            json!({"model":"m1","provider":"openai"}),
+            false,
+        );
+        let (request_id, session_id, profile) = {
+            let borrowed = app.borrow();
+            let pending = borrowed
+                .chat_policy_mutation
+                .as_ref()
+                .expect("second model selection sends a mutation");
+            (
+                pending.request_id.clone(),
+                pending.session_id.clone(),
+                pending.profile.clone(),
+            )
+        };
+        events
+            .send(GatewayEvent::ChatPolicyMutated {
+                request_id,
+                session_id,
+                profile,
+                result: Err("provider denied this model".into()),
+            })
+            .expect("deliver model-switch refusal");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.borrow().draft, "keep this unsent prompt");
+        assert_eq!(app.borrow().composer_attachments[0], original_attachment);
+        assert_eq!(
+            app.borrow().chat_policy_error.as_deref(),
+            Some("Hermes did not apply the session setting: provider denied this model")
+        );
+
+        app.borrow_mut().mutate_chat_policy(
+            "model",
+            json!({"model":"m1","provider":"openai"}),
+            false,
+        );
+        let (request_id, session_id, profile) = {
+            let borrowed = app.borrow();
+            let pending = borrowed
+                .chat_policy_mutation
+                .as_ref()
+                .expect("third model selection sends a mutation");
+            (
+                pending.request_id.clone(),
+                pending.session_id.clone(),
+                pending.profile.clone(),
+            )
+        };
+        events
+            .send(GatewayEvent::ChatPolicyMutated {
+                request_id,
+                session_id,
+                profile,
+                result: Ok(crate::gateway::ChatPolicyMutationReceipt {
+                    status: "confirmation_required".into(),
+                    model: Some("m1".into()),
+                    provider: Some("openai".into()),
+                    effort: None,
+                    confirm: Some("confirm-model".into()),
+                    confirm_message: Some("Confirm model change".into()),
+                    revision: Some(3),
+                }),
+            })
+            .expect("deliver confirmation-required result");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert!(app.borrow().chat_model_confirmation.is_some());
+        assert_eq!(app.borrow().draft, "keep this unsent prompt");
+        assert_eq!(app.borrow().composer_attachments[0], original_attachment);
+        assert!(app.borrow().pending_submissions.is_empty());
+
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
