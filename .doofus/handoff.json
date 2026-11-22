@@ -280,30 +280,6 @@
   "blockers": [],
   "changed_files": [
     {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "pps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-      "status": "M "
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/tools/build_implementation_progress.py",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -326,23 +302,17 @@
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
       "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json",
-      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked --features agent-automation; cargo check --all-targets --locked --features agent-automation; progress builders; root/archive validators; doofus_task validate",
+    "command": "git fetch origin main; verify exact local/remote SHA; task validate",
     "evidence": [
       "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json#EV-0090",
       "apps/hermes-native/src/app.rs#message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference"
     ],
     "state": "in_progress",
-    "summary": "Implemented source-aligned image/file upload in prior-message edit dialog; partial EV-0090 is bound to cacf12d and root/archive package validation passes. Existing functionality is preserved.",
-    "verified_at": "2026-11-22T01:47:13Z"
+    "summary": "PAR-0051 now supports stable-row edit, deep-cut consent, active-turn interrupt, bounded 4009 recovery, and separate new image/file uploads. Implementation and EV-0090 are on main; all prior functionality is preserved.",
+    "verified_at": "2026-11-22T01:48:31Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -400,7 +370,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T02:47:13Z",
+    "lease_expires_at": "2026-11-22T02:48:31Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1659,9 +1629,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0051-edit-attachments-evidence-checkpoint-20261122",
+  "last_event_id": "hermes-par0051-edit-attachments-published-checkpoint-20261122",
   "last_operation": {
-    "request_id": "hermes-par0051-edit-attachments-evidence-checkpoint-20261122",
+    "request_id": "hermes-par0051-edit-attachments-published-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1680,7 +1650,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit EV-0090 and regenerated progress; publish implementation/evidence to main and verify exact remote SHA. Then validate a live Gateway only when an existing safe test instance is available; otherwise continue the next core agent-workflow gap.",
+  "recommended_next_action": "Select the next P0 requirement directly tied to model connection, chat/prompt lifecycle, tools/approvals, skills, plugins/MCP or context; continue additively. Revisit live Gateway/physical Windows checks when a safe runtime is available.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2135,24 +2105,8 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "125bc5b51022da7b1057ad368c3d89210dfccdc69751162871a84378cb465ce7",
+    "change_fingerprint": "12d9a740c525aa11b042d1cc06338802612dedb899cbcf136db147f916e6917b",
     "changed_files": [
-      {
-        "path": "pps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-        "status": "M "
-      },
-      {
-        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/tools/build_implementation_progress.py",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
         "status": "??"
@@ -2168,20 +2122,16 @@
       {
         "path": "apps/hermes-native/work/installs/b3d1c6c1988d4821/pm-runtime/selected.json",
         "status": "??"
-      },
-      {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json",
-        "status": "??"
       }
     ],
-    "head_commit": "cacf12d8af5b3fb05c597acbb943b7a5b65deff5",
+    "head_commit": "6fbc11b54f9af154293d6e89df94c1b95ab6f642",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 622,
+  "revision": 623,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 622,
+  "state_revision": 623,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0051",
   "task_ledger_revision": 99,
@@ -3639,5 +3589,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T01:47:13Z"
+  "updated_at": "2026-11-22T01:48:31Z"
 }
