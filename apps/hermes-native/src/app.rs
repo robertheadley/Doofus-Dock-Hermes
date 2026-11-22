@@ -18146,8 +18146,11 @@ fn render_message() -> &'static str {
             return;
         };
         let submission_id = operation_id("edit");
+        let stored_session_id =
+            self.stored_session_id_for_runtime(&edit.session_id, edit.profile.as_deref());
         if let Err(error) = gateway.edit_prompt(
             edit.session_id.clone(),
+            stored_session_id,
             edit.profile.clone(),
             submission_id.clone(),
             text.clone(),
@@ -18471,6 +18474,73 @@ fn render_message() -> &'static str {
                 self.status = "Checking original message admission…".into();
             }
             Err(error) => self.status = error,
+        }
+    }
+
+    fn handle_session_runtime_rebound(
+        &mut self,
+        submission_id: String,
+        stored_session_id: String,
+        previous_runtime_session_id: String,
+        runtime_session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+    ) {
+        let current_connection = self.active_gateway_connection_id().to_owned();
+        if connection_id.as_deref() != Some(current_connection.as_str())
+            || runtime_session_id.is_empty()
+            || runtime_session_id == previous_runtime_session_id
+        {
+            return;
+        }
+        let owner_key = session_owner_identity_key(
+            &stored_session_id,
+            profile.as_deref(),
+            connection_id.as_deref(),
+        );
+        if let Some(mut view) = self.session_chat_views.get(&owner_key).cloned()
+            && view.profile == profile
+            && view.runtime_session_id.as_deref() == Some(previous_runtime_session_id.as_str())
+        {
+            view.runtime_session_id = Some(runtime_session_id.clone());
+            self.cache_session_chat_view(owner_key, view);
+        }
+
+        let owns_active_session = self.route == AppRoute::Session(stored_session_id.clone())
+            && self.active_session_profile == profile
+            && self.active_runtime_session_id.as_deref()
+                == Some(previous_runtime_session_id.as_str())
+            && self.gateway_connection_id.as_deref() == Some(current_connection.as_str());
+        if owns_active_session {
+            self.active_runtime_session_id = Some(runtime_session_id.clone());
+            self.save_active_chat_view();
+        }
+
+        let old_key = session_owner_identity_key(
+            &previous_runtime_session_id,
+            profile.as_deref(),
+            connection_id.as_deref(),
+        );
+        if self
+            .pending_submissions
+            .get(&old_key)
+            .is_some_and(|pending| pending.submission_id == submission_id)
+            && let Some(mut pending) = self.pending_submissions.remove(&old_key)
+        {
+            pending.session_id = runtime_session_id.clone();
+            let new_key = session_owner_identity_key(
+                &runtime_session_id,
+                profile.as_deref(),
+                connection_id.as_deref(),
+            );
+            self.pending_submissions.insert(new_key, pending);
+        }
+        if let Some(edit) = self.pending_message_edits.get_mut(&submission_id)
+            && edit.session_id == previous_runtime_session_id
+            && edit.profile == profile
+            && edit.connection_id.as_deref() == connection_id.as_deref()
+        {
+            edit.session_id = runtime_session_id;
         }
     }
 
@@ -27803,6 +27873,21 @@ fn render_message() -> &'static str {
                     submission_id,
                     result,
                 } => self.handle_prompt_submitted(session_id, submission_id, result),
+                GatewayEvent::SessionRuntimeRebound {
+                    submission_id,
+                    stored_session_id,
+                    previous_runtime_session_id,
+                    runtime_session_id,
+                    profile,
+                    connection_id,
+                } => self.handle_session_runtime_rebound(
+                    submission_id,
+                    stored_session_id,
+                    previous_runtime_session_id,
+                    runtime_session_id,
+                    profile,
+                    connection_id,
+                ),
                 GatewayEvent::ComposerAttachmentAttached {
                     request_id,
                     session_id,
@@ -47847,6 +47932,128 @@ mod tests {
         assert_eq!(
             app.transcript[0]["interrupted"],
             serde_json::Value::Bool(true)
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn stale_edit_runtime_rebind_updates_only_the_matching_connection_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("runtime-stale".into());
+        app.transcript = vec![serde_json::json!({
+            "role":"user","content":"old prompt","row_id":17
+        })];
+        app.save_active_chat_view();
+        let submission_id = "edit-recovery-1";
+        let old_key = app.session_identity_key("runtime-stale", Some("work"));
+        app.pending_submissions.insert(
+            old_key.clone(),
+            PendingPrompt {
+                session_id: "runtime-stale".into(),
+                profile: Some("work".into()),
+                submission_id: submission_id.into(),
+                text: "edited prompt".into(),
+                display_text: "edited prompt".into(),
+                attachments: Vec::new(),
+                uncertain: false,
+                admission_id: None,
+                execution_generation: None,
+                resolving_unknown: false,
+                retrying_failed_turn: false,
+            },
+        );
+        app.pending_message_edits.insert(
+            submission_id.into(),
+            MessageEditDraft {
+                session_id: "runtime-stale".into(),
+                profile: Some("work".into()),
+                connection_id: Some(connection_id.clone()),
+                row_id: 17,
+                original_text: "old prompt".into(),
+                text: "edited prompt".into(),
+                attachments: Vec::new(),
+                later_user_turns: 0,
+                confirm_deep_cut: false,
+                busy_retry_attempted: false,
+                is_regenerate: false,
+                rebind_survivor_row_ids: vec![16],
+            },
+        );
+
+        app.handle_session_runtime_rebound(
+            submission_id.into(),
+            "stored-session".into(),
+            "runtime-stale".into(),
+            "runtime-recovered".into(),
+            Some("work".into()),
+            Some("another-connection".into()),
+        );
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-stale")
+        );
+        assert!(app.pending_submissions.contains_key(&old_key));
+
+        app.handle_session_runtime_rebound(
+            submission_id.into(),
+            "stored-session".into(),
+            "runtime-stale".into(),
+            "runtime-recovered".into(),
+            Some("work".into()),
+            Some(connection_id.clone()),
+        );
+
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-recovered")
+        );
+        let owner_key =
+            session_owner_identity_key("stored-session", Some("work"), Some(&connection_id));
+        assert_eq!(
+            app.session_chat_views
+                .get(&owner_key)
+                .and_then(|view| view.runtime_session_id.as_deref()),
+            Some("runtime-recovered")
+        );
+        let recovered_key = app.session_identity_key("runtime-recovered", Some("work"));
+        assert!(!app.pending_submissions.contains_key(&old_key));
+        assert_eq!(
+            app.pending_submissions
+                .get(&recovered_key)
+                .map(|pending| pending.submission_id.as_str()),
+            Some(submission_id)
+        );
+        assert_eq!(
+            app.pending_message_edits
+                .get(submission_id)
+                .map(|edit| edit.session_id.as_str()),
+            Some("runtime-recovered")
+        );
+        app.handle_prompt_submitted(
+            "runtime-recovered".into(),
+            submission_id.into(),
+            Ok(PromptSubmitReceipt::Admitted {
+                admission_id: "edit-admission-1".into(),
+                status: "started".into(),
+                execution_generation: Some(9),
+                user_row_id: Some(80),
+                survivor_row_id_map: BTreeMap::from([(16, Some(160))]),
+            }),
+        );
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(app.transcript[0]["content"], "edited prompt");
+        assert_eq!(app.transcript[0]["row_id"], 80);
+        assert_eq!(
+            app.pending_submissions[&recovered_key]
+                .admission_id
+                .as_deref(),
+            Some("edit-admission-1")
         );
 
         drop(app);

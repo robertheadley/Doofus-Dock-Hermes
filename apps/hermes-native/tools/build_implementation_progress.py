@@ -1065,9 +1065,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0051": {
         "state": "partial",
-        "level": "headless_owner_scoped_prior_message_edit_and_confirmed_truncation",
+        "level": "headless_owner_scoped_prior_message_edit_and_stale_runtime_recovery",
         "refs": [
-            "apps/hermes-native/docs/PLAN.md#Revision 302",
+            "apps/hermes-native/docs/PLAN.md#Revision 304",
             "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
             "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
             "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
@@ -1075,7 +1075,10 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#busy_edit_interrupts_then_retries_once_and_preserves_history_on_second_refusal",
             "apps/hermes-native/src/app.rs#message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference",
             "apps/hermes-native/src/app.rs#message_edit_waits_for_new_file_upload_before_sending_truncation",
+            "apps/hermes-native/src/app.rs#stale_edit_runtime_rebind_updates_only_the_matching_connection_owner",
             "apps/hermes-native/src/gateway.rs#rpc_preserves_gateway_busy_code_for_bounded_prompt_recovery",
+            "apps/hermes-native/src/gateway.rs#edit_prompt_resumes_stale_runtime_and_retries_exact_truncation_once",
+            "apps/hermes-native/src/gateway.rs#edit_prompt_does_not_retry_when_resume_returns_the_wrong_owner",
             "apps/hermes-native/src/app.rs#unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt",
             "apps/hermes-native/src/app.rs#refused_prior_message_edit_preserves_composer_and_restores_edit_text",
             "apps/hermes-native/src/gateway.rs#prompt_edit_uses_stable_row_and_explicit_deep_cut_confirmation",
@@ -1090,7 +1093,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             ".staging/hermes-pinned-878305/tui_gateway/methods_prompt.py#_truncate_history_for_submit",
         ],
         "gaps": [
-            "live Gateway admission/refusal/uncertain recovery and stale-confirmation races remain unverified",
+            "live Gateway stale-runtime resume, admission/refusal, uncertainty and race behavior remain unverified",
             "live Gateway behavior, packaged Windows picker/drop interaction, and formal pinned-source acceptance remain unverified",
         ],
     },

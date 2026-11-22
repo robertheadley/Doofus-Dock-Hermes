@@ -4171,3 +4171,16 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** Adds no repository-scale scans; preserves the existing single porcelain status call.
 - **risks:** None beyond platform-specific porcelain parsing, covered by isolated repository regression.
 - **follow_up:** Recheckpoint after publishing this correction and confirm `git_drift` is false with the operator work folder preserved.
+
+## PAR-0051 — Recover stale runtime for prior-message edits — 2026-11-22
+
+- **id:** hermes-par0051-stale-runtime-edit-recovery-20261122
+- **timestamp:** 2026-11-22T03:02:49Z
+- **what:** Prior-message edits now resume the captured stored session after a definitive `session not found` submit refusal, publish a connection-scoped runtime rebind before retry, and retry the same truncating payload at most once. A mismatched stored-session owner fails closed without rebind or retry. The app retargets only the matching connection/profile/session view and pending edit before processing the retry receipt.
+- **why:** Match the pinned Hermes shared rewind-submit recovery while preserving edit safety, attachments, truncation consent and transcript admission gating.
+- **components:** Native Gateway edit command/actor and typed events; app owner-state reconciliation; WebSocket and app tests; progress overlay; plan, backlog, completion overview, architecture, README and journals.
+- **type:** Additive agent-chat lifecycle recovery with fail-closed owner fencing.
+- **validation:** PASS focused recovery, wrong-owner, and app owner-rebind tests; PASS full locked suite (540 library + 15 protocol + 3 launcher); PASS all-target locked check, rustfmt, diff check and progress generators. Pinned-package and continuity validators are recorded in execution logs. Live Gateway, packaged Windows picker/drop behavior and pinned-source acceptance remain unverified.
+- **performance:** No new polling. Only an explicit stale-runtime refusal adds one `session.resume` and one bounded `prompt.submit` retry.
+- **risks:** Live Hermes Gateway versions may differ in resume response fields; a failed or uncertain resume never triggers a second prompt submission. Live runtime remains unverified.
+- **follow_up:** Bind local evidence to the implementation commit and continue PAR-0051 toward Gateway and packaged Windows acceptance without touching `apps/hermes-native/work/`.
