@@ -1838,6 +1838,15 @@ pub struct PromptTimelinePage {
     pub total: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PromptHistoryWindow {
+    pub messages: Vec<serde_json::Value>,
+    pub offset: usize,
+    pub total: usize,
+    pub has_older: bool,
+    pub has_newer: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct CreatedSession {
     pub request_id: String,
@@ -1897,6 +1906,14 @@ pub enum GatewayEvent {
         connection_id: Option<String>,
         after_row_id: u64,
         result: Result<PromptTimelinePage, String>,
+    },
+    PromptHistoryWindowLoaded {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        row_id: u64,
+        result: Result<PromptHistoryWindow, String>,
     },
     EditTargetResolved {
         request_id: String,
@@ -2713,6 +2730,13 @@ enum GatewayHttpCommand {
         profile: Option<String>,
         connection_id: Option<String>,
         after_row_id: u64,
+    },
+    LoadPromptHistoryWindow {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        row_id: u64,
     },
     ResolveEditTarget {
         request_id: String,
@@ -4582,6 +4606,24 @@ impl GatewayDiscovery {
                 after_row_id,
             })
             .map_err(|_| "Hermes prompt timeline reader has closed".to_owned())
+    }
+
+    pub fn load_prompt_history_window(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        row_id: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadPromptHistoryWindow {
+                request_id,
+                session_id,
+                profile,
+                connection_id: self.connection_id.clone(),
+                row_id,
+            })
+            .map_err(|_| "Hermes prompt history window reader has closed".to_owned())
     }
 
     pub fn resolve_edit_target(
@@ -9328,6 +9370,27 @@ struct PromptTimelinePagination {
     next_cursor: Option<u64>,
 }
 
+#[derive(Deserialize)]
+struct PromptHistoryWindowResponse {
+    session_id: String,
+    #[serde(default)]
+    profile: Option<String>,
+    messages: Vec<serde_json::Value>,
+    pagination: PromptHistoryWindowPagination,
+}
+
+#[derive(Deserialize)]
+struct PromptHistoryWindowPagination {
+    row_id: u64,
+    limit: usize,
+    returned: usize,
+    order: String,
+    offset: usize,
+    total: usize,
+    has_older: bool,
+    has_newer: bool,
+}
+
 fn gateway_artifact_download_actor(
     endpoint: GatewayEndpoint,
     requests: Receiver<ArtifactFileDownloadRequest>,
@@ -10186,6 +10249,25 @@ fn gateway_http_actor(
                 profile,
                 connection_id,
                 after_row_id,
+            },
+            GatewayHttpCommand::LoadPromptHistoryWindow {
+                request_id,
+                session_id,
+                profile,
+                connection_id,
+                row_id,
+            } => GatewayEvent::PromptHistoryWindowLoaded {
+                result: load_prompt_history_window_http(
+                    &endpoint,
+                    &session_id,
+                    profile.as_deref(),
+                    row_id,
+                ),
+                request_id,
+                session_id,
+                profile,
+                connection_id,
+                row_id,
             },
             GatewayHttpCommand::ResolveEditTarget {
                 request_id,
@@ -11553,6 +11635,87 @@ fn decode_prompt_timeline_page(
         next_cursor: pagination.next_cursor,
         has_more: pagination.has_more,
         total: pagination.total,
+    })
+}
+
+const PROMPT_HISTORY_WINDOW_LIMIT: usize = 120;
+
+fn load_prompt_history_window_http(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+    profile: Option<&str>,
+    row_id: u64,
+) -> Result<PromptHistoryWindow, String> {
+    if session_id.is_empty()
+        || session_id.len() > 256
+        || session_id.chars().any(char::is_control)
+        || row_id == 0
+        || profile.is_some_and(|value| {
+            value.is_empty() || value.len() > 128 || value.chars().any(char::is_control)
+        })
+    {
+        return Err("Hermes prompt history window scope is invalid".into());
+    }
+    let mut url = format!(
+        "{}/api/sessions/{}/messages/around?row_id={row_id}&limit={PROMPT_HISTORY_WINDOW_LIMIT}",
+        endpoint.api_origin.trim_end_matches('/'),
+        encode_query_component(session_id)
+    );
+    if let Some(profile) = profile {
+        url.push_str(&format!("&profile={}", encode_query_component(profile)));
+    }
+    let response: PromptHistoryWindowResponse = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json(endpoint, &url)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes prompt history requires a verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        request_gateway_json(&endpoint.api_origin, ticket.as_str(), &url)?
+    };
+    decode_prompt_history_window(response, session_id, profile, row_id)
+}
+
+fn decode_prompt_history_window(
+    response: PromptHistoryWindowResponse,
+    session_id: &str,
+    profile: Option<&str>,
+    row_id: u64,
+) -> Result<PromptHistoryWindow, String> {
+    let pagination = response.pagination;
+    let page_end = pagination.offset.checked_add(response.messages.len());
+    if response.session_id != session_id {
+        return Err("Hermes prompt history window belongs to a different session".into());
+    }
+    if profile.is_some_and(|expected| response.profile.as_deref() != Some(expected)) {
+        return Err("Hermes prompt history window belongs to a different profile".into());
+    }
+    if pagination.row_id != row_id
+        || pagination.limit != PROMPT_HISTORY_WINDOW_LIMIT
+        || response.messages.is_empty()
+        || response.messages.len() > PROMPT_HISTORY_WINDOW_LIMIT
+        || pagination.returned != response.messages.len()
+        || pagination.order != "oldest"
+        || page_end.is_none_or(|end| end > pagination.total)
+        || pagination.has_older != (pagination.offset > 0)
+        || page_end.is_none_or(|end| pagination.has_newer != (end < pagination.total))
+        || !response.messages.iter().any(|message| {
+            message
+                .get("row_id")
+                .or_else(|| message.get("id"))
+                .and_then(serde_json::Value::as_u64)
+                == Some(row_id)
+        })
+    {
+        return Err("Hermes prompt history window failed anchor or pagination validation".into());
+    }
+    Ok(PromptHistoryWindow {
+        messages: response.messages,
+        offset: pagination.offset,
+        total: pagination.total,
+        has_older: pagination.has_older,
+        has_newer: pagination.has_newer,
     })
 }
 
@@ -21242,6 +21405,72 @@ mod tests {
         assert_eq!(page.entries[0].row_id, 81);
         assert_eq!(page.next_cursor, Some(81));
         server.join().expect("prompt timeline fixture exits");
+    }
+
+    #[test]
+    fn prompt_history_window_remote_read_uses_around_route_and_validates_anchor() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind history window fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept around-row request");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with(
+                "GET /api/sessions/session%2F42/messages/around?row_id=81&limit=120&profile=work%20profile HTTP/1.1\r\n"
+            ));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-around-token\r\n")
+            );
+            let body = json!({
+                "session_id":"session/42",
+                "profile":"work profile",
+                "messages":[{"id":81,"role":"user","content":"Selected prompt"}],
+                "pagination":{"row_id":81,"limit":120,"returned":1,"order":"oldest",
+                    "offset":40,"total":240,"has_older":true,"has_newer":true}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write around-row page");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-around-token".into(),
+            ))),
+        };
+        let window =
+            load_prompt_history_window_http(&endpoint, "session/42", Some("work profile"), 81)
+                .expect("load around-row window");
+        assert_eq!(window.messages[0]["content"], "Selected prompt");
+        assert_eq!(window.offset, 40);
+        assert_eq!(window.total, 240);
+        assert!(window.has_older);
+        assert!(window.has_newer);
+        server.join().expect("history window fixture exits");
+    }
+
+    #[test]
+    fn prompt_history_window_rejects_wrong_anchor_and_inconsistent_bounds() {
+        let response: PromptHistoryWindowResponse = serde_json::from_value(json!({
+            "session_id":"stored-session",
+            "profile":"work",
+            "messages":[{"id":81,"role":"user","content":"Selected prompt"}],
+            "pagination":{"row_id":82,"limit":120,"returned":1,"order":"oldest",
+                "offset":40,"total":40,"has_older":true,"has_newer":false}
+        }))
+        .expect("decode around-row response");
+        assert!(
+            decode_prompt_history_window(response, "stored-session", Some("work"), 81).is_err()
+        );
     }
 
     #[test]

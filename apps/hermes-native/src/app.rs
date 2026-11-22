@@ -1153,12 +1153,24 @@ struct PromptTimelineState {
     total: Option<usize>,
     request: Option<(String, String, Option<String>, Option<String>, u64)>,
     error: Option<String>,
+    window_request: Option<(String, String, Option<String>, Option<String>, u64)>,
+    window: Option<PromptTimelineWindowInfo>,
+    window_error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PromptTimelineWindowInfo {
+    offset: usize,
+    total: usize,
+    has_older: bool,
+    has_newer: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum PromptTimelineAction {
     Load,
     LoadMore,
+    Refresh,
     SelectRow(u64),
 }
 
@@ -2120,7 +2132,6 @@ pub struct HermesNativeApp {
     session_chat_views: BTreeMap<String, SessionChatViewState>,
     session_chat_view_order: VecDeque<String>,
     prompt_timelines: BTreeMap<String, PromptTimelineState>,
-    pending_timeline_jump: Option<(String, u64, usize)>,
     new_chat_draft: String,
     new_chat_draft_scope: Option<String>,
     transcript: Vec<serde_json::Value>,
@@ -4591,7 +4602,6 @@ fn render_message() -> &'static str {
             session_chat_views: BTreeMap::new(),
             session_chat_view_order: VecDeque::new(),
             prompt_timelines: BTreeMap::new(),
-            pending_timeline_jump: None,
             new_chat_draft: String::new(),
             new_chat_draft_scope: None,
             transcript: Vec::new(),
@@ -7210,16 +7220,15 @@ fn render_message() -> &'static str {
                     PromptTimelineAction::Load | PromptTimelineAction::LoadMore => {
                         self.load_prompt_timeline_page(session_id.to_owned());
                     }
+                    PromptTimelineAction::Refresh => {
+                        self.refresh_prompt_timeline(session_id.to_owned());
+                    }
                     PromptTimelineAction::SelectRow(row_id) => {
                         if let Some(index) = transcript_index_for_row_id(&messages, row_id) {
                             self.find_in_page_target = Some(index);
                             self.find_in_page_scroll_pending = true;
-                        } else if self.transcript_has_more {
-                            self.pending_timeline_jump = Some((owner_key, row_id, 0));
-                            self.load_older_transcript(session_id.to_owned());
                         } else {
-                            self.status =
-                                "That prompt is not in the loaded transcript history.".into();
+                            self.load_prompt_history_window(session_id.to_owned(), row_id);
                         }
                     }
                 }
@@ -15904,12 +15913,19 @@ fn render_message() -> &'static str {
         }
         let Some(gateway) = &self.gateway_discovery else {
             self.older_transcript_error = Some("Hermes gateway is unavailable".into());
-            self.pending_timeline_jump = None;
             return;
         };
         let request_id = operation_id("transcript-older");
         let profile = self.active_session_profile.clone();
-        let offset = self.transcript.len();
+        let owner_key = self.session_identity_key(&session_id, profile.as_deref());
+        let offset = self
+            .prompt_timelines
+            .get(&owner_key)
+            .and_then(|state| state.window)
+            .filter(|window| window.has_older)
+            .map_or(self.transcript.len(), |window| {
+                window.total.saturating_sub(window.offset)
+            });
         if let Err(error) = gateway.load_older_transcript(
             request_id.clone(),
             session_id.clone(),
@@ -15917,7 +15933,6 @@ fn render_message() -> &'static str {
             offset,
         ) {
             self.older_transcript_error = Some(error.clone());
-            self.pending_timeline_jump = None;
             self.status = error;
             return;
         }
@@ -15955,6 +15970,54 @@ fn render_message() -> &'static str {
         }
         state.error = None;
         state.request = Some((request_id, session_id, profile, connection_id, after_row_id));
+    }
+
+    fn refresh_prompt_timeline(&mut self, session_id: String) {
+        let profile = self.active_session_profile.clone();
+        let owner_key = self.session_identity_key(&session_id, profile.as_deref());
+        let Some(state) = self.prompt_timelines.get_mut(&owner_key) else {
+            self.load_prompt_timeline_page(session_id);
+            return;
+        };
+        if state.request.is_some() {
+            return;
+        }
+        state.entries.clear();
+        state.cursor = None;
+        state.has_more = false;
+        state.total = None;
+        state.error = None;
+        self.load_prompt_timeline_page(session_id);
+    }
+
+    fn load_prompt_history_window(&mut self, session_id: String, row_id: u64) {
+        if self.route != AppRoute::Session(session_id.clone()) || row_id == 0 {
+            return;
+        }
+        let profile = self.active_session_profile.clone();
+        let owner_key = self.session_identity_key(&session_id, profile.as_deref());
+        let state = self.prompt_timelines.entry(owner_key).or_default();
+        if state.window_request.is_some() {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            state.window_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("prompt-history-window");
+        let connection_id = gateway.connection_id().map(str::to_owned);
+        if let Err(error) = gateway.load_prompt_history_window(
+            request_id.clone(),
+            session_id.clone(),
+            profile.clone(),
+            row_id,
+        ) {
+            state.window_error = Some(error.clone());
+            self.status = error;
+            return;
+        }
+        state.window_error = None;
+        state.window_request = Some((request_id, session_id, profile, connection_id, row_id));
     }
 
     fn refresh_active_transcript_after_change(&mut self) {
@@ -28490,12 +28553,15 @@ fn render_message() -> &'static str {
                         },
                     );
                     if expected {
+                        let mut page_succeeded = false;
                         let mut page_has_more = false;
-                        let mut page_failed = false;
+                        let mut loaded_page_count = 0;
                         view.older_transcript_request = None;
                         match result {
                             Ok(page) => {
+                                page_succeeded = true;
                                 page_has_more = page.has_more;
+                                loaded_page_count = page.messages.len();
                                 if page.replace_all {
                                     view.transcript = page.messages;
                                     view.transcript_has_more = false;
@@ -28515,7 +28581,6 @@ fn render_message() -> &'static str {
                                 );
                             }
                             Err(error) => {
-                                page_failed = true;
                                 view.older_transcript_error = Some(error.clone());
                                 self.status = format!("Could not load earlier messages: {error}");
                             }
@@ -28529,35 +28594,14 @@ fn render_message() -> &'static str {
                             self.older_transcript_request = None;
                             self.older_transcript_error = view.older_transcript_error.clone();
                         }
-                        let mut continue_timeline_jump = false;
-                        if self.route == AppRoute::Session(session_id.clone())
-                            && self.active_session_profile == profile
-                            && let Some((jump_owner, target_row_id, pages_loaded)) =
-                                self.pending_timeline_jump.clone()
-                            && jump_owner == key
+                        if page_succeeded
+                            && let Some(window) = self
+                                .prompt_timelines
+                                .get_mut(&key)
+                                .and_then(|state| state.window.as_mut())
                         {
-                            if let Some(index) =
-                                transcript_index_for_row_id(&self.transcript, target_row_id)
-                            {
-                                self.pending_timeline_jump = None;
-                                self.find_in_page_target = Some(index);
-                                self.find_in_page_scroll_pending = true;
-                                self.status = "Jumped to the selected prompt".into();
-                            } else if page_has_more && !page_failed && pages_loaded < 63 {
-                                self.pending_timeline_jump =
-                                    Some((jump_owner, target_row_id, pages_loaded + 1));
-                                continue_timeline_jump = true;
-                            } else {
-                                self.pending_timeline_jump = None;
-                                self.status = if page_failed {
-                                    "Could not load the selected prompt. Retry from the prompt history index.".into()
-                                } else {
-                                    "The selected prompt is deeper than the automatic history scan. Load earlier messages and select it again.".into()
-                                };
-                            }
-                        }
-                        if continue_timeline_jump {
-                            self.load_older_transcript(session_id.clone());
+                            window.offset = window.offset.saturating_sub(loaded_page_count);
+                            window.has_older = page_has_more;
                         }
                     }
                 }
@@ -28643,6 +28687,95 @@ fn render_message() -> &'static str {
                             break;
                         };
                         self.prompt_timelines.remove(&evicted);
+                    }
+                }
+                GatewayEvent::PromptHistoryWindowLoaded {
+                    request_id,
+                    session_id,
+                    profile,
+                    connection_id,
+                    row_id,
+                    result,
+                } => {
+                    let key = self.session_identity_key_for_connection(
+                        connection_id.as_deref(),
+                        &session_id,
+                        profile.as_deref(),
+                    );
+                    let window = {
+                        let Some(state) = self.prompt_timelines.get_mut(&key) else {
+                            continue;
+                        };
+                        let expected = state.window_request.as_ref().is_some_and(
+                            |(
+                                pending_id,
+                                pending_session,
+                                pending_profile,
+                                pending_connection_id,
+                                pending_row_id,
+                            )| {
+                                pending_id == &request_id
+                                    && pending_session == &session_id
+                                    && pending_profile == &profile
+                                    && pending_connection_id == &connection_id
+                                    && pending_row_id == &row_id
+                            },
+                        );
+                        if !expected {
+                            continue;
+                        }
+                        state.window_request = None;
+                        match result {
+                            Ok(window) => {
+                                state.window = Some(PromptTimelineWindowInfo {
+                                    offset: window.offset,
+                                    total: window.total,
+                                    has_older: window.has_older,
+                                    has_newer: window.has_newer,
+                                });
+                                state.window_error = None;
+                                Some(window)
+                            }
+                            Err(error) => {
+                                state.window_error = Some(error.clone());
+                                self.status = format!("Could not jump to prompt: {error}");
+                                None
+                            }
+                        }
+                    };
+                    let Some(window) = window else {
+                        continue;
+                    };
+                    let active_owner = self.route == AppRoute::Session(session_id.clone())
+                        && self.active_session_profile == profile
+                        && self.gateway_connection_id == connection_id;
+                    if active_owner {
+                        self.save_active_chat_view();
+                    }
+                    let view = self.session_chat_views.entry(key).or_insert_with(|| {
+                        SessionChatViewState {
+                            profile: profile.clone(),
+                            ..SessionChatViewState::default()
+                        }
+                    });
+                    view.transcript = window.messages;
+                    view.transcript_message_count = window.total;
+                    view.transcript_has_more = window.has_older;
+                    view.older_transcript_request = None;
+                    view.older_transcript_error = None;
+                    if active_owner {
+                        self.transcript = view.transcript.clone();
+                        self.transcript_message_count = view.transcript_message_count;
+                        self.transcript_has_more = view.transcript_has_more;
+                        self.older_transcript_request = None;
+                        self.older_transcript_error = None;
+                        self.find_in_page_target =
+                            transcript_index_for_row_id(&self.transcript, row_id);
+                        self.find_in_page_scroll_pending = self.find_in_page_target.is_some();
+                        self.status = format!(
+                            "Jumped to prompt · {} messages in this window",
+                            self.transcript.len()
+                        );
                     }
                 }
                 GatewayEvent::ActiveTranscriptRefreshed {
@@ -33902,6 +34035,9 @@ fn render_prompt_history_index(
         if state.request.is_some() {
             ui.label("Loading prompt history…");
         }
+        if state.window_request.is_some() {
+            ui.label("Loading the selected conversation window…");
+        }
         if let Some(error) = &state.error {
             ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
             if ui
@@ -33910,6 +34046,18 @@ fn render_prompt_history_index(
                 .clicked()
             {
                 action = Some(PromptTimelineAction::LoadMore);
+            }
+        }
+        if let Some(error) = &state.window_error {
+            ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+        }
+        if state.total.is_some() && state.request.is_none() {
+            if ui
+                .button("Refresh prompt history")
+                .accessible_name("Refresh session prompt history")
+                .clicked()
+            {
+                action = Some(PromptTimelineAction::Refresh);
             }
         }
         if state.total.is_some() {
@@ -33922,6 +34070,17 @@ fn render_prompt_history_index(
                     ""
                 }
             ));
+        }
+        if let Some(window) = state.window {
+            let first = window.offset.saturating_add(1).min(window.total);
+            let last = window.offset.saturating_add(120).min(window.total);
+            ui.label(format!(
+                "Transcript window · messages {first}–{last} of {}",
+                window.total
+            ));
+            if window.has_newer {
+                ui.label("Newer prompts are available from the index above.");
+            }
         }
         egui::ScrollArea::vertical()
             .id_salt(("hermes-prompt-history-index", owner_key.to_owned()))
@@ -41372,6 +41531,123 @@ mod tests {
             .click();
         harness.run();
         assert_eq!(*action.borrow(), Some(PromptTimelineAction::SelectRow(42)));
+    }
+
+    #[test]
+    fn around_history_result_replaces_only_its_active_owner_and_scrolls_to_anchor() {
+        let (mut app, profile_dir) = isolated_app();
+        let session_id = "history-window-session";
+        let connection_id = "saved-connection-a";
+        app.route = AppRoute::Session(session_id.into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some(connection_id.into());
+        app.transcript = vec![json!({"row_id":1,"role":"user","content":"old page"})];
+        app.find_in_page_target = None;
+        let owner_key =
+            app.session_identity_key_for_connection(Some(connection_id), session_id, Some("work"));
+        app.prompt_timelines.insert(
+            owner_key,
+            PromptTimelineState {
+                window_request: Some((
+                    "history-window-request".into(),
+                    session_id.into(),
+                    Some("work".into()),
+                    Some(connection_id.into()),
+                    42,
+                )),
+                ..PromptTimelineState::default()
+            },
+        );
+        let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        events
+            .send(GatewayEvent::PromptHistoryWindowLoaded {
+                request_id: "history-window-request".into(),
+                session_id: session_id.into(),
+                profile: Some("work".into()),
+                connection_id: Some(connection_id.into()),
+                row_id: 42,
+                result: Ok(crate::gateway::PromptHistoryWindow {
+                    messages: vec![
+                        json!({"row_id":41,"role":"assistant","content":"prior"}),
+                        json!({"row_id":42,"role":"user","content":"selected prompt"}),
+                        json!({"row_id":43,"role":"assistant","content":"reply"}),
+                    ],
+                    offset: 40,
+                    total: 240,
+                    has_older: true,
+                    has_newer: true,
+                }),
+            })
+            .expect("deliver around-row response");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        assert_eq!(app.transcript[1]["row_id"], 42);
+        assert_eq!(app.transcript_message_count, 240);
+        assert!(app.transcript_has_more);
+        assert_eq!(app.find_in_page_target, Some(1));
+        assert!(app.find_in_page_scroll_pending);
+        assert!(app.pending_submissions.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn around_history_result_from_stale_connection_cannot_replace_active_chat() {
+        let (mut app, profile_dir) = isolated_app();
+        let session_id = "history-window-session";
+        app.route = AppRoute::Session(session_id.into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("current-connection".into());
+        app.transcript = vec![json!({"row_id":7,"role":"user","content":"current chat"})];
+        let old_owner_key = app.session_identity_key_for_connection(
+            Some("old-connection"),
+            session_id,
+            Some("work"),
+        );
+        app.prompt_timelines.insert(
+            old_owner_key,
+            PromptTimelineState {
+                window_request: Some((
+                    "old-history-request".into(),
+                    session_id.into(),
+                    Some("work".into()),
+                    Some("old-connection".into()),
+                    42,
+                )),
+                ..PromptTimelineState::default()
+            },
+        );
+        let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        events
+            .send(GatewayEvent::PromptHistoryWindowLoaded {
+                request_id: "old-history-request".into(),
+                session_id: session_id.into(),
+                profile: Some("work".into()),
+                connection_id: Some("old-connection".into()),
+                row_id: 42,
+                result: Ok(crate::gateway::PromptHistoryWindow {
+                    messages: vec![json!({"row_id":42,"role":"user","content":"stale"})],
+                    offset: 40,
+                    total: 240,
+                    has_older: true,
+                    has_newer: true,
+                }),
+            })
+            .expect("deliver stale around-row response");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        assert_eq!(
+            app.transcript,
+            vec![json!({"row_id":7,"role":"user","content":"current chat"})]
+        );
+        assert_eq!(app.find_in_page_target, None);
+        assert!(app.pending_submissions.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

@@ -4405,3 +4405,18 @@ Implementation commit `78f1aa008a5f00a7d6dd8c2d1568d72302d31534` and evidence/ch
 ### PAR-0056 indexed history published — 2026-11-22T07:37:18Z
 
 Implementation commit `ea90619cc3b924c80960844f37ba8ecf082fff48` and evidence/documentation commit `041b3604412b1ee48392c49cd699798cccc4b7c0` are published on `origin/main`. Fresh fetch verified local and remote `main` exactly match at `041b3604412b1ee48392c49cd699798cccc4b7c0`. The post-publication task checkpoint is revision 699 / ledger 124, PAR-0056 remains partial, and `apps/hermes-native/work/` remains untracked and untouched.
+
+### PAR-0056 around-row history window — 2026-11-22T07:54:26Z
+
+- **id:** `hermes-par0056-around-window-20261122`
+- **timestamp:** `2026-11-22T07:54:26Z`
+- **what:** Added the pinned bounded `/messages/around` history read, strict owner/anchor/pagination validation, owner-scoped transcript replacement and explicit prompt-index refresh. Existing chat timeline and older-message controls remain available. Added Gateway and app ownership regressions.
+- **why:** Indexed historical prompts need a direct path into unloaded transcript history without scanning up to 64 older pages or risking cross-connection transcript replacement.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/docs`, `apps/hermes-native/tools/build_implementation_progress.py`.
+- **type:** additive feature and regression evidence.
+- **validation:** Focused Gateway tests pass (2); app event ownership tests pass (2). Full workspace tests, package validators, generated evidence and publication remain pending.
+- **performance:** A selected history jump is capped at 120 messages and does not fetch intervening payloads through sequential pages.
+- **risks:** Automatic cache invalidation and active-marker tracking remain open. Authenticated live Gateway, packaged Windows, physical input and formal pinned-source acceptance remain unverified.
+- **follow_up:** Run complete validation, append commit-bound capability evidence, publish on `main`, then verify the canonical task state and remote tip.
+
+Validation follow-up — 2026-11-22T07:57:56Z: Full locked test suite passes (575 library + 15 protocol + 3 launcher); all-target cargo check, rustfmt/diff check, 19 task continuity tests, generated implementation/chat progress, and root plus archival package validators pass. PAR-0056 remains partial pending automatic cache invalidation, active-marker tracking and live/package/source-paired validation.
