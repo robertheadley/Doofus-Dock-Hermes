@@ -4401,3 +4401,7 @@ Implementation commit `78f1aa008a5f00a7d6dd8c2d1568d72302d31534` and evidence/ch
 - **performance:** Timeline API payload is bounded to 500 metadata entries and the UI list is virtualized. Cached session indexes are capped at 12; an unloaded jump performs at most 64 existing 120-row transcript reads.
 - **risks:** Automatic history seek is not a substitute for the pinned `/messages/around` window route. Its complete end-to-end path, refreshed cache after new prompts, active-marker tracking, authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open. Existing `handle_server_event` dead-code warning remains.
 - **follow_up:** Replace sequential older-page scans with the pinned around-row endpoint; add safe index freshness/refresh and source-matched live behavior checks.
+
+### PAR-0056 indexed history published — 2026-11-22T07:37:18Z
+
+Implementation commit `ea90619cc3b924c80960844f37ba8ecf082fff48` and evidence/documentation commit `041b3604412b1ee48392c49cd699798cccc4b7c0` are published on `origin/main`. Fresh fetch verified local and remote `main` exactly match at `041b3604412b1ee48392c49cd699798cccc4b7c0`. The post-publication task checkpoint is revision 699 / ledger 124, PAR-0056 remains partial, and `apps/hermes-native/work/` remains untracked and untouched.
