@@ -4539,3 +4539,16 @@ Publication follow-up — 2026-11-22T10:26:30Z: Implementation 36c2da65a2c20d004
 - **performance:** No benchmark applicable; one small profile-scoped config read/write was added on explicit Settings entry/save.
 - **risks:** Pinned pytest could not start because  ruamel.yaml is missing in the available Python environment; live Gateway and packaged Windows behavior remain unverified.
 - **follow_up:** Add commit-bound UCM evidence and continue with the next agent-workflow gap.
+
+### PAR-0525 evidence — 2026-11-22
+
+- **id:** PAR-0525-EV-0111
+- **timestamp:** 2026-11-22T11:00:22Z
+- **what:** Added EV-0111 for the profile-scoped log-redaction preference scenario and linked it to the capability map as partial evidence bound to implementation commit 9d7ffe786e35126c2f2335ce9720fada0d11a0a9.
+- **why:** Preserve auditable, commit-specific proof without claiming the live Hermes formatter or packaged runtime was verified.
+- **components:** UCM capabilities map and evidence, Doofus task checkpoint, execution log.
+- **type:** evidence and progress record
+- **validation:** EV-0111 has no evidence-specific schema or reconciliation findings; source package validator passes 565 behaviors, 15 source inspection receipts, 95 implementation receipts; task validator passes revision 754. The UCM checker still reports 162 legacy errors and 11 prior reconciliation items.
+- **performance:** No runtime behavior changed.
+- **risks:** Pinned Hermes pytest could not execute because ruamel.yaml is missing; live Gateway and packaged Windows behavior remain unverified.
+- **follow_up:** Commit evidence and task state, publish PAR-0525 to origin/main, then continue the next dependency-ready agent workflow gap.

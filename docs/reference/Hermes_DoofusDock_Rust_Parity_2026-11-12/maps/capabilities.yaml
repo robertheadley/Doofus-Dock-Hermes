@@ -10279,7 +10279,7 @@ capabilities:
   name: Redact tokens from logs
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can redact tokens from logs.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10291,9 +10291,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  evidence:
+  - EV-0111
+  verification:
+    scenarios:
+    - id: profile-redaction-preference
+      description: Load and save the selected Hermes profile's redaction preference, defaulting missing config to enabled and preserving an explicit opt-out.
 - id: ui-distinguish-permission-rejection-from-network-error
   name: Distinguish permission rejection from network error
   area: protocol-reliability

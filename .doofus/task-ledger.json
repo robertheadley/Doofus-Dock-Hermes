@@ -1,5 +1,5 @@
 {
-  "revision": 133,
+  "revision": 135,
   "schema_version": 1,
   "tasks": [
     {
@@ -15034,7 +15034,7 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-22T10:30:57Z",
+              "last_updated_at": "2026-11-22T11:00:15Z",
               "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-redact-tokens-from-logs",
               "outputs": [],
@@ -15050,12 +15050,15 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "in_progress",
+              "state": "tested",
               "task_id": "hermes-par-0525",
               "title": "PAR-0525 Redact tokens from logs",
               "verification_evidence": [
                 ".staging/hermes-pinned-878305/hermes_logging.py#RedactingFormatter",
-                "apps/hermes-native/src/gateway.rs#CommandCenterLogs"
+                "apps/hermes-native/src/gateway.rs#CommandCenterLogs",
+                "apps/hermes-native/src/app.rs#security_settings_expose_profile_scoped_secret_redaction",
+                "apps/hermes-native/src/gateway.rs#redact_secrets_remote_config_reads_and_writes_only_the_requested_profile",
+                "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0111.json#EV-0111"
               ]
             },
             {
@@ -16419,5 +16422,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T10:30:57Z"
+  "updated_at": "2026-11-22T11:00:15Z"
 }

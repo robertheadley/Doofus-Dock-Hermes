@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0111",
+  "capability_id": "ui-redact-tokens-from-logs",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "profile-redaction-preference",
+  "locator": "apps/hermes-native/src/app.rs::security_settings_expose_profile_scoped_secret_redaction; apps/hermes-native/src/gateway.rs::redact_secrets_config_defaults_on_and_validates_the_profile_value; apps/hermes-native/src/gateway.rs::redact_secrets_remote_config_reads_and_writes_only_the_requested_profile",
+  "date": "2026-11-22",
+  "commit": "9d7ffe786e35126c2f2335ce9720fada0d11a0a9",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless UI test verifies navigation to the Security tab and profile-scoped control. Gateway tests verify default-on config parsing, explicit false preservation, authenticated remote GET/PUT profile scope, and sparse patch payload. Full locked suite passes 590 library + 15 protocol + 3 launcher tests; cargo check, task continuity, package validators, progress generators, rustfmt, and diff check pass.",
+  "notes": "Partial evidence only. Pinned Hermes pytest could not run because ruamel.yaml is missing; source behavior was inspected but not executed. The native suite does not directly exercise the Hermes log formatter, authenticated live Gateway, or packaged Windows app."
+}

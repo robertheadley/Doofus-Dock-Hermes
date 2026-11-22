@@ -2061,3 +2061,7 @@ Headless regressions cover exact profile matching, rejection of a tagged but uns
 The native Settings Security tab reads and saves security.redact_secrets for one selected Hermes profile through /api/config. Missing values map to the pinned secure default (true); explicit false remains a valid user choice. Load and save receipts are request/profile checked, and local Gateway requests use the verified loopback ticket while remote requests use the saved auth. The UI does not override Hermes' log formatter with an unconditional client-side scrubber.
 
 Headless tests cover config parsing/default, sparse profile patch payload, authenticated remote GET/PUT profile scoping, and navigation to the Security tab. The pinned pytest fixture could not start because  ruamel.yaml is not installed in the available Python environment. PAR-0525 remains partial pending live Gateway, packaged Windows, and formal pinned-source acceptance.
+
+### Revision 331 — Bind PAR-0525 profile-redaction evidence — 2026-11-22
+
+PAR-0525 implementation commit `9d7ffe786e35126c2f2335ce9720fada0d11a0a9` is now linked to EV-0111 for the `profile-redaction-preference` scenario. The UCM capability remains partial: native config and Settings tests pass, but pinned formatter execution, authenticated live Gateway, and packaged Windows acceptance are open. The package validator and task-state validator pass. The global UCM report retains 162 legacy errors and 11 unrelated reconciliation items; no EV-0111-specific finding was reported.
