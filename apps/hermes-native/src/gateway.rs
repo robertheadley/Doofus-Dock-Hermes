@@ -4440,13 +4440,13 @@ impl GatewayDiscovery {
         credential: RemoteGatewayAuth,
     ) -> Self {
         Self::start_with_attach(
-            move || attach_remote_gateway(&base_url, auth_mode, credential),
+            move || attach_remote_gateway(&base_url, auth_mode, credential.clone()),
             false,
         )
     }
 
     fn start_with_attach(
-        attach: impl FnOnce() -> Result<(ConnectedGateway, GatewaySocket), String> + Send + 'static,
+        mut attach: impl FnMut() -> Result<(ConnectedGateway, GatewaySocket), String> + Send + 'static,
         load_sessions_http: bool,
     ) -> Self {
         let (status_sender, status_receiver) = mpsc::channel();
@@ -4461,93 +4461,130 @@ impl GatewayDiscovery {
         let (artifact_image_sender, artifact_image_receiver) = mpsc::channel();
         thread::Builder::new()
             .name("hermes-gateway-session-list".into())
-            .spawn(move || match attach() {
-                Ok((connected, mut socket)) => {
-                    let search_endpoint = connected.endpoint.clone();
-                    let search_events = event_sender.clone();
-                    let plugin_update_all_endpoint = connected.endpoint.clone();
-                    let plugin_update_all_events = event_sender.clone();
-                    let artifact_endpoint = connected.endpoint.clone();
-                    let artifact_events = event_sender.clone();
-                    let artifact_download_endpoint = connected.endpoint.clone();
-                    let artifact_download_events = event_sender.clone();
-                    let artifact_image_endpoint = connected.endpoint.clone();
-                    let artifact_image_events = event_sender.clone();
-                    let cron_trigger_endpoint = connected.endpoint.clone();
-                    let cron_trigger_events = event_sender.clone();
-                    let project_tree_endpoint = connected.endpoint.clone();
-                    let project_tree_events = event_sender.clone();
-                    let _ = status_sender.send(Ok(connected));
-                    thread::Builder::new()
-                        .name("hermes-plugin-update-all".into())
-                        .spawn(move || {
-                            agent_plugin_update_all_actor(
-                                plugin_update_all_endpoint,
+            .spawn(move || {
+                let mut retry_attempt = 0_u32;
+                let mut connected_owner: Option<(String, String)> = None;
+                let mut worker_receivers = Some((
+                    plugin_update_all_receiver,
+                    http_receiver,
+                    project_tree_receiver,
+                    cron_trigger_receiver,
+                    artifact_receiver,
+                    artifact_download_receiver,
+                    artifact_image_receiver,
+                ));
+                let mut replay_cursors = HashMap::new();
+
+                loop {
+                    if command_receiver
+                        .try_recv()
+                        .is_err_and(|error| error == TryRecvError::Disconnected)
+                    {
+                        return;
+                    }
+                    match attach() {
+                        Ok((connected, mut socket)) => {
+                            let owner = (
+                                connected.endpoint.profile_id.clone(),
+                                connected.endpoint.instance_id.clone(),
+                            );
+                            if connected_owner
+                                .as_ref()
+                                .is_some_and(|expected| expected != &owner)
+                            {
+                                let _ = socket.close(None);
+                                let _ = status_sender.send(Err(
+                                    "Hermes Gateway identity changed during reconnect; reconnect manually to select the new owner".into(),
+                                ));
+                                return;
+                            }
+                            connected_owner.get_or_insert(owner);
+
+                            if let Some((
                                 plugin_update_all_receiver,
-                                plugin_update_all_events,
-                            )
-                        })
-                        .expect("failed to start Agent Plugin update-all worker");
-                    thread::Builder::new()
-                        .name("hermes-profile-http".into())
-                        .spawn(move || {
-                            gateway_http_actor(search_endpoint, http_receiver, search_events)
-                        })
-                        .expect("failed to start Hermes session search worker");
-                    thread::Builder::new()
-                        .name("hermes-project-tree-aggregate".into())
-                        .spawn(move || {
-                            gateway_project_tree_actor(
-                                project_tree_endpoint,
+                                http_receiver,
                                 project_tree_receiver,
-                                project_tree_events,
-                            )
-                        })
-                        .expect("failed to start Hermes project tree aggregate worker");
-                    thread::Builder::new()
-                        .name("hermes-cron-trigger-dispatch".into())
-                        .spawn(move || {
-                            gateway_cron_trigger_actor(
-                                cron_trigger_endpoint,
                                 cron_trigger_receiver,
-                                cron_trigger_events,
-                            )
-                        })
-                        .expect("failed to start Hermes Scheduled Job trigger dispatcher");
-                    thread::Builder::new()
-                        .name("hermes-artifact-index".into())
-                        .spawn(move || {
-                            gateway_artifact_actor(
-                                artifact_endpoint,
                                 artifact_receiver,
-                                artifact_events,
-                            )
-                        })
-                        .expect("failed to start Hermes artifact-index worker");
-                    thread::Builder::new()
-                        .name("hermes-artifact-download".into())
-                        .spawn(move || {
-                            gateway_artifact_download_actor(
-                                artifact_download_endpoint,
                                 artifact_download_receiver,
-                                artifact_download_events,
-                            )
-                        })
-                        .expect("failed to start Hermes artifact-download worker");
-                    thread::Builder::new()
-                        .name("hermes-artifact-image-preview".into())
-                        .spawn(move || {
-                            gateway_artifact_image_actor(
-                                artifact_image_endpoint,
                                 artifact_image_receiver,
-                                artifact_image_events,
-                            )
-                        })
-                        .expect("failed to start Hermes artifact-image preview worker");
-                    gateway_actor(&mut socket, command_receiver, event_sender);
-                }
-                Err(error) => {
-                    let _ = status_sender.send(Err(error));
+                            )) = worker_receivers.take()
+                            {
+                                spawn_gateway_workers(
+                                    connected.endpoint.clone(),
+                                    event_sender.clone(),
+                                    plugin_update_all_receiver,
+                                    http_receiver,
+                                    project_tree_receiver,
+                                    cron_trigger_receiver,
+                                    artifact_receiver,
+                                    artifact_download_receiver,
+                                    artifact_image_receiver,
+                                );
+                            }
+
+                            // A command queued against the failed socket must not be sent after
+                            // reconnect. The app receives Disconnected and marks writes unknown.
+                            if !discard_queued_gateway_commands(&command_receiver) {
+                                let _ = socket.close(None);
+                                return;
+                            }
+                            let connected_at = Instant::now();
+                            if status_sender.send(Ok(connected.clone())).is_err() {
+                                let _ = socket.close(None);
+                                return;
+                            }
+                            replay_gateway_events(
+                                &mut socket,
+                                &mut replay_cursors,
+                                &event_sender,
+                            );
+
+                            gateway_actor_with_replay(
+                                &mut socket,
+                                &command_receiver,
+                                event_sender.clone(),
+                                &connected.endpoint.profile_id,
+                                &mut replay_cursors,
+                            );
+                            let _ = socket.close(None);
+                            if command_receiver
+                                .try_recv()
+                                .is_err_and(|error| error == TryRecvError::Disconnected)
+                            {
+                                return;
+                            }
+                            retry_attempt = next_gateway_reconnect_attempt(
+                                retry_attempt,
+                                connected_at.elapsed(),
+                            );
+                            let delay = gateway_reconnect_delay_ms(
+                                retry_attempt,
+                                random_reconnect_sample(),
+                            );
+                            retry_attempt = retry_attempt.saturating_add(1);
+                            let _ = status_sender.send(Err(format!(
+                                "Hermes Gateway disconnected; retrying in {delay} ms"
+                            )));
+                            if !wait_for_gateway_retry(&command_receiver, delay) {
+                                return;
+                            }
+                        }
+                        Err(error) => {
+                            let _ = status_sender.send(Err(error.clone()));
+                            if is_terminal_gateway_reconnect_error(&error) {
+                                return;
+                            }
+                            let delay = gateway_reconnect_delay_ms(
+                                retry_attempt,
+                                random_reconnect_sample(),
+                            );
+                            retry_attempt = retry_attempt.saturating_add(1);
+                            if !wait_for_gateway_retry(&command_receiver, delay) {
+                                return;
+                            }
+                        }
+                    }
                 }
             })
             .expect("failed to start Hermes gateway discovery worker");
@@ -6354,6 +6391,290 @@ impl GatewayDiscovery {
     }
 }
 
+const GATEWAY_RECONNECT_BASE_MS: u64 = 300;
+const GATEWAY_RECONNECT_CAP_MS: u64 = 15_000;
+const GATEWAY_RECONNECT_STABLE_OPEN: Duration = Duration::from_secs(5);
+const MAX_REPLAY_CURSORS: usize = 512;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GatewayReplayCursor {
+    last_seen: u64,
+    replay_epoch: String,
+}
+
+fn gateway_reconnect_ceiling_ms(attempt: u32) -> u64 {
+    GATEWAY_RECONNECT_BASE_MS
+        .saturating_mul(1_u64.checked_shl(attempt.min(16)).unwrap_or(u64::MAX))
+        .min(GATEWAY_RECONNECT_CAP_MS)
+}
+
+fn gateway_reconnect_delay_ms(attempt: u32, random_sample: u64) -> u64 {
+    let ceiling = gateway_reconnect_ceiling_ms(attempt);
+    if ceiling == 0 {
+        0
+    } else {
+        random_sample % ceiling
+    }
+}
+
+fn next_gateway_reconnect_attempt(current: u32, socket_lived: Duration) -> u32 {
+    if socket_lived >= GATEWAY_RECONNECT_STABLE_OPEN {
+        0
+    } else {
+        current
+    }
+}
+
+fn random_reconnect_sample() -> u64 {
+    let mut bytes = [0_u8; 8];
+    if getrandom::fill(&mut bytes).is_err() {
+        return u64::MAX;
+    }
+    u64::from_ne_bytes(bytes)
+}
+
+fn is_terminal_gateway_reconnect_error(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    [
+        "http 401",
+        "http 403",
+        "authentication required",
+        "credentials are unavailable",
+        "authentication mode did not match",
+    ]
+    .iter()
+    .any(|marker| error.contains(marker))
+}
+
+fn wait_for_gateway_retry(commands: &Receiver<GatewayCommand>, delay_ms: u64) -> bool {
+    let deadline = Instant::now() + Duration::from_millis(delay_ms);
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return true;
+        }
+        match commands.recv_timeout(remaining) {
+            Ok(command) => drop(command),
+            Err(mpsc::RecvTimeoutError::Timeout) => return true,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return false,
+        }
+    }
+}
+
+fn discard_queued_gateway_commands(commands: &Receiver<GatewayCommand>) -> bool {
+    loop {
+        match commands.try_recv() {
+            Ok(command) => drop(command),
+            Err(TryRecvError::Empty) => return true,
+            Err(TryRecvError::Disconnected) => return false,
+        }
+    }
+}
+
+fn remember_gateway_event_cursor(
+    cursors: &mut HashMap<(String, String), GatewayReplayCursor>,
+    default_profile: &str,
+    event: &serde_json::Value,
+) {
+    let (Some(session_id), Some(sequence), Some(replay_epoch)) = (
+        event.get("session_id").and_then(serde_json::Value::as_str),
+        event.get("seq").and_then(serde_json::Value::as_u64),
+        event
+            .get("replay_epoch")
+            .and_then(serde_json::Value::as_str),
+    ) else {
+        return;
+    };
+    if session_id.is_empty() || replay_epoch.is_empty() {
+        return;
+    }
+    let profile = event
+        .get("profile")
+        .and_then(serde_json::Value::as_str)
+        .filter(|profile| !profile.is_empty())
+        .unwrap_or(default_profile);
+    if profile.is_empty() {
+        return;
+    }
+    let key = (profile.to_owned(), session_id.to_owned());
+    let replace = cursors
+        .get(&key)
+        .is_none_or(|cursor| cursor.replay_epoch != replay_epoch || sequence > cursor.last_seen);
+    if replace {
+        cursors.insert(
+            key,
+            GatewayReplayCursor {
+                last_seen: sequence,
+                replay_epoch: replay_epoch.to_owned(),
+            },
+        );
+        if cursors.len() > MAX_REPLAY_CURSORS
+            && let Some(oldest_key) = cursors.keys().next().cloned()
+        {
+            cursors.remove(&oldest_key);
+        }
+    }
+}
+
+fn replay_gateway_events(
+    socket: &mut GatewaySocket,
+    cursors: &mut HashMap<(String, String), GatewayReplayCursor>,
+    events: &mpsc::Sender<GatewayEvent>,
+) {
+    let replay_requests = cursors
+        .iter()
+        .map(|((cursor_profile, session_id), cursor)| {
+            (cursor_profile.clone(), session_id.clone(), cursor.clone())
+        })
+        .collect::<Vec<_>>();
+    let mut request_id = 4_u64;
+    let replay_deadline = Instant::now() + Duration::from_secs(10);
+    for (cursor_profile, session_id, cursor) in replay_requests {
+        let remaining = replay_deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        let params = serde_json::json!({
+            "session_id": session_id,
+            "profile": cursor_profile,
+            "last_seen": cursor.last_seen,
+            "replay_epoch": cursor.replay_epoch,
+        });
+        let timeout = remaining.min(Duration::from_secs(2));
+        let Ok(reply) = rpc_with_events_timeout(
+            socket,
+            request_id,
+            "session.events.since",
+            params,
+            timeout,
+            Some(events),
+        ) else {
+            request_id = request_id.saturating_add(1);
+            continue;
+        };
+        request_id = request_id.saturating_add(1);
+        if reply
+            .get("snapshot_required")
+            .and_then(serde_json::Value::as_bool)
+            != Some(false)
+            || reply
+                .get("replay_epoch")
+                .and_then(serde_json::Value::as_str)
+                != Some(cursor.replay_epoch.as_str())
+        {
+            continue;
+        }
+        let Some(replayed) = reply.get("events").and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        for event in replayed {
+            if event.get("session_id").and_then(serde_json::Value::as_str)
+                != Some(session_id.as_str())
+                || event
+                    .get("replay_epoch")
+                    .and_then(serde_json::Value::as_str)
+                    != Some(cursor.replay_epoch.as_str())
+                || event
+                    .get("seq")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_none_or(|sequence| sequence <= cursor.last_seen)
+            {
+                continue;
+            }
+            let mut event = event.clone();
+            if let Some(object) = event.as_object_mut() {
+                object
+                    .entry("profile")
+                    .or_insert_with(|| serde_json::json!(cursor_profile));
+            }
+            remember_gateway_event_cursor(cursors, &cursor_profile, &event);
+            if events
+                .send(GatewayEvent::ServerEvent {
+                    event,
+                    connection_id: None,
+                })
+                .is_err()
+            {
+                return;
+            }
+        }
+    }
+}
+
+fn spawn_gateway_workers(
+    endpoint: GatewayEndpoint,
+    events: mpsc::Sender<GatewayEvent>,
+    plugin_update_all_receiver: Receiver<AgentPluginUpdateAllCommand>,
+    http_receiver: Receiver<GatewayHttpCommand>,
+    project_tree_receiver: Receiver<ProjectTreeHttpCommand>,
+    cron_trigger_receiver: Receiver<CronTriggerCommand>,
+    artifact_receiver: Receiver<String>,
+    artifact_download_receiver: Receiver<ArtifactFileDownloadRequest>,
+    artifact_image_receiver: Receiver<ArtifactImagePreviewRequest>,
+) {
+    let plugin_endpoint = endpoint.clone();
+    let plugin_events = events.clone();
+    thread::Builder::new()
+        .name("hermes-plugin-update-all".into())
+        .spawn(move || {
+            agent_plugin_update_all_actor(
+                plugin_endpoint,
+                plugin_update_all_receiver,
+                plugin_events,
+            )
+        })
+        .expect("failed to start Agent Plugin update-all worker");
+    let http_endpoint = endpoint.clone();
+    let http_events = events.clone();
+    thread::Builder::new()
+        .name("hermes-profile-http".into())
+        .spawn(move || gateway_http_actor(http_endpoint, http_receiver, http_events))
+        .expect("failed to start Hermes session search worker");
+    let project_endpoint = endpoint.clone();
+    let project_events = events.clone();
+    thread::Builder::new()
+        .name("hermes-project-tree-aggregate".into())
+        .spawn(move || {
+            gateway_project_tree_actor(project_endpoint, project_tree_receiver, project_events)
+        })
+        .expect("failed to start Hermes project tree aggregate worker");
+    let cron_endpoint = endpoint.clone();
+    let cron_events = events.clone();
+    thread::Builder::new()
+        .name("hermes-cron-trigger-dispatch".into())
+        .spawn(move || {
+            gateway_cron_trigger_actor(cron_endpoint, cron_trigger_receiver, cron_events)
+        })
+        .expect("failed to start Hermes Scheduled Job trigger dispatcher");
+    let artifact_endpoint = endpoint.clone();
+    let artifact_events = events.clone();
+    thread::Builder::new()
+        .name("hermes-artifact-index".into())
+        .spawn(move || {
+            gateway_artifact_actor(artifact_endpoint, artifact_receiver, artifact_events)
+        })
+        .expect("failed to start Hermes artifact-index worker");
+    let download_endpoint = endpoint.clone();
+    let download_events = events.clone();
+    thread::Builder::new()
+        .name("hermes-artifact-download".into())
+        .spawn(move || {
+            gateway_artifact_download_actor(
+                download_endpoint,
+                artifact_download_receiver,
+                download_events,
+            )
+        })
+        .expect("failed to start Hermes artifact-download worker");
+    let image_endpoint = endpoint;
+    thread::Builder::new()
+        .name("hermes-artifact-image-preview".into())
+        .spawn(move || {
+            gateway_artifact_image_actor(image_endpoint, artifact_image_receiver, events)
+        })
+        .expect("failed to start Hermes artifact-image preview worker");
+}
+
 fn attach_gateway() -> Result<(ConnectedGateway, GatewaySocket), String> {
     let output = Command::new("hermes")
         .args(["gateway", "ensure", "--json", "--timeout", "60"])
@@ -6415,6 +6736,15 @@ fn client_capabilities_params(desktop_local: bool) -> serde_json::Value {
     })
 }
 
+fn websocket_connect_error(context: &str, error: tungstenite::Error) -> String {
+    match error {
+        tungstenite::Error::Http(response) => {
+            format!("{context}: HTTP {}", response.status())
+        }
+        error => format!("{context}: {error}"),
+    }
+}
+
 fn connect_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<GatewaySocket, String> {
     if endpoint.remote_auth.is_some() {
         return connect_remote_gateway_endpoint(endpoint);
@@ -6442,8 +6772,9 @@ fn connect_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<GatewaySocket,
         .with_sub_protocol(protocols[1].clone());
     // The gateway's canonical wire explicitly limits redirects to none. Its ticket must never be
     // replayed to a redirected origin.
-    let (mut socket, response) = connect_with_config(request, None, 0)
-        .map_err(|error| format!("Could not connect to the Hermes gateway: {error}"))?;
+    let (mut socket, response) = connect_with_config(request, None, 0).map_err(|error| {
+        websocket_connect_error("Could not connect to the Hermes gateway", error)
+    })?;
     let negotiated = response
         .headers()
         .get("Sec-WebSocket-Protocol")
@@ -6629,8 +6960,12 @@ fn connect_remote_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<Gateway
         .parse()
         .map_err(|_| "Remote Hermes returned an invalid WebSocket target".to_owned())?;
     let request = ClientRequestBuilder::new(uri);
-    let (mut socket, _) = connect_with_config(request, None, 0)
-        .map_err(|_| "Could not connect to the authenticated remote Hermes gateway".to_owned())?;
+    let (mut socket, _) = connect_with_config(request, None, 0).map_err(|error| {
+        websocket_connect_error(
+            "Could not connect to the authenticated remote Hermes gateway",
+            error,
+        )
+    })?;
     set_socket_deadlines(&mut socket)?;
     Ok(socket)
 }
@@ -6787,10 +7122,22 @@ fn parse_project_session_colors(
         .collect())
 }
 
+#[cfg(test)]
 fn gateway_actor(
     socket: &mut GatewaySocket,
-    commands: Receiver<GatewayCommand>,
+    commands: &Receiver<GatewayCommand>,
     events: mpsc::Sender<GatewayEvent>,
+) {
+    let mut replay_cursors = HashMap::new();
+    gateway_actor_with_replay(socket, commands, events, "", &mut replay_cursors);
+}
+
+fn gateway_actor_with_replay(
+    socket: &mut GatewaySocket,
+    commands: &Receiver<GatewayCommand>,
+    events: mpsc::Sender<GatewayEvent>,
+    profile: &str,
+    replay_cursors: &mut HashMap<(String, String), GatewayReplayCursor>,
 ) {
     let mut next_request_id = 5_u64;
     let mut retained_renames: HashMap<String, serde_json::Value> = HashMap::new();
@@ -8375,6 +8722,7 @@ fn gateway_actor(
                     } else if frame.get("method").and_then(|value| value.as_str()) == Some("event")
                         && let Some(params) = frame.get("params")
                     {
+                        remember_gateway_event_cursor(replay_cursors, profile, params);
                         let _ = events.send(GatewayEvent::ServerEvent {
                             event: params.clone(),
                             connection_id: None,
@@ -8382,7 +8730,12 @@ fn gateway_actor(
                     }
                 }
             }
-            Ok(Message::Close(_)) => return,
+            Ok(Message::Close(_)) => {
+                let _ = events.send(GatewayEvent::Disconnected(
+                    "Hermes Gateway closed the connection".into(),
+                ));
+                return;
+            }
             Ok(_) => {}
             Err(tungstenite::Error::Io(error))
                 if matches!(
@@ -16869,6 +17222,298 @@ mod tests {
     use super::*;
 
     #[test]
+    fn reconnect_backoff_matches_pinned_full_jitter_ladder_and_stable_reset() {
+        assert_eq!(gateway_reconnect_ceiling_ms(0), 300);
+        assert_eq!(gateway_reconnect_ceiling_ms(1), 600);
+        assert_eq!(gateway_reconnect_ceiling_ms(2), 1_200);
+        assert_eq!(gateway_reconnect_ceiling_ms(3), 2_400);
+        assert_eq!(gateway_reconnect_ceiling_ms(4), 4_800);
+        assert_eq!(gateway_reconnect_ceiling_ms(5), 9_600);
+        assert_eq!(gateway_reconnect_ceiling_ms(6), 15_000);
+        assert_eq!(gateway_reconnect_ceiling_ms(30), 15_000);
+        assert_eq!(gateway_reconnect_delay_ms(0, 0), 0);
+        assert_eq!(gateway_reconnect_delay_ms(0, 299), 299);
+        assert!(gateway_reconnect_delay_ms(6, 15_000) < 15_000);
+        assert_eq!(next_gateway_reconnect_attempt(4, Duration::from_secs(4)), 4);
+        assert_eq!(next_gateway_reconnect_attempt(4, Duration::from_secs(5)), 0);
+    }
+
+    #[test]
+    fn reconnect_stops_on_auth_rejection_and_cancels_backoff_on_shutdown() {
+        assert!(is_terminal_gateway_reconnect_error(
+            "Remote OAuth ticket returned HTTP 401"
+        ));
+        assert!(is_terminal_gateway_reconnect_error("HTTP 403 forbidden"));
+        assert!(!is_terminal_gateway_reconnect_error("network timeout"));
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let started = Instant::now();
+        assert!(!wait_for_gateway_retry(&receiver, GATEWAY_RECONNECT_CAP_MS));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn replay_cursor_is_profile_session_and_epoch_scoped_and_never_moves_backwards() {
+        let mut cursors = HashMap::new();
+        remember_gateway_event_cursor(
+            &mut cursors,
+            "profile-a",
+            &serde_json::json!({"session_id":"runtime-a","seq":8,"replay_epoch":"epoch-a"}),
+        );
+        remember_gateway_event_cursor(
+            &mut cursors,
+            "profile-a",
+            &serde_json::json!({"session_id":"runtime-a","seq":7,"replay_epoch":"epoch-a"}),
+        );
+        remember_gateway_event_cursor(
+            &mut cursors,
+            "profile-b",
+            &serde_json::json!({"session_id":"runtime-a","seq":2,"replay_epoch":"epoch-a"}),
+        );
+        remember_gateway_event_cursor(
+            &mut cursors,
+            "profile-a",
+            &serde_json::json!({"session_id":"runtime-a","seq":1,"replay_epoch":"epoch-b"}),
+        );
+        assert_eq!(cursors.len(), 2);
+        assert_eq!(
+            cursors[&(String::from("profile-a"), String::from("runtime-a"))].last_seen,
+            1
+        );
+        assert_eq!(
+            cursors[&(String::from("profile-a"), String::from("runtime-a"))].replay_epoch,
+            "epoch-b"
+        );
+        assert_eq!(
+            cursors[&(String::from("profile-b"), String::from("runtime-a"))].last_seen,
+            2
+        );
+    }
+
+    #[test]
+    fn reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt() {
+        use std::net::TcpListener;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::mpsc;
+        use std::time::Instant;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind reconnect fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let (request_sender, request_receiver) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("first gateway connection");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("first read timeout");
+            let mut socket = tungstenite::accept(stream).expect("first websocket");
+            socket.send(Message::Text(serde_json::json!({"jsonrpc":"2.0","method":"event","params":{"type":"message.delta","session_id":"runtime-1","profile":"profile-a","seq":2,"replay_epoch":"epoch-1","payload":{"text":"before outage"}}}).to_string().into())).expect("send first event");
+            let first_prompt = loop {
+                match socket.read() {
+                    Ok(Message::Text(text)) => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(&text).expect("prompt JSON");
+                        if request.get("method").and_then(serde_json::Value::as_str)
+                            == Some("prompt.submit")
+                        {
+                            break request;
+                        }
+                    }
+                    Err(tungstenite::Error::Io(error))
+                        if matches!(
+                            error.kind(),
+                            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                        ) =>
+                    {
+                        continue;
+                    }
+                    other => panic!("expected prompt.submit before drop, got {other:?}"),
+                }
+            };
+            request_sender
+                .send(first_prompt)
+                .expect("capture submitted prompt");
+            let _ = socket.get_mut().shutdown(std::net::Shutdown::Both);
+
+            let (stream, _) = listener.accept().expect("reconnected gateway socket");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("reconnect read timeout");
+            let mut socket = tungstenite::accept(stream).expect("reconnected websocket");
+            let replay = loop {
+                match socket.read() {
+                    Ok(Message::Text(text)) => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(&text).expect("replay JSON");
+                        if request.get("method").and_then(serde_json::Value::as_str)
+                            == Some("session.events.since")
+                        {
+                            break request;
+                        }
+                    }
+                    Err(tungstenite::Error::Io(error))
+                        if matches!(
+                            error.kind(),
+                            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                        ) =>
+                    {
+                        continue;
+                    }
+                    other => panic!("expected session.events.since after reconnect, got {other:?}"),
+                }
+            };
+            request_sender
+                .send(replay.clone())
+                .expect("capture replay request");
+            socket.send(Message::Text(serde_json::json!({"jsonrpc":"2.0","id":replay["id"],"result":{"events":[{"type":"tool.start","session_id":"runtime-1","seq":3,"replay_epoch":"epoch-1","payload":{"tool_name":"read_file"}},{"type":"message.delta","session_id":"wrong-session","seq":4,"replay_epoch":"epoch-1","payload":{"text":"must be rejected"}}],"latest_seq":4,"replay_epoch":"epoch-1","snapshot_required":false}}).to_string().into())).expect("send replay response");
+            socket.send(Message::Text(serde_json::json!({"jsonrpc":"2.0","method":"event","params":{"type":"tool.complete","session_id":"runtime-1","profile":"profile-a","seq":5,"replay_epoch":"epoch-1","payload":{"tool_name":"read_file","result":"done"}}}).to_string().into())).expect("send post-reconnect event");
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while Instant::now() < deadline {
+                match socket.read() {
+                    Ok(Message::Close(_)) | Err(tungstenite::Error::ConnectionClosed) => break,
+                    Err(tungstenite::Error::Io(error))
+                        if matches!(
+                            error.kind(),
+                            io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                        ) =>
+                    {
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attach_attempts = attempts.clone();
+        let api_origin = format!("http://{address}");
+        let discovery = GatewayDiscovery::start_with_attach(
+            move || {
+                let attempt = attach_attempts.fetch_add(1, Ordering::SeqCst);
+                if attempt == 0 {
+                    return Err("temporary fixture network failure".into());
+                }
+                let uri: Uri = format!("ws://{address}/api/ws")
+                    .parse()
+                    .expect("fixture websocket URL");
+                let request = ClientRequestBuilder::new(uri);
+                let (mut socket, _) =
+                    connect_with_config(request, None, 0).map_err(|error| error.to_string())?;
+                set_socket_deadlines(&mut socket)?;
+                Ok((
+                    ConnectedGateway {
+                        endpoint: GatewayEndpoint {
+                            profile_id: "profile-a".into(),
+                            instance_id: "instance-a".into(),
+                            authority_epoch: 1,
+                            runtime_protocol: 1,
+                            api_origin: api_origin.clone(),
+                            capabilities: vec![],
+                            control_home: None,
+                            remote_auth: None,
+                        },
+                        sessions: vec![],
+                    },
+                    socket,
+                ))
+            },
+            false,
+        )
+        .with_connection_id("connection-a");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut initial_status = false;
+        while Instant::now() < deadline && !initial_status {
+            initial_status = discovery.poll().is_some_and(|status| status.is_ok());
+            if !initial_status {
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+        assert!(initial_status, "initial Gateway attach should succeed");
+
+        let mut sequences = Vec::new();
+        let mut replayed_profile = None;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline && !sequences.contains(&2) {
+            if let Some(GatewayEvent::ServerEvent { event, .. }) = discovery.poll_event() {
+                if let Some(seq) = event.get("seq").and_then(serde_json::Value::as_u64) {
+                    sequences.push(seq);
+                }
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(sequences, vec![2]);
+        discovery
+            .submit_prompt(
+                "runtime-1".into(),
+                Some("profile-a".into()),
+                "submit-1".into(),
+                "run once".into(),
+            )
+            .expect("admit the one user prompt");
+
+        let mut saw_disconnect = false;
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline && !saw_disconnect {
+            if let Some(event) = discovery.poll_event() {
+                if matches!(event, GatewayEvent::Disconnected(_)) {
+                    saw_disconnect = true;
+                }
+                if let GatewayEvent::ServerEvent { event, .. } = event {
+                    if let Some(seq) = event.get("seq").and_then(serde_json::Value::as_u64) {
+                        sequences.push(seq);
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert!(saw_disconnect, "dropped WebSocket should reach the app");
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline && !sequences.contains(&5) {
+            if let Some(GatewayEvent::ServerEvent { event, .. }) = discovery.poll_event() {
+                if let Some(seq) = event.get("seq").and_then(serde_json::Value::as_u64) {
+                    if seq == 3 {
+                        replayed_profile = event
+                            .get("profile")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_owned);
+                    }
+                    sequences.push(seq);
+                }
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(replayed_profile.as_deref(), Some("profile-a"));
+        assert_eq!(
+            sequences,
+            vec![2, 3, 5],
+            "replay must preserve order and reject wrong-session rows"
+        );
+
+        let first = request_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first prompt request");
+        let replay = request_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("replay request");
+        assert_eq!(first["method"], "prompt.submit");
+        assert_eq!(first["params"]["submission_id"], "submit-1");
+        assert_eq!(replay["method"], "session.events.since");
+        assert_eq!(
+            replay["params"],
+            serde_json::json!({"session_id":"runtime-1","profile":"profile-a","last_seen":2,"replay_epoch":"epoch-1"})
+        );
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            3,
+            "one transient attach failure plus two sockets"
+        );
+        discovery.shutdown();
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
     fn slash_completion_uses_catalog_and_query_rpc_with_exact_owner_scope() {
         let (method, params) = slash_completion_rpc_payload("/", None, Some("profile-a"));
         assert_eq!(method, "commands.catalog");
@@ -18439,7 +19084,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadBotRoster {
                 request_id: "bot-roster-1".into(),
@@ -18499,7 +19144,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadProjectList {
                 request_id: "project-list-1".into(),
@@ -18563,7 +19208,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::DeleteProject {
                 request_id: "project-delete-1".into(),
@@ -18669,7 +19314,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadActiveSessionStatuses {
                 request_id: "active-status-1".into(),
@@ -18730,7 +19375,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadProjectSessionColors {
                 request_id: "project-colors-1".into(),
@@ -18797,7 +19442,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadProjectTree {
                 request_id: "project-tree-1".into(),
@@ -18941,7 +19586,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadProjectSessions {
                 request_id: "project-sessions-1".into(),
@@ -20473,7 +21118,7 @@ mod tests {
         }
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
         let request = event_receiver
             .recv_timeout(Duration::from_secs(3))
             .expect("vault unlock request reaches the UI event channel");
@@ -20542,7 +21187,7 @@ mod tests {
         }
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
         let request = event_receiver
             .recv_timeout(Duration::from_secs(3))
             .expect("approval request reaches the UI event channel");
@@ -20613,7 +21258,7 @@ mod tests {
         }
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
         let request = event_receiver
             .recv_timeout(Duration::from_secs(3))
             .expect("sudo request reaches the UI event channel");
@@ -20684,7 +21329,7 @@ mod tests {
         }
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
         let request = event_receiver
             .recv_timeout(Duration::from_secs(3))
             .expect("clarify request reaches the UI event channel");
@@ -20756,7 +21401,7 @@ mod tests {
         }
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
         commands
             .send(GatewayCommand::LockClarify {
                 request_id: "lock-1".into(),
@@ -21853,7 +22498,7 @@ mod tests {
         }
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
 
         commands
             .send(GatewayCommand::DiscoverRemoteRepos {
@@ -23275,7 +23920,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::CreateSession {
                 request_id: "create-1".into(),
@@ -23525,7 +24170,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::CompleteSlash {
                 request_id: "catalog-1".into(),
@@ -23629,7 +24274,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadConnectors {
                 request_id: "connectors-1".into(),
@@ -23696,7 +24341,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadAgentPluginAutoUpdate {
                 request_id: "auto-read".into(),
@@ -23867,7 +24512,7 @@ mod tests {
         let (event_tx, event_rx) = mpsc::channel();
         let primary_events = event_tx.clone();
         let primary_actor =
-            thread::spawn(move || gateway_actor(&mut primary_socket, command_rx, primary_events));
+            thread::spawn(move || gateway_actor(&mut primary_socket, &command_rx, primary_events));
         let update_url = fixture_url.clone();
         let update_events = event_tx;
         let update_actor = thread::spawn(move || {
@@ -23908,8 +24553,17 @@ mod tests {
 
         let update_job_started = Instant::now();
         release_update_tx.send(()).expect("release held update");
+        let update_result = loop {
+            let event = event_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("update result arrives");
+            if matches!(event, GatewayEvent::Disconnected(_)) {
+                continue;
+            }
+            break event;
+        };
         assert!(matches!(
-            event_rx.recv_timeout(Duration::from_secs(2)).expect("update result arrives"),
+            update_result,
             GatewayEvent::AgentPluginUpdateAll { request_id, profile:Some(profile), result:Ok(rows) }
                 if request_id == "long-update" && profile == "work" && rows.is_empty()
         ));
@@ -23987,7 +24641,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::LoadAgentPlugins {
                 request_id: "plugin-list-1".into(),
@@ -24084,7 +24738,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::InspectCatalogPlugin {
                 request_id: "inspect-1".into(),
@@ -24170,7 +24824,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         let issue = |request_id: &str, accept_capabilities: bool, force: bool| {
             GatewayCommand::UpdateAgentPlugin {
                 request_id: request_id.into(),
@@ -24250,7 +24904,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::RemoveAgentPlugin {
                 request_id: "plugin-remove-1".into(),
@@ -24340,7 +24994,7 @@ mod tests {
             tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
         let (commands, receiver) = mpsc::channel();
         let (events, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &receiver, events));
         commands
             .send(GatewayCommand::ResolveUnknownPrompt {
                 session_id: "runtime-1".into(),
@@ -24454,7 +25108,7 @@ mod tests {
             tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::SubmitPrompt {
                 session_id: "runtime-1".into(),
@@ -24618,7 +25272,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::ResumeSession {
                 request_id: "resume-first".into(),
@@ -24934,7 +25588,7 @@ mod tests {
             tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
         let (commands, command_receiver) = mpsc::channel();
         let (events, event_receiver) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_receiver, events));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
         commands
             .send(GatewayCommand::RenameRuntimeSession {
                 request_id: "rename-1".into(),
@@ -25097,7 +25751,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         for (request_id, session_id) in [
             ("interrupt-active", "runtime-active"),
             ("interrupt-finished", "runtime-finished"),
@@ -25244,7 +25898,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::EditPrompt {
                 session_id: "runtime-stale".into(),
@@ -25342,7 +25996,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::EditPrompt {
                 session_id: "runtime-stale".into(),
@@ -25474,7 +26128,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::InterruptSession {
                 request_id: "interrupt-recover".into(),
@@ -25557,7 +26211,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::InterruptSession {
                 request_id: "interrupt-resume-failed".into(),
@@ -25637,7 +26291,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         for (request_id, prompt_id) in [
             ("approval-1", "prompt-1"),
             ("approval-2", "prompt-2"),
@@ -25726,7 +26380,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         for (request_id, prompt_id, answer) in [
             ("clarify-1", "question-1", "[\"red\",\"blue\"]"),
             ("clarify-2", "question-2", ""),
@@ -25962,7 +26616,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         command_tx
             .send(GatewayCommand::AddMcpServer {
                 request_id: "mcp-add-1".into(),
@@ -26032,7 +26686,7 @@ mod tests {
         }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
-        let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
         for (request_id, expected) in [("remove-1", true), ("remove-2", false)] {
             command_tx
                 .send(GatewayCommand::RemoveMcpServer {
