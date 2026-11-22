@@ -35835,6 +35835,49 @@ mod tests {
                 .query_by_label("Attach a new image or file to the edited message")
                 .is_some()
         );
+        assert!(
+            harness
+                .query_by_label("Send edited message")
+                .expect("deep rewind submit control")
+                .accesskit_node()
+                .is_disabled(),
+            "deep rewind cannot submit before explicit confirmation"
+        );
+        harness
+            .query_by_label("I understand that later user turns will be removed")
+            .expect("explicit destructive rewind consent")
+            .click();
+        harness.run();
+        assert!(
+            app.borrow()
+                .message_edit
+                .as_ref()
+                .expect("edit dialog remains open")
+                .confirm_deep_cut,
+            "accessible checkbox records explicit consent"
+        );
+        harness
+            .query_by_label("Edited message text")
+            .expect("edit text field")
+            .click();
+        harness
+            .query_by_label("Edited message text")
+            .expect("focused edit text field")
+            .type_text(" revised");
+        harness.run();
+        assert_ne!(
+            app.borrow().message_edit.as_ref().unwrap().text,
+            app.borrow().message_edit.as_ref().unwrap().original_text,
+            "test must change the edited text to enable submit"
+        );
+        assert!(
+            !harness
+                .query_by_label("Send edited message")
+                .expect("confirmed deep rewind submit control")
+                .accesskit_node()
+                .is_disabled(),
+            "explicit consent enables the destructive rewind"
+        );
         {
             let app = app.borrow();
             assert_eq!(app.draft, "unfinished current draft");

@@ -1967,6 +1967,18 @@ PAR-0059 implementation completed for the pinned `background.complete` contract.
 
 Validation: PASS focused background-completion tests; PASS full locked suite (562 library + 15 protocol + 3 launcher); PASS all-target locked check, rustfmt/diff, both progress generators, 19 continuity tests, task state/schema validation, root package validator (81 pre-existing implementation receipts before EV-0098), and archival validator (491 pending). Progress is 101/499 broad and 67/176 chat/tool requirements with mapped evidence. PAR-0059 remains partial pending live Gateway, packaged Windows and formal source-paired acceptance. Cron completion history and persistent `subagent.complete` rows are not implemented because neither maps to the pinned Desktop persistent transcript behavior.
 
+### Revision 317 — Verify destructive transcript rewind consent — 2026-11-22
+
+PAR-0053 previously had implementation in the PAR-0051 edit workflow but lacked mapped evidence. The deep-cut dialog now has an interaction regression proving its Send action is disabled before consent, the accessible consent checkbox records the explicit decision, and the action becomes enabled only after the edited text changes. Existing tests continue to prove the confirmed `prompt.submit` carries deep-truncation consent, local history is retained until admission, the user's current composer draft/attachments remain intact, and a moved target is refused. This adds evidence for existing behavior and does not replace the implementation. PAR-0053 remains partial pending live Gateway, packaged Windows and formal source-paired acceptance.
+
+PAR-0066 remains planned: pinned terminal selection-to-composer requires a real terminal surface; native currently renders a placeholder and the standalone terminal is deferred from the first-version scope. Do not emulate selection without an actual selected terminal source.
+
+Validation: focused PAR-0053 headless interaction and stale-target regressions pass; full locked suite, all-target check, format/diff, progress/state validators, and root plus archival packages are to be recorded after completion.
+
 ### Revision 316 — Bind PAR-0059 evidence checkpoint — 2026-11-22T05:41:50Z
 
 EV-0098 now binds the tested PAR-0059 implementation to code commit `812292c212627e7f4fabd3b857785de1715f704f`. The task is tested at state revision 668 / ledger revision 113. Progress remains partial: 101/499 broad and 67/176 chat/tool requirements have mapped evidence; the root validator passes with 82 implementation receipts and the archival validator reports 491 pending requirements. No live Gateway, packaged Windows, or formal pinned-source acceptance was claimed.
+
+### Revision 318 — Validate explicit rewind consent — 2026-11-22T05:57:26Z
+
+PAR-0053 now has a headless UI regression proving that a deep-rewind submit stays disabled before explicit confirmation and turns available only after the accessible consent checkbox is selected and the replacement prompt differs from the original. The capability map now records overall `partial`, UI `partial`, tests `verified`, and backend `unknown`; local test evidence does not claim the complete Gateway behavior. The focused test passed, as did full locked suite (562 library + 15 protocol + 3 launcher), all-target locked check, rustfmt/diff, 19 task-continuity tests, task state/schema validation, both progress generators and root plus archival package validators. PAR-0053 remains partial pending live Gateway, packaged Windows and formal source-paired acceptance. Progress is 102/499 broad and 68/176 chat/tool requirements with mapped evidence.

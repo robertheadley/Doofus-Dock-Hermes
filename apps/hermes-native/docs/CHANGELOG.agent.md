@@ -3160,3 +3160,20 @@ PAR-0045 main publication: implementation `a1570b2030b87c3a1911ab7552f29dbcbd38c
 EV-0098 is bound to implementation commit `812292c212627e7f4fabd3b857785de1715f704f`. Task `hermes-par-0059` is tested at checkpoint revision 668 / ledger revision 113. Generated progress reports 101/499 broad rows and 67/176 chat/tool rows with mapped evidence; these counts measure review coverage, not product completion. Root package validation passes with 82 implementation receipts; archival package validation reports 491 pending rows. Live Gateway, packaged Windows, and formal source-paired acceptance remain open. The operator-owned `apps/hermes-native/work/` directory is excluded.
 
 PAR-0059 main publication: implementation commit `812292c212627e7f4fabd3b857785de1715f704f` and EV-0098/task checkpoint commit `f062cf2f5338aa2282426429636508a07d78cb66` were pushed to `origin/main`; fresh fetch confirmed exact local/origin equality at f062cf2. The implementation remains partial pending live Gateway, packaged Windows, and formal source-paired acceptance. The task checkpoint is being refreshed against the published head before work continues.
+
+### PAR-0053 — Verify destructive rewind consent — 2026-11-22T05:57:26Z
+
+- **id:** hermes-par-0053-rewind-confirmation-evidence-20261122
+- **timestamp:** 2026-11-22T05:57:26Z
+- **what:** Added an accessible headless interaction assertion proving a deep-rewind submit control is disabled before consent and enabled only after explicit checkbox consent and a changed replacement prompt. Existing confirmed-payload and stale-target tests remain the request-side proof.
+- **why:** Deep transcript truncation can archive later user turns and must require explicit user consent.
+- **components:** Prior-message edit dialog, Gateway truncation request, progress mapping and completion overview.
+- **type:** Regression coverage and evidence mapping for preserved functionality.
+- **validation:** PASS focused consent test; full locked suite 562 library + 15 protocol + 3 launcher; all-target check, rustfmt/diff, 19 continuity tests, task schema, both generators, root package validator (82 existing receipts), archival package validator (491 pending). Coverage is now 102/499 broad and 68/176 chat/tool; these are evidence counts, not completion.
+- **performance:** No runtime behavior changed; no benchmark needed.
+- **risks:** Local fixtures do not prove live Gateway or packaged Windows behavior; formal pinned-source acceptance remains open. All prior functional implementation and operator-owned work were preserved. PAR-0066 stays planned until a real terminal surface exists.
+- **follow_up:** Bind EV-0099 to the test commit, checkpoint PAR-0053, publish to main, then continue the next dependency-ready agent-workflow feature.
+
+### PAR-0053 revalidation — 2026-11-22T06:01:43Z
+
+The progress mapping now cites PLAN Revision 318, whose tested consent assertion covers the rendered disabled-before-consent and enabled-after-consent interaction. Re-ran the full locked suite (562 library + 15 protocol + 3 launcher), all-target check, format/diff, task continuity (19), task state validation, both progress generators and root/archival capability package validators. Counts remain 102/499 broad and 68/176 scoped; they describe mapped evidence, not feature completion. The root validator reports 82 implementation receipts; the archival validator reports 491 pending. Live Gateway, packaged Windows and formal pinned-source acceptance remain open. Existing `handle_server_event` dead-code warning remains; optional YAML validation was skipped because PyYAML is not installed.

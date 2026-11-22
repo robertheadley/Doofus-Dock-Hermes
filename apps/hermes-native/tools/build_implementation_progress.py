@@ -989,6 +989,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "formal pinned-source acceptance remains pending; diffs are bounded to 80,000 characters and 1,500 rendered lines",
         ],
     },
+    "PAR-0053": {
+        "state": "partial",
+        "level": "headless_deep_rewind_consent_and_target_revalidation",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#truncateSubmitParams",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#confirmIfDeepCut",
+            "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
+            "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
+            "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
+            "apps/hermes-native/docs/PLAN.md#Revision 318",
+        ],
+        "gaps": [
+            "headless consent and stale-target tests do not prove authenticated live Gateway or packaged Windows behavior",
+            "formal pinned-source acceptance remains pending",
+        ],
+    },
     "PAR-0059": {
         "state": "partial",
         "level": "headless_background_complete_transcript_routing_and_owner_fence",
