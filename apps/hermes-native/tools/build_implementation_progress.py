@@ -1038,17 +1038,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0056": {
         "state": "partial",
-        "level": "headless_owner_scoped_loaded_prompt_timeline_navigation",
+        "level": "headless_indexed_prompt_timeline_and_bounded_history_seek",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/timeline.tsx#ThreadTimeline",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/timeline-data.ts#deriveTimelineEntries",
+            ".staging/hermes-pinned-878305/hermes_cli/web_routers/sessions.py#get_session_timeline",
+            ".staging/hermes-pinned-878305/hermes_state_timeline.py#get_session_timeline",
             "apps/hermes-native/src/app.rs#transcript_prompt_timeline_entries",
             "apps/hermes-native/src/app.rs#rendered_prompt_timeline_targets_the_existing_transcript_row",
-            "apps/hermes-native/docs/PLAN.md#Revision 321",
+            "apps/hermes-native/src/app.rs#rendered_prompt_history_index_selects_a_durable_unloaded_row",
+            "apps/hermes-native/src/gateway.rs#prompt_timeline_remote_read_uses_profile_scope_and_metadata_only_route",
+            "apps/hermes-native/src/gateway.rs#prompt_timeline_page_rejects_scope_and_pagination_mismatches",
+            "apps/hermes-native/docs/PLAN.md#Revision 322",
         ],
         "gaps": [
-            "native timeline navigates only prompts in the currently loaded transcript and does not index or fetch a window around unloaded historical prompt IDs",
-            "active marker tracking during manual scrolling, physical Windows input, packaged behavior, live Gateway, and formal pinned-source acceptance remain open",
+            "native loads prompt metadata with the pinned profile-scoped cursor route, but jumps outside the current transcript by bounded older-page scans rather than the pinned around-row window route; scans stop after 64 pages",
+            "timeline cache refresh/invalidation, active marker tracking during manual scrolling, physical Windows input, packaged behavior, live Hermes Gateway, and formal pinned-source acceptance remain open",
         ],
     },
     "PAR-0059": {

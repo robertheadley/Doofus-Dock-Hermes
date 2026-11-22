@@ -1145,6 +1145,23 @@ struct SessionChatViewState {
     restored_prepared_image_draft_id: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct PromptTimelineState {
+    entries: Vec<crate::gateway::PromptTimelineEntry>,
+    cursor: Option<u64>,
+    has_more: bool,
+    total: Option<usize>,
+    request: Option<(String, String, Option<String>, Option<String>, u64)>,
+    error: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PromptTimelineAction {
+    Load,
+    LoadMore,
+    SelectRow(u64),
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 enum TranscriptScrollPosition {
     #[default]
@@ -2102,6 +2119,8 @@ pub struct HermesNativeApp {
     first_run_oauth_error: Option<String>,
     session_chat_views: BTreeMap<String, SessionChatViewState>,
     session_chat_view_order: VecDeque<String>,
+    prompt_timelines: BTreeMap<String, PromptTimelineState>,
+    pending_timeline_jump: Option<(String, u64, usize)>,
     new_chat_draft: String,
     new_chat_draft_scope: Option<String>,
     transcript: Vec<serde_json::Value>,
@@ -4571,6 +4590,8 @@ fn render_message() -> &'static str {
             first_run_oauth_error: None,
             session_chat_views: BTreeMap::new(),
             session_chat_view_order: VecDeque::new(),
+            prompt_timelines: BTreeMap::new(),
+            pending_timeline_jump: None,
             new_chat_draft: String::new(),
             new_chat_draft_scope: None,
             transcript: Vec::new(),
@@ -7176,6 +7197,32 @@ fn render_message() -> &'static str {
             ) {
                 self.find_in_page_target = Some(target);
                 self.find_in_page_scroll_pending = true;
+            }
+            let owner_key =
+                self.session_identity_key(session_id, self.active_session_profile.as_deref());
+            let timeline_state = self
+                .prompt_timelines
+                .get(&owner_key)
+                .cloned()
+                .unwrap_or_default();
+            if let Some(action) = render_prompt_history_index(ui, &owner_key, &timeline_state) {
+                match action {
+                    PromptTimelineAction::Load | PromptTimelineAction::LoadMore => {
+                        self.load_prompt_timeline_page(session_id.to_owned());
+                    }
+                    PromptTimelineAction::SelectRow(row_id) => {
+                        if let Some(index) = transcript_index_for_row_id(&messages, row_id) {
+                            self.find_in_page_target = Some(index);
+                            self.find_in_page_scroll_pending = true;
+                        } else if self.transcript_has_more {
+                            self.pending_timeline_jump = Some((owner_key, row_id, 0));
+                            self.load_older_transcript(session_id.to_owned());
+                        } else {
+                            self.status =
+                                "That prompt is not in the loaded transcript history.".into();
+                        }
+                    }
+                }
             }
             let mut open_message_edit: Option<(u64, String, usize, bool, Option<String>, bool)> =
                 None;
@@ -15857,6 +15904,7 @@ fn render_message() -> &'static str {
         }
         let Some(gateway) = &self.gateway_discovery else {
             self.older_transcript_error = Some("Hermes gateway is unavailable".into());
+            self.pending_timeline_jump = None;
             return;
         };
         let request_id = operation_id("transcript-older");
@@ -15869,12 +15917,44 @@ fn render_message() -> &'static str {
             offset,
         ) {
             self.older_transcript_error = Some(error.clone());
+            self.pending_timeline_jump = None;
             self.status = error;
             return;
         }
         self.older_transcript_error = None;
         self.older_transcript_request = Some((request_id, session_id, profile, offset));
         self.save_active_chat_view();
+    }
+
+    fn load_prompt_timeline_page(&mut self, session_id: String) {
+        if self.route != AppRoute::Session(session_id.clone()) {
+            return;
+        }
+        let profile = self.active_session_profile.clone();
+        let owner_key = self.session_identity_key(&session_id, profile.as_deref());
+        let state = self.prompt_timelines.entry(owner_key).or_default();
+        if state.request.is_some() {
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            state.error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("prompt-timeline");
+        let after_row_id = state.cursor.unwrap_or(0);
+        let connection_id = gateway.connection_id().map(str::to_owned);
+        if let Err(error) = gateway.load_prompt_timeline(
+            request_id.clone(),
+            session_id.clone(),
+            profile.clone(),
+            after_row_id,
+        ) {
+            state.error = Some(error.clone());
+            self.status = error;
+            return;
+        }
+        state.error = None;
+        state.request = Some((request_id, session_id, profile, connection_id, after_row_id));
     }
 
     fn refresh_active_transcript_after_change(&mut self) {
@@ -28410,9 +28490,12 @@ fn render_message() -> &'static str {
                         },
                     );
                     if expected {
+                        let mut page_has_more = false;
+                        let mut page_failed = false;
                         view.older_transcript_request = None;
                         match result {
                             Ok(page) => {
+                                page_has_more = page.has_more;
                                 if page.replace_all {
                                     view.transcript = page.messages;
                                     view.transcript_has_more = false;
@@ -28432,6 +28515,7 @@ fn render_message() -> &'static str {
                                 );
                             }
                             Err(error) => {
+                                page_failed = true;
                                 view.older_transcript_error = Some(error.clone());
                                 self.status = format!("Could not load earlier messages: {error}");
                             }
@@ -28445,6 +28529,120 @@ fn render_message() -> &'static str {
                             self.older_transcript_request = None;
                             self.older_transcript_error = view.older_transcript_error.clone();
                         }
+                        let mut continue_timeline_jump = false;
+                        if self.route == AppRoute::Session(session_id.clone())
+                            && self.active_session_profile == profile
+                            && let Some((jump_owner, target_row_id, pages_loaded)) =
+                                self.pending_timeline_jump.clone()
+                            && jump_owner == key
+                        {
+                            if let Some(index) =
+                                transcript_index_for_row_id(&self.transcript, target_row_id)
+                            {
+                                self.pending_timeline_jump = None;
+                                self.find_in_page_target = Some(index);
+                                self.find_in_page_scroll_pending = true;
+                                self.status = "Jumped to the selected prompt".into();
+                            } else if page_has_more && !page_failed && pages_loaded < 63 {
+                                self.pending_timeline_jump =
+                                    Some((jump_owner, target_row_id, pages_loaded + 1));
+                                continue_timeline_jump = true;
+                            } else {
+                                self.pending_timeline_jump = None;
+                                self.status = if page_failed {
+                                    "Could not load the selected prompt. Retry from the prompt history index.".into()
+                                } else {
+                                    "The selected prompt is deeper than the automatic history scan. Load earlier messages and select it again.".into()
+                                };
+                            }
+                        }
+                        if continue_timeline_jump {
+                            self.load_older_transcript(session_id.clone());
+                        }
+                    }
+                }
+                GatewayEvent::PromptTimelineLoaded {
+                    request_id,
+                    session_id,
+                    profile,
+                    connection_id,
+                    after_row_id,
+                    result,
+                } => {
+                    let key = self.session_identity_key_for_connection(
+                        connection_id.as_deref(),
+                        &session_id,
+                        profile.as_deref(),
+                    );
+                    {
+                        let Some(state) = self.prompt_timelines.get_mut(&key) else {
+                            continue;
+                        };
+                        let expected = state.request.as_ref().is_some_and(
+                            |(
+                                pending_id,
+                                pending_session,
+                                pending_profile,
+                                pending_connection_id,
+                                pending_cursor,
+                            )| {
+                                pending_id == &request_id
+                                    && pending_session == &session_id
+                                    && pending_profile == &profile
+                                    && pending_connection_id == &connection_id
+                                    && pending_cursor == &after_row_id
+                            },
+                        );
+                        if !expected {
+                            continue;
+                        }
+                        state.request = None;
+                        match result {
+                            Ok(page)
+                                if page.session_id == session_id
+                                    && profile.as_deref().is_none_or(|expected| {
+                                        page.profile.as_deref() == Some(expected)
+                                    }) =>
+                            {
+                                let mut known = state
+                                    .entries
+                                    .iter()
+                                    .map(|entry| entry.row_id)
+                                    .collect::<BTreeSet<_>>();
+                                for entry in page.entries {
+                                    if known.insert(entry.row_id) {
+                                        state.entries.push(entry);
+                                    }
+                                }
+                                state.cursor = page.next_cursor;
+                                state.has_more = page.has_more;
+                                state.total = Some(page.total);
+                                state.error = None;
+                                self.status =
+                                    format!("Indexed {} Hermes prompts", state.entries.len());
+                            }
+                            Ok(_) => {
+                                state.error = Some(
+                                    "Hermes returned a prompt index for a different session owner"
+                                        .into(),
+                                );
+                            }
+                            Err(error) => {
+                                state.error = Some(error.clone());
+                                self.status = format!("Could not load prompt history: {error}");
+                            }
+                        }
+                    }
+                    while self.prompt_timelines.len() > 12 {
+                        let Some(evicted) = self
+                            .prompt_timelines
+                            .keys()
+                            .find(|candidate| *candidate != &key)
+                            .cloned()
+                        else {
+                            break;
+                        };
+                        self.prompt_timelines.remove(&evicted);
                     }
                 }
                 GatewayEvent::ActiveTranscriptRefreshed {
@@ -33683,6 +33881,87 @@ fn render_transcript_prompt_timeline(
             });
     });
     selected
+}
+
+fn render_prompt_history_index(
+    ui: &mut Ui,
+    owner_key: &str,
+    state: &PromptTimelineState,
+) -> Option<PromptTimelineAction> {
+    let mut action = None;
+    ui.collapsing("All session prompts", |ui| {
+        if state.entries.is_empty() && state.request.is_none() {
+            if ui
+                .button("Load prompt history")
+                .accessible_name("Load all session prompt markers")
+                .clicked()
+            {
+                action = Some(PromptTimelineAction::Load);
+            }
+        }
+        if state.request.is_some() {
+            ui.label("Loading prompt history…");
+        }
+        if let Some(error) = &state.error {
+            ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+            if ui
+                .button("Retry prompt history")
+                .accessible_name("Retry loading session prompt markers")
+                .clicked()
+            {
+                action = Some(PromptTimelineAction::LoadMore);
+            }
+        }
+        if state.total.is_some() {
+            ui.label(format!(
+                "{} indexed prompts{}",
+                state.entries.len(),
+                if state.has_more {
+                    " · more available"
+                } else {
+                    ""
+                }
+            ));
+        }
+        egui::ScrollArea::vertical()
+            .id_salt(("hermes-prompt-history-index", owner_key.to_owned()))
+            .max_height(220.0)
+            .show_rows(ui, 26.0, state.entries.len(), |ui, rows| {
+                for index in rows {
+                    let entry = &state.entries[index];
+                    let response = ui
+                        .button(format!("{:03}  {}", index + 1, entry.preview))
+                        .accessible_name(format!(
+                            "Jump to indexed prompt {}: {}",
+                            index + 1,
+                            entry.preview
+                        ));
+                    if response.clicked() {
+                        action = Some(PromptTimelineAction::SelectRow(entry.row_id));
+                    }
+                }
+            });
+        if state.has_more && state.request.is_none() && state.error.is_none() {
+            if ui
+                .button("Load more prompt markers")
+                .accessible_name("Load more session prompt markers")
+                .clicked()
+            {
+                action = Some(PromptTimelineAction::LoadMore);
+            }
+        }
+    });
+    action
+}
+
+fn transcript_index_for_row_id(messages: &[serde_json::Value], row_id: u64) -> Option<usize> {
+    messages.iter().position(|message| {
+        message
+            .get("row_id")
+            .or_else(|| message.get("id"))
+            .and_then(serde_json::Value::as_u64)
+            == Some(row_id)
+    })
 }
 
 fn tool_progress_text(message: &serde_json::Value) -> Option<String> {
@@ -41060,6 +41339,49 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn rendered_prompt_history_index_selects_a_durable_unloaded_row() {
+        let state = PromptTimelineState {
+            entries: vec![crate::gateway::PromptTimelineEntry {
+                row_id: 42,
+                preview: "Earlier indexed question".into(),
+                timestamp: Some(123.5),
+            }],
+            total: Some(1),
+            ..PromptTimelineState::default()
+        };
+        let action = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let frame_action = action.clone();
+        let frame_state = state.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(700.0, 360.0))
+            .build_ui(move |ui| {
+                if let Some(selected) =
+                    render_prompt_history_index(ui, "owner-session", &frame_state)
+                {
+                    *frame_action.borrow_mut() = Some(selected);
+                }
+            });
+        harness.run();
+        harness.get_by_label("All session prompts").click();
+        harness.run();
+        harness
+            .get_by_label("Jump to indexed prompt 1: Earlier indexed question")
+            .click();
+        harness.run();
+        assert_eq!(*action.borrow(), Some(PromptTimelineAction::SelectRow(42)));
+    }
+
+    #[test]
+    fn transcript_history_jump_matches_only_numeric_durable_row_ids() {
+        let transcript = vec![
+            json!({"role":"user","row_id":42,"content":"target"}),
+            json!({"role":"user","id":"42","content":"ambiguous string"}),
+        ];
+        assert_eq!(transcript_index_for_row_id(&transcript, 42), Some(0));
+        assert_eq!(transcript_index_for_row_id(&transcript, 43), None);
     }
 
     #[test]

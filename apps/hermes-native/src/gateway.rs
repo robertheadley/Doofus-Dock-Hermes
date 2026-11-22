@@ -1820,6 +1820,24 @@ pub struct OlderTranscriptPage {
     pub replace_all: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct PromptTimelineEntry {
+    pub row_id: u64,
+    pub preview: String,
+    #[serde(default)]
+    pub timestamp: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PromptTimelinePage {
+    pub session_id: String,
+    pub profile: Option<String>,
+    pub entries: Vec<PromptTimelineEntry>,
+    pub next_cursor: Option<u64>,
+    pub has_more: bool,
+    pub total: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct CreatedSession {
     pub request_id: String,
@@ -1871,6 +1889,14 @@ pub enum GatewayEvent {
         profile: Option<String>,
         offset: usize,
         result: Result<OlderTranscriptPage, String>,
+    },
+    PromptTimelineLoaded {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        after_row_id: u64,
+        result: Result<PromptTimelinePage, String>,
     },
     EditTargetResolved {
         request_id: String,
@@ -2680,6 +2706,13 @@ enum GatewayHttpCommand {
         session_id: String,
         profile: Option<String>,
         offset: usize,
+    },
+    LoadPromptTimeline {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        after_row_id: u64,
     },
     ResolveEditTarget {
         request_id: String,
@@ -4531,6 +4564,24 @@ impl GatewayDiscovery {
                 offset,
             })
             .map_err(|_| "Hermes transcript reader has closed".to_owned())
+    }
+
+    pub fn load_prompt_timeline(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        after_row_id: u64,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::LoadPromptTimeline {
+                request_id,
+                session_id,
+                profile,
+                connection_id: self.connection_id.clone(),
+                after_row_id,
+            })
+            .map_err(|_| "Hermes prompt timeline reader has closed".to_owned())
     }
 
     pub fn resolve_edit_target(
@@ -9258,6 +9309,25 @@ struct SessionMessagesPagination {
     returned: usize,
 }
 
+#[derive(Deserialize)]
+struct PromptTimelineResponse {
+    session_id: String,
+    #[serde(default)]
+    profile: Option<String>,
+    entries: Vec<PromptTimelineEntry>,
+    pagination: PromptTimelinePagination,
+}
+
+#[derive(Deserialize)]
+struct PromptTimelinePagination {
+    limit: usize,
+    after_row_id: u64,
+    returned: usize,
+    total: usize,
+    has_more: bool,
+    next_cursor: Option<u64>,
+}
+
 fn gateway_artifact_download_actor(
     endpoint: GatewayEndpoint,
     requests: Receiver<ArtifactFileDownloadRequest>,
@@ -10097,6 +10167,25 @@ fn gateway_http_actor(
                 session_id,
                 profile,
                 offset,
+            },
+            GatewayHttpCommand::LoadPromptTimeline {
+                request_id,
+                session_id,
+                profile,
+                connection_id,
+                after_row_id,
+            } => GatewayEvent::PromptTimelineLoaded {
+                result: load_prompt_timeline_http(
+                    &endpoint,
+                    &session_id,
+                    profile.as_deref(),
+                    after_row_id,
+                ),
+                request_id,
+                session_id,
+                profile,
+                connection_id,
+                after_row_id,
             },
             GatewayHttpCommand::ResolveEditTarget {
                 request_id,
@@ -11389,6 +11478,82 @@ fn load_older_transcript_http(
         profile,
         offset,
     )
+}
+
+const PROMPT_TIMELINE_PAGE_SIZE: usize = 500;
+
+fn load_prompt_timeline_http(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+    profile: Option<&str>,
+    after_row_id: u64,
+) -> Result<PromptTimelinePage, String> {
+    if session_id.is_empty()
+        || session_id.len() > 256
+        || session_id.chars().any(char::is_control)
+        || profile.is_some_and(|value| {
+            value.is_empty() || value.len() > 128 || value.chars().any(char::is_control)
+        })
+    {
+        return Err("Hermes prompt timeline request scope is invalid".into());
+    }
+    let mut url = format!(
+        "{}/api/sessions/{}/timeline?limit={PROMPT_TIMELINE_PAGE_SIZE}&after_row_id={after_row_id}",
+        endpoint.api_origin.trim_end_matches('/'),
+        encode_query_component(session_id)
+    );
+    if let Some(profile) = profile {
+        url.push_str(&format!("&profile={}", encode_query_component(profile)));
+    }
+    let response: PromptTimelineResponse = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json(endpoint, &url)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes prompt timeline requires a verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        request_gateway_json(&endpoint.api_origin, ticket.as_str(), &url)?
+    };
+    decode_prompt_timeline_page(response, session_id, profile, after_row_id)
+}
+
+fn decode_prompt_timeline_page(
+    response: PromptTimelineResponse,
+    session_id: &str,
+    profile: Option<&str>,
+    after_row_id: u64,
+) -> Result<PromptTimelinePage, String> {
+    let pagination = response.pagination;
+    if response.session_id != session_id {
+        return Err("Hermes prompt timeline response belongs to a different session".into());
+    }
+    if profile.is_some_and(|expected| response.profile.as_deref() != Some(expected)) {
+        return Err("Hermes prompt timeline response belongs to a different profile".into());
+    }
+    if response.entries.len() > PROMPT_TIMELINE_PAGE_SIZE
+        || pagination.limit != PROMPT_TIMELINE_PAGE_SIZE
+        || pagination.after_row_id != after_row_id
+        || pagination.returned != response.entries.len()
+        || pagination.total < response.entries.len()
+        || pagination.has_more != pagination.next_cursor.is_some()
+        || pagination
+            .next_cursor
+            .is_some_and(|cursor| cursor <= after_row_id)
+        || response.entries.iter().any(|entry| {
+            entry.row_id == 0 || entry.preview.is_empty() || entry.preview.len() > 4096
+        })
+    {
+        return Err("Hermes prompt timeline response failed bounded pagination validation".into());
+    }
+    Ok(PromptTimelinePage {
+        session_id: response.session_id,
+        profile: response.profile,
+        entries: response.entries,
+        next_cursor: pagination.next_cursor,
+        has_more: pagination.has_more,
+        total: pagination.total,
+    })
 }
 
 fn load_active_transcript_http(
@@ -21009,6 +21174,115 @@ mod tests {
         assert_eq!(page.messages[0]["content"], "latest");
         assert!(!page.replace_all);
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn prompt_timeline_page_validates_owner_and_carries_metadata_cursor() {
+        let response: PromptTimelineResponse = serde_json::from_value(json!({
+            "session_id":"stored-session",
+            "profile":"work",
+            "entries":[{"row_id":42,"preview":"Earlier question","timestamp":123.5}],
+            "pagination":{"limit":500,"after_row_id":10,"returned":1,"total":501,
+                "has_more":true,"next_cursor":50}
+        }))
+        .expect("decode source-shaped prompt timeline page");
+        let page = decode_prompt_timeline_page(response, "stored-session", Some("work"), 10)
+            .expect("validate prompt timeline page");
+        assert_eq!(page.session_id, "stored-session");
+        assert_eq!(page.profile.as_deref(), Some("work"));
+        assert_eq!(page.entries[0].row_id, 42);
+        assert_eq!(page.entries[0].preview, "Earlier question");
+        assert_eq!(page.next_cursor, Some(50));
+        assert!(page.has_more);
+        assert_eq!(page.total, 501);
+    }
+
+    #[test]
+    fn prompt_timeline_remote_read_uses_profile_scope_and_metadata_only_route() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind prompt timeline fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept prompt timeline request");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with(
+                "GET /api/sessions/session%2F42/timeline?limit=500&after_row_id=10&profile=work%20profile HTTP/1.1\r\n"
+            ));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-timeline-token\r\n")
+            );
+            let body = json!({
+                "session_id":"session/42",
+                "profile":"work profile",
+                "entries":[{"row_id":81,"preview":"Prompt metadata only","timestamp":1700000000.25}],
+                "pagination":{"limit":500,"after_row_id":10,"returned":1,"total":21,
+                    "has_more":true,"next_cursor":81}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write prompt timeline page");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-timeline-token".into(),
+            ))),
+        };
+        let page = load_prompt_timeline_http(&endpoint, "session/42", Some("work profile"), 10)
+            .expect("read profile-scoped prompt metadata");
+        assert_eq!(page.entries[0].row_id, 81);
+        assert_eq!(page.next_cursor, Some(81));
+        server.join().expect("prompt timeline fixture exits");
+    }
+
+    #[test]
+    fn prompt_timeline_page_rejects_scope_and_pagination_mismatches() {
+        let response = |session_id: &str, profile: &str, next_cursor: u64| {
+            serde_json::from_value(json!({
+                "session_id":session_id,
+                "profile":profile,
+                "entries":[{"row_id":42,"preview":"Earlier question"}],
+                "pagination":{"limit":500,"after_row_id":10,"returned":1,"total":501,
+                    "has_more":true,"next_cursor":next_cursor}
+            }))
+            .expect("decode prompt timeline response")
+        };
+        assert!(
+            decode_prompt_timeline_page(
+                response("another-session", "work", 50),
+                "stored-session",
+                Some("work"),
+                10
+            )
+            .is_err()
+        );
+        assert!(
+            decode_prompt_timeline_page(
+                response("stored-session", "other", 50),
+                "stored-session",
+                Some("work"),
+                10
+            )
+            .is_err()
+        );
+        assert!(
+            decode_prompt_timeline_page(
+                response("stored-session", "work", 10),
+                "stored-session",
+                Some("work"),
+                10
+            )
+            .is_err()
+        );
     }
 
     #[test]
