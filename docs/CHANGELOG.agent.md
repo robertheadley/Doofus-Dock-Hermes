@@ -4248,3 +4248,6 @@ PAR-0061 adds native model-change safety evidence: composer text and attachments
 
 
 PAR-0061 partial receipt EV-0096 is bound to implementation commit 8c19b9cf5ec5f242dd2d31201176b1a230dafc24. The task checkpoint records full headless validation; live and source-paired acceptance remain open.
+
+
+PAR-0061 implementation and EV-0096/checkpoint are published to `origin/main`; fresh fetch verified `10968d89f501073e1521751e2d07153e3953a633`.
