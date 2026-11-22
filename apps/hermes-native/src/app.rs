@@ -53843,6 +53843,95 @@ mod tests {
     }
 
     #[test]
+    fn approval_card_sends_only_supported_choices_to_its_gateway_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        app.handle_server_request(
+            "approval-wire-once".into(),
+            "approval".into(),
+            serde_json::json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "request_id":"approval-once",
+                "choices":["once","deny"],
+                "allow_permanent":false
+            }),
+        );
+        let once_key = app
+            .approval_prompts
+            .iter()
+            .find_map(|(key, prompt)| (prompt.prompt_id == "approval-once").then(|| key.clone()))
+            .expect("approval card is owned by the active profile");
+        assert!(
+            app.execute_registered_action(RegisteredUiAction::RespondApproval {
+                prompt_id: once_key.clone(),
+                choice: "always".into(),
+            })
+            .is_err()
+        );
+        assert!(
+            commands.try_recv().is_err(),
+            "unsupported choices never reach Hermes"
+        );
+
+        app.execute_registered_action(RegisteredUiAction::RespondApproval {
+            prompt_id: once_key.clone(),
+            choice: "once".into(),
+        })
+        .expect("submit allowed allow-once choice");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("approval response reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "approval-wire-once".into(),
+                profile: Some("work".into()),
+                response: Ok(serde_json::json!({"choice":"once"})),
+            }
+        );
+        assert!(app.approval_prompts[&once_key].response_pending.is_some());
+
+        app.handle_server_request(
+            "approval-wire-deny".into(),
+            "approval".into(),
+            serde_json::json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "request_id":"approval-deny",
+                "choices":["deny"]
+            }),
+        );
+        let deny_key = app
+            .approval_prompts
+            .iter()
+            .find_map(|(key, prompt)| (prompt.prompt_id == "approval-deny").then(|| key.clone()))
+            .expect("deny-only approval card is retained");
+        app.execute_registered_action(RegisteredUiAction::RespondApproval {
+            prompt_id: deny_key,
+            choice: "deny".into(),
+        })
+        .expect("submit allowed deny choice");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("deny response reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "approval-wire-deny".into(),
+                profile: Some("work".into()),
+                response: Ok(serde_json::json!({"choice":"deny"})),
+            }
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn inbound_batch_clarify_request_renders_accessible_question_controls() {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());

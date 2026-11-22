@@ -3171,6 +3171,11 @@ pub(crate) enum TestGatewayCommand {
         base_url: Option<String>,
         confirm_expensive_model: bool,
     },
+    RespondServerRequest {
+        id: String,
+        profile: Option<String>,
+        response: Result<serde_json::Value, (i64, String)>,
+    },
     AttachComposerFile {
         request_id: String,
         session_id: String,
@@ -3305,6 +3310,15 @@ impl GatewayDiscovery {
                         stored_session_id,
                         profile,
                         execution_generation,
+                    }),
+                    GatewayCommand::RespondServerRequest {
+                        id,
+                        profile,
+                        response,
+                    } => Some(TestGatewayCommand::RespondServerRequest {
+                        id,
+                        profile,
+                        response,
                     }),
                     _ => None,
                 };
