@@ -1133,6 +1133,7 @@ struct SessionChatViewState {
     resume_request_id: Option<String>,
     resume_error: Option<String>,
     transcript: Vec<serde_json::Value>,
+    transcript_scroll_position: TranscriptScrollPosition,
     usage: Option<SessionUsageSnapshot>,
     transcript_message_count: usize,
     transcript_has_more: bool,
@@ -1142,6 +1143,44 @@ struct SessionChatViewState {
     composer_attachments: Vec<ComposerAttachment>,
     active_prepared_image_draft_id: Option<String>,
     restored_prepared_image_draft_id: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum TranscriptScrollPosition {
+    #[default]
+    Bottom,
+    Offset {
+        from_bottom: f32,
+        max_offset: f32,
+    },
+}
+
+impl TranscriptScrollPosition {
+    fn from_metrics(offset: f32, max_offset: f32) -> Self {
+        let from_bottom = (max_offset - offset).max(0.0);
+        if from_bottom <= 8.0 {
+            Self::Bottom
+        } else {
+            Self::Offset {
+                from_bottom,
+                max_offset,
+            }
+        }
+    }
+
+    fn restore_offset(self) -> Option<f32> {
+        match self {
+            Self::Bottom => None,
+            Self::Offset { max_offset, .. } => self.restore_offset_for_content(max_offset),
+        }
+    }
+
+    fn restore_offset_for_content(self, max_offset: f32) -> Option<f32> {
+        match self {
+            Self::Bottom => None,
+            Self::Offset { from_bottom, .. } => Some((max_offset - from_bottom).max(0.0)),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -7192,12 +7231,25 @@ fn render_message() -> &'static str {
                 .collect::<BTreeMap<_, _>>();
             let transcript_scroll_key =
                 self.session_identity_key(session_id, self.active_session_profile.as_deref());
+            let transcript_scroll_position = self
+                .session_chat_views
+                .get(&transcript_scroll_key)
+                .map_or(TranscriptScrollPosition::Bottom, |view| {
+                    view.transcript_scroll_position
+                });
             let markdown_cache = &mut self.markdown_cache;
             let mut open_tool_image = None;
             let mut open_transcript_file = None;
             let mut request_tool_image_previews = Vec::new();
             let mut continue_cut_off_reply = false;
-            transcript_scroll_area(&transcript_scroll_key)
+            let mut transcript_scroll =
+                transcript_scroll_area(&transcript_scroll_key).stick_to_bottom(false);
+            if let Some(offset) = transcript_scroll_position.restore_offset() {
+                transcript_scroll = transcript_scroll.vertical_scroll_offset(offset);
+            } else {
+                transcript_scroll = transcript_scroll.stick_to_bottom(true);
+            }
+            let transcript_scroll_output = transcript_scroll
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
                     ui.set_max_width(ui.available_width().min(860.0));
@@ -7520,6 +7572,19 @@ fn render_message() -> &'static str {
                         ui.add_space(8.0);
                     }
                 });
+            let max_offset = (transcript_scroll_output.content_size.y
+                - transcript_scroll_output.inner_rect.height())
+            .max(0.0);
+            self.session_chat_views
+                .entry(transcript_scroll_key.clone())
+                .or_insert_with(|| SessionChatViewState {
+                    profile: self.active_session_profile.clone(),
+                    ..SessionChatViewState::default()
+                })
+                .transcript_scroll_position = TranscriptScrollPosition::from_metrics(
+                transcript_scroll_output.state.clamped_offset().y,
+                max_offset,
+            );
             if let Some(destination) = open_transcript_file {
                 self.open_transcript_local_file_preview(session_id, &destination);
             }
@@ -20863,6 +20928,10 @@ fn render_message() -> &'static str {
                         resume_request_id: previous.and_then(|view| view.resume_request_id.clone()),
                         resume_error: previous.and_then(|view| view.resume_error.clone()),
                         transcript: self.transcript.clone(),
+                        transcript_scroll_position: previous
+                            .map_or(TranscriptScrollPosition::Bottom, |view| {
+                                view.transcript_scroll_position
+                            }),
                         transcript_message_count: self.transcript_message_count,
                         transcript_has_more: self.transcript_has_more,
                         older_transcript_request: self.older_transcript_request.clone(),
@@ -35718,6 +35787,36 @@ mod tests {
         assert!(
             (resumed_offset - resumed_bottom).abs() <= 1.0,
             "streaming follows again after the reader returns to the bottom"
+        );
+    }
+
+    #[test]
+    fn transcript_read_position_is_session_owned_and_restores_from_bottom() {
+        let mut positions = BTreeMap::new();
+        let first_key = session_identity_key("same-session", Some("work"));
+        let second_key = session_identity_key("same-session", Some("personal"));
+        positions.insert(
+            first_key.clone(),
+            TranscriptScrollPosition::from_metrics(460.0, 700.0),
+        );
+        positions.insert(
+            second_key.clone(),
+            TranscriptScrollPosition::from_metrics(120.0, 700.0),
+        );
+        let first_session = positions[&first_key];
+        let second_session = positions[&second_key];
+        assert_eq!(first_session.restore_offset(), Some(460.0));
+        assert_eq!(second_session.restore_offset(), Some(120.0));
+        assert_eq!(first_session.restore_offset_for_content(900.0), Some(660.0));
+        assert_eq!(
+            TranscriptScrollPosition::from_metrics(694.0, 700.0),
+            TranscriptScrollPosition::Bottom,
+            "positions within eight points of the end keep the follow-to-bottom intent"
+        );
+        assert_eq!(
+            TranscriptScrollPosition::Bottom.restore_offset_for_content(900.0),
+            None,
+            "a bottom-pinned session stays at the newest message after transcript growth"
         );
     }
 

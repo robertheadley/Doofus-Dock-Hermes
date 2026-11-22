@@ -1021,6 +1021,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "packaged Windows behavior and formal pinned-source acceptance remain pending",
         ],
     },
+    "PAR-0055": {
+        "state": "partial",
+        "level": "headless_session_scoped_transcript_read_position",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/store/thread-scroll.ts#threadScrollStateFromMetrics",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/list.tsx#planThreadScrollRestore",
+            "apps/hermes-native/src/app.rs#TranscriptScrollPosition",
+            "apps/hermes-native/src/app.rs#transcript_read_position_is_session_owned_and_restores_from_bottom",
+            "apps/hermes-native/docs/PLAN.md#Revision 320",
+        ],
+        "gaps": [
+            "native evidence covers in-process per-session read-offset state but not durable cross-restart storage, history-prepend reanchoring, or cancellation by physical Windows input",
+            "live Gateway, packaged Windows, and formal pinned-source acceptance remain open",
+        ],
+    },
     "PAR-0059": {
         "state": "partial",
         "level": "headless_background_complete_transcript_routing_and_owner_fence",
