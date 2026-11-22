@@ -1067,12 +1067,14 @@ EVIDENCE: dict[str, dict[str, object]] = {
         "state": "partial",
         "level": "headless_owner_scoped_prior_message_edit_and_confirmed_truncation",
         "refs": [
-            "apps/hermes-native/docs/PLAN.md#Revision 298",
+            "apps/hermes-native/docs/PLAN.md#Revision 302",
             "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
             "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
             "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
             "apps/hermes-native/src/app.rs#editing_during_a_running_turn_interrupts_before_truncating_submit",
             "apps/hermes-native/src/app.rs#busy_edit_interrupts_then_retries_once_and_preserves_history_on_second_refusal",
+            "apps/hermes-native/src/app.rs#message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference",
+            "apps/hermes-native/src/app.rs#message_edit_waits_for_new_file_upload_before_sending_truncation",
             "apps/hermes-native/src/gateway.rs#rpc_preserves_gateway_busy_code_for_bounded_prompt_recovery",
             "apps/hermes-native/src/app.rs#unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt",
             "apps/hermes-native/src/app.rs#refused_prior_message_edit_preserves_composer_and_restores_edit_text",
@@ -1088,8 +1090,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": [
             "live Gateway admission/refusal/uncertain recovery and stale-confirmation races remain unverified",
-            "pinned edit intentionally replaces old attachments with text; uploading new attachments from the native edit dialog remains unimplemented",
-            "packaged Windows behavior and formal pinned-source acceptance remain open",
+            "live Gateway behavior, packaged Windows picker/drop interaction, and formal pinned-source acceptance remain unverified",
         ],
     },
     "PAR-0057": {

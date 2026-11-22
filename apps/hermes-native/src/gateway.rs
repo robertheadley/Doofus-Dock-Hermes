@@ -1887,6 +1887,7 @@ pub enum GatewayEvent {
         request_id: String,
         session_id: String,
         profile: Option<String>,
+        connection_id: Option<String>,
         path: String,
         result: Result<ComposerAttachmentReceipt, String>,
     },
@@ -3001,6 +3002,14 @@ pub(crate) enum TestGatewayCommand {
         truncate_before_row_id: u64,
         confirm_deep_truncate: bool,
     },
+    AttachComposerFile {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        path: String,
+        name: String,
+        is_image: bool,
+    },
     InterruptSession {
         request_id: String,
         session_id: String,
@@ -3094,6 +3103,21 @@ impl GatewayDiscovery {
                         text,
                         truncate_before_row_id,
                         confirm_deep_truncate,
+                    }),
+                    GatewayCommand::AttachComposerFile {
+                        request_id,
+                        session_id,
+                        profile,
+                        path,
+                        name,
+                        is_image,
+                    } => Some(TestGatewayCommand::AttachComposerFile {
+                        request_id,
+                        session_id,
+                        profile,
+                        path,
+                        name,
+                        is_image,
                     }),
                     GatewayCommand::InterruptSession {
                         request_id,
@@ -3193,6 +3217,21 @@ impl GatewayDiscovery {
                         text,
                         truncate_before_row_id,
                         confirm_deep_truncate,
+                    },
+                    GatewayCommand::AttachComposerFile {
+                        request_id,
+                        session_id,
+                        profile,
+                        path,
+                        name,
+                        is_image,
+                    } => TestGatewayCommand::AttachComposerFile {
+                        request_id,
+                        session_id,
+                        profile,
+                        path,
+                        name,
+                        is_image,
                     },
                     _ => TestGatewayCommand::Other,
                 };
@@ -4299,6 +4338,7 @@ impl GatewayDiscovery {
         match &mut event {
             GatewayEvent::SessionResumed { connection_id, .. }
             | GatewayEvent::SessionInterrupted { connection_id, .. }
+            | GatewayEvent::ComposerAttachmentAttached { connection_id, .. }
             | GatewayEvent::SlashCompletionLoaded { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
@@ -7603,6 +7643,7 @@ fn gateway_actor(
                         request_id,
                         session_id,
                         profile,
+                        connection_id: None,
                         path,
                         result,
                     })

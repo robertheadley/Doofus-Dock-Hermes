@@ -4114,3 +4114,14 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 - **performance:** No runtime change.
 - **risks:** New file upload from the edit dialog, live Gateway behavior, packaged Windows behavior and formal source acceptance remain open.
 - **follow_up:** Continue with edit-dialog file upload or another dependency-ready agent-workflow gap; preserve the existing composer attachment path.
+
+- **id:** hermes-par0051-edit-attachments-20261122
+- **timestamp:** 2026-11-22T01:43:14Z
+- **what:** Added image/file picker and drop support to the separate prior-message edit dialog. Upload receipts are scoped to the edit's session/profile/Gateway connection, references are composed into the replacement text, and submission remains blocked until uploads succeed. The current main-composer draft and attachments remain isolated.
+- **why:** Match the pinned edit composer's ability to stage new files/images while preserving its text-only replacement semantics for old message parts.
+- **components:** Native edit dialog, session attachment upload event fencing, prompt composition, Gateway test projections, headless regressions, progress and docs.
+- **type:** Additive chat attachment workflow.
+- **validation:** PASS full locked suite (530 library + 15 protocol + 3 launcher); all-target check and diff check. `cargo fmt --check` and focused UI validation are being rerun after the final rendered-control assertion; live Gateway and physical Windows picker/drop behavior remain unverified.
+- **performance:** Upload requests occur only for files explicitly chosen or dropped in the edit dialog; no new polling was added.
+- **risks:** A canceled in-flight upload may leave an unreferenced file in the session's attachment store, as with the main composer. Runtime ownership is fenced, and the prompt is never sent until all retained uploads have receipts.
+- **follow_up:** Rerun focused and full validation after the rendered-control assertion, add commit-bound partial evidence, update task state, and publish to main. Preserve all existing functionality.

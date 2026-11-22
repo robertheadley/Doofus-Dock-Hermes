@@ -1326,6 +1326,7 @@ struct MessageEditDraft {
     row_id: u64,
     original_text: String,
     text: String,
+    attachments: Vec<ComposerAttachment>,
     later_user_turns: usize,
     confirm_deep_cut: bool,
     busy_retry_attempted: bool,
@@ -7430,6 +7431,7 @@ fn render_message() -> &'static str {
                     row_id,
                     text: original_text.clone(),
                     original_text,
+                    attachments: Vec::new(),
                     later_user_turns,
                     confirm_deep_cut: false,
                     busy_retry_attempted: false,
@@ -14738,9 +14740,42 @@ fn render_message() -> &'static str {
         request_id: String,
         session_id: String,
         profile: Option<String>,
+        connection_id: Option<String>,
         path: String,
         result: Result<ComposerAttachmentReceipt, String>,
     ) {
+        let active_connection_id = self
+            .gateway_discovery
+            .as_ref()
+            .and_then(|gateway| gateway.connection_id().map(str::to_owned));
+        if connection_id != active_connection_id {
+            return;
+        }
+        if let Some(edit) = self.message_edit.as_mut()
+            && edit.session_id == session_id
+            && edit.profile == profile
+            && edit.connection_id == connection_id
+            && let Some(attachment) = edit.attachments.iter_mut().find(|attachment| {
+                attachment.path == path
+                    && attachment.request_id.as_deref() == Some(request_id.as_str())
+            })
+        {
+            attachment.request_id = None;
+            match result {
+                Ok(receipt) => {
+                    attachment.path = receipt.path;
+                    attachment.ref_text = Some(receipt.ref_text);
+                    attachment.attached_session_id = Some(session_id);
+                    attachment.error = None;
+                    self.status = format!("Attached {} to edited message", attachment.name);
+                }
+                Err(error) => {
+                    attachment.error = Some(error.clone());
+                    self.status = error;
+                }
+            }
+            return;
+        }
         let is_active = self.active_runtime_session_id.as_deref() == Some(session_id.as_str())
             && self.active_session_profile == profile;
         if is_active {
@@ -14796,6 +14831,13 @@ fn render_message() -> &'static str {
         for attachment in &mut self.composer_attachments {
             if attachment.request_id.take().is_some() {
                 attachment.error = Some(format!("Gateway disconnected: {error}"));
+            }
+        }
+        if let Some(edit) = self.message_edit.as_mut() {
+            for attachment in &mut edit.attachments {
+                if attachment.request_id.take().is_some() {
+                    attachment.error = Some(format!("Gateway disconnected: {error}"));
+                }
             }
         }
         for view in self.session_chat_views.values_mut() {
@@ -17688,12 +17730,25 @@ fn render_message() -> &'static str {
     }
 
     fn render_message_edit_dialog(&mut self, ctx: &egui::Context) {
-        let Some(edit) = self.message_edit.as_mut() else {
+        let Some(mut edit) = self.message_edit.take() else {
             return;
         };
+        let owner_matches = self.active_runtime_session_id.as_deref()
+            == Some(edit.session_id.as_str())
+            && self.active_session_profile == edit.profile
+            && self
+                .gateway_discovery
+                .as_ref()
+                .and_then(|gateway| gateway.connection_id())
+                == edit.connection_id.as_deref();
+        if !owner_matches || !self.gateway_connected {
+            self.status = "The Hermes connection changed while editing. Reopen the edit on the current session.".into();
+            return;
+        }
         let mut open = true;
         let mut cancel = false;
         let mut submit = false;
+        let mut attach_paths = Vec::new();
         egui::Window::new("Edit sent message")
             .open(&mut open)
             .collapsible(false)
@@ -17701,25 +17756,192 @@ fn render_message() -> &'static str {
             .default_width(560.0)
             .show(ctx, |ui| {
                 ui.label("Editing this message resubmits it and removes the later conversation from Hermes history.");
-                ui.add(egui::TextEdit::multiline(&mut edit.text).desired_rows(5).desired_width(f32::INFINITY))
+                ui.label(RichText::new("Old attachment parts are removed with the original turn. Add replacement files here if needed.").size(11.0).color(MUTED));
+                let attach = ui.add_enabled(self.gateway_connected, egui::Button::new("Attach file"))
+                    .accessible_name("Attach a new image or file to the edited message");
+                if attach.clicked() {
+                    #[cfg(windows)]
+                    if let Some(paths) = rfd::FileDialog::new()
+                        .set_title("Attach to edited Hermes message")
+                        .add_filter("Images and files", &["png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf", "txt", "md", "json", "csv", "html", "htm", "xml"])
+                        .add_filter("All files", &["*"])
+                        .pick_files()
+                    {
+                        attach_paths.extend(paths);
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        self.status = "The native attachment picker is available on Windows".into();
+                    }
+                }
+                let mut remove_path = None;
+                ui.horizontal_wrapped(|ui| {
+                    for attachment in &edit.attachments {
+                        let label = if attachment.request_id.is_some() {
+                            format!("{} · attaching…", attachment.name)
+                        } else if let Some(error) = attachment.error.as_deref() {
+                            format!("{} · failed: {error}", attachment.name)
+                        } else {
+                            format!("{} · included", attachment.name)
+                        };
+                        ui.label(RichText::new(label).size(11.0).color(if attachment.error.is_some() { Color32::LIGHT_RED } else { MUTED }));
+                        if attachment.request_id.is_none() && ui.small_button("Remove").clicked() {
+                            remove_path = Some(attachment.path.clone());
+                        }
+                    }
+                });
+                if let Some(path) = remove_path {
+                    edit.attachments.retain(|attachment| attachment.path != path);
+                }
+                let input = ui.add(egui::TextEdit::multiline(&mut edit.text).desired_rows(5).desired_width(f32::INFINITY))
                     .accessible_name("Edited message text");
+                let input_rect = input.rect;
+                let (pointer_position, has_hovered_files, dropped_paths) = ui.input(|input| {
+                    (
+                        input.pointer.hover_pos(),
+                        !input.raw.hovered_files.is_empty(),
+                        input.raw.dropped_files.iter().map(|file| file.path()).filter(|path| !path.as_os_str().is_empty()).map(std::path::Path::to_path_buf).collect::<Vec<_>>(),
+                    )
+                });
+                let drop_active = has_hovered_files && pointer_position.is_some_and(|position| input_rect.contains(position));
+                if drop_active {
+                    ui.painter().rect_stroke(input_rect, 2.0, Stroke::new(2.0, ACCENT), egui::StrokeKind::Inside);
+                    ui.painter().text(input_rect.center(), egui::Align2::CENTER_CENTER, "Drop files or images to attach", egui::FontId::proportional(16.0), Color32::WHITE);
+                }
+                if drop_active && !dropped_paths.is_empty() {
+                    attach_paths.extend(dropped_paths);
+                }
                 if edit.later_user_turns > 0 {
                     ui.colored_label(Color32::YELLOW, format!("This will archive {} later user message(s).", edit.later_user_turns));
                     ui.checkbox(&mut edit.confirm_deep_cut, "I understand that later user turns will be removed");
                 }
                 ui.horizontal(|ui| {
-                    let enabled = !edit.text.trim().is_empty()
-                        && edit.text.trim() != edit.original_text.trim()
+                    let ready = edit.attachments.iter().all(|attachment| {
+                        attachment.request_id.is_none()
+                            && attachment.error.is_none()
+                            && attachment.ref_text.is_some()
+                            && attachment.attached_session_id.as_deref() == Some(edit.session_id.as_str())
+                    });
+                    let outgoing = compose_edit_prompt_with_attachments(&edit).unwrap_or_default();
+                    let enabled = ready
+                        && !outgoing.trim().is_empty()
+                        && outgoing.trim() != edit.original_text.trim()
                         && (edit.later_user_turns == 0 || edit.confirm_deep_cut);
                     if ui.add_enabled(enabled, egui::Button::new("Send edited message")).clicked() { submit = true; }
                     if ui.button("Cancel").clicked() { cancel = true; }
                 });
             });
+        if !attach_paths.is_empty() {
+            self.attach_message_edit_paths(&mut edit, attach_paths);
+        }
         if !open || cancel {
             self.message_edit = None;
         } else if submit {
-            if let Some(edit) = self.message_edit.take() {
-                self.submit_message_edit(edit);
+            self.submit_message_edit(edit);
+        } else {
+            self.message_edit = Some(edit);
+        }
+    }
+
+    fn attach_message_edit_paths(
+        &mut self,
+        edit: &mut MessageEditDraft,
+        paths: Vec<std::path::PathBuf>,
+    ) {
+        let owner_matches = self.active_runtime_session_id.as_deref()
+            == Some(edit.session_id.as_str())
+            && self.active_session_profile == edit.profile
+            && self
+                .gateway_discovery
+                .as_ref()
+                .and_then(|gateway| gateway.connection_id())
+                == edit.connection_id.as_deref();
+        if !owner_matches || !self.gateway_connected {
+            self.status = "Reconnect to the same Hermes session before attaching edit files".into();
+            return;
+        }
+        let gateway_is_local = self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(GatewayEndpoint::uses_local_loopback_gateway);
+        let (backend_cwd, terminal_backend) = self
+            .active_backend_attachment_metadata(&edit.session_id)
+            .unwrap_or_default();
+        for path in paths {
+            let Some(name) = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned)
+            else {
+                self.status = "Could not attach a file with an invalid name".into();
+                continue;
+            };
+            let extension = path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let is_image = matches!(
+                extension.as_str(),
+                "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+            );
+            let path = path.to_string_lossy().into_owned();
+            let mime = crate::gateway::composer_attachment_mime(&name).to_owned();
+            if !is_image
+                && !composer_attachment_needs_upload(
+                    &path,
+                    backend_cwd.as_deref(),
+                    terminal_backend.as_deref(),
+                    !gateway_is_local,
+                )
+            {
+                edit.attachments.push(ComposerAttachment {
+                    path: path.clone(),
+                    source_path: path.clone(),
+                    name,
+                    is_image: false,
+                    mime,
+                    attached_session_id: Some(edit.session_id.clone()),
+                    ref_text: Some(format!("@file:{}", format_composer_ref_value(&path))),
+                    request_id: None,
+                    error: None,
+                });
+                continue;
+            }
+            let request_id = operation_id("edit-attachment");
+            edit.attachments.push(ComposerAttachment {
+                path: path.clone(),
+                source_path: path.clone(),
+                name: name.clone(),
+                is_image,
+                mime,
+                attached_session_id: None,
+                ref_text: None,
+                request_id: Some(request_id.clone()),
+                error: None,
+            });
+            let result = self
+                .gateway_discovery
+                .as_ref()
+                .ok_or_else(|| "Hermes gateway is unavailable".to_owned())
+                .and_then(|gateway| {
+                    gateway.attach_composer_file(
+                        request_id.clone(),
+                        edit.session_id.clone(),
+                        edit.profile.clone(),
+                        path.clone(),
+                        name,
+                        is_image,
+                    )
+                });
+            if let Err(error) = result {
+                if let Some(attachment) = edit.attachments.iter_mut().find(|attachment| {
+                    attachment.request_id.as_deref() == Some(request_id.as_str())
+                }) {
+                    attachment.request_id = None;
+                    attachment.error = Some(error.clone());
+                }
+                self.status = error;
             }
         }
     }
@@ -17770,8 +17992,16 @@ fn render_message() -> &'static str {
                 "The conversation changed while confirming the edit. Review the edit again.".into();
             return;
         }
-        let text = edit.text.trim().to_owned();
+        let text = match compose_edit_prompt_with_attachments(&edit) {
+            Ok(text) => text,
+            Err(error) => {
+                self.message_edit = Some(edit);
+                self.status = error;
+                return;
+            }
+        };
         if text.is_empty() || text == edit.original_text.trim() {
+            self.message_edit = Some(edit);
             self.status = "The edited message must contain changed text.".into();
             return;
         }
@@ -27441,10 +27671,16 @@ fn render_message() -> &'static str {
                     request_id,
                     session_id,
                     profile,
+                    connection_id,
                     path,
                     result,
                 } => self.handle_composer_attachment_attached(
-                    request_id, session_id, profile, path, result,
+                    request_id,
+                    session_id,
+                    profile,
+                    connection_id,
+                    path,
+                    result,
                 ),
                 GatewayEvent::UnknownPromptResolved {
                     session_id,
@@ -33510,6 +33746,28 @@ fn compose_prompt_with_attachments(
     }
 }
 
+fn compose_edit_prompt_with_attachments(edit: &MessageEditDraft) -> Result<String, String> {
+    if edit.attachments.iter().any(|attachment| {
+        attachment.request_id.is_some()
+            || attachment.error.is_some()
+            || attachment.ref_text.is_none()
+            || attachment.attached_session_id.as_deref() != Some(edit.session_id.as_str())
+    }) {
+        return Err("Wait for edit attachments to finish or remove the failed attachment".into());
+    }
+    let references = edit
+        .attachments
+        .iter()
+        .filter_map(|attachment| attachment.ref_text.as_deref())
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok([references.as_str(), edit.text.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n"))
+}
+
 fn session_identity_key(session_id: &str, profile: Option<&str>) -> String {
     session_owner_identity_key(session_id, profile, None)
 }
@@ -34527,6 +34785,11 @@ mod tests {
                 .is_some()
         );
         assert!(harness.query_by_label("Send edited message").is_some());
+        assert!(
+            harness
+                .query_by_label("Attach a new image or file to the edited message")
+                .is_some()
+        );
         {
             let app = app.borrow();
             assert_eq!(app.draft, "unfinished current draft");
@@ -34560,6 +34823,7 @@ mod tests {
             row_id: 51,
             original_text: "old question".into(),
             text: "revised question".into(),
+            attachments: Vec::new(),
             later_user_turns: 1,
             confirm_deep_cut: true,
             busy_retry_attempted: false,
@@ -34621,6 +34885,7 @@ mod tests {
             row_id: 61,
             original_text: "target".into(),
             text: "revised".into(),
+            attachments: Vec::new(),
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
@@ -34673,6 +34938,7 @@ mod tests {
             row_id: 71,
             original_text: "running question".into(),
             text: "edited running question".into(),
+            attachments: Vec::new(),
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
@@ -34777,6 +35043,7 @@ mod tests {
             row_id: 76,
             original_text: "question".into(),
             text: "edited question".into(),
+            attachments: Vec::new(),
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
@@ -34861,6 +35128,154 @@ mod tests {
     }
 
     #[test]
+    fn message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "keep current composer draft".into();
+        app.composer_attachments.push(ComposerAttachment {
+            path: "attachments/current.pdf".into(),
+            source_path: "C:/current.pdf".into(),
+            name: "current.pdf".into(),
+            is_image: false,
+            mime: "application/pdf".into(),
+            attached_session_id: Some("runtime-session".into()),
+            ref_text: Some("@file:attachments/current.pdf".into()),
+            request_id: None,
+            error: None,
+        });
+        app.transcript = vec![
+            serde_json::json!({"row_id":101,"role":"user","content":"old picture prompt","attachments":[{"path":"attachments/old.png","mime":"image/png"}]}),
+        ];
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        let attachment_path =
+            std::env::temp_dir().join(format!("hermes-edit-image-{}.png", operation_id("test")));
+        std::fs::write(&attachment_path, [1_u8, 2, 3]).expect("write image fixture");
+        let mut edit = MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 101,
+            original_text: "old picture prompt".into(),
+            text: "describe this replacement image".into(),
+            attachments: Vec::new(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+            busy_retry_attempted: false,
+        };
+        app.attach_message_edit_paths(&mut edit, vec![attachment_path.clone()]);
+        let TestGatewayCommand::AttachComposerFile {
+            request_id,
+            session_id,
+            profile,
+            path,
+            name,
+            is_image,
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("image upload command")
+        else {
+            panic!("new edit images use the existing Gateway upload route");
+        };
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert_eq!(path, attachment_path.to_string_lossy());
+        assert_eq!(name, attachment_path.file_name().unwrap().to_string_lossy());
+        assert!(is_image);
+        let request_path = path.clone();
+        app.message_edit = Some(edit);
+        events
+            .send(GatewayEvent::ComposerAttachmentAttached {
+                request_id,
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                connection_id: None,
+                path: request_path,
+                result: Ok(ComposerAttachmentReceipt {
+                    path: "attachments/new-image.png".into(),
+                    ref_text: "@image:attachments/new-image.png".into(),
+                }),
+            })
+            .expect("deliver upload receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        let edit = app.message_edit.take().expect("edit remains staged");
+        let outgoing = compose_edit_prompt_with_attachments(&edit).expect("ready edit prompt");
+        assert_eq!(
+            outgoing,
+            "@image:attachments/new-image.png\n\ndescribe this replacement image"
+        );
+        app.submit_message_edit(edit);
+        let TestGatewayCommand::EditPrompt {
+            text,
+            truncate_before_row_id,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("truncating edit")
+        else {
+            panic!("expected edited prompt after image staging");
+        };
+        assert_eq!(text, outgoing);
+        assert_eq!(truncate_before_row_id, 101);
+        assert_eq!(app.draft, "keep current composer draft");
+        assert_eq!(app.composer_attachments.len(), 1);
+        assert_eq!(app.composer_attachments[0].name, "current.pdf");
+        assert_eq!(app.transcript[0]["content"], "old picture prompt");
+        drop(app);
+        std::fs::remove_file(attachment_path).expect("remove image fixture");
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn message_edit_waits_for_new_file_upload_before_sending_truncation() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript =
+            vec![serde_json::json!({"row_id":111,"role":"user","content":"old prompt"})];
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 111,
+            original_text: "old prompt".into(),
+            text: "new prompt".into(),
+            attachments: vec![ComposerAttachment {
+                path: "C:/draft/new.pdf".into(),
+                source_path: "C:/draft/new.pdf".into(),
+                name: "new.pdf".into(),
+                is_image: false,
+                mime: "application/pdf".into(),
+                attached_session_id: None,
+                ref_text: None,
+                request_id: Some("upload-pending".into()),
+                error: None,
+            }],
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+            busy_retry_attempted: false,
+        });
+        assert!(
+            commands.try_recv().is_err(),
+            "truncation waits for every edit attachment receipt"
+        );
+        assert!(app.pending_submissions.is_empty());
+        assert_eq!(app.transcript[0]["content"], "old prompt");
+        assert!(
+            app.message_edit.is_some(),
+            "the typed edit remains available after upload gating"
+        );
+        assert!(app.status.contains("Wait for edit attachments"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
@@ -34897,6 +35312,7 @@ mod tests {
             row_id: 81,
             original_text: "question".into(),
             text: "edited question".into(),
+            attachments: Vec::new(),
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
@@ -34966,6 +35382,7 @@ mod tests {
             row_id: 91,
             original_text: "original".into(),
             text: "revised".into(),
+            attachments: Vec::new(),
             later_user_turns: 0,
             confirm_deep_cut: false,
             busy_retry_attempted: false,
@@ -44461,10 +44878,11 @@ mod tests {
             vec![std::path::PathBuf::from(r"C:\projects\second.pdf")],
         );
         assert!(app.composer_attachments[1].request_id.is_some());
-        assert_eq!(
+        assert!(matches!(
             commands.recv_timeout(std::time::Duration::from_secs(1)),
-            Ok(TestGatewayCommand::Other)
-        );
+            Ok(TestGatewayCommand::AttachComposerFile { session_id, profile, name, is_image: false, .. })
+                if session_id == "runtime-session" && profile.as_deref() == Some("work") && name == "second.pdf"
+        ));
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
