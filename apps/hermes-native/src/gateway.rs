@@ -1973,6 +1973,7 @@ pub enum GatewayEvent {
         prompt_id: String,
         choice: String,
         result: Result<(), String>,
+        outcome_unknown: bool,
     },
     ClarifyResponded {
         request_id: String,
@@ -1980,12 +1981,14 @@ pub enum GatewayEvent {
         prompt_id: String,
         answer: String,
         result: Result<(), String>,
+        outcome_unknown: bool,
     },
     ClarifyLocked {
         request_id: String,
         clarify_request_id: String,
         question_id: String,
         result: Result<ClarifyLockReceipt, String>,
+        outcome_unknown: bool,
     },
     ServerRequestReceived {
         id: String,
@@ -7952,28 +7955,35 @@ fn gateway_actor(
                     }),
                     profile.as_deref(),
                 );
-                let result = params
-                    .and_then(|params| {
-                        rpc_with_events(
-                            socket,
-                            next_request_id,
-                            "approval.respond",
-                            params,
-                            Some(&events),
-                        )
-                    })
-                    .and_then(|result| {
-                        let status = result.get("status").and_then(serde_json::Value::as_str);
-                        let returned_prompt =
-                            result.get("prompt_id").and_then(serde_json::Value::as_str);
-                        if matches!(status, Some("resolved" | "already_resolved"))
-                            && returned_prompt == Some(&prompt_id)
-                        {
-                            Ok(())
-                        } else {
-                            Err("Hermes returned an invalid approval response receipt".into())
+                let mut outcome_unknown = false;
+                let result = params.and_then(|params| {
+                    let result = rpc_with_events_timeout_outcome(
+                        socket,
+                        next_request_id,
+                        "approval.respond",
+                        params,
+                        Duration::from_secs(60),
+                        Some(&events),
+                    );
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(error) => {
+                            outcome_unknown = error.is_unknown();
+                            return Err(error.message());
                         }
-                    });
+                    };
+                    let status = result.get("status").and_then(serde_json::Value::as_str);
+                    let returned_prompt =
+                        result.get("prompt_id").and_then(serde_json::Value::as_str);
+                    if matches!(status, Some("resolved" | "already_resolved"))
+                        && returned_prompt == Some(&prompt_id)
+                    {
+                        Ok(())
+                    } else {
+                        outcome_unknown = true;
+                        Err("Hermes returned an invalid approval response receipt".into())
+                    }
+                });
                 next_request_id = next_request_id.saturating_add(1);
                 if events
                     .send(GatewayEvent::ApprovalResponded {
@@ -7982,6 +7992,7 @@ fn gateway_actor(
                         prompt_id,
                         choice,
                         result,
+                        outcome_unknown,
                     })
                     .is_err()
                 {
@@ -8005,28 +8016,35 @@ fn gateway_actor(
                     }),
                     profile.as_deref(),
                 );
-                let result = params
-                    .and_then(|params| {
-                        rpc_with_events(
-                            socket,
-                            next_request_id,
-                            "clarify.respond",
-                            params,
-                            Some(&events),
-                        )
-                    })
-                    .and_then(|result| {
-                        let status = result.get("status").and_then(serde_json::Value::as_str);
-                        let returned_prompt =
-                            result.get("prompt_id").and_then(serde_json::Value::as_str);
-                        if matches!(status, Some("resolved" | "already_resolved"))
-                            && returned_prompt == Some(prompt_id.as_str())
-                        {
-                            Ok(())
-                        } else {
-                            Err("Hermes returned an invalid clarify response receipt".into())
+                let mut outcome_unknown = false;
+                let result = params.and_then(|params| {
+                    let result = rpc_with_events_timeout_outcome(
+                        socket,
+                        next_request_id,
+                        "clarify.respond",
+                        params,
+                        Duration::from_secs(60),
+                        Some(&events),
+                    );
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(error) => {
+                            outcome_unknown = error.is_unknown();
+                            return Err(error.message());
                         }
-                    });
+                    };
+                    let status = result.get("status").and_then(serde_json::Value::as_str);
+                    let returned_prompt =
+                        result.get("prompt_id").and_then(serde_json::Value::as_str);
+                    if matches!(status, Some("resolved" | "already_resolved"))
+                        && returned_prompt == Some(prompt_id.as_str())
+                    {
+                        Ok(())
+                    } else {
+                        outcome_unknown = true;
+                        Err("Hermes returned an invalid clarify response receipt".into())
+                    }
+                });
                 next_request_id = next_request_id.saturating_add(1);
                 if events
                     .send(GatewayEvent::ClarifyResponded {
@@ -8035,6 +8053,7 @@ fn gateway_actor(
                         prompt_id,
                         answer,
                         result,
+                        outcome_unknown,
                     })
                     .is_err()
                 {
@@ -8056,23 +8075,32 @@ fn gateway_actor(
                     }),
                     profile.as_deref(),
                 );
-                let result = params
-                    .and_then(|params| {
-                        rpc_with_events(
-                            socket,
-                            next_request_id,
-                            "clarify.lock",
-                            params,
-                            Some(&events),
-                        )
-                    })
-                    .and_then(|result| {
-                        match result.get("status").and_then(serde_json::Value::as_str) {
-                            Some("ok") => Ok(ClarifyLockReceipt { expired: false }),
-                            Some("expired") => Ok(ClarifyLockReceipt { expired: true }),
-                            _ => Err("Hermes returned an invalid clarify.lock receipt".into()),
+                let mut outcome_unknown = false;
+                let result = params.and_then(|params| {
+                    let result = rpc_with_events_timeout_outcome(
+                        socket,
+                        next_request_id,
+                        "clarify.lock",
+                        params,
+                        Duration::from_secs(60),
+                        Some(&events),
+                    );
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(error) => {
+                            outcome_unknown = error.is_unknown();
+                            return Err(error.message());
                         }
-                    });
+                    };
+                    match result.get("status").and_then(serde_json::Value::as_str) {
+                        Some("ok") => Ok(ClarifyLockReceipt { expired: false }),
+                        Some("expired") => Ok(ClarifyLockReceipt { expired: true }),
+                        _ => {
+                            outcome_unknown = true;
+                            Err("Hermes returned an invalid clarify.lock receipt".into())
+                        }
+                    }
+                });
                 next_request_id = next_request_id.saturating_add(1);
                 if events
                     .send(GatewayEvent::ClarifyLocked {
@@ -8080,6 +8108,7 @@ fn gateway_actor(
                         clarify_request_id,
                         question_id,
                         result,
+                        outcome_unknown,
                     })
                     .is_err()
                 {
@@ -16195,6 +16224,24 @@ fn rpc(
     rpc_with_events(socket, id, method, params, None)
 }
 
+#[derive(Debug)]
+enum RpcOutcomeError {
+    Rejected(String),
+    Unknown(String),
+}
+
+impl RpcOutcomeError {
+    fn message(self) -> String {
+        match self {
+            Self::Rejected(message) | Self::Unknown(message) => message,
+        }
+    }
+
+    fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown(_))
+    }
+}
+
 fn rpc_with_events(
     socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
     id: u64,
@@ -16213,12 +16260,24 @@ fn rpc_with_events_timeout(
     timeout: Duration,
     events: Option<&mpsc::Sender<GatewayEvent>>,
 ) -> Result<serde_json::Value, String> {
+    rpc_with_events_timeout_outcome(socket, id, method, params, timeout, events)
+        .map_err(RpcOutcomeError::message)
+}
+
+fn rpc_with_events_timeout_outcome(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+    id: u64,
+    method: &str,
+    params: serde_json::Value,
+    timeout: Duration,
+    events: Option<&mpsc::Sender<GatewayEvent>>,
+) -> Result<serde_json::Value, RpcOutcomeError> {
     let deadline = Instant::now() + timeout;
     let request =
         serde_json::json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
     socket
         .send(Message::Text(request.to_string().into()))
-        .map_err(|_| format!("Could not send Hermes {method} request"))?;
+        .map_err(|_| RpcOutcomeError::Unknown(format!("Could not send Hermes {method} request")))?;
     loop {
         let message = match socket.read() {
             Ok(message) => message,
@@ -16236,22 +16295,36 @@ fn rpc_with_events_timeout(
                     io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
                 ) =>
             {
-                return Err(format!("Hermes {method} request timed out"));
+                return Err(RpcOutcomeError::Unknown(format!(
+                    "Hermes {method} request timed out"
+                )));
             }
-            Err(_) => return Err(format!("Hermes gateway disconnected during {method}")),
+            Err(_) => {
+                return Err(RpcOutcomeError::Unknown(format!(
+                    "Hermes gateway disconnected during {method}"
+                )));
+            }
         };
         let Message::Text(text) = message else {
             if matches!(message, Message::Close(_)) {
-                return Err(format!("Hermes gateway closed during {method}"));
+                return Err(RpcOutcomeError::Unknown(format!(
+                    "Hermes gateway closed during {method}"
+                )));
             }
             continue;
         };
-        let frame: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|_| "Hermes gateway sent invalid JSON-RPC data".to_owned())?;
+        let frame: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
+            RpcOutcomeError::Unknown("Hermes gateway sent invalid JSON-RPC data".to_owned())
+        })?;
         if let Some(response) = unhandled_server_request_response(&frame) {
             socket
                 .send(Message::Text(response.to_string().into()))
-                .map_err(|_| "Could not decline an unsupported Hermes server request".to_owned())?;
+                .map_err(|_| {
+                    RpcOutcomeError::Unknown(
+                        "Could not confirm declining an unsupported Hermes server request"
+                            .to_owned(),
+                    )
+                })?;
             continue;
         }
         if frame.get("id").and_then(|value| value.as_u64()) != Some(id) {
@@ -16272,14 +16345,17 @@ fn rpc_with_events_timeout(
                 .and_then(|reason| reason.as_str())
                 .unwrap_or("request_failed");
             if error.get("code").and_then(serde_json::Value::as_i64) == Some(4009) {
-                return Err(format!("Hermes {method} refused: {reason} (code 4009)"));
+                return Err(RpcOutcomeError::Rejected(format!(
+                    "Hermes {method} refused: {reason} (code 4009)"
+                )));
             }
-            return Err(format!("Hermes {method} refused: {reason}"));
+            return Err(RpcOutcomeError::Rejected(format!(
+                "Hermes {method} refused: {reason}"
+            )));
         }
-        return frame
-            .get("result")
-            .cloned()
-            .ok_or_else(|| format!("Hermes {method} response omitted its result"));
+        return frame.get("result").cloned().ok_or_else(|| {
+            RpcOutcomeError::Unknown(format!("Hermes {method} response omitted its result"))
+        });
     }
 }
 
@@ -19949,7 +20025,8 @@ mod tests {
                 request_id,
                 clarify_request_id,
                 question_id,
-                result: Ok(ClarifyLockReceipt { expired: false })
+                result: Ok(ClarifyLockReceipt { expired: false }),
+                ..
             } if request_id == "lock-1"
                 && clarify_request_id == "clarify-wire-1"
                 && question_id == "q2"
@@ -24575,8 +24652,11 @@ mod tests {
         let server = thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept fixture client");
             let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
-            for (prompt_id, response_prompt_id) in [("prompt-1", "prompt-1"), ("prompt-2", "stale")]
-            {
+            for (prompt_id, response_prompt_id, refused) in [
+                ("prompt-1", "prompt-1", false),
+                ("prompt-2", "stale", false),
+                ("prompt-3", "prompt-3", true),
+            ] {
                 let request: serde_json::Value =
                     match socket.read().expect("read approval response") {
                         Message::Text(text) => serde_json::from_str(&text).expect("parse response"),
@@ -24593,15 +24673,19 @@ mod tests {
                     })
                 );
                 let id = request["id"].as_u64().expect("JSON-RPC request id");
+                let response = if refused {
+                    json!({
+                        "jsonrpc":"2.0","id":id,
+                        "error":{"code":-32000,"message":"approval refused","data":{"reason":"stale_generation"}}
+                    })
+                } else {
+                    json!({
+                        "jsonrpc":"2.0","id":id,
+                        "result":{"status":"resolved","prompt_id":response_prompt_id}
+                    })
+                };
                 socket
-                    .send(Message::Text(
-                        json!({
-                            "jsonrpc":"2.0","id":id,
-                            "result":{"status":"resolved","prompt_id":response_prompt_id}
-                        })
-                        .to_string()
-                        .into(),
-                    ))
+                    .send(Message::Text(response.to_string().into()))
                     .expect("answer approval response");
             }
             socket.close(None).expect("close fixture socket");
@@ -24616,7 +24700,11 @@ mod tests {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
         let actor = thread::spawn(move || gateway_actor(&mut socket, command_rx, event_tx));
-        for (request_id, prompt_id) in [("approval-1", "prompt-1"), ("approval-2", "prompt-2")] {
+        for (request_id, prompt_id) in [
+            ("approval-1", "prompt-1"),
+            ("approval-2", "prompt-2"),
+            ("approval-3", "prompt-3"),
+        ] {
             command_tx
                 .send(GatewayCommand::RespondApproval {
                     request_id: request_id.into(),
@@ -24632,14 +24720,20 @@ mod tests {
             .recv_timeout(Duration::from_secs(3))
             .expect("first approval result");
         assert!(matches!(first, GatewayEvent::ApprovalResponded {
-            request_id, prompt_id, choice, result: Ok(()), ..
+            request_id, prompt_id, choice, result: Ok(()), outcome_unknown: false, ..
         } if request_id == "approval-1" && prompt_id == "prompt-1" && choice == "once"));
         let second = event_rx
             .recv_timeout(Duration::from_secs(3))
             .expect("second approval result");
         assert!(matches!(second, GatewayEvent::ApprovalResponded {
-            request_id, prompt_id, result: Err(_), ..
+            request_id, prompt_id, result: Err(_), outcome_unknown: true, ..
         } if request_id == "approval-2" && prompt_id == "prompt-2"));
+        let third = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("definitive refusal result");
+        assert!(matches!(third, GatewayEvent::ApprovalResponded {
+            request_id, prompt_id, result: Err(_), outcome_unknown: false, ..
+        } if request_id == "approval-3" && prompt_id == "prompt-3"));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");
@@ -24714,13 +24808,13 @@ mod tests {
             .recv_timeout(Duration::from_secs(3))
             .expect("first clarify result");
         assert!(matches!(first, GatewayEvent::ClarifyResponded {
-            request_id, prompt_id, answer, result: Ok(()), ..
+            request_id, prompt_id, answer, result: Ok(()), outcome_unknown: false, ..
         } if request_id == "clarify-1" && prompt_id == "question-1" && answer == "[\"red\",\"blue\"]"));
         let second = event_rx
             .recv_timeout(Duration::from_secs(3))
             .expect("second clarify result");
         assert!(matches!(second, GatewayEvent::ClarifyResponded {
-            request_id, prompt_id, result: Err(_), ..
+            request_id, prompt_id, result: Err(_), outcome_unknown: true, ..
         } if request_id == "clarify-2" && prompt_id == "question-2"));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");

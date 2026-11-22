@@ -243,6 +243,10 @@ PAR-0061 now records partial evidence for model-change draft preservation. The r
 
 ### Progress update — 2026-11-22
 
+PAR-0522 now keeps ambiguous approval, clarification, and clarification-lock response outcomes in an explicit unknown state, preserves that state across Gateway disconnect, shows an accessible warning, and blocks repeat responses. Explicit Gateway refusals remain a distinct, retryable failure. The current chat/tool overlay reports **1 implemented, 71 partial, 1 not implemented, 103 unknown**; **73/176** requirements have mapped evidence. Live-runtime and source-paired acceptance remain **0/176**. This is evidence coverage, not a feature-completion percentage. Uncertainty handling for other mutating Gateway commands remains incomplete.
+
+### Progress update — 2026-11-22
+
 PAR-0521 adds headless coverage for exact-ID `request.cancel` handling on approval and batch-clarification prompts, with optional profile-owner matching. Current chat/tool evidence overlay: **1 implemented, 70 partial, 1 not implemented, 104 unknown**; **72/176** have mapped evidence. Live-runtime verification and source-paired acceptance remain **0/176**. These are evidence-coverage counts, not a feature-completion percentage.
 
 PAR-0056 update (2026-11-22): The profile/connection-scoped metadata prompt index now has explicit refresh and selects unloaded prompts through the pinned bounded around-row API. App tests prove the active owner window is displayed and a stale connection response cannot replace the active chat. Automatic cache invalidation, active-marker tracking, live Gateway and packaged/source-paired acceptance remain open.

@@ -1,5 +1,5 @@
 {
-  "revision": 128,
+  "revision": 130,
   "schema_version": 1,
   "tasks": [
     {
@@ -14921,7 +14921,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -14930,12 +14930,13 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T09:35:23Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-treat-unknown-request-results-as-unknown-not-failed-or-succeeded",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "validation",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -14943,12 +14944,14 @@
                 "source_pair_state": "pending",
                 "visual_pair_state": "not_paired"
               },
-              "size_units": null,
+              "size_units": 1.0,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0522",
               "title": "PAR-0522 Treat unknown request results as unknown not failed or succeeded",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#uncertain_prompt_responses_stay_visible_and_cannot_be_retried"
+              ]
             },
             {
               "agent_identity": {
@@ -16407,5 +16410,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-22T09:12:38Z"
+  "updated_at": "2026-11-22T09:35:23Z"
 }

@@ -344,3 +344,7 @@ The active session model is changed through an owner-scoped `ChatPolicyMutated` 
 ## Gateway request cancellation
 
 The normal Gateway event channel handles `request.cancel` by exact server request ID. It removes a matching approval or batch-clarification prompt and, when present, requires the event profile to match the prompt profile. Missing IDs, unknown IDs, and owner mismatches are no-ops. Later response acknowledgements for a canceled card do not recreate it. The native client currently does not render the sensitive request methods that the pinned Desktop handler can also cancel.
+
+## Unknown Gateway response outcomes
+
+Approval, clarification, and clarification-lock RPCs distinguish a definite remote JSON-RPC refusal from an ambiguous transport result. A timeout, disconnect, malformed/missing receipt, or response payload that cannot be validated is not treated as rejection or success. Native keeps the prompt and in-flight response tuple, marks it unknown, disables repeat actions, and exposes an accessible warning. On disconnect, in-flight prompt responses remain unknown instead of returning to an idle/retryable state. A later `request.cancel` clears the exact server-request card. Other mutating Gateway commands still need the same typed outcome policy.

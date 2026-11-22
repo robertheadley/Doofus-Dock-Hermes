@@ -217,3 +217,5 @@ PAR-0060 adds restart-safe, profile-scoped plain-text composer drafts. Drafts ar
 PAR-0061 verifies model switching through the rendered chat control without losing unsent text or attachments. Matching success, refusal, confirmation-required and stale-profile receipt cases have headless regression coverage; live Gateway and packaged Windows acceptance remain open.
 
 Gateway withdrawal events now close only the approval or batch-clarification request identified by the exact server request ID, with a profile check when the event includes an owner. Sensitive request cards and live Gateway verification remain open.
+
+Ambiguous approval and clarification response transport outcomes remain visible as unknown and disable resending; explicit Gateway refusals remain distinguishable. This policy is not yet applied to every mutating Gateway action.

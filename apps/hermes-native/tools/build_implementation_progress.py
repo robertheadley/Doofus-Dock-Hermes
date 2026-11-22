@@ -1281,6 +1281,24 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "authenticated live Gateway delivery, packaged Windows behavior, and formal source-paired acceptance remain unverified",
         ],
     },
+    "PAR-0522": {
+        "state": "partial",
+        "level": "headless_unknown_gateway_outcome_and_no_replay_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/ui-tui/src/hooks/useQueue.ts#server.status === 'unknown'",
+            ".staging/hermes-pinned-878305/ui-tui/src/hooks/useQueue.ts#cancelServerRow",
+            "apps/hermes-native/src/gateway.rs#rpc_with_events_timeout_outcome",
+            "apps/hermes-native/src/gateway.rs#approval_response_is_generation_scoped_and_rejects_mismatched_receipt",
+            "apps/hermes-native/src/gateway.rs#clarify_response_is_generation_scoped_and_validates_prompt_receipt",
+            "apps/hermes-native/src/app.rs#uncertain_prompt_responses_stay_visible_and_cannot_be_retried",
+            "apps/hermes-native/src/app.rs#gateway_disconnect_marks_pending_prompt_responses_unknown_without_clearing_them",
+            "apps/hermes-native/docs/PLAN.md#Revision 327",
+        ],
+        "gaps": [
+            "uncertainty handling remains incomplete for other mutating Gateway operations that still expose only string errors",
+            "authenticated live Gateway, packaged Windows behavior, and formal source-paired acceptance remain unverified",
+        ],
+    },
     "PAR-0058": {
         "state": "partial",
         "level": "headless_loaded_transcript_search_keyboard_and_match_highlight",

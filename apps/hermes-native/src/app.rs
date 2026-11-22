@@ -1662,6 +1662,7 @@ struct ApprovalPrompt {
     description: String,
     choices: Vec<String>,
     response_pending: Option<(String, String)>,
+    response_unknown: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1676,6 +1677,7 @@ struct ClarifyPrompt {
     selected: Vec<String>,
     draft: String,
     response_pending: Option<(String, String)>,
+    response_unknown: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1701,6 +1703,7 @@ struct BatchClarifyPrompt {
     server_request_id: String,
     questions: Vec<BatchClarifyQuestion>,
     response_pending: bool,
+    response_unknown: bool,
     pending_locks: VecDeque<PendingClarifyLock>,
     lock_in_flight: Option<(String, String)>,
 }
@@ -7841,7 +7844,7 @@ fn render_message() -> &'static str {
                 }
                 ui.horizontal_wrapped(|ui| {
                     for choice in &prompt.choices {
-                        let pending = prompt.response_pending.is_some();
+                        let pending = prompt.response_pending.is_some() || prompt.response_unknown;
                         let label = match choice.as_str() {
                             "once" => "Allow once",
                             "session" => "Allow this session",
@@ -7863,7 +7866,10 @@ fn render_message() -> &'static str {
                             .unwrap_or_else(|error| self.status = error);
                         }
                     }
-                    if prompt.response_pending.is_some() {
+                    if prompt.response_unknown {
+                        ui.label(RichText::new("Outcome unknown — do not resend; wait for Hermes to reconcile this request.").color(Color32::YELLOW))
+                            .accessible_name(format!("Approval outcome unknown for request {}", prompt.prompt_id));
+                    } else if prompt.response_pending.is_some() {
                         ui.label(RichText::new("Sending decision…").color(MUTED));
                     }
                 });
@@ -7890,7 +7896,9 @@ fn render_message() -> &'static str {
                         for choice in &prompt.choices {
                             let selected = prompt.selected.contains(choice);
                             let response = ui.add_enabled_ui(
-                                self.gateway_connected && prompt.response_pending.is_none(),
+                                self.gateway_connected
+                                    && prompt.response_pending.is_none()
+                                    && !prompt.response_unknown,
                                 |ui| {
                                     ui.selectable_label(selected, choice)
                                         .accessible_name(format!(
@@ -7935,7 +7943,7 @@ fn render_message() -> &'static str {
                 }
                 ui.horizontal(|ui| {
                     let answer = clarify_answer(&prompt);
-                    let pending = prompt.response_pending.is_some();
+                    let pending = prompt.response_pending.is_some() || prompt.response_unknown;
                     let submit = ui
                         .add_enabled(
                             self.gateway_connected && !pending && !answer.is_empty(),
@@ -7962,7 +7970,10 @@ fn render_message() -> &'static str {
                         })
                         .unwrap_or_else(|error| self.status = error);
                     }
-                    if pending {
+                    if prompt.response_unknown {
+                        ui.label(RichText::new("Outcome unknown — do not resend; wait for Hermes to reconcile this request.").color(Color32::YELLOW))
+                            .accessible_name(format!("Clarification outcome unknown for request {}", prompt.prompt_id));
+                    } else if pending {
                         ui.label(RichText::new("Sending answer…").color(MUTED));
                     }
                 });
@@ -8022,7 +8033,9 @@ fn render_message() -> &'static str {
                             for choice in &question.choices {
                                 let selected = question.selected.contains(choice);
                                 let response = ui.add_enabled_ui(
-                                    self.gateway_connected && !prompt.response_pending,
+                                    self.gateway_connected
+                                        && !prompt.response_pending
+                                        && !prompt.response_unknown,
                                     |ui| {
                                         ui.selectable_label(selected, choice).accessible_name(
                                             format!("Clarify choice {choice} for {}", question.qid),
@@ -8097,7 +8110,10 @@ fn render_message() -> &'static str {
                     let answer = batch_clarify_answer(&prompt);
                     let submit = ui
                         .add_enabled(
-                            self.gateway_connected && !prompt.response_pending && answer.is_some(),
+                            self.gateway_connected
+                                && !prompt.response_pending
+                                && !prompt.response_unknown
+                                && answer.is_some(),
                             egui::Button::new("Confirm and continue"),
                         )
                         .accessible_name(format!(
@@ -8115,7 +8131,9 @@ fn render_message() -> &'static str {
                     }
                     let skip = ui
                         .add_enabled(
-                            self.gateway_connected && !prompt.response_pending,
+                            self.gateway_connected
+                                && !prompt.response_pending
+                                && !prompt.response_unknown,
                             egui::Button::new("Skip"),
                         )
                         .accessible_name(format!(
@@ -8129,7 +8147,10 @@ fn render_message() -> &'static str {
                         })
                         .unwrap_or_else(|error| self.status = error);
                     }
-                    if prompt.response_pending {
+                    if prompt.response_unknown {
+                        ui.label(RichText::new("Outcome unknown — do not resend; wait for Hermes to reconcile this request.").color(Color32::YELLOW))
+                            .accessible_name(format!("Clarification outcome unknown for request {}", prompt.server_request_id));
+                    } else if prompt.response_pending {
                         ui.label(RichText::new("Sending answers…").color(MUTED));
                     }
                 });
@@ -19730,6 +19751,7 @@ fn render_message() -> &'static str {
                     .to_owned(),
                 choices,
                 response_pending: None,
+                response_unknown: false,
             },
         );
         self.status = "A tool approval is waiting for your decision".into();
@@ -19957,6 +19979,7 @@ fn render_message() -> &'static str {
                 server_request_id,
                 questions,
                 response_pending: false,
+                response_unknown: false,
                 pending_locks: VecDeque::new(),
                 lock_in_flight: None,
             },
@@ -19984,9 +20007,11 @@ fn render_message() -> &'static str {
                 }
                 Err(error) => {
                     if let Some(prompt) = self.batch_clarify_prompts.get_mut(&prompt_id) {
-                        prompt.response_pending = false;
+                        prompt.response_unknown = true;
                     }
-                    self.status = error;
+                    self.status = format!(
+                        "Clarification response outcome is unknown; do not send it again. {error}"
+                    );
                 }
             }
             return;
@@ -20007,9 +20032,28 @@ fn render_message() -> &'static str {
             }
             Err(error) => {
                 if let Some(prompt) = self.approval_prompts.get_mut(&prompt_id) {
-                    prompt.response_pending = None;
+                    prompt.response_unknown = true;
                 }
-                self.status = error;
+                self.status =
+                    format!("Approval response outcome is unknown; do not send it again. {error}");
+            }
+        }
+    }
+
+    fn mark_pending_prompt_responses_unknown(&mut self) {
+        for prompt in self.approval_prompts.values_mut() {
+            if prompt.response_pending.is_some() {
+                prompt.response_unknown = true;
+            }
+        }
+        for prompt in self.clarify_prompts.values_mut() {
+            if prompt.response_pending.is_some() {
+                prompt.response_unknown = true;
+            }
+        }
+        for prompt in self.batch_clarify_prompts.values_mut() {
+            if prompt.response_pending {
+                prompt.response_unknown = true;
             }
         }
     }
@@ -20047,6 +20091,7 @@ fn render_message() -> &'static str {
         clarify_request_id: String,
         question_id: String,
         result: Result<crate::gateway::ClarifyLockReceipt, String>,
+        outcome_unknown: bool,
     ) {
         let Some(prompt) = self.batch_clarify_prompts.get(&clarify_request_id) else {
             return;
@@ -20086,11 +20131,21 @@ fn render_message() -> &'static str {
             }
             Err(error) => {
                 if let Some(prompt) = self.batch_clarify_prompts.get_mut(&clarify_request_id) {
-                    prompt.pending_locks.clear();
-                    prompt.lock_in_flight = None;
-                    prompt.response_pending = false;
+                    if outcome_unknown {
+                        prompt.response_unknown = true;
+                    } else {
+                        prompt.pending_locks.clear();
+                        prompt.lock_in_flight = None;
+                        prompt.response_pending = false;
+                    }
                 }
-                self.status = error;
+                self.status = if outcome_unknown {
+                    format!(
+                        "Clarification answer outcome is unknown; do not send it again. {error}"
+                    )
+                } else {
+                    error
+                };
             }
         }
     }
@@ -20496,6 +20551,7 @@ fn render_message() -> &'static str {
                                 .to_owned(),
                             choices,
                             response_pending: None,
+                            response_unknown: false,
                         },
                     );
                     self.status = "A tool approval is waiting for your decision".into();
@@ -20557,6 +20613,7 @@ fn render_message() -> &'static str {
                         selected: Vec::new(),
                         draft: String::new(),
                         response_pending: None,
+                        response_unknown: false,
                     };
                     if let Some(answer) = payload
                         .get("answers")
@@ -24772,6 +24829,7 @@ fn render_message() -> &'static str {
         prompt_id: String,
         answer: String,
         result: Result<(), String>,
+        outcome_unknown: bool,
     ) {
         let Some(prompt) = self.clarify_prompts.get(&prompt_id) else {
             return;
@@ -24792,9 +24850,19 @@ fn render_message() -> &'static str {
             }
             Err(error) => {
                 if let Some(prompt) = self.clarify_prompts.get_mut(&prompt_id) {
-                    prompt.response_pending = None;
+                    if outcome_unknown {
+                        prompt.response_unknown = true;
+                    } else {
+                        prompt.response_pending = None;
+                    }
                 }
-                self.status = error;
+                self.status = if outcome_unknown {
+                    format!(
+                        "Clarification response outcome is unknown; do not send it again. {error}"
+                    )
+                } else {
+                    error
+                };
             }
         }
     }
@@ -24806,6 +24874,7 @@ fn render_message() -> &'static str {
         prompt_id: String,
         choice: String,
         result: Result<(), String>,
+        outcome_unknown: bool,
     ) {
         let Some(prompt) = self.approval_prompts.get(&prompt_id) else {
             return;
@@ -24822,9 +24891,17 @@ fn render_message() -> &'static str {
             }
             Err(error) => {
                 if let Some(prompt) = self.approval_prompts.get_mut(&prompt_id) {
-                    prompt.response_pending = None;
+                    if outcome_unknown {
+                        prompt.response_unknown = true;
+                    } else {
+                        prompt.response_pending = None;
+                    }
                 }
-                self.status = error;
+                self.status = if outcome_unknown {
+                    format!("Approval response outcome is unknown; do not send it again. {error}")
+                } else {
+                    error
+                };
             }
         }
     }
@@ -29208,27 +29285,42 @@ fn render_message() -> &'static str {
                     prompt_id,
                     choice,
                     result,
-                } => self
-                    .handle_approval_responded(request_id, session_id, prompt_id, choice, result),
+                    outcome_unknown,
+                } => self.handle_approval_responded(
+                    request_id,
+                    session_id,
+                    prompt_id,
+                    choice,
+                    result,
+                    outcome_unknown,
+                ),
                 GatewayEvent::ClarifyResponded {
                     request_id,
                     session_id,
                     prompt_id,
                     answer,
                     result,
-                } => {
-                    self.handle_clarify_responded(request_id, session_id, prompt_id, answer, result)
-                }
+                    outcome_unknown,
+                } => self.handle_clarify_responded(
+                    request_id,
+                    session_id,
+                    prompt_id,
+                    answer,
+                    result,
+                    outcome_unknown,
+                ),
                 GatewayEvent::ClarifyLocked {
                     request_id,
                     clarify_request_id,
                     question_id,
                     result,
+                    outcome_unknown,
                 } => self.handle_batch_clarify_locked(
                     request_id,
                     clarify_request_id,
                     question_id,
                     result,
+                    outcome_unknown,
                 ),
                 GatewayEvent::ServerRequestReceived { id, method, params } => {
                     self.handle_server_request(id, method, params)
@@ -33095,17 +33187,7 @@ fn render_message() -> &'static str {
                     if let Some(pending_edit) = self.pending_message_edit_interrupt.take() {
                         self.message_edit = Some(pending_edit.edit);
                     }
-                    for prompt in self.approval_prompts.values_mut() {
-                        prompt.response_pending = None;
-                    }
-                    for prompt in self.clarify_prompts.values_mut() {
-                        prompt.response_pending = None;
-                    }
-                    for prompt in self.batch_clarify_prompts.values_mut() {
-                        prompt.response_pending = false;
-                        prompt.pending_locks.clear();
-                        prompt.lock_in_flight = None;
-                    }
+                    self.mark_pending_prompt_responses_unknown();
                     self.session_search_pending = false;
                     self.session_search_request_id = None;
                     self.command_palette_sessions_request_id = None;
@@ -51575,6 +51657,177 @@ mod tests {
     }
 
     #[test]
+    fn uncertain_prompt_responses_stay_visible_and_cannot_be_retried() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.gateway_connected = true;
+        app.handle_server_request(
+            "approval-wire-unknown".into(),
+            "approval".into(),
+            json!({
+                "session_id":"runtime-session",
+                "request_id":"approval-unknown",
+                "command":"run migration",
+                "choices":["once","deny"]
+            }),
+        );
+        let approval = app
+            .approval_prompts
+            .get_mut("approval-unknown")
+            .expect("approval prompt");
+        approval.response_pending = Some(("approval-wire-unknown".into(), "once".into()));
+        app.handle_server_request_answered(
+            "approval-wire-unknown".into(),
+            Err("Could not confirm sending response".into()),
+        );
+        let approval = app
+            .approval_prompts
+            .get("approval-unknown")
+            .expect("unknown approval remains visible");
+        assert!(approval.response_unknown);
+        assert!(approval.response_pending.is_some());
+        app.handle_approval_responded(
+            "approval-wire-unknown".into(),
+            "runtime-session".into(),
+            "approval-unknown".into(),
+            "once".into(),
+            Err("Hermes gateway disconnected during approval.respond".into()),
+            true,
+        );
+        assert!(app.approval_prompts["approval-unknown"].response_unknown);
+
+        app.handle_server_request(
+            "approval-wire-refused".into(),
+            "approval".into(),
+            json!({
+                "session_id":"runtime-session",
+                "request_id":"approval-refused",
+                "command":"run formatter",
+                "choices":["once","deny"]
+            }),
+        );
+        app.approval_prompts
+            .get_mut("approval-refused")
+            .expect("refused approval prompt")
+            .response_pending = Some(("approval-rpc-refused".into(), "once".into()));
+        app.handle_approval_responded(
+            "approval-rpc-refused".into(),
+            "runtime-session".into(),
+            "approval-refused".into(),
+            "once".into(),
+            Err("Hermes approval.respond refused: stale_generation".into()),
+            false,
+        );
+        let refused = &app.approval_prompts["approval-refused"];
+        assert!(!refused.response_unknown);
+        assert!(refused.response_pending.is_none());
+
+        app.handle_server_request(
+            "clarify-wire-unknown".into(),
+            "clarify".into(),
+            json!({
+                "session_id":"runtime-session",
+                "questions":[{"qid":"q1","question":"Choose a mode","choices":["safe","fast"]}]
+            }),
+        );
+        app.batch_clarify_prompts
+            .get_mut("clarify-wire-unknown")
+            .expect("clarification prompt")
+            .response_pending = true;
+        app.handle_server_request_answered(
+            "clarify-wire-unknown".into(),
+            Err("Could not confirm sending response".into()),
+        );
+        let clarify = app
+            .batch_clarify_prompts
+            .get("clarify-wire-unknown")
+            .expect("unknown clarification remains visible");
+        assert!(clarify.response_unknown);
+        assert!(clarify.response_pending);
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        for (label, disabled) in [
+            ("Allow once approval approval-unknown", true),
+            ("Deny approval approval-unknown", true),
+            ("Allow once approval approval-refused", false),
+            ("Deny approval approval-refused", false),
+            ("Clarify choice safe for q1", true),
+            (
+                "Confirm and continue clarify answers clarify-wire-unknown",
+                true,
+            ),
+            ("Skip clarify request clarify-wire-unknown", true),
+        ] {
+            let node = harness
+                .query_all_by(|node| node.label().as_deref() == Some(label))
+                .next()
+                .unwrap_or_else(|| panic!("missing unknown-outcome control: {label}"));
+            assert_eq!(node.accesskit_node().is_disabled(), disabled, "{label}");
+        }
+        for label in [
+            "Approval outcome unknown for request approval-unknown",
+            "Clarification outcome unknown for request clarify-wire-unknown",
+        ] {
+            assert!(
+                harness
+                    .query_all_by(|node| node.label().as_deref() == Some(label))
+                    .next()
+                    .is_some(),
+                "missing accessible outcome-unknown status: {label}"
+            );
+        }
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn gateway_disconnect_marks_pending_prompt_responses_unknown_without_clearing_them() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.handle_server_request(
+            "approval-disconnect".into(),
+            "approval".into(),
+            json!({
+                "session_id":"runtime-session",
+                "request_id":"approval-disconnect",
+                "choices":["once","deny"]
+            }),
+        );
+        app.approval_prompts
+            .get_mut("approval-disconnect")
+            .expect("approval prompt")
+            .response_pending = Some(("approval-disconnect".into(), "once".into()));
+        app.handle_server_request(
+            "clarify-disconnect".into(),
+            "clarify".into(),
+            json!({
+                "session_id":"runtime-session",
+                "questions":[{"qid":"q1","question":"Continue?","choices":["yes","no"]}]
+            }),
+        );
+        app.batch_clarify_prompts
+            .get_mut("clarify-disconnect")
+            .expect("clarification prompt")
+            .response_pending = true;
+
+        app.mark_pending_prompt_responses_unknown();
+
+        let approval = &app.approval_prompts["approval-disconnect"];
+        assert!(approval.response_unknown);
+        assert!(approval.response_pending.is_some());
+        let clarify = &app.batch_clarify_prompts["clarify-disconnect"];
+        assert!(clarify.response_unknown);
+        assert!(clarify.response_pending);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn inbound_approval_request_uses_the_accessible_active_session_card() {
         let (mut app, profile) = isolated_app();
         app.route = AppRoute::Session("stored-session".into());
@@ -51833,6 +52086,7 @@ mod tests {
                 },
             ],
             response_pending: false,
+            response_unknown: false,
             pending_locks: VecDeque::new(),
             lock_in_flight: None,
         };

@@ -2037,3 +2037,10 @@ PAR-0057 remains partial. Backend cancellation is not available through this RES
 The pinned Gateway event handler consumes `request.cancel` by request ID and removes only the matching approval, clarification, or sensitive-prompt card. Native now performs the same ID-correlated removal for the approval and batch-clarification server requests it currently presents. If a cancellation includes a profile, native requires that it match the prompt owner; missing IDs, unknown IDs, and mismatched profiles leave prompts unchanged. The operation is idempotent, including when a response completion arrives after the card has been withdrawn.
 
 One headless regression covers missing and unrelated IDs, removal of only the matching approval, profile mismatch protection, and clarification removal. PAR-0521 remains partial because native sensitive prompt handlers are not implemented, and live Gateway, packaged Windows, and formal source-paired acceptance remain unverified.
+
+
+### Revision 327 — Preserve unknown Gateway response outcomes — 2026-11-22
+
+Gateway approval, clarification, and clarification-lock RPC responses now classify transport loss, timeout, malformed/missing receipts, and invalid response payloads as unknown, while explicit JSON-RPC refusals remain definite failures. Unknown outcomes stay attached to the exact prompt, remain visible with an accessible “do not resend” status, and keep response actions disabled. A Gateway disconnect preserves pending response state as unknown instead of resetting it to an idle/retryable state. JSON-RPC server-response write failures are also retained as unknown until Hermes cancels or otherwise resolves the request. Existing queued prompt admission resolution remains unchanged.
+
+Headless coverage verifies transport-uncertain versus definitive refusal classification, visible disabled controls for approval and batch clarification, and disconnect state preservation. PAR-0522 remains partial because uncertainty tracking is not yet consistent across every mutating Gateway operation; live Gateway, packaged Windows, and formal source-paired acceptance remain open.

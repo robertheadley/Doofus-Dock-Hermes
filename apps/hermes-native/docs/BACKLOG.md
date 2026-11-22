@@ -403,3 +403,8 @@ PAR-0061 update (2026-11-22): rendered model selection now has headless evidence
 ### PAR-0521 — Withdrawn Gateway request handling (2026-11-22)
 
 Native clears only the matching approval or batch-clarification prompt when Hermes emits `request.cancel`; a supplied profile must also match the prompt owner. Missing/unknown IDs are safe no-ops. Remaining: sensitive prompt handlers, authenticated live Gateway, packaged Windows interaction, and pinned-source acceptance.
+
+
+### PAR-0522 — Unknown Gateway response outcomes (2026-11-22)
+
+Native approval, clarification, and clarification-lock responses now preserve ambiguous transport outcomes as unknown, distinguish them from explicit Gateway refusals, keep the affected prompt visible, and block unsafe resubmission. Disconnects preserve the in-flight response state. Remaining: apply a typed uncertainty policy to other mutating Gateway commands, then validate live Gateway, packaged Windows, and pinned-source acceptance.

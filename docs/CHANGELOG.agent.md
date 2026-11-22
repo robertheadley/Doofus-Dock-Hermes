@@ -4481,3 +4481,16 @@ Validation follow-up — 2026-11-22T09:08:54Z: PASS focused request-cancel test;
 Evidence follow-up — 2026-11-22: EV-0107 binds the headless cancellation regression to implementation commit `d7751abbf377aada711e521305e685279e59ff1a`. The capability remains partial; the root package validates 91 implementation receipts. Live Gateway, packaged Windows and pinned-source acceptance remain open.
 
 Publication follow-up — 2026-11-22T09:14:52Z: Implementation commit `d7751abbf377aada711e521305e685279e59ff1a` and evidence commit `57850ec9a1d3b7649824dfe72d84487753c56e57` were pushed to `origin/main`; fresh fetch confirmed exact local/remote equality at the evidence commit. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
+
+## PAR-0522 — Preserve unknown Gateway response outcomes — 2026-11-22
+
+- **id:** PAR-0522
+- **timestamp:** 2026-11-22T09:35:25Z
+- **what:** Added typed distinction between explicit JSON-RPC refusal and ambiguous transport/receipt outcomes for approval, clarification, and clarification-lock responses. Unknown outcomes remain attached to the prompt, survive disconnect, show an accessible warning, and disable duplicate responses. Explicit refusal resets the pending response so a safe retry remains available.
+- **why:** A transport failure cannot prove that Hermes rejected a response; presenting it as a normal failure can lead to duplicate tool decisions or answers.
+- **components:** `apps/hermes-native/src/gateway.rs`, `src/app.rs`, progress generator and overlays, `PLAN.md`, `BACKLOG.md`, `ARCHITECTURE.md`, `COMPLETION_OVERVIEW.md`, `README.md`, and root validation records.
+- **type:** additive protocol outcome model, accessible UI state, regression coverage, evidence and documentation.
+- **validation:** PASS full locked all-target suite (585 library + 15 protocol + 3 launcher), locked all-target check, rustfmt, 19 task-continuity tests, task schema validation, both progress generators, root and archival package validators. Root validator skipped YAML parsing because PyYAML is absent.
+- **performance:** No added polling or network requests; outcome classification is performed on the existing Gateway request response path.
+- **risks:** Uncertainty classification is not yet applied to every mutating Gateway operation. Live Gateway, packaged Windows, and formal pinned-source acceptance remain open.
+- **follow_up:** Bind EV-0108 to the implementation commit and continue the next P0 protocol requirement.
