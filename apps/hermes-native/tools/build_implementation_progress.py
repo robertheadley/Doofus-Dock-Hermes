@@ -1103,6 +1103,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#regenerate_action_opens_a_read_only_prompt_and_confirms_deep_cut",
             "apps/hermes-native/src/app.rs#regeneration_rebinds_survivors_after_admission_and_preserves_composer",
             "apps/hermes-native/src/gateway.rs#truncating_prompt_receipt_returns_rebound_and_new_user_row_ids",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0091.json#EV-0091",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planReload",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planConfirmedReload",
             ".staging/hermes-pinned-878305/tui_gateway/methods_prompt.py#_truncate_history_for_submit",

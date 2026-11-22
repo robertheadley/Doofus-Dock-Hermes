@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0091",
+  "capability_id": "ui-regenerate-a-previous-answer",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "safe_regenerate_previous_assistant_answer_with_deep_cut_confirmation_and_stable_row_rebinding",
+  "locator": "apps/hermes-native/src/app.rs#regenerate_action_opens_a_read_only_prompt_and_confirms_deep_cut",
+  "date": "2026-11-22",
+  "commit": "759b4a49153deddbd56cb4ae5ca05b1e2a0721c9",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui tests verify the action appears on assistant messages, selects the nearest prior user prompt only when its positive durable row ID is unique, exposes that prompt read-only, and presents explicit consent before cutting later user turns. Receipt tests verify new user and survivor row IDs are parsed; app tests verify transcript remapping happens only after admission, stale IDs are dropped when replacements are missing, and the active composer draft and attachments remain intact. Full locked agent-automation suite passed 537 library, 15 protocol and 3 launcher tests; all-target check, rustfmt and diff checks passed.",
+  "notes": "Partial implementation evidence only. No live Hermes Gateway, packaged Windows interaction, or pinned-source acceptance was verified. If a unique durable prior prompt row is absent, regeneration remains unavailable rather than guessing."
+}
