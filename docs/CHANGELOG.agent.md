@@ -4388,3 +4388,16 @@ The prior source-audit changelog entry mistakenly stated ledger revision 123. Th
 ### PAR-0056 published to main — 2026-11-22T07:05:52Z
 
 Implementation commit `78f1aa008a5f00a7d6dd8c2d1568d72302d31534` and evidence/checkpoint commit `5db2e8d55032819077660f5d6caa20f4407d5738` are on `origin/main`. Fresh fetch confirmed exact local/remote equality at `5db2e8d55032819077660f5d6caa20f4407d5738`. The task remains partial: navigation covers loaded prompts, with indexed older-history navigation and active-marker tracking still open. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
+
+### PAR-0056 indexed prompt history — 2026-11-22T07:27:17Z
+
+- **id:** `hermes-par0056-indexed-history-20261122`
+- **timestamp:** `2026-11-22T07:27:17Z`
+- **what:** Added a profile/connection-scoped metadata-only prompt-index API path and chat index UI. Indexed markers can select a loaded durable row or trigger older transcript pagination until an unloaded row is found; the automatic seek is capped at 64 pages. Added response ownership/cursor validation, a 12-session cache cap, remote HTTP fixture, rendered accessible marker test, and evidence EV-0103. PAR-0056 remains partial.
+- **why:** The first timeline slice only navigated loaded prompt rows; the pinned source indexes prompt previews independently from full transcript bodies.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, `apps/hermes-native/docs/ARCHITECTURE.md`, `PLAN.md`, `BACKLOG.md`, progress overlays, capability map and evidence.
+- **type:** feature and regression evidence.
+- **validation:** Full locked suite: 571 library + 15 protocol + 3 launcher tests; all-target check; rustfmt and diff checks; 19 task-continuity tests; task validation; both progress generators; root and archival package validators. The full UCM checker parses the map with Python 3.14/PyYAML but reports 159 pre-existing project-wide errors and 11 reconciliation items; none were added for EV-0103. Python 3.15 lacks PyYAML, so its package-validator YAML parse is skipped.
+- **performance:** Timeline API payload is bounded to 500 metadata entries and the UI list is virtualized. Cached session indexes are capped at 12; an unloaded jump performs at most 64 existing 120-row transcript reads.
+- **risks:** Automatic history seek is not a substitute for the pinned `/messages/around` window route. Its complete end-to-end path, refreshed cache after new prompts, active-marker tracking, authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open. Existing `handle_server_event` dead-code warning remains.
+- **follow_up:** Replace sequential older-page scans with the pinned around-row endpoint; add safe index freshness/refresh and source-matched live behavior checks.

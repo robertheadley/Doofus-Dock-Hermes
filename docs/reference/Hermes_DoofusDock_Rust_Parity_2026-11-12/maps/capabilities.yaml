@@ -1334,6 +1334,7 @@ capabilities:
   status: partial
   evidence:
   - EV-0102
+  - EV-0103
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1352,6 +1353,8 @@ capabilities:
     scenarios:
     - id: loaded-prompt-timeline-navigation
       description: Render an accessible timeline of loaded user prompts and navigate to a selected transcript message without submitting.
+    - id: indexed-unloaded-prompt-history
+      description: Fetch owner-scoped prompt metadata pages and navigate to a durable prompt row outside the currently loaded transcript.
 - id: ui-paginate-older-transcript-history
   name: Paginate older transcript history
   area: chat-transcript

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0103",
+  "capability_id": "ui-jump-to-earlier-prompt-by-timeline-marker",
+  "kind": "test_result",
+  "outcome": "pass",
+  "scenario": "indexed-unloaded-prompt-history",
+  "locator": "apps/hermes-native/src/gateway.rs::prompt_timeline_remote_read_uses_profile_scope_and_metadata_only_route",
+  "date": "2026-11-22",
+  "commit": "ea90619cc3b924c80960844f37ba8ecf082fff48",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless remote HTTP fixture verifies the encoded pinned timeline route, profile query, session-token header and bounded metadata response. Decoder tests reject session/profile/cursor mismatches; a rendered egui test activates an accessible indexed prompt marker and confirms the durable row ID; transcript lookup accepts only numeric durable IDs. Full locked suite passes 571 library + 15 protocol + 3 launcher tests; all-target check, format/diff, task continuity and both progress generators pass.",
+  "notes": "Partial evidence only. The indexed metadata and marker are implemented, but the automatic older-page scan is not end-to-end tested and is bounded to 64 pages; native does not yet use the pinned messages/around route. No authenticated live Hermes Gateway, packaged Windows or formal source-paired behavior was exercised."
+}

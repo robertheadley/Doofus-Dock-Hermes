@@ -240,3 +240,5 @@ Independent plain-text composer drafts now persist across app restarts and remai
 
 
 PAR-0061 now records partial evidence for model-change draft preservation. The rendered model picker and matching mutation receipts preserve the unsent text and attachment across success, refusal and confirmation-required states; a stale profile receipt is ignored without consuming the active pending model mutation. This adds evidence coverage, not full live or source-paired acceptance.
+
+PAR-0056 update (2026-11-22): A profile/connection-scoped metadata prompt index and accessible paginated markers are now implemented. Selecting an unloaded marker scans older transcript pages, up to 64, and navigates by durable row ID without submitting. The pinned around-row API, index freshness, active-marker tracking, live Gateway and packaged/source-paired acceptance remain open.

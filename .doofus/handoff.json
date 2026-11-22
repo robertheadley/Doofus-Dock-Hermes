@@ -369,6 +369,24 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
       "status": " M"
     },
@@ -399,19 +417,18 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0102.json",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0103.json",
       "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked --features agent-automation --all-targets --quiet",
+    "command": "cargo test --locked --features agent-automation --all-targets --quiet; cargo check --all-targets --locked --features agent-automation; rustfmt and diff checks; task continuity and package validators",
     "evidence": [
-      "apps/hermes-native/src/app.rs#rendered_prompt_timeline_targets_the_existing_transcript_row",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0102.json#EV-0102"
+      "apps/hermes-native/src/gateway.rs#prompt_timeline_remote_read_uses_profile_scope_and_metadata_only_route"
     ],
     "state": "tested",
-    "summary": "PAR-0056 implements an accessible owner-keyed timeline for prompts in the loaded transcript and scrolls to the selected message without submission. EV-0102 binds headless rendered coverage to the implementation commit. Still partial because unloaded historical prompt indexing/around-row fetch and active-marker tracking are not implemented.",
-    "verified_at": "2026-11-22T07:03:37Z"
+    "summary": "PAR-0056 now fetches a bounded, metadata-only, profile/connection-scoped prompt index, renders accessible paginated markers, and uses bounded older-page scans for unloaded row jumps. Implementation is commit ea90619; EV-0103 records partial test evidence. Full suite and validators pass; around-row API, freshness, active marker tracking and live/package verification remain open.",
+    "verified_at": "2026-11-22T07:36:17Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -479,7 +496,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T08:03:37Z",
+    "lease_expires_at": "2026-11-22T08:36:17Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -1750,9 +1767,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "f6ab455b-8f79-422e-ada9-a0a618c77b0c",
+  "last_event_id": "hermes-par0056-indexed-history-checkpoint-20261122",
   "last_operation": {
-    "request_id": "f6ab455b-8f79-422e-ada9-a0a618c77b0c",
+    "request_id": "hermes-par0056-indexed-history-checkpoint-20261122",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1771,7 +1788,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue the next dependency-ready P0 chat requirement, preserving the timeline and existing transcript workflows; plan historical prompt indexing as the remaining PAR-0056 slice when its source/backend path is scoped.",
+  "recommended_next_action": "Replace the bounded older-page scan with pinned /api/sessions/{id}/messages/around; add cache refresh and rendered end-to-end owner-fenced jump coverage.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2216,7 +2233,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "1ce3a73559dbc9398c3377c95f368ec50194785c5ae02ba8360f292a4f1e59ce",
+    "change_fingerprint": "b9121e71795a8ebb211c8cb67dcb4d90a79e4c0c3f8e744f6a3bcd6bed9db684",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2228,6 +2245,18 @@
       },
       {
         "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2251,21 +2280,21 @@
         "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0102.json",
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0103.json",
         "status": "??"
       }
     ],
-    "head_commit": "78f1aa008a5f00a7d6dd8c2d1568d72302d31534",
+    "head_commit": "ea90619cc3b924c80960844f37ba8ecf082fff48",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 694,
+  "revision": 698,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 694,
+  "state_revision": 698,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0056",
-  "task_ledger_revision": 123,
+  "task_ledger_revision": 124,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3916,9 +3945,19 @@
       "command": "cargo test -p hermes-native --locked --features agent-automation app::tests::rendered_prompt_timeline_targets_the_existing_transcript_row -- --exact",
       "result": "PASS 566 library + 15 protocol + 3 launcher; PASS all-target locked check, rustfmt/diff, 19 task continuity tests, both progress generators, and root/archival package validators.",
       "timestamp": "2026-11-22T07:03:37Z"
+    },
+    {
+      "command": "cargo test --locked --features agent-automation --all-targets --quiet",
+      "result": "PASS 566+15+3; all-target check, format/diff, continuity, progress generators, and root/archival package validators. Task validation PASS.",
+      "timestamp": "2026-11-22T07:05:23Z"
+    },
+    {
+      "command": "cargo test --locked --features agent-automation --all-targets --quiet",
+      "result": "PASS 571 library + 15 protocol + 3 launcher; all-target check, format/diff, 19 continuity tests, task validation, both progress generators, root/archival package validators.",
+      "timestamp": "2026-11-22T07:36:17Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T07:03:37Z"
+  "updated_at": "2026-11-22T07:36:17Z"
 }
