@@ -1,5 +1,5 @@
 {
-  "revision": 94,
+  "revision": 95,
   "schema_version": 1,
   "tasks": [
     {
@@ -1618,7 +1618,7 @@
             {
               "agent_identity": {
                 "model": null,
-                "provider": null
+                "provider": "codex"
               },
               "dependencies": [],
               "estimated_remaining_effort": null,
@@ -1627,11 +1627,11 @@
                 "priority": "P0",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": null,
-              "lease_id": null,
+              "last_updated_at": "2026-11-22T00:17:17Z",
+              "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
               "objective": "ui-display-session-token-and-usage-status",
               "outputs": [],
-              "owner": null,
+              "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
               "progress": {
                 "evidence_level": "not_reviewed",
@@ -1642,10 +1642,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "unknown",
+              "state": "tested",
               "task_id": "hermes-par-0048",
               "title": "PAR-0048 Display session token and usage status",
-              "verification_evidence": []
+              "verification_evidence": [
+                "apps/hermes-native/src/app.rs#session_usage_is_owner_scoped_merged_and_rendered_in_chat_toolbar"
+              ]
             },
             {
               "agent_identity": {
@@ -16347,5 +16349,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-21T23:50:37Z"
+  "updated_at": "2026-11-22T00:17:17Z"
 }

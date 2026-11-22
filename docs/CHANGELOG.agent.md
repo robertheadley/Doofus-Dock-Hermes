@@ -4038,11 +4038,11 @@ PAR-0050 validation follow-up: both current and archival UCM package validators 
 
 - **id:** hermes-session-usage-toolbar-20261122
 - **timestamp:** 2026-11-22T00:11:51Z
-- **what:** Added owner-scoped capture and display of Hermes session token/context usage in the active chat toolbar. Nested Desktop usage projections and top-level Gateway counters are parsed, sparse updates merge without erasing omitted values, and stale connection/profile/session events are rejected. Added unit and rendered UI regressions; updated README, architecture, backlog and plan.
+- **what:** Added owner-scoped capture and display of Hermes session token/context usage in the active chat toolbar. Nested Desktop usage projections and top-level Gateway counters are parsed, sparse updates merge without erasing omitted values, and stale connection/profile/session events are rejected. Added unit and rendered UI regressions; updated README, architecture, backlog, plan and partial evidence receipt EV-0086.
 - **why:** Session usage is an agent workflow capability; users need the active conversation's token/context state without crossing profiles or Gateway connections.
 - **components:** Hermes Native event reducer, per-session chat view cache, chat toolbar, headless tests and feature documentation.
 - **type:** Additive feature and regression coverage.
-- **validation:** PASS focused usage tests (2); full locked `agent-automation` suite (519 library + 15 protocol + 3 launcher); all-target locked cargo check; rustfmt check; `git diff --check`. Root/archive capability validators and task ledger validation will run with commit-bound evidence.
+- **validation:** PASS focused usage tests (2); full locked `agent-automation` suite (519 library + 15 protocol + 3 launcher); all-target locked cargo check; rustfmt check; `git diff --check`; broad/scoped progress generators; root UCM validator (565 targets, 70 implementation receipts); pinned package validator (491 pending capabilities); task validator (revision 601 / ledger revision 95). Direct YAML parsing was skipped because PyYAML is unavailable.
 - **performance:** Event capture is a bounded JSON projection and one unique owner lookup; no additional polling or RPC was added.
 - **risks:** Live Gateway payload timing, disconnected-window UX, packaged Windows rendering and pinned-source pair acceptance remain unverified.
-- **follow_up:** Run full locked validation; bind partial UCM evidence to the implementation commit; update progress maps and publish validated commits directly to `main`.
+- **follow_up:** Publish implementation and evidence commits to `origin/main`, verify exact SHA equality, then continue the next agent-focused workflow while preserving prior work.

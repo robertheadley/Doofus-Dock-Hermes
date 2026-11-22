@@ -1464,6 +1464,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "packaged Windows behavior and source-paired acceptance remain pending",
         ],
     },
+    "PAR-0048": {
+        "state": "partial",
+        "level": "headless_owner_scoped_session_usage_toolbar",
+        "refs": [
+            "apps/hermes-native/docs/PLAN.md#Revision 296",
+            "apps/hermes-native/src/app.rs#session_usage_accepts_top_level_gateway_counters_and_preserves_partial_updates",
+            "apps/hermes-native/src/app.rs#session_usage_is_owner_scoped_merged_and_rendered_in_chat_toolbar",
+            ".staging/hermes-pinned-878305/apps/shared/src/usage-tick.ts#usageFromTick",
+            ".staging/hermes-pinned-878305/gateway/session_usage.py#usage_frame",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0086.json#EV-0086",
+        ],
+        "gaps": [
+            "live Gateway event timing and offline presentation have not been verified",
+            "packaged Windows behavior and pinned-source paired acceptance remain open",
+        ],
+    },
 }
 
 FIELDS = [

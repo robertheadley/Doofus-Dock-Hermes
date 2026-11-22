@@ -323,14 +323,11 @@
     }
   ],
   "checkpoint": {
-    "command": "headless agy --mode plan; Codex subagent read-only lifecycle audit",
-    "evidence": [
-      "apps/hermes-native/src/app.rs#start_saved_gateway_connection",
-      "apps/hermes-native/src/app.rs#saved_remote_connection_without_credentials_does_not_fall_back_to_local"
-    ],
-    "state": "in_progress",
-    "summary": "Published remote startup fail-closed fix and EV-0085 on main. Two read-only lifecycle reviews show a toolbar-only saved-connection picker would lose or strand pending operations and expose stale profile-keyed caches; safe switching requires comprehensive result fencing/reset. No unsafe picker shipped.",
-    "verified_at": "2026-11-21T23:59:38Z"
+    "command": "task select",
+    "evidence": [],
+    "state": "unknown",
+    "summary": "Take a bounded P0 chat/context capability while retaining saved-connection lifecycle work. Implement owner-scoped session token/context usage status from Gateway usage events without claiming the broader pinned statusbar feature complete.",
+    "verified_at": "2026-11-22T00:04:33Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -345,6 +342,7 @@
     "hermes-par-0044",
     "hermes-par-0046",
     "hermes-par-0047",
+    "hermes-par-0048",
     "hermes-par-0049",
     "hermes-par-0050",
     "hermes-par-0057",
@@ -387,8 +385,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T00:59:38Z",
-    "lease_id": "f0fdf59a-2e2d-4773-97c6-26a5156d7688",
+    "lease_expires_at": "2026-11-22T01:00:44Z",
+    "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -1646,11 +1644,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par0510-switch-audit-checkpoint-20261121",
+  "last_event_id": "hermes-par0048-task-tested-20261122",
   "last_operation": {
-    "request_id": "hermes-par0510-switch-audit-checkpoint-20261121",
+    "request_id": "hermes-par0048-task-tested-20261122",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "task.state_updated"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -1660,14 +1658,14 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "02-gateway",
+  "phase": "03-chat",
   "phase_effort_samples": [],
   "previous_agent": {
     "model": null,
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Continue agent-focused feature parity. For saved connections, first design comprehensive connection-owned pending operation/result and cache lifecycle; otherwise take a bounded chat/context capability. Preserve all already functional behavior.",
+  "recommended_next_action": "Inspect exact pinned usage event and native chat route; add per-session usage capture/display with owner fencing and rendered regression; record partial evidence and keep live Gateway/source-paired acceptance open.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1706,7 +1704,6 @@
     "hermes-par-0037",
     "hermes-par-0038",
     "hermes-par-0045",
-    "hermes-par-0048",
     "hermes-par-0051",
     "hermes-par-0052",
     "hermes-par-0053",
@@ -2123,7 +2120,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "e3ecc66612a331b93b7293133e6b4feed1540d2573370d684d0e4bbdf5b8388e",
+    "change_fingerprint": "248a01d425cd9c22ca7c719081590d4e3a969795073409c4d4afe9356c722c10",
     "changed_files": [
       {
         "path": "doofus/events.jsonl",
@@ -2131,10 +2128,6 @@
       },
       {
         "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -2154,17 +2147,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "8a2899459b14940593bc5837c9a134f3f3b5bcfc",
+    "head_commit": "718ba28746d78f56f58647f44b9811e7b752ccf7",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 597,
+  "revision": 601,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 597,
+  "state_revision": 601,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0510",
-  "task_ledger_revision": 94,
+  "task_id": "hermes-par-0048",
+  "task_ledger_revision": 95,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -3559,5 +3552,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-21T23:59:38Z"
+  "updated_at": "2026-11-22T00:17:17Z"
 }

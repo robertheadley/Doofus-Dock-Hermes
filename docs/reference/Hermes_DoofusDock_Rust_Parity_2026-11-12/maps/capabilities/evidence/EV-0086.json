@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0086",
+  "capability_id": "ui-display-session-token-and-usage-status",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "session_usage_events_are_owner_scoped_merged_and_rendered_in_chat_toolbar",
+  "locator": "apps/hermes-native/src/app.rs#session_usage_is_owner_scoped_merged_and_rendered_in_chat_toolbar",
+  "date": "2026-11-21",
+  "commit": "8613ea87cdefa657f7dd564ded5573dde8adabaf",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui_kittest rendering on the same HermesNativeApp draw path. Regression tests cover nested Desktop usage payloads, top-level canonical counters, sparse update merge, current-connection/profile/stored-session fencing, cached state retention, context percentage and accessible toolbar text. Full locked agent-automation suite passes 519 library, 15 protocol and 3 launcher tests; all-target cargo check, rustfmt and diff checks pass.",
+  "notes": "Partial implementation evidence only. The toolbar displays the latest reported session-cumulative token total and context occupancy, retaining the last reading while disconnected. Live Gateway timing and offline presentation, packaged Windows runtime behavior and pinned-source paired acceptance remain open."
+}

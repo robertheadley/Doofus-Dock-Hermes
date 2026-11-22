@@ -700,7 +700,7 @@ After an exact-payload successful connection Test, Apply atomically persists the
 
 On exact-payload Apply in token mode, store the static Hermes session token with the OAuth token sets under the isolated Windows DPAPI store; keep preferences URL-only. After public status discovery of the same saved URL, restore only the credential matching the discovered auth mode. Reject invalid token input, and test that encrypted token storage never writes plaintext and that token and OAuth records cannot be confused. Startup attachment and remote runtime attach remain pending.
 
-### Revision 296 — Render owner-scoped session usage (2026-11-22)
+### Revision 296 — Render owner-scoped session usage (2026-11-21)
 
 PAR-0048 now captures `session.usage` for a uniquely matched active Gateway connection, profile, runtime session and stored-session view. It accepts nested Desktop `usage` fields and canonical top-level counters, retains values omitted by sparse events, and shows cumulative tokens plus context occupancy in the chat toolbar with an estimate marker when appropriate. Existing session views preserve the cached usage value when chat state is saved.
 
