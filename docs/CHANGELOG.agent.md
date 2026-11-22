@@ -4442,3 +4442,19 @@ Validation follow-up — 2026-11-22T08:27:07Z: PAR-0056 freshness/active-marker 
 
 
 Publication follow-up — 2026-11-22T08:29:04Z: Implementation commit `b65bbc463e521ade6c9fd852dbc34a08aad36837` and evidence/checkpoint commit `9b7e34a13783047bebe273e5048cce2dbf548362` were pushed to `origin/main`. Fresh fetch verified exact local/remote equality at `9b7e34a13783047bebe273e5048cce2dbf548362`. EV-0105 is bound to the implementation commit; EV-0102 through EV-0104 remain unchanged. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
+
+
+### PAR-0057 older around-window pagination — 2026-11-22
+
+- **id:** `hermes-par0057-around-pagination-20261122`
+- **timestamp:** `2026-11-22T08:51:18Z`
+- **what:** “Show earlier” on a prompt-centered history window now finds the nearest predecessor from the shared prompt index, loads further index pages when needed, and requests a bounded around-row window. It merges only contiguous pages and replaces the view for a separated older window.
+- **why:** Keep prompt navigation and history paging on one durable row index, and avoid displaying nonadjacent message windows as a continuous transcript.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/README.md`, `apps/hermes-native/docs/PLAN.md`, `apps/hermes-native/docs/BACKLOG.md`, `apps/hermes-native/docs/ARCHITECTURE.md`, progress overlays and capability evidence.
+- **type:** additive behavior and regression coverage.
+- **validation:** PASS focused predecessor/index/gap tests; PASS full all-target locked suite (582 library + 15 protocol + 3 launcher); check, package, task-continuity and publication validation pending.
+- **performance:** At most one metadata page is requested per response until the shared index reaches the visible prompt; transcript reads remain bounded to 120 messages.
+- **risks:** REST reads cannot be cancelled; request ownership fences stale results but explicit cancel-and-replace and physical scroll-anchor preservation remain open. Live Gateway, packaged Windows and source-paired acceptance are unverified.
+- **follow_up:** Run all-target check and continuity/package validators; bind EV-0106 to the implementation commit while keeping the claim partial; checkpoint and publish to `main`.
+
+Validation follow-up — 2026-11-22T08:55:18Z: PASS full `cargo test -p hermes-native --all-targets --features agent-automation --locked` (582 library + 15 protocol + 3 launcher); PASS matching all-target `cargo check`; PASS rustfmt/diff; PASS task-continuity suite (19 tests); PASS both progress generators, task validation and root/archival package validators. The root validator skipped YAML parsing because PyYAML is absent, and EV-0106 remains to be bound to the implementation commit. Live Gateway, packaged Windows and source-paired acceptance are still open.

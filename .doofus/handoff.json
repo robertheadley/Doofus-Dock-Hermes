@@ -363,6 +363,60 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "docs/CHANGELOG.agent.md",
       "status": " M"
     },
@@ -400,11 +454,12 @@
   "checkpoint": {
     "command": null,
     "evidence": [
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0105.json#EV-0105"
+      "apps/hermes-native/src/app.rs#show_earlier_pages_the_timeline_index_until_it_reaches_the_window_anchor",
+      "apps/hermes-native/docs/PLAN.md#Revision 325"
     ],
     "state": "tested",
-    "summary": "PAR-0056 prompt-index invalidation and viewport-active markers are implemented, tested, documented, evidence-mapped and published on main. All 578+15+3 locked tests and both capability package validators pass; existing functional workflows remain preserved.",
-    "verified_at": "2026-11-22T08:29:30Z"
+    "summary": "PAR-0057 partial older-history flow now resolves predecessors through the shared prompt index, pages index until anchor reach, fetches bounded around windows, and replaces separated older windows. Four new headless regressions plus the full locked suite pass. Explicit cancellation, physical scroll anchoring, live Gateway, packaged Windows and source-paired acceptance remain open.",
+    "verified_at": "2026-11-22T08:56:18Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -428,7 +483,6 @@
     "hermes-par-0054",
     "hermes-par-0055",
     "hermes-par-0056",
-    "hermes-par-0057",
     "hermes-par-0058",
     "hermes-par-0059",
     "hermes-par-0060",
@@ -472,7 +526,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T09:29:30Z",
+    "lease_expires_at": "2026-11-22T09:56:18Z",
     "lease_id": "73b327bf-78e9-46c5-8792-d9ee28dbdb15",
     "model": null,
     "ownership_state": "active",
@@ -973,6 +1027,45 @@
       "note": "Implementation commit b65bbc4 and evidence/task checkpoint commit 9b7e34a pushed to origin/main; fresh fetch confirms exact local/remote equality.",
       "observed_at": "2026-11-22T08:28:50Z",
       "operation_id": "hermes-par0056-main-publication-20261122",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "implementation",
+      "note": "Prior turn ended after source inspection without source changes or an implementation result; no spawned process or build remains. Reconciled as failed attempt and resumed under a new operation ID.",
+      "observed_at": "2026-11-22T08:38:26Z",
+      "operation_id": "hermes-par0057-around-pagination-20261122",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [],
+      "kind": "implementation",
+      "note": "Reconciled status-only continuation: no source files changed and no build/test process was launched; implementation was not completed. Resuming under a fresh operation.",
+      "observed_at": "2026-11-22T08:40:51Z",
+      "operation_id": "hermes-par0057-around-pagination-20261122b",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#show_earlier_uses_the_prompt_index_predecessor_as_around_row_anchor",
+        "apps/hermes-native/src/app.rs#older_around_window_replaces_visible_page_when_a_long_turn_leaves_a_gap"
+      ],
+      "kind": "implementation",
+      "note": "PAR-0057 predecessor-index paging and around-window contiguity handling implemented and focused/full tests passed.",
+      "observed_at": "2026-11-22T08:56:07Z",
+      "operation_id": "hermes-par0057-around-pagination-20261122c",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -1841,9 +1934,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "2caa7fad-d306-4d6f-9a1c-03e3df452d0b",
+  "last_event_id": "d1df85f4-37a9-4745-87f4-39ce62521b5a",
   "last_operation": {
-    "request_id": "2caa7fad-d306-4d6f-9a1c-03e3df452d0b",
+    "request_id": "d1df85f4-37a9-4745-87f4-39ce62521b5a",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -1862,7 +1955,7 @@
     "provider": null
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Inspect canonical progress and source requirements, then select the next dependency-ready P0 feature within model/provider connection, chat, tools/approval, skills, plugins/MCP or context/attachments. Keep the pinned Hermes snapshot fixed.",
+  "recommended_next_action": "Commit the tested source/docs/progress update to main; append EV-0106 bound to that implementation commit; validate capability package; publish and verify origin/main.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -1901,6 +1994,7 @@
     "hermes-par-0037",
     "hermes-par-0038",
     "hermes-par-0051",
+    "hermes-par-0057",
     "hermes-par-0066",
     "hermes-par-0068",
     "hermes-par-0069",
@@ -2307,7 +2401,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "e962979c3f26e04161490221db613a97723e63b3a7258459f3c6010e0293582a",
+    "change_fingerprint": "1cb8972dc347830934713eb6b93a003e6102685d84f12d72a400514c63b82e61",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2315,6 +2409,42 @@
       },
       {
         "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
         "status": " M"
       },
       {
@@ -2342,17 +2472,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "9b7e34a13783047bebe273e5048cce2dbf548362",
+    "head_commit": "a52c6bced56f108926d51d75ebcf3aa8cb784446",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 719,
+  "revision": 727,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 719,
+  "state_revision": 727,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0056",
-  "task_ledger_revision": 125,
+  "task_ledger_revision": 126,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -4068,9 +4198,14 @@
       "command": "Full locked native suite, all-target check, rustfmt, task continuity/schema, progress generators and both capability package validators",
       "result": "PASS: 578 library + 15 protocol + 3 launcher tests; all-target cargo check; rustfmt; 19 continuity tests; progress generators; task validation; root package 89 implementation receipts; archival package 491 pending.",
       "timestamp": "2026-11-22T08:27:59Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked",
+      "result": "PASS 582 library + 15 automation protocol + 3 launcher tests",
+      "timestamp": "2026-11-22T08:56:18Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T08:29:30Z"
+  "updated_at": "2026-11-22T08:56:18Z"
 }

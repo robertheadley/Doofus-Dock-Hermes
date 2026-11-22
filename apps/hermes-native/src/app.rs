@@ -1158,6 +1158,8 @@ struct PromptTimelineState {
     window_request: Option<(String, String, Option<String>, Option<String>, u64)>,
     window: Option<PromptTimelineWindowInfo>,
     window_error: Option<String>,
+    older_reveal_anchor: Option<u64>,
+    older_window_anchor: Option<u64>,
     stale: bool,
     owner: Option<(String, Option<String>, Option<String>)>,
 }
@@ -15962,6 +15964,67 @@ fn render_message() -> &'static str {
         let request_id = operation_id("transcript-older");
         let profile = self.active_session_profile.clone();
         let owner_key = self.session_identity_key(&session_id, profile.as_deref());
+        let around_window = self
+            .prompt_timelines
+            .get(&owner_key)
+            .and_then(|state| state.window)
+            .filter(|window| window.has_older);
+        if around_window.is_some() {
+            if self
+                .prompt_timelines
+                .get(&owner_key)
+                .is_some_and(|state| state.window_request.is_some())
+            {
+                return;
+            }
+            let anchor = self.transcript.iter().find_map(|message| {
+                (message.get("role").and_then(serde_json::Value::as_str) == Some("user"))
+                    .then(|| message.get("row_id").and_then(serde_json::Value::as_u64))
+                    .flatten()
+                    .filter(|row_id| *row_id > 0)
+            });
+            if let Some(anchor) = anchor {
+                let (predecessor, index_reaches_anchor, index_has_more, index_known) = self
+                    .prompt_timelines
+                    .get(&owner_key)
+                    .map(|state| {
+                        (
+                            previous_prompt_timeline_row_id(&state.entries, anchor),
+                            state.entries.iter().any(|entry| entry.row_id >= anchor),
+                            state.has_more,
+                            state.total.is_some(),
+                        )
+                    })
+                    .unwrap_or((None, false, false, false));
+                if let Some(predecessor) = predecessor
+                    && (index_reaches_anchor || !index_has_more)
+                {
+                    if let Some(state) = self.prompt_timelines.get_mut(&owner_key) {
+                        state.older_window_anchor = Some(anchor);
+                    }
+                    self.load_prompt_history_window(session_id, predecessor);
+                    return;
+                }
+                if index_has_more || !index_known {
+                    if let Some(state) = self.prompt_timelines.get_mut(&owner_key) {
+                        state.older_reveal_anchor = Some(anchor);
+                    }
+                    self.load_prompt_timeline_page(session_id);
+                    return;
+                }
+                if let Some(state) = self.prompt_timelines.get_mut(&owner_key)
+                    && let Some(window) = state.window.as_mut()
+                {
+                    window.has_older = false;
+                }
+                self.transcript_has_more = false;
+                self.status = "No earlier prompt is available in this history window".into();
+                return;
+            }
+            self.older_transcript_error =
+                Some("The current history window has no durable prompt anchor".into());
+            return;
+        }
         let offset = self
             .prompt_timelines
             .get(&owner_key)
@@ -16074,6 +16137,7 @@ fn render_message() -> &'static str {
             profile.clone(),
             row_id,
         ) {
+            state.older_window_anchor = None;
             state.window_error = Some(error.clone());
             self.status = error;
             return;
@@ -28698,6 +28762,9 @@ fn render_message() -> &'static str {
                         &session_id,
                         profile.as_deref(),
                     );
+                    let mut reveal_older_row = None;
+                    let mut load_next_older_index = false;
+                    let mut older_index_exhausted = false;
                     {
                         let Some(state) = self.prompt_timelines.get_mut(&key) else {
                             continue;
@@ -28758,7 +28825,29 @@ fn render_message() -> &'static str {
                             }
                             Err(error) => {
                                 state.error = Some(error.clone());
+                                state.older_reveal_anchor = None;
                                 self.status = format!("Could not load prompt history: {error}");
+                            }
+                        }
+                        if let Some(anchor) = state.older_reveal_anchor {
+                            let predecessor =
+                                previous_prompt_timeline_row_id(&state.entries, anchor);
+                            let index_reaches_anchor =
+                                state.entries.iter().any(|entry| entry.row_id >= anchor);
+                            if let Some(predecessor) = predecessor
+                                && (index_reaches_anchor || !state.has_more)
+                            {
+                                state.older_reveal_anchor = None;
+                                state.older_window_anchor = Some(anchor);
+                                reveal_older_row = Some(predecessor);
+                            } else if state.has_more {
+                                load_next_older_index = true;
+                            } else {
+                                state.older_reveal_anchor = None;
+                                if let Some(window) = state.window.as_mut() {
+                                    window.has_older = false;
+                                }
+                                older_index_exhausted = true;
                             }
                         }
                     }
@@ -28772,6 +28861,20 @@ fn render_message() -> &'static str {
                             break;
                         };
                         self.prompt_timelines.remove(&evicted);
+                    }
+                    let active_owner = self.route == AppRoute::Session(session_id.clone())
+                        && self.active_session_profile == profile
+                        && self.gateway_connection_id == connection_id;
+                    if active_owner {
+                        if let Some(predecessor) = reveal_older_row {
+                            self.load_prompt_history_window(session_id.clone(), predecessor);
+                        } else if load_next_older_index {
+                            self.load_prompt_timeline_page(session_id.clone());
+                        } else if older_index_exhausted {
+                            self.transcript_has_more = false;
+                            self.status =
+                                "No earlier prompt is available in this history window".into();
+                        }
                     }
                 }
                 GatewayEvent::PromptHistoryWindowLoaded {
@@ -28787,7 +28890,7 @@ fn render_message() -> &'static str {
                         &session_id,
                         profile.as_deref(),
                     );
-                    let window = {
+                    let (window, older_window_anchor, previous_window) = {
                         let Some(state) = self.prompt_timelines.get_mut(&key) else {
                             continue;
                         };
@@ -28810,6 +28913,8 @@ fn render_message() -> &'static str {
                             continue;
                         }
                         state.window_request = None;
+                        let previous_window = state.window;
+                        let older_window_anchor = state.older_window_anchor.take();
                         match result {
                             Ok(window) => {
                                 state.window = Some(PromptTimelineWindowInfo {
@@ -28819,23 +28924,59 @@ fn render_message() -> &'static str {
                                     has_newer: window.has_newer,
                                 });
                                 state.window_error = None;
-                                Some(window)
+                                (Some(window), older_window_anchor, previous_window)
                             }
                             Err(error) => {
+                                state.older_window_anchor = None;
                                 state.window_error = Some(error.clone());
                                 self.status = format!("Could not jump to prompt: {error}");
-                                None
+                                (None, None, previous_window)
                             }
                         }
                     };
                     let Some(window) = window else {
                         continue;
                     };
+                    let older_reveal = older_window_anchor.is_some();
+                    let contiguous = older_reveal
+                        && previous_window.is_some_and(|current| {
+                            older_prompt_window_is_contiguous(
+                                window.offset,
+                                window.messages.len(),
+                                current.offset,
+                            )
+                        });
                     let active_owner = self.route == AppRoute::Session(session_id.clone())
                         && self.active_session_profile == profile
                         && self.gateway_connection_id == connection_id;
                     if active_owner {
                         self.save_active_chat_view();
+                    }
+                    let current_transcript = if active_owner {
+                        self.transcript.clone()
+                    } else {
+                        self.session_chat_views
+                            .get(&key)
+                            .map(|view| view.transcript.clone())
+                            .unwrap_or_default()
+                    };
+                    let active_prompt_row_id = self
+                        .session_chat_views
+                        .get(&key)
+                        .and_then(|view| view.active_prompt_row_id);
+                    let visible_messages = if contiguous {
+                        merge_older_transcript_page(window.messages.clone(), current_transcript)
+                    } else {
+                        window.messages.clone()
+                    };
+                    if contiguous
+                        && let Some(info) = self
+                            .prompt_timelines
+                            .get_mut(&key)
+                            .and_then(|state| state.window.as_mut())
+                        && let Some(previous) = previous_window
+                    {
+                        info.has_newer = previous.has_newer;
                     }
                     let view = self.session_chat_views.entry(key).or_insert_with(|| {
                         SessionChatViewState {
@@ -28843,7 +28984,7 @@ fn render_message() -> &'static str {
                             ..SessionChatViewState::default()
                         }
                     });
-                    view.transcript = window.messages;
+                    view.transcript = visible_messages;
                     view.transcript_message_count = window.total;
                     view.transcript_has_more = window.has_older;
                     view.older_transcript_request = None;
@@ -28854,13 +28995,35 @@ fn render_message() -> &'static str {
                         self.transcript_has_more = view.transcript_has_more;
                         self.older_transcript_request = None;
                         self.older_transcript_error = None;
-                        self.find_in_page_target =
-                            transcript_index_for_row_id(&self.transcript, row_id);
+                        self.find_in_page_target = if older_reveal {
+                            let target = if contiguous {
+                                active_prompt_row_id
+                            } else {
+                                Some(row_id)
+                            };
+                            target.and_then(|target| {
+                                transcript_index_for_row_id(&self.transcript, target)
+                            })
+                        } else {
+                            transcript_index_for_row_id(&self.transcript, row_id)
+                        };
                         self.find_in_page_scroll_pending = self.find_in_page_target.is_some();
-                        self.status = format!(
-                            "Jumped to prompt · {} messages in this window",
-                            self.transcript.len()
-                        );
+                        self.status = if older_reveal && contiguous {
+                            format!(
+                                "Loaded earlier messages · {} visible",
+                                self.transcript.len()
+                            )
+                        } else if older_reveal {
+                            format!(
+                                "Opened earlier history · {} messages in this window",
+                                self.transcript.len()
+                            )
+                        } else {
+                            format!(
+                                "Jumped to prompt · {} messages in this window",
+                                self.transcript.len()
+                            )
+                        };
                     }
                 }
                 GatewayEvent::ActiveTranscriptRefreshed {
@@ -33947,6 +34110,25 @@ fn durable_row_ids_for_rebind(messages: &[serde_json::Value]) -> Vec<u64> {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
+}
+
+fn previous_prompt_timeline_row_id(
+    entries: &[crate::gateway::PromptTimelineEntry],
+    row_id: u64,
+) -> Option<u64> {
+    entries
+        .iter()
+        .map(|entry| entry.row_id)
+        .filter(|candidate| *candidate > 0 && *candidate < row_id)
+        .max()
+}
+
+fn older_prompt_window_is_contiguous(
+    older_offset: usize,
+    older_message_count: usize,
+    current_offset: usize,
+) -> bool {
+    older_offset.saturating_add(older_message_count) >= current_offset
 }
 
 fn transcript_failed_user_turn(messages: &[serde_json::Value], index: usize) -> bool {
@@ -41858,6 +42040,72 @@ mod tests {
     }
 
     #[test]
+    fn older_around_window_replaces_visible_page_when_a_long_turn_leaves_a_gap() {
+        let (mut app, profile_dir) = isolated_app();
+        let session_id = "history-window-session";
+        let connection_id = "saved-connection-a";
+        app.route = AppRoute::Session(session_id.into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some(connection_id.into());
+        app.transcript = vec![
+            json!({"row_id":90,"role":"user","content":"current prompt"}),
+            json!({"row_id":91,"role":"assistant","content":"current answer"}),
+        ];
+        let owner_key =
+            app.session_identity_key_for_connection(Some(connection_id), session_id, Some("work"));
+        app.prompt_timelines.insert(
+            owner_key,
+            PromptTimelineState {
+                window_request: Some((
+                    "older-history-request".into(),
+                    session_id.into(),
+                    Some("work".into()),
+                    Some(connection_id.into()),
+                    42,
+                )),
+                window: Some(PromptTimelineWindowInfo {
+                    offset: 800,
+                    total: 1_000,
+                    has_older: true,
+                    has_newer: true,
+                }),
+                older_window_anchor: Some(90),
+                ..PromptTimelineState::default()
+            },
+        );
+        let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        events
+            .send(GatewayEvent::PromptHistoryWindowLoaded {
+                request_id: "older-history-request".into(),
+                session_id: session_id.into(),
+                profile: Some("work".into()),
+                connection_id: Some(connection_id.into()),
+                row_id: 42,
+                result: Ok(crate::gateway::PromptHistoryWindow {
+                    messages: vec![json!({"row_id":42,"role":"user","content":"older page"})],
+                    offset: 400,
+                    total: 1_000,
+                    has_older: true,
+                    has_newer: true,
+                }),
+            })
+            .expect("deliver older around-row response");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        assert_eq!(
+            app.transcript,
+            vec![json!({"row_id":42,"role":"user","content":"older page"})]
+        );
+        assert_eq!(app.find_in_page_target, Some(0));
+        assert!(app.transcript_has_more);
+        assert!(app.status.contains("Opened earlier history"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn around_history_result_from_stale_connection_cannot_replace_active_chat() {
         let (mut app, profile_dir) = isolated_app();
         let session_id = "history-window-session";
@@ -43813,6 +44061,166 @@ mod tests {
                 json!({"id":4})
             ]
         );
+    }
+
+    #[test]
+    fn older_prompt_lookup_uses_the_nearest_predecessor_and_checks_contiguity() {
+        let entries = vec![
+            crate::gateway::PromptTimelineEntry {
+                row_id: 12,
+                preview: "first".into(),
+                timestamp: None,
+            },
+            crate::gateway::PromptTimelineEntry {
+                row_id: 37,
+                preview: "previous".into(),
+                timestamp: None,
+            },
+            crate::gateway::PromptTimelineEntry {
+                row_id: 88,
+                preview: "anchor".into(),
+                timestamp: None,
+            },
+        ];
+        assert_eq!(previous_prompt_timeline_row_id(&entries, 88), Some(37));
+        assert_eq!(previous_prompt_timeline_row_id(&entries, 12), None);
+        assert!(older_prompt_window_is_contiguous(400, 120, 500));
+        assert!(older_prompt_window_is_contiguous(400, 120, 520));
+        assert!(!older_prompt_window_is_contiguous(400, 120, 521));
+    }
+
+    #[test]
+    fn show_earlier_uses_the_prompt_index_predecessor_as_around_row_anchor() {
+        let (mut app, profile_dir) = isolated_app();
+        let session_id = "older-prompt-session";
+        app.route = AppRoute::Session(session_id.into());
+        app.active_session_profile = Some("work".into());
+        app.transcript_has_more = true;
+        app.transcript = vec![json!({"row_id":90,"role":"user","content":"current"})];
+        let owner_key = app.session_identity_key(session_id, Some("work"));
+        app.prompt_timelines.insert(
+            owner_key.clone(),
+            PromptTimelineState {
+                entries: vec![
+                    crate::gateway::PromptTimelineEntry {
+                        row_id: 40,
+                        preview: "previous".into(),
+                        timestamp: None,
+                    },
+                    crate::gateway::PromptTimelineEntry {
+                        row_id: 90,
+                        preview: "current".into(),
+                        timestamp: None,
+                    },
+                ],
+                total: Some(2),
+                window: Some(PromptTimelineWindowInfo {
+                    offset: 800,
+                    total: 1_000,
+                    has_older: true,
+                    has_newer: true,
+                }),
+                ..PromptTimelineState::default()
+            },
+        );
+        let (gateway, _commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        app.load_older_transcript(session_id.into());
+
+        let state = &app.prompt_timelines[&owner_key];
+        assert_eq!(state.older_window_anchor, Some(90));
+        assert_eq!(
+            state.window_request.as_ref().map(|request| request.4),
+            Some(40)
+        );
+        assert!(state.request.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn show_earlier_pages_the_timeline_index_until_it_reaches_the_window_anchor() {
+        let (mut app, profile_dir) = isolated_app();
+        let session_id = "older-prompt-session";
+        app.route = AppRoute::Session(session_id.into());
+        app.active_session_profile = Some("work".into());
+        app.transcript_has_more = true;
+        app.transcript = vec![json!({"row_id":90,"role":"user","content":"current"})];
+        let owner_key = app.session_identity_key(session_id, Some("work"));
+        app.prompt_timelines.insert(
+            owner_key.clone(),
+            PromptTimelineState {
+                entries: vec![crate::gateway::PromptTimelineEntry {
+                    row_id: 12,
+                    preview: "oldest loaded mark".into(),
+                    timestamp: None,
+                }],
+                cursor: Some(12),
+                has_more: true,
+                total: Some(600),
+                window: Some(PromptTimelineWindowInfo {
+                    offset: 800,
+                    total: 1_000,
+                    has_older: true,
+                    has_newer: true,
+                }),
+                ..PromptTimelineState::default()
+            },
+        );
+        let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        app.load_older_transcript(session_id.into());
+        let request = app.prompt_timelines[&owner_key]
+            .request
+            .clone()
+            .expect("load the next prompt-index page");
+        assert_eq!(request.4, 12);
+        assert_eq!(
+            app.prompt_timelines[&owner_key].older_reveal_anchor,
+            Some(90)
+        );
+
+        events
+            .send(GatewayEvent::PromptTimelineLoaded {
+                request_id: request.0,
+                session_id: session_id.into(),
+                profile: Some("work".into()),
+                connection_id: None,
+                after_row_id: 12,
+                result: Ok(crate::gateway::PromptTimelinePage {
+                    session_id: session_id.into(),
+                    profile: Some("work".into()),
+                    entries: vec![
+                        crate::gateway::PromptTimelineEntry {
+                            row_id: 80,
+                            preview: "previous".into(),
+                            timestamp: None,
+                        },
+                        crate::gateway::PromptTimelineEntry {
+                            row_id: 90,
+                            preview: "current".into(),
+                            timestamp: None,
+                        },
+                    ],
+                    next_cursor: None,
+                    has_more: false,
+                    total: 3,
+                }),
+            })
+            .expect("deliver the next prompt-index page");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        let state = &app.prompt_timelines[&owner_key];
+        assert_eq!(state.older_reveal_anchor, None);
+        assert_eq!(state.older_window_anchor, Some(90));
+        assert_eq!(
+            state.window_request.as_ref().map(|request| request.4),
+            Some(80)
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

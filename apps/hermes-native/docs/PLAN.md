@@ -2021,3 +2021,12 @@ Successful prompt admission now invalidates cached prompt metadata for the match
 The transcript captures user-message frame positions and applies the pinned Desktop viewport rule: choose the last prompt at or above viewport top plus eight points, fall back to the first prompt when no prompt is above, and choose the last prompt while following bottom. The active entry is marked Current in the loaded timeline and indexed history when it has a durable row ID. Existing search-selection and jump actions remain distinct.
 
 Three headless regressions cover viewport selection, session/profile invalidation and refresh preservation/replacement. This detects admitted mutations through this client; time-based expiry and changes from another client remain open. Live authenticated Gateway, packaged Windows, physical scroll input and formal pinned-source acceptance remain unverified.
+
+
+### Revision 325 — Reveal older prompt history through the shared timeline index — 2026-11-22
+
+When the visible transcript is an around-row history window, “Show earlier messages” now resolves the previous durable user prompt from the same profile/connection/session-scoped metadata index used by the prompt timeline. If the loaded index has not reached the current window anchor, the app pages the index forward until it can name the predecessor or proves there is none, then requests the bounded `/messages/around` window for that predecessor. The existing latest request, session, profile and connection tuple still fences the response.
+
+An older around-window is merged with the visible page only when the returned offset and message count touch the current window offset. When a long turn leaves a gap, the view switches to the separate older window and scrolls to its anchor rather than presenting a discontinuous transcript as continuous. The existing offset-based pagination remains available for tail transcripts. Headless regressions cover predecessor choice, index paging, gap replacement and boundary continuity.
+
+PAR-0057 remains partial. Backend cancellation is not available through this REST bridge, the UI does not yet provide explicit cancellation/latest-request replacement for an in-flight reveal, and scroll-position preservation during a contiguous prepend has not been proven with physical input. Authenticated live Gateway, packaged Windows behavior and formal source-paired acceptance remain open.
