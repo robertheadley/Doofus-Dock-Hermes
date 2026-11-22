@@ -4384,3 +4384,7 @@ The prior source-audit changelog entry mistakenly stated ledger revision 123. Th
 - **performance:** Timeline rows are virtualized with `show_rows`; entry generation happens only while expanded.
 - **risks:** Partial only: unloaded history indexing/around-row fetch and active-marker tracking remain absent. No physical Windows, packaged, live Gateway or formal source-paired acceptance. Optional PyYAML/UCM parse skipped.
 - **follow_up:** Publish to main; next add the missing historical-index path while preserving this UI and existing transcript controls.
+
+### PAR-0056 published to main — 2026-11-22T07:05:52Z
+
+Implementation commit `78f1aa008a5f00a7d6dd8c2d1568d72302d31534` and evidence/checkpoint commit `5db2e8d55032819077660f5d6caa20f4407d5738` are on `origin/main`. Fresh fetch confirmed exact local/remote equality at `5db2e8d55032819077660f5d6caa20f4407d5738`. The task remains partial: navigation covers loaded prompts, with indexed older-history navigation and active-marker tracking still open. The operator-owned `apps/hermes-native/work/` remains untracked and untouched.
