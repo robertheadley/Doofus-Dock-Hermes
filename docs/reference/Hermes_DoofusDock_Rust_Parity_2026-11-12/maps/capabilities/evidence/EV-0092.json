@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0092",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "prior_message_edit_resumes_exact_stored_session_and_retries_unchanged_truncation_once",
+  "locator": "apps/hermes-native/src/gateway.rs#edit_prompt_resumes_stale_runtime_and_retries_exact_truncation_once",
+  "date": "2026-11-22",
+  "commit": "3a288f867af28b8826cf63f4f7e0a84a9c4eadae",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless local-WebSocket Gateway actor fixture. A definitive prompt.submit session-not-found refusal resumes the exact stored session under the captured profile, emits a runtime-rebind event before retry, then retries once with the same submission ID, text/attachment refs, truncation row, deep-cut consent, and survivor IDs. A second actor fixture proves a mismatched stored owner results in no rebind and no retry. A headless app regression verifies wrong-connection events are ignored, the matching owner/pending edit is retargeted, and local transcript changes only after the recovered runtime admission receipt. Full locked agent-automation suite passed 540 library, 15 protocol, and 3 launcher tests; all-target check, rustfmt, diff check, progress generators, and 19 task continuity tests passed.",
+  "notes": "Partial implementation evidence only. The installed Hermes Gateway was not contacted. Live Gateway behavior, packaged Windows picker/drop interaction, and formal pinned-source acceptance remain unverified."
+}
