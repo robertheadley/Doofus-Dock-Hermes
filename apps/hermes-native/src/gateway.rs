@@ -12086,6 +12086,7 @@ fn resolve_edit_target_http(
     let mut messages = Vec::new();
     let mut json_chars = 0usize;
     let mut offset = 0usize;
+    let mut first_page = true;
     for _ in 0..MAX_PAGES {
         let mut url = format!(
             "{origin}/api/sessions/{}/messages?",
@@ -12113,9 +12114,7 @@ fn resolve_edit_target_http(
             .map(|serialized| serialized.len())
             .unwrap_or(usize::MAX);
         json_chars = json_chars.saturating_add(page_chars);
-        if json_chars > MAX_JSON_CHARS
-            || messages.len().saturating_add(page.messages.len()) > 50_000
-        {
+        if json_chars > MAX_JSON_CHARS {
             return Err("Hermes edit history exceeds the safe lookup limit".into());
         }
         let page_len = page.messages.len();
@@ -12137,7 +12136,23 @@ fn resolve_edit_target_http(
             }
             None => return Err("Hermes returned unbounded or incomplete edit history".into()),
         }
-        messages.extend(page.messages);
+        let skip_overlap = if first_page {
+            false
+        } else {
+            let Some(previous_last) = messages.last() else {
+                return Err("Hermes edit history page boundary is missing".into());
+            };
+            if page.messages.first() != Some(previous_last) {
+                return Err("Hermes edit history changed while pages were being read".into());
+            }
+            true
+        };
+        let unique_page_len = page_len.saturating_sub(usize::from(skip_overlap));
+        if messages.len().saturating_add(unique_page_len) > 50_000 {
+            return Err("Hermes edit history exceeds the safe lookup limit".into());
+        }
+        messages.extend(page.messages.into_iter().skip(usize::from(skip_overlap)));
+        first_page = false;
         if page_len == 0 || page_len < PAGE_SIZE {
             return Ok(resolve_durable_user_row_id(
                 &messages,
@@ -12145,7 +12160,11 @@ fn resolve_edit_target_http(
                 latest_user_turn,
             ));
         }
-        offset = offset.saturating_add(page_len);
+        // Repeat the prior page's last row as the next page's first row. The
+        // pinned REST API does not expose a snapshot cursor, so this boundary
+        // overlap detects offset shifts caused by concurrent truncation or
+        // insertion instead of silently joining rows from different views.
+        offset = offset.saturating_add(page_len.saturating_sub(1));
     }
     Err("Hermes edit history exceeds the safe lookup page limit".into())
 }
@@ -21972,6 +21991,87 @@ mod tests {
                 .expect("resolve remote edit target"),
             Some(55)
         );
+        server.join().expect("edit history fixture exits");
+    }
+
+    #[test]
+    fn edit_row_history_lookup_overlaps_pages_and_resolves_a_stable_boundary() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            for (page_number, expected_offset) in [(0, 0), (1, 499)] {
+                let (mut stream, _) = listener.accept().expect("accept edit history page");
+                let request = read_http_fixture_request(&mut stream);
+                assert!(request.contains(&format!("offset={expected_offset}&order=oldest")));
+                let messages = if page_number == 0 {
+                    (1..=500)
+                        .map(|row_id| {
+                            json!({"row_id":row_id,"role":"assistant","content":format!("row-{row_id}")})
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![
+                        json!({"row_id":500,"role":"assistant","content":"row-500"}),
+                        json!({"row_id":501,"role":"user","content":"lost row id"}),
+                    ]
+                };
+                let body = json!({
+                    "session_id":"stored-42",
+                    "profile":"work",
+                    "messages":messages,
+                    "pagination":{"limit":500,"offset":expected_offset,"order":"oldest","returned":messages.len()}
+                })
+                .to_string();
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                    .expect("write edit history page");
+            }
+        });
+        let endpoint = cron_remote_fixture_endpoint(address);
+        assert_eq!(
+            resolve_edit_target_http(&endpoint, "stored-42", Some("work"), "lost row id", false)
+                .expect("stable history pages resolve the durable row"),
+            Some(501)
+        );
+        server.join().expect("edit history fixture exits");
+    }
+
+    #[test]
+    fn edit_row_history_lookup_fails_closed_when_history_shifts_between_pages() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            for (page_number, expected_offset) in [(0, 0), (1, 499)] {
+                let (mut stream, _) = listener.accept().expect("accept edit history page");
+                let request = read_http_fixture_request(&mut stream);
+                assert!(request.contains(&format!("offset={expected_offset}&order=oldest")));
+                let messages = if page_number == 0 {
+                    (1..=500)
+                        .map(|row_id| {
+                            json!({"row_id":row_id,"role":"assistant","content":format!("row-{row_id}")})
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![
+                        json!({"row_id":501,"role":"assistant","content":"row-501"}),
+                        json!({"row_id":502,"role":"user","content":"lost row id"}),
+                    ]
+                };
+                let body = json!({
+                    "session_id":"stored-42",
+                    "profile":"work",
+                    "messages":messages,
+                    "pagination":{"limit":500,"offset":expected_offset,"order":"oldest","returned":messages.len()}
+                })
+                .to_string();
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                    .expect("write edit history page");
+            }
+        });
+        let endpoint = cron_remote_fixture_endpoint(address);
+        let error =
+            resolve_edit_target_http(&endpoint, "stored-42", Some("work"), "lost row id", false)
+                .expect_err("a shifted history page must not yield an edit target");
+        assert!(error.contains("changed while pages were being read"));
         server.join().expect("edit history fixture exits");
     }
 
