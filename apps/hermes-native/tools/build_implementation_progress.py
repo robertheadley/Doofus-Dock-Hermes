@@ -1091,6 +1091,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0089.json#EV-0089",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0090.json#EV-0090",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0092.json#EV-0092",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0093.json#EV-0093",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planConfirmedEdit",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/rewind.ts#planEdit",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/user-edit-composer.tsx#handleDrop",

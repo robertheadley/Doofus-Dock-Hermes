@@ -3032,3 +3032,17 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** No benchmark required; no polling or background work was added.
 - **risks:** Live Gateway, packaged Windows picker/drop, formal pinned-source acceptance remain unverified.
 - **follow_up:** Bind EV-0093 to the implementation commit, checkpoint and publish both commits to main, then continue the next agent-workflow gap.
+
+
+## PAR-0051 log timestamp correction — 2026-11-22
+
+- **id:** hermes-par0051-log-time-correction-20261122
+- **timestamp:** 2026-11-22T03:26:45Z
+- **what:** Corrected the record that the timestamps and durations in the two immediately preceding failed-turn-edit entries were inaccurate future placeholders, not measured event times. The actual validation completed before this correction; its result is unchanged.
+- **why:** Keep the append-only journal honest about observed versus estimated chronology.
+- **components:** `docs/CHANGELOG.agent.md`, `docs/EXECUTION_LOGS.md`.
+- **type:** Journal correction.
+- **validation:** Compared to the live UTC clock and observed command results; the original entries remain preserved as history, and this correction supersedes their time/duration metadata.
+- **performance:** No application behavior change.
+- **risks:** None.
+- **follow_up:** Use observed timestamps for subsequent evidence and publication records.

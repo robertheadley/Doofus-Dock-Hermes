@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0093",
+  "capability_id": "ui-edit-a-previous-user-message",
+  "kind": "test_result",
+  "outcome": "partial",
+  "scenario": "edit_failed_user_turn_without_durable_row_id_using_plain_non_truncating_prompt_submit",
+  "locator": "apps/hermes-native/src/app.rs#failed_turn_without_durable_row_uses_plain_submit_and_replaces_only_after_admission",
+  "date": "2026-11-22",
+  "commit": "98a33c86eacc0de4c78f7e7e54d99f305c3e0a5a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui full-app fixture. The rendered transcript exposes Edit failed message without a durable row ID and opens a dialog explaining that stored history will not be truncated. Submission is an ordinary prompt.submit, not the truncating edit command. The local failed user/error pair is retained until admission; on admission it is replaced by the new prompt while later transcript turns and the composer draft remain. A definitive refusal retains the failed transcript and restores the edited text without auto-replay. Full locked suite passed 543 library + 15 protocol + 3 launcher; all-target check, formatting/diff, progress generators, 19 task continuity tests and task-state validation passed.",
+  "notes": "Partial implementation evidence only. No live Hermes Gateway was contacted. Live Gateway, packaged Windows file picker/drop, and formal pinned-source acceptance remain unverified."
+}
