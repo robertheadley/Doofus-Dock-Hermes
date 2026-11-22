@@ -1065,9 +1065,10 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0051": {
         "state": "partial",
-        "level": "headless_owner_scoped_prior_message_edit_and_stale_runtime_recovery",
+        "level": "headless_owner_scoped_prior_message_edit_stale_runtime_recovery_and_failed_turn_resubmit",
         "refs": [
             "apps/hermes-native/docs/PLAN.md#Revision 304",
+            "apps/hermes-native/docs/PLAN.md#Revision 305",
             "apps/hermes-native/src/app.rs#editing_a_persisted_message_requires_deep_cut_confirmation_and_preserves_composer",
             "apps/hermes-native/src/app.rs#edited_message_revalidates_target_and_submits_confirmed_gateway_truncation",
             "apps/hermes-native/src/app.rs#prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation",
@@ -1081,6 +1082,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/gateway.rs#edit_prompt_does_not_retry_when_resume_returns_the_wrong_owner",
             "apps/hermes-native/src/app.rs#unknown_edit_interrupt_preserves_history_and_never_sends_the_truncating_prompt",
             "apps/hermes-native/src/app.rs#refused_prior_message_edit_preserves_composer_and_restores_edit_text",
+            "apps/hermes-native/src/app.rs#failed_turn_without_row_id_exposes_edit_dialog_without_truncation_warning",
+            "apps/hermes-native/src/app.rs#failed_turn_without_durable_row_uses_plain_submit_and_replaces_only_after_admission",
+            "apps/hermes-native/src/app.rs#refused_failed_turn_edit_keeps_original_error_and_draft_for_retry",
             "apps/hermes-native/src/gateway.rs#prompt_edit_uses_stable_row_and_explicit_deep_cut_confirmation",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0087.json#EV-0087",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0088.json#EV-0088",

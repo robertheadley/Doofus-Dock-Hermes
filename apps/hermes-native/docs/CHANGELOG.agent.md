@@ -3004,3 +3004,31 @@ Validation addendum (2026-11-17T22:17:00Z): added coverage for migration from le
 - **performance:** No benchmark run; implementation uses a fixed-size identity cache.
 - **risks:** Live Gateway reconnect/replay, packaged Windows behavior, and formal pinned-source acceptance remain unverified.
 - **follow_up:** Publish only the explicit additive source, evidence, and documentation files; retain protected work data.
+
+
+## PAR-0051 failed-turn editing — 2026-11-22
+
+- **id:** hermes-par0051-failed-turn-edit-20261122
+- **timestamp:** 2026-11-22T03:45:00Z
+- **what:** Added editing for failed user turns without durable row IDs, using stable local submission identity and plain non-truncating prompt submission. The transcript changes only after admission; refusal preserves the original failure and edit draft. Added rendered UI, admission, and refusal regressions.
+- **why:** Support the pinned agent chat prompt lifecycle for failed turns without changing stored session history.
+- **components:** Native transcript action/dialog, Gateway submit routing, admission reconciliation, headless UI tests, progress evidence and project docs.
+- **type:** Additive chat lifecycle feature and validation.
+- **validation:** Focused failed-turn UI, plain-submit, admission and refusal tests pass. Full locked suite, all-target check, progress generators, package/task validators, and commit-bound evidence are pending.
+- **performance:** No new polling; uses one standard prompt submission.
+- **risks:** Live Gateway and packaged Windows behavior are unverified; unknown admission remains pending and is not automatically replayed.
+- **follow_up:** Complete full validation, bind partial evidence to the implementation SHA, checkpoint task state, and publish to main.
+
+
+## PAR-0051 failed-turn editing validation — 2026-11-22
+
+- **id:** hermes-par0051-failed-turn-edit-validation-20261122
+- **timestamp:** 2026-11-22T04:02:00Z
+- **what:** Completed full validation for the additive failed-turn edit path and refreshed the generated evidence overlays.
+- **why:** Confirm the implementation integrates with the full native agent workflow and task/evidence contracts.
+- **components:** Native Rust tests/check, progress overlays, continuity and pinned capability validators.
+- **type:** Verification and evidence update.
+- **validation:** PASS 543 library + 15 protocol + 3 launcher tests, all-target locked check, fmt and diff checks, both progress generators, 19/19 task continuity tests, task-state schema, root package validator (76 implementation receipts) and archival package validator (491 pending). Optional PyYAML parsing skipped because the dependency is unavailable.
+- **performance:** No benchmark required; no polling or background work was added.
+- **risks:** Live Gateway, packaged Windows picker/drop, formal pinned-source acceptance remain unverified.
+- **follow_up:** Bind EV-0093 to the implementation commit, checkpoint and publish both commits to main, then continue the next agent-workflow gap.

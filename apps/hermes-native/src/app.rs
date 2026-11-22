@@ -1325,6 +1325,8 @@ struct MessageEditDraft {
     profile: Option<String>,
     connection_id: Option<String>,
     row_id: u64,
+    failed_turn: bool,
+    failed_turn_submission_id: Option<String>,
     original_text: String,
     text: String,
     attachments: Vec<ComposerAttachment>,
@@ -7109,7 +7111,7 @@ fn render_message() -> &'static str {
                 ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
             }
             let messages = self.transcript.clone();
-            let mut open_message_edit: Option<(u64, String, usize)> = None;
+            let mut open_message_edit: Option<(u64, String, usize, bool, Option<String>)> = None;
             let mut open_message_regenerate: Option<(usize, u64, String)> = None;
             let search_matches = transcript_search_matches(&messages, &self.find_in_page_query);
             let timestamps_enabled = self.timestamps_enabled;
@@ -7211,14 +7213,23 @@ fn render_message() -> &'static str {
                         };
                         let entry = frame.show(ui, |ui| {
                             ui.label(RichText::new(speaker.clone()).strong().color(ACCENT));
-                            if message.get("role").and_then(serde_json::Value::as_str)
-                                == Some("user")
-                                && message.get("error").is_none_or(serde_json::Value::is_null)
-                                && let Some(row_id) = message
-                                    .get("row_id")
-                                    .and_then(serde_json::Value::as_u64)
-                                    .filter(|id| *id > 0)
-                                && messages
+                            let failed_turn = transcript_failed_user_turn(&messages, index);
+                            let durable_row_id = message
+                                .get("row_id")
+                                .and_then(serde_json::Value::as_u64)
+                                .filter(|id| *id > 0);
+                            let failed_turn_submission_id = failed_turn
+                                .then(|| {
+                                    message
+                                        .get("submission_id")
+                                        .or_else(|| message.get("id"))
+                                        .and_then(serde_json::Value::as_str)
+                                        .filter(|id| !id.trim().is_empty())
+                                        .map(str::to_owned)
+                                })
+                                .flatten();
+                            let durable_row_is_unique = durable_row_id.is_some_and(|row_id| {
+                                messages
                                     .iter()
                                     .filter(|candidate| {
                                         candidate.get("row_id").and_then(serde_json::Value::as_u64)
@@ -7226,15 +7237,35 @@ fn render_message() -> &'static str {
                                     })
                                     .count()
                                     == 1
+                            });
+                            if message.get("role").and_then(serde_json::Value::as_str)
+                                == Some("user")
+                                && message.get("error").is_none_or(serde_json::Value::is_null)
+                                && ((failed_turn && failed_turn_submission_id.is_some())
+                                    || (!failed_turn && durable_row_is_unique))
                             {
                                 let edit = ui
                                     .add_enabled(
                                         edit_action_enabled,
-                                        egui::Button::new("Edit message"),
+                                        egui::Button::new(if failed_turn {
+                                            "Edit failed message"
+                                        } else {
+                                            "Edit message"
+                                        }),
                                     )
-                                    .accessible_name("Edit this sent message");
+                                    .accessible_name(if failed_turn {
+                                        "Edit this failed prompt without truncating session history"
+                                    } else {
+                                        "Edit this sent message"
+                                    });
                                 if edit.clicked() {
-                                    open_message_edit = Some((row_id, body.clone(), index));
+                                    open_message_edit = Some((
+                                        durable_row_id.unwrap_or_default(),
+                                        body.clone(),
+                                        index,
+                                        failed_turn,
+                                        failed_turn_submission_id,
+                                    ));
                                 }
                             }
                             if message.get("role").and_then(serde_json::Value::as_str)
@@ -7442,7 +7473,9 @@ fn render_message() -> &'static str {
             if let Some(destination) = open_transcript_file {
                 self.open_transcript_local_file_preview(session_id, &destination);
             }
-            if let Some((row_id, original_text, index)) = open_message_edit {
+            if let Some((row_id, original_text, index, failed_turn, failed_turn_submission_id)) =
+                open_message_edit
+            {
                 let later_user_turns = messages
                     .iter()
                     .skip(index + 1)
@@ -7458,10 +7491,12 @@ fn render_message() -> &'static str {
                         .as_ref()
                         .and_then(|gateway| gateway.connection_id().map(str::to_owned)),
                     row_id,
+                    failed_turn,
+                    failed_turn_submission_id,
                     text: original_text.clone(),
                     original_text,
                     attachments: Vec::new(),
-                    later_user_turns,
+                    later_user_turns: if failed_turn { 0 } else { later_user_turns },
                     confirm_deep_cut: false,
                     busy_retry_attempted: false,
                     is_regenerate: false,
@@ -7484,6 +7519,8 @@ fn render_message() -> &'static str {
                         .as_ref()
                         .and_then(|gateway| gateway.connection_id().map(str::to_owned)),
                     row_id,
+                    failed_turn: false,
+                    failed_turn_submission_id: None,
                     original_text: prompt.clone(),
                     text: prompt,
                     attachments: Vec::new(),
@@ -17808,6 +17845,8 @@ fn render_message() -> &'static str {
         let mut attach_paths = Vec::new();
         egui::Window::new(if edit.is_regenerate {
             "Regenerate Hermes answer"
+        } else if edit.failed_turn {
+            "Edit failed Hermes prompt"
         } else {
             "Edit sent message"
         })
@@ -17826,8 +17865,12 @@ fn render_message() -> &'static str {
                     )
                     .accessible_name("Prompt to regenerate");
                 } else {
-                    ui.label("Editing this message resubmits it and removes the later conversation from Hermes history.");
-                ui.label(RichText::new("Old attachment parts are removed with the original turn. Add replacement files here if needed.").size(11.0).color(MUTED));
+                    if edit.failed_turn {
+                        ui.label("This prompt failed before Hermes accepted it. Editing will submit a new prompt without truncating stored session history.");
+                    } else {
+                        ui.label("Editing this message resubmits it and removes the later conversation from Hermes history.");
+                        ui.label(RichText::new("Old attachment parts are removed with the original turn. Add replacement files here if needed.").size(11.0).color(MUTED));
+                    }
                 let attach = ui.add_enabled(self.gateway_connected, egui::Button::new("Attach file"))
                     .accessible_name("Attach a new image or file to the edited message");
                 if attach.clicked() {
@@ -17901,6 +17944,8 @@ fn render_message() -> &'static str {
                         && (edit.later_user_turns == 0 || edit.confirm_deep_cut);
                     let submit_label = if edit.is_regenerate {
                         "Regenerate answer"
+                    } else if edit.failed_turn {
+                        "Resubmit edited prompt"
                     } else {
                         "Send edited message"
                     };
@@ -18040,11 +18085,25 @@ fn render_message() -> &'static str {
             .transcript
             .iter()
             .enumerate()
-            .filter(|(_, message)| {
-                message.get("row_id").and_then(serde_json::Value::as_u64) == Some(edit.row_id)
-                    && message.get("role").and_then(serde_json::Value::as_str) == Some("user")
-                    && transcript_message(message).1 == edit.original_text
-                    && message.get("error").is_none_or(serde_json::Value::is_null)
+            .filter(|(index, message)| {
+                let same_text = transcript_message(message).1 == edit.original_text;
+                if edit.failed_turn {
+                    let stable_id = edit.failed_turn_submission_id.as_deref();
+                    let message_id = message
+                        .get("submission_id")
+                        .or_else(|| message.get("id"))
+                        .and_then(serde_json::Value::as_str);
+                    stable_id.is_some()
+                        && message_id == stable_id
+                        && message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                        && same_text
+                        && transcript_failed_user_turn(&self.transcript, *index)
+                } else {
+                    message.get("row_id").and_then(serde_json::Value::as_u64) == Some(edit.row_id)
+                        && message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                        && same_text
+                        && message.get("error").is_none_or(serde_json::Value::is_null)
+                }
             })
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
@@ -18054,14 +18113,17 @@ fn render_message() -> &'static str {
             return;
         }
         let target_index = matches[0];
-        let later_user_turns = self
-            .transcript
-            .iter()
-            .skip(target_index + 1)
-            .filter(|message| {
-                message.get("role").and_then(serde_json::Value::as_str) == Some("user")
-            })
-            .count();
+        let later_user_turns = if edit.failed_turn {
+            0
+        } else {
+            self.transcript
+                .iter()
+                .skip(target_index + 1)
+                .filter(|message| {
+                    message.get("role").and_then(serde_json::Value::as_str) == Some("user")
+                })
+                .count()
+        };
         if later_user_turns != edit.later_user_turns
             || (later_user_turns > 0 && !edit.confirm_deep_cut)
         {
@@ -18146,18 +18208,38 @@ fn render_message() -> &'static str {
             return;
         };
         let submission_id = operation_id("edit");
-        let stored_session_id =
-            self.stored_session_id_for_runtime(&edit.session_id, edit.profile.as_deref());
-        if let Err(error) = gateway.edit_prompt(
-            edit.session_id.clone(),
-            stored_session_id,
-            edit.profile.clone(),
-            submission_id.clone(),
-            text.clone(),
-            edit.row_id,
-            later_user_turns > 0,
-            edit.rebind_survivor_row_ids.clone(),
-        ) {
+        let submit_result = if edit.failed_turn {
+            let attachments = edit
+                .attachments
+                .iter()
+                .filter(|attachment| attachment.is_image)
+                .map(|attachment| GatewayPromptAttachment {
+                    path: attachment.path.clone(),
+                    mime: crate::gateway::composer_attachment_mime(&attachment.name).to_owned(),
+                })
+                .collect();
+            gateway.submit_prompt_with_attachments(
+                edit.session_id.clone(),
+                edit.profile.clone(),
+                submission_id.clone(),
+                text.clone(),
+                attachments,
+            )
+        } else {
+            let stored_session_id =
+                self.stored_session_id_for_runtime(&edit.session_id, edit.profile.as_deref());
+            gateway.edit_prompt(
+                edit.session_id.clone(),
+                stored_session_id,
+                edit.profile.clone(),
+                submission_id.clone(),
+                text.clone(),
+                edit.row_id,
+                later_user_turns > 0,
+                edit.rebind_survivor_row_ids.clone(),
+            )
+        };
+        if let Err(error) = submit_result {
             self.status = error;
             return;
         }
@@ -18181,6 +18263,8 @@ fn render_message() -> &'static str {
         );
         self.status = if edit.is_regenerate {
             "Regenerating Hermes answer…".into()
+        } else if edit.failed_turn {
+            "Resubmitting edited failed prompt to Hermes…".into()
         } else {
             "Sending edited message to Hermes…".into()
         };
@@ -18578,46 +18662,85 @@ fn render_message() -> &'static str {
                     if let Some(transcript) =
                         self.transcript_for_runtime_mut(&session_id, pending.profile.as_deref())
                     {
-                        let targets = transcript
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, message)| {
-                                message.get("row_id").and_then(serde_json::Value::as_u64)
-                                    == Some(row_id)
-                                    && message.get("role").and_then(serde_json::Value::as_str)
-                                        == Some("user")
-                            })
-                            .map(|(index, _)| index)
-                            .collect::<Vec<_>>();
-                        if let [target_index] = targets.as_slice() {
-                            for message in transcript.iter_mut().take(*target_index) {
-                                let Some(old_row_id) =
-                                    message.get("row_id").and_then(serde_json::Value::as_u64)
-                                else {
-                                    continue;
-                                };
-                                if let Some(Some(new_row_id)) = survivor_row_id_map.get(&old_row_id)
-                                {
-                                    message["row_id"] = serde_json::json!(new_row_id);
-                                } else if let Some(message) = message.as_object_mut() {
-                                    // A truncating submit rewrites durable rows. If Hermes does
-                                    // not return a replacement ID for a survivor, drop the stale
-                                    // ID rather than risking a later rewind at the wrong row.
-                                    message.remove("row_id");
+                        if edit.failed_turn {
+                            let stable_id = edit.failed_turn_submission_id.as_deref();
+                            let targets = transcript
+                                .iter()
+                                .enumerate()
+                                .filter(|(index, message)| {
+                                    let message_id = message
+                                        .get("submission_id")
+                                        .or_else(|| message.get("id"))
+                                        .and_then(serde_json::Value::as_str);
+                                    stable_id.is_some()
+                                        && message_id == stable_id
+                                        && message.get("role").and_then(serde_json::Value::as_str)
+                                            == Some("user")
+                                        && transcript_message(message).1 == edit.original_text
+                                        && transcript_failed_user_turn(transcript, *index)
+                                })
+                                .map(|(index, _)| index)
+                                .collect::<Vec<_>>();
+                            if let [target_index] = targets.as_slice() {
+                                // Only the failed local turn is replaced. This path used a plain
+                                // prompt.submit, so Gateway history is deliberately untouched.
+                                transcript.remove(*target_index + 1);
+                                transcript.remove(*target_index);
+                                let mut user_message = serde_json::json!({
+                                    "id":submission_id,"submission_id":submission_id,
+                                    "admission_id":admission_id,"role":"user","content":edited_text,
+                                    "timestamp":unix_now_seconds()
+                                });
+                                if let Some(user_row_id) = user_row_id {
+                                    user_message["row_id"] = serde_json::json!(user_row_id);
                                 }
+                                transcript.push(user_message);
+                            } else if is_active {
+                                self.status = "Hermes admitted the edited failed prompt, but its local failed turn changed; refreshing history".into();
                             }
-                            transcript.truncate(*target_index);
-                            let mut user_message = serde_json::json!({
-                                "id":submission_id,"submission_id":submission_id,
-                                "admission_id":admission_id,"role":"user","content":edited_text,
-                                "timestamp":unix_now_seconds()
-                            });
-                            if let Some(user_row_id) = user_row_id {
-                                user_message["row_id"] = serde_json::json!(user_row_id);
+                        } else {
+                            let targets = transcript
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, message)| {
+                                    message.get("row_id").and_then(serde_json::Value::as_u64)
+                                        == Some(row_id)
+                                        && message.get("role").and_then(serde_json::Value::as_str)
+                                            == Some("user")
+                                })
+                                .map(|(index, _)| index)
+                                .collect::<Vec<_>>();
+                            if let [target_index] = targets.as_slice() {
+                                for message in transcript.iter_mut().take(*target_index) {
+                                    let Some(old_row_id) =
+                                        message.get("row_id").and_then(serde_json::Value::as_u64)
+                                    else {
+                                        continue;
+                                    };
+                                    if let Some(Some(new_row_id)) =
+                                        survivor_row_id_map.get(&old_row_id)
+                                    {
+                                        message["row_id"] = serde_json::json!(new_row_id);
+                                    } else if let Some(message) = message.as_object_mut() {
+                                        // A truncating submit rewrites durable rows. If Hermes does
+                                        // not return a replacement ID for a survivor, drop the stale
+                                        // ID rather than risking a later rewind at the wrong row.
+                                        message.remove("row_id");
+                                    }
+                                }
+                                transcript.truncate(*target_index);
+                                let mut user_message = serde_json::json!({
+                                    "id":submission_id,"submission_id":submission_id,
+                                    "admission_id":admission_id,"role":"user","content":edited_text,
+                                    "timestamp":unix_now_seconds()
+                                });
+                                if let Some(user_row_id) = user_row_id {
+                                    user_message["row_id"] = serde_json::json!(user_row_id);
+                                }
+                                transcript.push(user_message);
+                            } else if is_active {
+                                self.status = "Hermes admitted the transcript rewrite, but its target changed; refreshing history".into();
                             }
-                            transcript.push(user_message);
-                        } else if is_active {
-                            self.status = "Hermes admitted the transcript rewrite, but its target changed; refreshing history".into();
                         }
                     }
                 }
@@ -32835,6 +32958,20 @@ fn durable_row_ids_for_rebind(messages: &[serde_json::Value]) -> Vec<u64> {
         .collect()
 }
 
+fn transcript_failed_user_turn(messages: &[serde_json::Value], index: usize) -> bool {
+    messages
+        .get(index)
+        .and_then(|message| message.get("role"))
+        .and_then(serde_json::Value::as_str)
+        == Some("user")
+        && messages.get(index + 1).is_some_and(|message| {
+            message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                && message.get("error").is_some_and(|error| {
+                    !error.is_null() && error.as_str().is_none_or(|text| !text.trim().is_empty())
+                })
+        })
+}
+
 fn transcript_message(message: &serde_json::Value) -> (String, String) {
     if message.get("type").and_then(|value| value.as_str()) == Some("tool_call") {
         let name = message
@@ -35075,6 +35212,62 @@ mod tests {
     }
 
     #[test]
+    fn failed_turn_without_row_id_exposes_edit_dialog_without_truncation_warning() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({"id":"failed-id","submission_id":"failed-id","role":"user","content":"failed prompt"}),
+            serde_json::json!({"role":"assistant","error":"provider refused","content":"provider refused"}),
+        ];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 720.0))
+            .build_ui(move |ui| {
+                frame_app
+                    .borrow_mut()
+                    .session_content(ui, "runtime-session")
+            });
+        harness.run_steps(2);
+        assert!(
+            harness
+                .query_by_label("Edit this failed prompt without truncating session history")
+                .is_some()
+        );
+        harness
+            .query_by_label("Edit this failed prompt without truncating session history")
+            .expect("failed turn edit action")
+            .click();
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Edit failed Hermes prompt")
+                .is_some()
+        );
+        assert!(harness.query_by_label("This prompt failed before Hermes accepted it. Editing will submit a new prompt without truncating stored session history.").is_some());
+        assert!(harness.query_by_label("Resubmit edited prompt").is_some());
+        assert!(
+            harness
+                .query_by_label("I understand that later user turns will be removed")
+                .is_none()
+        );
+        let app_ref = app.borrow();
+        let edit = app_ref
+            .message_edit
+            .as_ref()
+            .expect("opened failed edit draft");
+        assert!(edit.failed_turn);
+        assert_eq!(edit.row_id, 0);
+        assert_eq!(edit.failed_turn_submission_id.as_deref(), Some("failed-id"));
+        drop(app_ref);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn regeneration_target_uses_the_nearest_unique_durable_user_row() {
         let messages = vec![
             serde_json::json!({"row_id":10,"role":"user","content":"first prompt"}),
@@ -35176,6 +35369,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 20,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "rerun this".into(),
             text: "rerun this".into(),
             attachments: Vec::new(),
@@ -35265,6 +35460,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 51,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "old question".into(),
             text: "revised question".into(),
             attachments: Vec::new(),
@@ -35317,6 +35514,150 @@ mod tests {
     }
 
     #[test]
+    fn failed_turn_without_durable_row_uses_plain_submit_and_replaces_only_after_admission() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "keep unrelated draft".into();
+        app.transcript = vec![
+            serde_json::json!({"row_id":1,"role":"user","content":"prior"}),
+            serde_json::json!({"row_id":2,"role":"assistant","content":"prior answer"}),
+            serde_json::json!({"id":"failed-local-id","submission_id":"failed-local-id","role":"user","content":"old failed prompt"}),
+            serde_json::json!({"role":"assistant","error":"provider unavailable","content":"provider unavailable"}),
+            serde_json::json!({"row_id":5,"role":"user","content":"later prompt"}),
+        ];
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 0,
+            failed_turn: true,
+            failed_turn_submission_id: Some("failed-local-id".into()),
+            original_text: "old failed prompt".into(),
+            text: "corrected prompt".into(),
+            attachments: Vec::new(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+            busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
+        });
+
+        let TestGatewayCommand::SubmitPrompt {
+            session_id,
+            submission_id,
+            profile,
+            text,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("plain prompt.submit for failed turn")
+        else {
+            panic!("failed-turn edit must not use the truncating edit command");
+        };
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert_eq!(text, "corrected prompt");
+        assert_eq!(
+            app.transcript.len(),
+            5,
+            "wait for admission before local changes"
+        );
+        assert_eq!(app.transcript[2]["content"], "old failed prompt");
+        assert_eq!(app.draft, "keep unrelated draft");
+
+        events
+            .send(GatewayEvent::PromptSubmitted {
+                session_id: "runtime-session".into(),
+                submission_id: submission_id.clone(),
+                result: Ok(PromptSubmitReceipt::Admitted {
+                    admission_id: "admission-corrected".into(),
+                    status: "started".into(),
+                    execution_generation: Some(7),
+                    user_row_id: Some(6),
+                    survivor_row_id_map: BTreeMap::new(),
+                }),
+            })
+            .expect("deliver plain-submit admission receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        assert_eq!(app.transcript.len(), 4);
+        assert_eq!(app.transcript[0]["content"], "prior");
+        assert_eq!(app.transcript[1]["content"], "prior answer");
+        assert_eq!(app.transcript[2]["content"], "later prompt");
+        assert_eq!(app.transcript[3]["content"], "corrected prompt");
+        assert_eq!(app.transcript[3]["submission_id"], submission_id);
+        assert_eq!(app.transcript[3]["row_id"], 6);
+        assert_eq!(app.draft, "keep unrelated draft");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn refused_failed_turn_edit_keeps_original_error_and_draft_for_retry() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.draft = "unrelated draft".into();
+        app.transcript = vec![
+            serde_json::json!({"id":"failed-id","submission_id":"failed-id","role":"user","content":"failed prompt"}),
+            serde_json::json!({"role":"assistant","error":"refused","content":"refused"}),
+        ];
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.submit_message_edit(MessageEditDraft {
+            session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: None,
+            row_id: 0,
+            failed_turn: true,
+            failed_turn_submission_id: Some("failed-id".into()),
+            original_text: "failed prompt".into(),
+            text: "corrected prompt".into(),
+            attachments: Vec::new(),
+            later_user_turns: 0,
+            confirm_deep_cut: false,
+            busy_retry_attempted: false,
+            is_regenerate: false,
+            rebind_survivor_row_ids: Vec::new(),
+        });
+        let TestGatewayCommand::SubmitPrompt {
+            session_id,
+            submission_id,
+            ..
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("plain failed-turn resubmit")
+        else {
+            panic!("failed-turn resubmit must use normal prompt.submit");
+        };
+        events
+            .send(GatewayEvent::PromptSubmitted {
+                session_id,
+                submission_id,
+                result: Err("Hermes prompt.submit refused: provider still unavailable".into()),
+            })
+            .expect("deliver definitive refusal");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0]["content"], "failed prompt");
+        assert_eq!(app.transcript[1]["error"], "refused");
+        assert_eq!(app.draft, "unrelated draft");
+        assert_eq!(
+            app.message_edit.as_ref().map(|edit| edit.text.as_str()),
+            Some("corrected prompt")
+        );
+        assert!(app.pending_submissions.is_empty());
+        assert!(commands.try_recv().is_err(), "refusal must not auto-replay");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn prior_message_edit_refuses_when_later_turn_count_changed_after_confirmation() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
@@ -35333,6 +35674,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 61,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "target".into(),
             text: "revised".into(),
             attachments: Vec::new(),
@@ -35388,6 +35731,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 71,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "running question".into(),
             text: "edited running question".into(),
             attachments: Vec::new(),
@@ -35497,6 +35842,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 76,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "question".into(),
             text: "edited question".into(),
             attachments: Vec::new(),
@@ -35616,6 +35963,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 101,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "old picture prompt".into(),
             text: "describe this replacement image".into(),
             attachments: Vec::new(),
@@ -35703,6 +36052,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 111,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "old prompt".into(),
             text: "new prompt".into(),
             attachments: vec![ComposerAttachment {
@@ -35772,6 +36123,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 81,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "question".into(),
             text: "edited question".into(),
             attachments: Vec::new(),
@@ -35844,6 +36197,8 @@ mod tests {
             profile: Some("work".into()),
             connection_id: None,
             row_id: 91,
+            failed_turn: false,
+            failed_turn_submission_id: None,
             original_text: "original".into(),
             text: "revised".into(),
             attachments: Vec::new(),
@@ -47975,6 +48330,8 @@ mod tests {
                 profile: Some("work".into()),
                 connection_id: Some(connection_id.clone()),
                 row_id: 17,
+                failed_turn: false,
+                failed_turn_submission_id: None,
                 original_text: "old prompt".into(),
                 text: "edited prompt".into(),
                 attachments: Vec::new(),

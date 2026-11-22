@@ -365,3 +365,11 @@ Keyboard navigation for the focused composer is implemented: arrows move the hig
 Canonical Gateway frames with a session, replay epoch, and sequence now pass through an owner-scoped bounded deduplicator before event handlers can change transcript or agent state. Exact identities include the Gateway connection and profile, so equal sequence values across owners do not suppress each other. Unsequenced legacy events preserve their existing behavior. The cache holds 8,192 recent identities; retransmissions older than that window can be processed again.
 
 Validation: PASS three focused tests for duplicate suppression, owner/epoch/connection isolation, legacy compatibility, and bounded retention; full locked suite (533 library + 15 protocol + 3 launcher); all-target check, rustfmt and diff checks. The capability progress overlay now records PAR-0512 as partial with exact evidence and limitations. Live Gateway reconnect/replay and pinned-source formal acceptance remain open.
+
+
+### PAR-0051 failed-turn edit update (2026-11-22)
+
+The next additive slice supports editing failed user prompts that lack durable row IDs. A stable local submission ID and immediate assistant error are revalidated; resubmission uses plain `prompt.submit` with no history truncation. The user/error pair changes only after admission, later transcript entries and the composer stay intact, and definitive refusal preserves the failed turn for another edit. Focused rendered/submission/admission/refusal tests pass. Full validation, live Gateway, packaged Windows, and pinned-source acceptance remain open.
+
+
+PAR-0051 failed-turn update: full locked tests (543 library + 15 protocol + 3 launcher), all-target check, progress, continuity and package validators now pass. This adds headless evidence only; live Gateway, packaged Windows and formal source-paired acceptance remain open.
