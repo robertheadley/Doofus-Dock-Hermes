@@ -302,3 +302,24 @@ Hermes Native now advertises server-request support on local and remote Gateway 
 The primary socket now retries transient attach/drop failures with pinned jitter timing. Reconnect keeps the same profile and instance owner, replays bounded `session.events.since` gaps, rejects wrong session/epoch/sequence rows, never replays a prompt submit, and uses the app's transcript resume when the event ring cannot satisfy the cursor. Headless tests force a TCP drop after a prompt is admitted and prove only one `prompt.submit` was sent. Full locked validation passes: 617 library + 15 protocol + 3 launcher; all-target check, rustfmt/diff and 19 task continuity tests pass.
 
 Current broad evidence overlay: **119/499 reviewed** (6 implemented, 112 partial, 1 not implemented, 380 unknown). The agent-focused chat/tool scope has **85/176 mapped** (1 implemented, 83 partial, 1 not implemented, 91 unknown). These are mapped evidence counts, not a completion percentage; live runtime verification and strict source acceptance remain **0/176**. PAR-0508 and PAR-0511 remain partial pending authenticated live Gateway and packaged Windows verification. Auxiliary HTTP/profile workers keep the first API endpoint after reconnect, so endpoint migration remains open.
+
+
+### Latest evidence reconciliation — PAR-0509 saved-session resume — 2026-11-22
+
+PAR-0509 was previously unreviewed. Existing headless implementation/tests prove exact-profile session resume, response identity validation, profile/Gateway/request fencing, in-flight refusal recovery and no prompt resubmission when opening a saved session. EV-0124 records the evidence at source commit `1412ed8`; the capability remains partial because authenticated live Gateway, packaged Windows cold-start behavior and formal source acceptance are unverified.
+
+Current mapped evidence is **120/499** broad requirements (6 implemented, 113 partial, 1 not implemented, 379 unknown) and **86/176** agent chat/tool requirements (1 implemented, 84 partial, 1 not implemented, 90 unknown). These are evidence coverage counts, not a completion percentage. Live-runtime and source-paired acceptance remain **0/176**.
+
+
+### Latest implementation slice — PAR-0062 attachment recovery — 2026-11-22
+
+When image or file staging returns a definitive stale-runtime refusal, Hermes Native now resumes the exact stored session under the same profile, verifies returned identity, emits the runtime-owner rebind, and retries the upload once using the bytes already read. Ambiguous transport outcomes and unrelated refusals do not retry. Loopback actor and app tests cover payload reuse, no duplicate retry, resume failure, owner mismatch/missing identity, and composer chip ownership. EV-0125 binds the evidence to source commit `3b50cc35a63eac09f08d768b8dcd8f4afc276f76`.
+
+Validation: full locked suite 622 library + 15 protocol + 3 launcher; all-target locked check; rustfmt/diff; and task continuity 19/19 pass. The requirement remains partial. Current evidence coverage remains **120/499** broad and **86/176** chat/tool; the slice adds evidence within an already reviewed row. Live authenticated Gateway, clipboard images/pathless drops, packaged Windows, and formal source-paired acceptance remain open. These counts measure mapped evidence, not overall product completeness.
+
+
+### Latest implementation slice — PAR-0062 clipboard image paste — 2026-11-22
+
+The focused Hermes composer now consumes the native egui `PasteImage` event when clipboard text is unavailable. A 16-megapixel/16-MiB bounded PNG is staged atomically in Hermes app data and sent using the same session/profile-scoped upload and stale-runtime recovery path as a picked or dropped file. Headless tests cover focus ownership, PNG readback, limits and cleanup. EV-0126 binds this evidence to source commit `53e8c62bb729b8a33ddbb9f35ef13a855c9a8547`.
+
+Validation: full locked suite 626 library + 15 automation protocol + 3 launcher; all-target locked check; rustfmt/diff and task-state validation pass. Evidence coverage remains **120/499** broad and **86/176** chat/tool; the slice adds coverage within an already reviewed requirement. Authenticated live Gateway, actual packaged-Windows clipboard behavior, pathless drops, thumbnails, interrupted-draft attachment validity and source-paired acceptance remain open. These counts measure mapped evidence, not overall completion.

@@ -1481,6 +1481,17 @@ capabilities:
     backend: partial
     ui: partial
     tests: partial
+  verification:
+    scenarios:
+    - id: composer-clipboard-image-paste
+      description: When the native composer owns focus and the clipboard contains an image without usable text, consume the egui image-paste event, atomically stage a bounded PNG, and pass it through the existing profile/session-owned upload flow; other widgets keep their image-paste event.
+    - id: gateway-attachment-stale-runtime-recovery
+      description: On a definitive session-not-found attachment refusal, resume the exact stored session under the same profile, publish the new runtime owner, and retry the already-read payload once; reject mismatched or missing resume identity and do not retry other errors.
+    - id: authenticated-attachment-upload
+      description: Verify image/file upload success, refusal, and offline behavior against an authenticated Hermes Gateway on Windows.
+  evidence:
+  - EV-0126
+  - EV-0125
 - id: ui-restore-interrupted-image-draft-without-sending
   name: Restore interrupted image draft without sending
   area: chat-transcript
@@ -9947,7 +9958,7 @@ capabilities:
   name: Resume saved session with correct profile
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can resume saved session with correct profile.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -9959,9 +9970,17 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: implemented
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: headless-correct-profile-resume
+      description: Resume a saved session using its exact profile, reject a different returned session identity, and fence the transcript result to its Gateway/profile/request owner.
+    - id: authenticated-live-resume
+      description: Cold-start resume against an authenticated local or remote Gateway restores the correct session/profile on Windows.
+  evidence:
+  - EV-0124
 - id: ui-reattach-to-in-flight-turn-without-duplicating-submit
   name: Reattach to in-flight turn without duplicating submit
   area: protocol-reliability

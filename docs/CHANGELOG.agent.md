@@ -4714,6 +4714,28 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **risks:** Authenticated live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open.
 - **follow_up:** Keep the task partial; continue the first dependency-ready agent-workflow gap.
 
+- **id:** hermes-par0509-resume-evidence-reconcile-20261122
+- **timestamp:** 2026-11-22T18:08:00-06:00
+- **what:** Mapped existing exact-profile saved-session resume behavior and headless regressions as partial evidence in EV-0124; updated progress and task lifecycle.
+- **why:** The source and tests already exercised profile, stored/runtime identity, owner/request fencing, refusal recovery and no-resubmit behavior, while progress still showed the requirement as unknown.
+- **components:** PAR-0509, EV-0124, capability maps, implementation/chat-tool progress, task ledger.
+- **type:** evidence_and_status_reconciliation
+- **validation:** Existing full locked suite on `1412ed8` passed 617 library + 15 protocol + 3 launcher; all-target check, rustfmt, and 19/19 task-continuity checks passed; package validator reports 565 behaviors and 109 implementation receipts.
+- **performance:** No runtime benchmark was run.
+- **risks:** Authenticated live Gateway cold-start resume, packaged Windows, and formal source-paired acceptance remain open.
+- **follow_up:** Continue the PAR-0062 attachment workflow and preserve partial status until live evidence exists.
+
+- **id:** hermes-par0062-attachment-stale-runtime-recovery-20261122
+- **timestamp:** 2026-11-22T18:08:00-06:00
+- **what:** Added profile- and stored-session-fenced stale-runtime recovery for image/file staging. A definitive `session not found` refusal resumes once, emits the runtime rebind, and retries the same already-read bytes exactly once. Added loopback actor and app regressions; source commit `3b50cc35a63eac09f08d768b8dcd8f4afc276f76` is published to `main`.
+- **why:** Attachments execute before prompt submission, so an otherwise recoverable saved chat could not send image/file context after Hermes rotated its runtime session ID.
+- **components:** PAR-0062, Gateway command/actor, composer upload ownership, EV-0125, capability maps, progress ledgers, plan, backlog, README, execution log.
+- **type:** feature_and_test
+- **validation:** Full locked suite 622 library + 15 protocol + 3 launcher; all-target locked check; rustfmt/diff; task continuity 19/19; package validator 565 behaviors and 109 implementation receipts. Focused attachment actor/app regressions pass.
+- **performance:** Attachment bytes are read once and reused for the single retry; no runtime benchmark was run.
+- **risks:** Clipboard images/pathless drops, path-vs-bytes proof, authenticated live Gateway outcomes, packaged Windows and source-paired acceptance remain open; ambiguous transport failures are deliberately not retried.
+- **follow_up:** Publish EV-0125 and reconciled progress/docs to `main`; continue with clipboard image paste and the remaining attachment interaction gaps.
+
 - **id:** hermes-par0515-clarify-ui-gateway-20261122
 - **timestamp:** 2026-11-22T13:40:00Z
 - **what:** Added headless app-to-Gateway evidence for ordered clarification answers and Skip, then updated the capability and generated progress records.
@@ -4792,3 +4814,14 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No runtime benchmark was run.
 - **risks:** Live Gateway and packaged Windows reconnect acceptance remain open; operator-owned runtime data was excluded.
 - **follow_up:** Review and implement the selected next P0 Gateway capability, PAR-0503.
+
+- **id:** hermes-par0062-clipboard-image-paste-20261122
+- **timestamp:** 2026-11-22T18:28:00-06:00
+- **what:** Added focused-composer clipboard image paste with validated, atomic PNG staging and routed it through the existing profile/session-owned attachment and stale-runtime recovery pipeline. Published implementation commit `53e8c62bb729b8a33ddbb9f35ef13a855c9a8547` to `main`.
+- **why:** Image context is a core agent prompt input and must be usable from clipboard, not only the file picker or path-based drop.
+- **components:** PAR-0062, clipboard-image event routing and staging, app-owned cleanup, Gateway attachment flow, EV-0126, progress maps, architecture, plan, backlog, completion overview, README.
+- **type:** feature_and_test
+- **validation:** Full locked suite 626 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt and diff check pass. The first full-suite run exposed an existing WebSocket-close race in a fail-closed Gateway test; after correcting the assertion to target only rebind/retry events, the serial full suite passed.
+- **performance:** Clipboard PNG conversion is bounded to 16 megapixels and 16 MiB; no runtime benchmark was run.
+- **risks:** Actual Windows clipboard capture, authenticated live Gateway upload, pathless drops, thumbnails, interrupted-draft restart validity, packaged Windows and formal source-paired acceptance remain open.
+- **follow_up:** Publish EV-0126 and refreshed evidence/progress maps to `main`; then continue remaining attachment paths and live acceptance.

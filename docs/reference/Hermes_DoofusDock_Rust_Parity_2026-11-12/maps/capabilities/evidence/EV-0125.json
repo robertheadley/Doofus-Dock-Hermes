@@ -1,0 +1,15 @@
+{
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-22",
+  "commit": "3b50cc35a63eac09f08d768b8dcd8f4afc276f76",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Loopback Hermes Gateway WebSocket actor and egui app fixtures. A definitive session-not-found attachment refusal resumes the exact stored session under the selected profile, validates the returned stored-session owner and non-empty runtime ID, publishes the runtime rebind before retry, and retries the same already-read upload payload once. Wrong or missing resume identity fails closed; non-stale refusal and missing stored ID do not retry; failed resume preserves the original refusal. App coverage confirms the owner runtime changes before the attachment receipt updates the chip. Full locked suite passes 622 library + 15 protocol + 3 launcher; all-target check, rustfmt/diff and task-continuity 19/19 pass.",
+  "uid": "EV-0125",
+  "capability_id": "ui-attach-image-or-file-to-prompt",
+  "scenario": "gateway-attachment-stale-runtime-recovery",
+  "locator": "apps/hermes-native/src/gateway.rs::tests::composer_attachment_resumes_exact_stored_session_and_retries_once",
+  "notes": "Partial headless evidence. Transport timeouts and other ambiguous outcomes are not retried to avoid duplicate staging. Clipboard images, pathless drops, thumbnails, live authenticated Gateway outcomes, packaged Windows behavior and formal source-paired acceptance remain open."
+}

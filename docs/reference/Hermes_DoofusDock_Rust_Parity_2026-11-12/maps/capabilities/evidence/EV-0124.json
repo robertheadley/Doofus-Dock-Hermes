@@ -1,0 +1,15 @@
+{
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-22",
+  "commit": "1412ed8a910e9a5bf001cbd10e4ce0ca82ba518e",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Gateway actor and egui app fixtures. session.resume carries the requested profile and stored session ID; mismatched returned runtime/stored session identities are rejected. Transcript/profile ownership is preserved, resume results are fenced by Gateway/profile/request ID, and opening a saved session queues resume without prompt.submit. The full locked suite at this commit passed 617 library + 15 protocol + 3 launcher tests; all-target check and rustfmt passed.",
+  "uid": "EV-0124",
+  "capability_id": "ui-resume-saved-session-with-correct-profile",
+  "scenario": "headless-correct-profile-resume",
+  "locator": "apps/hermes-native/src/gateway.rs::tests::session_resume_routes_profile_and_preserves_it_in_transcript",
+  "notes": "Partial headless evidence. Related regressions cover in-flight stream recovery after resume refusal, Gateway owner/request fencing, and sidebar open queues only session.resume. Authenticated live Gateway, packaged Windows cold-start resume and formal pinned-source acceptance remain open."
+}

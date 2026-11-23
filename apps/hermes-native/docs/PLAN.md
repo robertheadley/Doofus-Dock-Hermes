@@ -2124,3 +2124,24 @@ Validation: PASS full locked headless suite (613 library + 15 protocol + 3 launc
 Before resuming the actor, native requests `session.events.since` for bounded in-memory per-profile/session/replay-epoch cursors, validates the returned owner, epoch and sequence, and delivers missed read-side events through the same connection event path. It never replays `prompt.submit`; queued commands from the failed socket are discarded and their pending mutations remain unknown. The UI then refreshes the session list and resumes open transcripts. Replay is limited to 512 cursors, a 10 second total budget and 2 seconds per RPC; a missing/expired replay window falls back to authoritative transcript resume. EV-0122 and EV-0123 are partial headless evidence.
 
 Validation: full locked suite passes 617 library + 15 protocol + 3 launcher tests; all-target check, rustfmt/diff and task continuity 19/19 pass. Live authenticated Gateway, endpoint migration for the auxiliary HTTP workers, packaged Windows, and formal pinned-source acceptance remain open.
+
+
+### Revision 342 — Resume saved sessions with their exact profile — 2026-11-22
+
+Native `session.resume` includes the requested stored session ID and profile, rejects a response naming a different runtime/stored session, preserves the profile in the restored transcript, and fences the result to the active Gateway/profile/request owner. Headless coverage includes normal profile routing, refusal recovery during an in-flight turn, stale owner rejection, and opening a saved sidebar session without submitting a prompt. EV-0124 records this partial evidence.
+
+Validation: the full locked suite on source commit `1412ed8` passed 617 library + 15 protocol + 3 launcher tests; all-target check, rustfmt and 19 continuity tests passed. Authenticated live Gateway, packaged Windows cold-start resume, and formal pinned-source acceptance remain open.
+
+
+### Revision 343 — Recover stale runtime during attachment upload — 2026-11-22
+
+PAR-0062 now carries the stored session ID through each composer file/image upload. A definitive `session not found` refusal triggers one `session.resume` for that exact stored ID and profile; native validates the returned stored owner and runtime ID, publishes the runtime rebind before retrying, and reuses the bytes read before the first attempt. Missing/mismatched identity fails closed, resume failure preserves the original upload refusal, and timeouts or unrelated refusals do not retry. The actor emits the receipt under the recovered runtime ID so the owning composer accepts the chip.
+
+EV-0125 is bound to source commit `3b50cc35a63eac09f08d768b8dcd8f4afc276f76`. Validation passes: 622 library + 15 protocol + 3 launcher tests, all-target locked check, rustfmt/diff, and 19/19 task continuity checks. PAR-0062 remains partial; clipboard image paste, pathless drops, thumbnails, authenticated live Gateway outcomes, packaged Windows behavior and formal pinned-source acceptance remain open.
+
+
+### Revision 344 — Paste clipboard images into the focused composer — 2026-11-22
+
+The native eframe clipboard integration emits `PasteImage` only when there is no usable clipboard text. Hermes Native now consumes that event only when the message composer owns focus, stages a verified PNG under app data, enforces 16-megapixel and 16-MiB limits, and passes the staged file into the existing owner-scoped upload and stale-runtime recovery path. Successful upload and user removal clean only app-owned staging files. Pinned DoofusDock layout state is unchanged.
+
+Source commit `53e8c62bb729b8a33ddbb9f35ef13a855c9a8547` is on `main`; EV-0126 records partial headless evidence. Full locked validation passes: 626 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt, diff check, package validator (565 behaviors and 110 implementation receipts) and task continuity (19/19) pass. A first full-suite run exposed an existing Gateway test's race with its expected WebSocket-close event; the assertion was narrowed to reject only a runtime rebind or duplicate prompt retry, and the serial full suite passed. Actual Windows clipboard, live Gateway, pathless drops, thumbnails and source-paired acceptance remain open.

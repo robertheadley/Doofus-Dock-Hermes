@@ -1,0 +1,15 @@
+{
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-22",
+  "commit": "53e8c62bb729b8a33ddbb9f35ef13a855c9a8547",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui and local filesystem fixtures. The native eframe clipboard integration emits PasteImage only when the clipboard has no usable text. Hermes Native consumes that image event only while the message composer owns focus, atomically stages a PNG in app data with 16-megapixel and 16-MiB limits, reads it back to verify the PNG and dimensions, and routes it through the existing composer file-upload/session recovery pipeline. Successful upload and explicit removal clean up only app-owned staged paths. Full locked suite passes 626 library + 15 automation protocol + 3 launcher tests; cargo check --workspace --all-targets --locked, rustfmt and diff checks pass.",
+  "uid": "EV-0126",
+  "capability_id": "ui-attach-image-or-file-to-prompt",
+  "scenario": "composer-clipboard-image-paste",
+  "locator": "apps/hermes-native/src/clipboard_image.rs::tests::image_event_is_taken_only_when_composer_has_focus",
+  "notes": "Partial headless evidence. The egui event route and staging are tested, but actual Windows clipboard capture, packaged UI, live authenticated Gateway upload, pathless drops, thumbnails, interrupted-draft restart validity, and pinned-source acceptance remain unverified."
+}
