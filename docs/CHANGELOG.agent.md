@@ -4961,3 +4961,29 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway and packaged Windows acceptance remain open.
 - **follow_up:** Continue the remaining agent-workflow P0 gaps.
+
+### PAR-0064 context-compression recovery — 2026-11-23
+
+- **id:** hermes-par0064-context-compression-20261123
+- **timestamp:** 2026-11-23T15:32:00Z
+- **what:** Added failed-turn context compression using a separate authenticated Gateway worker, revision/execution-generation checks, asynchronous completion tracking, transcript refresh, and an explicit unknown-outcome no-retry state.
+- **why:** Preserve the user's failed session and offer the pinned Hermes context-overflow recovery path without risking duplicate mutations.
+- **components:** Hermes Native app/Gateway, PAR-0064, UCM EV-0136, Windows desktop build.
+- **type:** feature
+- **validation:** Full locked suite 644 library + 15 protocol + 3 launcher tests; all-target check; rustfmt/diff; task continuity 19/19; package validator (565 behaviors/565 UI inventory/15 source receipts/120 implementation receipts); targeted UCM validation; `cargo build -p hermes-native --locked` passed.
+- **performance:** Compression is offloaded from the primary WebSocket actor; no benchmark claim made.
+- **risks:** Live Gateway behavior, persistent recovery after process restart, and packaged Windows/source-paired acceptance are unverified; capability remains partial.
+- **follow_up:** Publish source/evidence to origin/main, then continue the next mapped agent-workflow gap.
+
+### PAR-0064 UCM validator audit — 2026-11-23
+
+- **id:** hermes-par0064-ucm-audit-20261123
+- **timestamp:** 2026-11-23T15:35:55Z
+- **what:** Recorded the distinction between PAR-0064 scenario coverage and the capability map's overall validation state.
+- **why:** Prevent a targeted scenario result from being mistaken for a globally valid UCM map.
+- **components:** Universal Capability Map, PAR-0064, EV-0136, implementation progress generator.
+- **type:** validation
+- **validation:** Target report recognizes all four PAR-0064 scenarios and emits no EV-0136-specific error; overall checker exits 1 with 160 existing map errors elsewhere. Package validator passes with 120 implementation receipts.
+- **performance:** Not applicable.
+- **risks:** Historical map errors remain and may affect other capability reports.
+- **follow_up:** Reconcile legacy UCM evidence/schema errors in a separately scoped task.

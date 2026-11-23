@@ -1495,7 +1495,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0064": {
         "state": "partial",
-        "level": "headless_ui_and_local_http",
+        "level": "headless_ui_gateway_revision_fencing_background_receipt_and_unknown_outcome",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/agent-init-error.test.tsx#renders an agent-init failure as a visible in-transcript error and keeps the optimistic first message",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.test.tsx#names the provider and keeps Retry for a rate limit",
@@ -1507,8 +1507,15 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#failed_turn_error_card_edits_policy_refusal_and_never_retries_unconfirmed_owner",
             "apps/hermes-native/src/app.rs#failed_turn_provider_settings",
             "apps/hermes-native/src/app.rs#composer_opens_model_catalog_after_a_recovery_request",
+            "apps/hermes-native/src/gateway.rs#context_compression_uses_revision_fenced_mutation_and_resumes_transcript",
+            "apps/hermes-native/src/gateway.rs#compression_dispatch_preserves_runtime_and_stored_session_identity",
+            "apps/hermes-native/src/gateway.rs#background_compression_receipt_does_not_resume_until_compacted_event",
+            "apps/hermes-native/src/gateway.rs#compression_disconnect_after_mutation_is_marked_outcome_unknown",
+            "apps/hermes-native/src/app.rs#compacted_event_refreshes_failed_transcript_and_clears_compression_state",
+            "apps/hermes-native/src/app.rs#unknown_compression_outcome_stays_visible_and_blocks_an_unsafe_retry",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0136.json#EV-0136",
         ],
-        "gaps": ["account/billing/provider-setup navigation, context compression, and scheduled retry actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "live Gateway failure variants and source-paired runtime acceptance remain pending"],
+        "gaps": ["account and billing setup navigation and scheduled retry actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "live Gateway compression and recovery behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
     },
     "PAR-0065": {
         "state": "partial",

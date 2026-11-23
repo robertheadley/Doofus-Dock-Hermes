@@ -2174,3 +2174,13 @@ Validation: full locked automation-feature suite passes 637 library + 15 automat
 PAR-0064 now matches the pinned provider-policy action order. When the failed turn identifies a supported provider, its card opens only the known provider settings URL (OpenRouter privacy settings or Nous portal), then offers model choice as the fallback. Unknown or arbitrary provider strings never become URLs; they receive model choice only. A headless UI regression verifies the exact OpenRouter navigation command and the deny-by-default mapping.
 
 Validation: full locked automation-feature suite passes 638 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt, and diff check pass. Package validation passes after EV-0134 was corrected to use the full implementation SHA. Provider setup navigation, compression, scheduled retry, remaining error codes, live Gateway, and packaged Windows acceptance remain open.
+
+### Revision 350 — Add safe failed-turn context compression — 2026-11-23
+
+PAR-0064 now offers `Compress context` for pinned `context_overflow` errors while retaining `Start new session` as a fallback. A separate authenticated Gateway worker resumes the exact session, obtains fresh revision/execution-generation ownership, and sends `session.mutate` with the pinned `compress` operation. Committed and no-op receipts refresh the current transcript; background-pending receipts wait for the `compacted` status event before refresh. The failed turn remains visible while authoritative history is merged. Preview results do not claim completion. Disconnect or timeout after mutation marks the outcome unknown and blocks unsafe retries.
+
+Source implementation commit: `eb1af5f35bbfa498d9e055819d6a9bd74aeedbdf`. Validation: full locked automation-feature suite passes 644 library + 15 protocol + 3 launcher tests; all-target locked check, rustfmt/diff, task continuity 19/19, package validation (565 behaviors, 565 UI inventory, 15 source receipts, 120 implementation receipts), targeted UCM validation, and current Windows desktop build pass. Live Gateway behavior, durable unknown-outcome recovery across restart, and packaged Windows/source-paired acceptance remain open; PAR-0064 stays partial.
+
+### Revision 351 — Record capability-map validator limits — 2026-11-23
+
+The targeted UCM report recognizes all four PAR-0064 scenarios, including `context-overflow-compress-and-unknown-write-guard`, and reports no EV-0136-specific errors. The global validator still exits nonzero with 160 pre-existing map errors across legacy evidence kinds/outcomes, scenario references, and unreferenced receipts; therefore the map is not reported as globally valid. Package validation separately passes, including EV-0136 and its full source SHA.

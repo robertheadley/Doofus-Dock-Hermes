@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0136",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "eb1af5f35bbfa498d9e055819d6a9bd74aeedbdf",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "context-overflow-compress-and-unknown-write-guard",
+  "locator": "apps/hermes-native/src/gateway.rs::context_compression_uses_revision_fenced_mutation_and_resumes_transcript;apps/hermes-native/src/gateway.rs::compression_dispatch_preserves_runtime_and_stored_session_identity;apps/hermes-native/src/gateway.rs::background_compression_receipt_does_not_resume_until_compacted_event;apps/hermes-native/src/gateway.rs::compression_disconnect_after_mutation_is_marked_outcome_unknown;apps/hermes-native/src/app.rs::compacted_event_refreshes_failed_transcript_and_clears_compression_state;apps/hermes-native/src/app.rs::unknown_compression_outcome_stays_visible_and_blocks_an_unsafe_retry",
+  "environment": "Full locked Hermes Native agent-automation test suite, all-target cargo check, formatting/diff checks, package validator, task continuity validator, and Windows debug desktop build. No live Hermes Gateway or installed Hermes app was used.",
+  "notes": "The UI keeps Start new session as a fallback. Committed/no-op/background-pending receipts are handled; asynchronous completion waits for the compacted event and refreshes the transcript. Timeout/disconnect after mutation is unknown and cannot be replayed. This is partial headless implementation evidence, not live Gateway or packaged Windows acceptance."
+}
