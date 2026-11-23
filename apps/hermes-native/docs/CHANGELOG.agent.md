@@ -3387,3 +3387,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark claim; the opt-in uses the existing Gateway actor and prompt-submission path.
 - **risks:** PAR-0064 remains partial. Broader billing settings, remaining error codes, authenticated live Gateway, packaged Windows, and formal source-paired acceptance remain open.
 - **follow_up:** Regenerate progress, validate the parity package and task ledger, then publish the evidence/documentation commit to main.
+
+### PAR-0064 credits recovery publication — 2026-11-23
+
+- **id:** hermes-par0064-credits-publication-20261123
+- **timestamp:** 2026-11-23T17:14:40Z
+- **what:** Published source commit 46bd1e75 and evidence/documentation commit e3880106 to origin/main.
+- **why:** Keep the user-selected main branch current with the tested credits opt-in and its partial evidence.
+- **components:** Doofus-Dock-Hermes main, PAR-0064, EV-0139, progress overlays.
+- **type:** publication.
+- **validation:** Fresh fetch confirmed local main and origin/main both equal e3880106d140609d8a170da2a418a523ed2fa151; package validator reports 123 implementation receipts.
+- **performance:** Not applicable.
+- **risks:** Live Gateway, packaged Windows, broader billing settings, complete error taxonomy, and source-paired acceptance remain open; PAR-0064 stays partial.
+- **follow_up:** Continue the remaining pinned PAR-0064 error actions.

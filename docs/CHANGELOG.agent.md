@@ -5064,3 +5064,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No benchmark claim.
 - **risks:** Live Gateway, packaged Windows, full billing UI and complete PAR-0064 source acceptance remain open.
 - **follow_up:** Regenerate progress, validate and publish the evidence documentation to main.
+
+### Hermes PAR-0064 publication — 2026-11-23
+
+- **id:** hermes-par0064-credits-publication-20261123
+- **timestamp:** 2026-11-23T17:14:40Z
+- **what:** Published source commit 46bd1e75 and evidence/documentation commit e3880106 to the user-selected origin/main.
+- **why:** Keep main current with the tested credits recovery behavior and partial capability evidence.
+- **components:** Hermes Native, PAR-0064, EV-0139, progress ledger.
+- **type:** publication.
+- **validation:** Fresh fetch confirms exact local and remote equality at e3880106d140609d8a170da2a418a523ed2fa151.
+- **performance:** Not applicable.
+- **risks:** Live Gateway, packaged Windows, full billing surface and formal source acceptance remain open.
+- **follow_up:** Continue the remaining pinned PAR-0064 error taxonomy.
