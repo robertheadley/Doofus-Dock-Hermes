@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0139",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "46bd1e75a1ac134645e451ea7306635bf75f00b6",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "usage-window-credits-retry-waits-for-success-receipt",
+  "locator": "apps/hermes-native/src/app.rs::usage_window_credits_retry_waits_for_profile_scoped_success_receipt;apps/hermes-native/src/app.rs::usage_window_credits_refusal_never_retries;apps/hermes-native/src/app.rs::rendered_usage_window_credits_action_sends_only_after_explicit_click;apps/hermes-native/src/gateway.rs::keep_going_on_credits_uses_scoped_rpc_and_requires_success_envelope",
+  "environment": "Full locked Hermes Native agent-automation suite (653 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug desktop build, rustfmt and diff checks. No live Hermes Gateway or installed Hermes app was used.",
+  "notes": "The accessible action appears only when the pinned error surface explicitly says credits.action=use_credits. It sends billing.keep_going_on_credits with enabled=true and the active profile. The app retries the same failed submission only after a matching request/session/profile/connection receipt confirms {ok:true}; refusal and stale owner results do not retry, and disconnect is reported as an unknown mutation outcome without retry. PAR-0064 remains partial: the complete pinned error taxonomy, broader billing settings, authenticated live Gateway, packaged Windows, and formal source-paired acceptance remain open."
+}

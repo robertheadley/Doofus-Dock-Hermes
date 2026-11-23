@@ -3374,3 +3374,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime benchmark was run.
 - **risks:** Public attach subprocess JSON contract and authenticated live Gateway behavior remain untested.
 - **follow_up:** Inspect native profile registry scopes, then add the public attach path only if host-scoped capability can be preserved or cleanly separated.
+
+### PAR-0064 credits opt-in and retry receipt — 2026-11-23
+
+- **id:** hermes-par0064-credits-opt-in-20261123
+- **timestamp:** 2026-11-23T17:05:02Z
+- **what:** Added the explicit usage_limit.credits.action=use_credits action, profile-scoped billing.keep_going_on_credits { enabled: true } RPC, success-receipt-gated retry of the original failed prompt, and unknown-outcome handling after disconnect.
+- **why:** Implement the pinned Hermes recovery action while ensuring a billing refusal, stale owner receipt, or uncertain mutation cannot replay a prompt.
+- **components:** Hermes Native chat recovery, Gateway actor, PAR-0064, UCM EV-0139.
+- **type:** feature, test, evidence, documentation.
+- **validation:** Full locked suite passes 653 library + 15 automation protocol + 3 launcher tests; all-target check, Windows debug build, rustfmt, and diff checks pass. Source commit: 46bd1e75a1ac134645e451ea7306635bf75f00b6.
+- **performance:** No benchmark claim; the opt-in uses the existing Gateway actor and prompt-submission path.
+- **risks:** PAR-0064 remains partial. Broader billing settings, remaining error codes, authenticated live Gateway, packaged Windows, and formal source-paired acceptance remain open.
+- **follow_up:** Regenerate progress, validate the parity package and task ledger, then publish the evidence/documentation commit to main.

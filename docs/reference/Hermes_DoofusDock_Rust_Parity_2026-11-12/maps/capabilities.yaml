@@ -1560,6 +1560,8 @@ capabilities:
       description: For a known rate-limit failure with a valid future reset, allow the user to schedule one retry, show a countdown and Cancel, and prevent dispatch after the owning session/profile/connection/submission changes.
     - id: usage-window-model-recovery-waits-for-applied-receipt
       description: Offer the first pinned usage-window model suggestion and retry the exact failed prompt only after Hermes confirms that the same session model was applied; never blind-retry the exhausted model.
+    - id: usage-window-credits-retry-waits-for-success-receipt
+      description: When Hermes explicitly permits use_credits, enable the profile-scoped keep-going setting only on user action and retry the original prompt only after an exact success receipt; refusal, stale owner and disconnect never retry.
   evidence:
   - EV-0028
   - EV-0029
@@ -1571,6 +1573,7 @@ capabilities:
   - EV-0136
   - EV-0137
   - EV-0138
+  - EV-0139
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

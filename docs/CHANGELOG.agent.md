@@ -5051,3 +5051,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway, packaged Windows, source-paired acceptance, Hermes credit opt-in and an in-app billing surface remain open; PAR-0064 stays partial.
 - **follow_up:** Continue with exact pinned contracts for Hermes keep-going-on-credits and complete the remaining PAR-0064 error taxonomy.
+
+### Hermes PAR-0064 credits recovery slice — 2026-11-23
+
+- **id:** hermes-par0064-credits-opt-in-20261123
+- **timestamp:** 2026-11-23T17:05:02Z
+- **what:** Added an accessible credits opt-in for explicitly eligible usage-window failures. Hermes must confirm the profile-scoped setting before the same failed prompt is retried.
+- **why:** Support the pinned agent workflow without retrying after refusal or uncertain write outcomes.
+- **components:** Hermes Native, Gateway RPC, PAR-0064, EV-0139.
+- **type:** feature, validation, evidence.
+- **validation:** 653 library + 15 protocol + 3 launcher tests; all-target check, Windows debug build, format and diff checks passed.
+- **performance:** No benchmark claim.
+- **risks:** Live Gateway, packaged Windows, full billing UI and complete PAR-0064 source acceptance remain open.
+- **follow_up:** Regenerate progress, validate and publish the evidence documentation to main.
