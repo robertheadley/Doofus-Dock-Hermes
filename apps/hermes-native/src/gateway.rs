@@ -3218,6 +3218,13 @@ pub(crate) enum TestGatewayCommand {
         base_url: Option<String>,
         confirm_expensive_model: bool,
     },
+    MutateChatPolicy {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        operation: String,
+        payload: serde_json::Value,
+    },
     RespondServerRequest {
         id: String,
         profile: Option<String>,
@@ -3318,6 +3325,19 @@ impl GatewayDiscovery {
                         submission_id,
                         text,
                         attachments,
+                    }),
+                    GatewayCommand::MutateChatPolicy {
+                        request_id,
+                        session_id,
+                        profile,
+                        operation,
+                        payload,
+                    } => Some(TestGatewayCommand::MutateChatPolicy {
+                        request_id,
+                        session_id,
+                        profile,
+                        operation,
+                        payload,
                     }),
                     GatewayCommand::CompressSession {
                         request_id,

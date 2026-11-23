@@ -1446,6 +1446,7 @@ struct PendingChatPolicyMutation {
     operation: String,
     payload: serde_json::Value,
     remember_custom_model: bool,
+    retry_submission_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1455,6 +1456,7 @@ struct PendingModelConfirmation {
     token: String,
     message: String,
     remember_custom_model: bool,
+    retry_submission_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -7470,6 +7472,7 @@ fn render_message() -> &'static str {
             let mut retry_failed_submission = None;
             let mut schedule_failed_turn_retry = None;
             let mut cancel_scheduled_failed_turn_retry = false;
+            let mut usage_window_model_retry = None;
             let mut start_new_session = false;
             let mut open_model_picker = false;
             let mut compress_context_session: Option<(String, String, Option<String>)> = None;
@@ -7803,6 +7806,59 @@ fn render_message() -> &'static str {
                                                 );
                                             if choose.clicked() {
                                                 open_model_picker = true;
+                                            }
+                                        }
+                                        FailedTurnRecoveryAction::UsageWindow => {
+                                            let submission_id = message
+                                                .get("retry_submission_id")
+                                                .and_then(serde_json::Value::as_str);
+                                            let is_current_failed_turn = messages.last().is_some_and(|last| {
+                                                last.get("role").and_then(serde_json::Value::as_str)
+                                                    == Some("assistant")
+                                                    && last
+                                                        .get("retry_submission_id")
+                                                        .and_then(serde_json::Value::as_str)
+                                                        == submission_id
+                                            });
+                                            if let (Some(suggestion), Some(submission_id)) =
+                                                (usage_window_model_suggestion(&message), submission_id)
+                                            {
+                                                let label = if suggestion.note.is_empty() {
+                                                    format!("Switch to {}", suggestion.label)
+                                                } else {
+                                                    format!("Switch to {} ({})", suggestion.label, suggestion.note)
+                                                };
+                                                let switch = ui
+                                                    .add_enabled(
+                                                        is_current_failed_turn
+                                                            && self.gateway_connected
+                                                            && self.chat_policy_mutation.is_none()
+                                                            && !retry_pending
+                                                            && self.draft.trim().is_empty()
+                                                            && self.composer_attachments.is_empty(),
+                                                        egui::Button::new(label),
+                                                    )
+                                                    .accessible_name(format!(
+                                                        "Switch this Hermes session to recommended model {} and retry the failed prompt after confirmation",
+                                                        suggestion.model
+                                                    ));
+                                                if switch.clicked() {
+                                                    usage_window_model_retry = Some((
+                                                        suggestion.model,
+                                                        suggestion.provider,
+                                                        submission_id.to_owned(),
+                                                    ));
+                                                }
+                                            }
+                                            if usage_window_billing_portal_allowed(&message)
+                                                && ui
+                                                    .button("Open billing portal")
+                                                    .accessible_name("Open Nous billing portal")
+                                                    .clicked()
+                                            {
+                                                open_provider_settings = Some(
+                                                    "https://portal.nousresearch.com".to_owned(),
+                                                );
                                             }
                                         }
                                     });
@@ -8199,6 +8255,9 @@ fn render_message() -> &'static str {
             if let Some(submission_id) = retry_failed_submission {
                 self.scheduled_failed_turn_retry = None;
                 self.retry_failed_submission(&submission_id);
+            }
+            if let Some((model, provider, submission_id)) = usage_window_model_retry {
+                self.mutate_model_and_retry_failed_turn(model, provider, submission_id);
             }
             if cancel_scheduled_failed_turn_retry {
                 self.scheduled_failed_turn_retry = None;
@@ -16378,6 +16437,7 @@ fn render_message() -> &'static str {
                     operation: operation.into(),
                     payload,
                     remember_custom_model,
+                    retry_submission_id: None,
                 });
                 self.chat_policy_error = None;
             }
@@ -16392,6 +16452,54 @@ fn render_message() -> &'static str {
         self.mutate_chat_policy("model", serde_json::json!({
             "model": confirmation.model, "provider": confirmation.provider, "confirm": confirmation.token,
         }), confirmation.remember_custom_model);
+        if let (Some(submission_id), Some(pending)) = (
+            confirmation.retry_submission_id,
+            self.chat_policy_mutation.as_mut(),
+        ) {
+            if pending.operation == "model"
+                && pending
+                    .payload
+                    .get("model")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(confirmation.model.as_str())
+                && pending
+                    .payload
+                    .get("provider")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(confirmation.provider.as_str())
+            {
+                pending.retry_submission_id = Some(submission_id);
+            }
+        }
+    }
+
+    fn mutate_model_and_retry_failed_turn(
+        &mut self,
+        model: String,
+        provider: String,
+        submission_id: String,
+    ) {
+        self.mutate_chat_policy(
+            "model",
+            serde_json::json!({"model": model, "provider": provider}),
+            false,
+        );
+        if let Some(pending) = self.chat_policy_mutation.as_mut() {
+            if pending.operation == "model"
+                && pending
+                    .payload
+                    .get("model")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(model.as_str())
+                && pending
+                    .payload
+                    .get("provider")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(provider.as_str())
+            {
+                pending.retry_submission_id = Some(submission_id);
+            }
+        }
     }
 
     fn composer(&mut self, ui: &mut Ui) {
@@ -20235,17 +20343,22 @@ fn render_message() -> &'static str {
     }
 
     fn retry_failed_submission(&mut self, submission_id: &str) {
-        self.retry_failed_submission_with_reset(submission_id, None);
+        self.retry_failed_submission_with_recovery(submission_id, None, false);
     }
 
     fn retry_failed_submission_after_reset(&mut self, submission_id: &str, resets_at_ms: u64) {
-        self.retry_failed_submission_with_reset(submission_id, Some(resets_at_ms));
+        self.retry_failed_submission_with_recovery(submission_id, Some(resets_at_ms), false);
     }
 
-    fn retry_failed_submission_with_reset(
+    fn retry_failed_submission_after_model_switch(&mut self, submission_id: &str) {
+        self.retry_failed_submission_with_recovery(submission_id, None, true);
+    }
+
+    fn retry_failed_submission_with_recovery(
         &mut self,
         submission_id: &str,
         scheduled_reset_at_ms: Option<u64>,
+        usage_window_model_recovery: bool,
     ) {
         if !self.draft.trim().is_empty() || !self.composer_attachments.is_empty() {
             self.status =
@@ -20274,7 +20387,15 @@ fn render_message() -> &'static str {
         let retry_after_reset_allowed = scheduled_reset_at_ms.is_some_and(|resets_at_ms| {
             scheduled_retry_is_due_for_message(message, resets_at_ms, current_unix_millis())
         });
-        if !failed_turn_retry_allowed(message) && !retry_after_reset_allowed {
+        let model_recovery_allowed = usage_window_model_recovery
+            && message
+                .pointer("/error_surface/code")
+                .and_then(serde_json::Value::as_str)
+                == Some("usage_window");
+        if !failed_turn_retry_allowed(message)
+            && !retry_after_reset_allowed
+            && !model_recovery_allowed
+        {
             self.status = "Hermes marked this failure as not retryable".into();
             return;
         }
@@ -33701,6 +33822,7 @@ fn render_message() -> &'static str {
                                             .into()
                                     }),
                                     remember_custom_model: pending.remember_custom_model,
+                                    retry_submission_id: pending.retry_submission_id,
                                 });
                                 self.chat_policy_error = None;
                             } else {
@@ -33773,6 +33895,26 @@ fn render_message() -> &'static str {
                                                 ));
                                             }
                                         }
+                                    }
+                                }
+                                if let Some(submission_id) = pending.retry_submission_id {
+                                    let applied_requested_model = receipt.status == "applied"
+                                        && selected_model.as_deref()
+                                            == pending
+                                                .payload
+                                                .get("model")
+                                                .and_then(serde_json::Value::as_str)
+                                        && selected_provider.as_deref()
+                                            == pending
+                                                .payload
+                                                .get("provider")
+                                                .and_then(serde_json::Value::as_str);
+                                    if applied_requested_model {
+                                        self.retry_failed_submission_after_model_switch(
+                                            &submission_id,
+                                        );
+                                    } else {
+                                        self.status = "The model was not applied immediately; the failed prompt was not retried.".into();
                                     }
                                 }
                             } else if let Some(effort) = receipt.effort.or_else(|| {
@@ -37135,6 +37277,17 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
                 "{provider} blocked {model} under its current policy. Review the provider's settings or choose another model."
             ),
         )),
+        "usage_window" => Some((
+            "Plan usage limit reached".into(),
+            surface
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    "The current plan's usage window is exhausted. Choose a recommended model, open billing, or retry when the limit resets.".into()
+                }),
+        )),
         "content_policy_blocked" => Some((
             "Provider safety policy refused this message".into(),
             format!(
@@ -37194,6 +37347,60 @@ enum FailedTurnRecoveryAction {
     StartNewSession,
     ChooseModel,
     ProviderPolicy,
+    UsageWindow,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct UsageWindowModelSuggestion {
+    model: String,
+    label: String,
+    note: String,
+    provider: String,
+}
+
+fn usage_window_model_suggestion(
+    message: &serde_json::Value,
+) -> Option<UsageWindowModelSuggestion> {
+    let surface = message.get("error_surface")?.as_object()?;
+    if surface.get("code")?.as_str()? != "usage_window" {
+        return None;
+    }
+    let usage_limit = surface
+        .get("usage_limit")
+        .or_else(|| surface.get("usageLimit"))?;
+    let suggestion = usage_limit
+        .get("suggestions")?
+        .as_array()?
+        .first()?
+        .as_object()?;
+    let model = suggestion.get("model")?.as_str()?.trim();
+    if model.is_empty() || model.len() > 512 {
+        return None;
+    }
+    let label = suggestion
+        .get("label")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= 256)
+        .unwrap_or(model);
+    let note = suggestion
+        .get("note")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| value.len() <= 128)
+        .unwrap_or_default();
+    let provider = suggestion
+        .get("provider")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .unwrap_or("nous");
+    Some(UsageWindowModelSuggestion {
+        model: model.to_owned(),
+        label: label.to_owned(),
+        note: note.to_owned(),
+        provider: provider.to_owned(),
+    })
 }
 
 fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurnRecoveryAction> {
@@ -37201,6 +37408,7 @@ fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurn
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
         "model_not_found" | "free_tier_at_capacity" => Some(FailedTurnRecoveryAction::ChooseModel),
         "provider_policy_blocked" => Some(FailedTurnRecoveryAction::ProviderPolicy),
+        "usage_window" => Some(FailedTurnRecoveryAction::UsageWindow),
         "context_overflow" => Some(FailedTurnRecoveryAction::CompressContext),
         "payload_too_large"
         | "SESSION_NOT_OWNED"
@@ -37227,6 +37435,21 @@ fn failed_turn_provider_settings(message: &serde_json::Value) -> Option<(&'stati
     Some((label, url.to_owned()))
 }
 
+fn usage_window_billing_portal_allowed(message: &serde_json::Value) -> bool {
+    if message
+        .pointer("/error_surface/code")
+        .and_then(serde_json::Value::as_str)
+        != Some("usage_window")
+    {
+        return false;
+    }
+    message
+        .pointer("/error_surface/provider")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .is_none_or(|provider| provider.eq_ignore_ascii_case("nous"))
+}
+
 const MAX_SCHEDULED_RETRY_DELAY_MS: u64 = (1_u64 << 31) - 1;
 
 fn current_unix_millis() -> u64 {
@@ -37238,7 +37461,7 @@ fn current_unix_millis() -> u64 {
 
 fn retry_reset_at_unix_millis(message: &serde_json::Value) -> Option<u64> {
     let code = message.pointer("/error_surface/code")?.as_str()?;
-    if !matches!(code, "rate_limit" | "upstream_rate_limit") {
+    if !matches!(code, "rate_limit" | "upstream_rate_limit" | "usage_window") {
         return None;
     }
     let seconds = message
@@ -37302,14 +37525,15 @@ fn format_scheduled_retry_countdown(remaining_ms: u64) -> String {
 }
 
 fn failed_turn_retry_allowed(message: &serde_json::Value) -> bool {
-    message
-        .pointer("/error_surface/code")
-        .and_then(serde_json::Value::as_str)
-        != Some("SESSION_OWNER_UNCONFIRMED")
-        && message
-            .pointer("/error_surface/retryable")
-            .and_then(serde_json::Value::as_bool)
-            != Some(false)
+    !matches!(
+        message
+            .pointer("/error_surface/code")
+            .and_then(serde_json::Value::as_str),
+        Some("SESSION_OWNER_UNCONFIRMED" | "usage_window")
+    ) && message
+        .pointer("/error_surface/retryable")
+        .and_then(serde_json::Value::as_bool)
+        != Some(false)
 }
 
 fn failed_prompt_edit_target(
@@ -40165,6 +40389,18 @@ mod tests {
             "error_surface":{"code":"upstream_rate_limit","resets_at":10_000_000}
         });
         assert_eq!(scheduled_retry_reset_at_ms(&long_wait, 1), None);
+        let usage_window = serde_json::json!({
+            "error_surface":{"code":"usage_window","resets_at":130.123}
+        });
+        assert_eq!(
+            scheduled_retry_reset_at_ms(&usage_window, 100_000),
+            Some(130_123)
+        );
+        assert_eq!(scheduled_retry_reset_at_ms(&usage_window, 130_123), None);
+        let long_usage_window = serde_json::json!({
+            "error_surface":{"code":"usage_window","resets_at":10_000_000}
+        });
+        assert_eq!(scheduled_retry_reset_at_ms(&long_usage_window, 1), None);
         let unsupported = serde_json::json!({
             "error_surface":{"code":"timeout","resets_at":130.123}
         });
@@ -40201,6 +40437,11 @@ mod tests {
                 "provider_policy_blocked",
                 Some(FailedTurnRecoveryAction::ProviderPolicy),
                 true,
+            ),
+            (
+                "usage_window",
+                Some(FailedTurnRecoveryAction::UsageWindow),
+                false,
             ),
             (
                 "payload_too_large",
@@ -40245,6 +40486,47 @@ mod tests {
             "error_surface":{"code":"agent_init_failed","retryable":false}
         });
         assert!(!failed_turn_retry_allowed(&explicitly_nonretryable));
+        let usage_window = serde_json::json!({
+            "error_surface":{"code":"usage_window","retryable":false,
+                "usage_limit":{"suggestions":[{"model":"example/free"}]}}
+        });
+        assert_eq!(
+            failed_turn_recovery_action(&usage_window),
+            Some(FailedTurnRecoveryAction::UsageWindow)
+        );
+        assert!(!failed_turn_retry_allowed(&usage_window));
+        assert_eq!(
+            usage_window_model_suggestion(&usage_window),
+            Some(UsageWindowModelSuggestion {
+                model: "example/free".into(),
+                label: "example/free".into(),
+                note: String::new(),
+                provider: "nous".into(),
+            })
+        );
+        assert!(usage_window_billing_portal_allowed(&usage_window));
+        assert!(!usage_window_billing_portal_allowed(&serde_json::json!({
+            "error_surface":{"code":"usage_window","provider":"other"}
+        })));
+        assert_eq!(
+            usage_window_model_suggestion(&serde_json::json!({
+                "error_surface":{"code":"usage_window","usageLimit":{"suggestions":[{
+                    "model":" example/free ","label":"Free", "note":"available", "provider":"nous"
+                }]}}
+            })),
+            Some(UsageWindowModelSuggestion {
+                model: "example/free".into(),
+                label: "Free".into(),
+                note: "available".into(),
+                provider: "nous".into(),
+            })
+        );
+        assert_eq!(
+            usage_window_model_suggestion(&serde_json::json!({
+                "error_surface":{"code":"usage_window","usage_limit":{"suggestions":[{"label":"No model"}]}}
+            })),
+            None
+        );
         assert_eq!(
             failed_turn_provider_settings(&serde_json::json!({
                 "error_surface":{"provider":"OpenRouter"}
@@ -55362,6 +55644,101 @@ mod tests {
         assert_eq!(app.transcript[0]["submission_id"], "submission-1");
         let key = app.session_identity_key("runtime-session", Some("work"));
         let pending = app.pending_submissions.get(&key).expect("retry is tracked");
+        assert_eq!(pending.submission_id, "submission-1");
+        assert!(pending.retrying_failed_turn);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn usage_window_model_retry_waits_for_applied_session_mutation_receipt() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript.push(serde_json::json!({
+            "id":"submission-1","submission_id":"submission-1",
+            "role":"user","content":"hello"
+        }));
+        app.transcript.push(serde_json::json!({
+            "role":"assistant","error":"Plan usage limit reached",
+            "retry_submission_id":"submission-1","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_display_text":"hello",
+            "retry_attachments":[],
+            "error_surface":{"code":"usage_window","retryable":false}
+        }));
+
+        app.mutate_model_and_retry_failed_turn(
+            "example/model-free:free".into(),
+            "nous".into(),
+            "submission-1".into(),
+        );
+        let crate::gateway::TestGatewayCommand::MutateChatPolicy {
+            request_id,
+            session_id,
+            profile,
+            operation,
+            payload,
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("model switch request is emitted")
+        else {
+            panic!("expected model switch request");
+        };
+        assert_eq!(operation, "model");
+        assert_eq!(payload["model"], "example/model-free:free");
+        assert_eq!(payload["provider"], "nous");
+        assert!(
+            commands.try_recv().is_err(),
+            "switch does not retry optimistically"
+        );
+
+        events
+            .send(GatewayEvent::ChatPolicyMutated {
+                request_id,
+                session_id,
+                profile,
+                result: Ok(crate::gateway::ChatPolicyMutationReceipt {
+                    status: "applied".into(),
+                    model: Some("example/model-free:free".into()),
+                    provider: Some("nous".into()),
+                    effort: None,
+                    confirm: None,
+                    confirm_message: None,
+                    revision: Some(2),
+                }),
+            })
+            .expect("deliver accepted model switch");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("applied model switch retries the failed prompt"),
+            crate::gateway::TestGatewayCommand::SubmitPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                submission_id: "submission-1".into(),
+                text: "hello".into(),
+                attachments: vec![],
+            }
+        );
+        assert!(commands.try_recv().is_err(), "only one retry is emitted");
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "retry reuses the existing user row"
+        );
+        let pending_key = app.session_identity_key("runtime-session", Some("work"));
+        let pending = app
+            .pending_submissions
+            .get(&pending_key)
+            .expect("retry is tracked against the active session");
         assert_eq!(pending.submission_id, "submission-1");
         assert!(pending.retrying_failed_turn);
         drop(app);
