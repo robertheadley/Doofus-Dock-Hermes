@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0134",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "98fcec7",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "failed-turn-recovery-actions-and-uncertain-write-guard",
+  "locator": "apps/hermes-native/src/app.rs::composer_opens_model_catalog_after_a_recovery_request;apps/hermes-native/src/app.rs::failed_turn_error_card_edits_policy_refusal_and_never_retries_unconfirmed_owner",
+  "environment": "Full locked Hermes Native automation-feature Rust test suite; no live Hermes Gateway or installed app was used.",
+  "notes": "Model-not-found, provider-policy-blocked, and free-tier-at-capacity failures expose a Choose model action that opens the existing current-chat model catalog. The action preserves the current draft and attachments and does not retry or create a second picker. The UI and error-code regressions pass. This is headless local behavior evidence, not live Gateway or packaged Windows acceptance."
+}

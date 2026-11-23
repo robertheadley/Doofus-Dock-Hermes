@@ -1505,8 +1505,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#retry_failed_turn_blocks_nonretryable_errors_and_preserves_occupied_composer",
             "apps/hermes-native/src/app.rs#failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry",
             "apps/hermes-native/src/app.rs#failed_turn_error_card_edits_policy_refusal_and_never_retries_unconfirmed_owner",
+            "apps/hermes-native/src/app.rs#composer_opens_model_catalog_after_a_recovery_request",
         ],
-        "gaps": ["model selection, account/billing/provider-setup navigation, compress, and scheduled retry actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "live Gateway failure variants and source-paired runtime acceptance remain pending"],
+        "gaps": ["account/billing/provider-setup navigation, context compression, and scheduled retry actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "live Gateway failure variants and source-paired runtime acceptance remain pending"],
     },
     "PAR-0065": {
         "state": "partial",

@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 347 (implementation in progress).
+- **Working revision:** 348 (implementation in progress).
 - **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -2157,6 +2157,12 @@ Source commit `4392b6ff0267065718ee5006eb76f4f3cfaef4f9`; EV-0127 records partia
 PAR-0046 now exposes the pinned Hermes `display.show_reasoning` preference under Settings → Chat · Behavior. The control reads the active profile with the CLI-specific key taking precedence over the global value, defaults off when unset, and saves both keys through the selected profile's authenticated Gateway API. A local edit stays a draft until a matching request, profile, connection, and saved-value receipt returns; connection changes clear the previous confirmation. The transcript renderer continues to keep reasoning separate from answer text and honors the loaded setting.
 
 Source commit `aef5dbd9a07456ca8361f886356d63c31d150619`. Validation passes: 635 library + 15 automation protocol + 3 launcher tests, including 21 reasoning-focused regressions; all-target locked check, formatting, and diff check pass. EV-0128 records headless implementation evidence. PAR-0046 remains partial pending authenticated live Gateway reasoning/config persistence, packaged Windows interaction, and pinned-source acceptance.
+
+### Revision 348 — Open model picker from failed-turn recovery — 2026-11-23
+
+PAR-0064 now routes `model_not_found`, `provider_policy_blocked`, and `free_tier_at_capacity` failures to the existing accessible chat model picker. The recovery card opens the same session-scoped catalog used by the composer, preserving the current draft and attachments; it does not create a second picker or retry the failed prompt. Headless regressions verify the action selection, accessible recovery control, and actual catalog opening.
+
+Validation: full locked automation-feature suite passes 638 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt, and diff check pass. Live Gateway, complete error taxonomy, account/provider setup navigation, context compression, scheduled retry, and packaged Windows acceptance remain open.
 
 ### Revision 347 — Add code-specific failed-turn recovery — 2026-11-23
 

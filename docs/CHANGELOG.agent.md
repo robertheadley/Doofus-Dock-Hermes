@@ -4909,3 +4909,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway, packaged Windows, and formal pinned-source acceptance remain open.
 - **follow_up:** Resume the next dependency-ready P0 agent-workflow requirement.
+
+### PAR-0064 model-picker recovery — 2026-11-23
+
+- **id:** hermes-par0064-model-picker-recovery-20261123
+- **timestamp:** 2026-11-23T02:15:57Z
+- **what:** Model-not-found, provider-policy-blocked, and free-tier-at-capacity error cards now open the existing current-chat model picker. The action preserves the draft and attachments and does not resubmit the failed prompt.
+- **why:** Keep recovery within the agent workflow and let the user select a viable model from the same catalog already used by chat.
+- **components:** `apps/hermes-native/src/app.rs`, PAR-0064, EV-0134, progress overlays.
+- **type:** feature, recovery, documentation.
+- **validation:** Full locked suite passes 638 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt/diff checks, task continuity 19/19, and pinned package validator pass. EV-0134 is bound to source commit `98fcec7`.
+- **performance:** No performance-sensitive path or benchmark changed.
+- **risks:** Account/provider setup navigation, compression, scheduled retry, full error taxonomy, live Gateway, and packaged Windows acceptance remain open.
+- **follow_up:** Continue PAR-0064 with the remaining high-value recovery behavior; keep the requirement partial pending runtime acceptance.
