@@ -3438,4 +3438,17 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **validation:** Focused mapping and rendered UI regressions pass; full locked suite 654 + 15 + 3, all-target check, Windows debug build, rustfmt/diff, package validator (125 receipts), task-continuity 19/19 and persisted task validation pass.
 - **performance:** No benchmark claim; the action uses the existing in-app model-picker route.
 - **risks:** Provider API-key and OAuth recovery remain unavailable without a native provider-credential API. Live Gateway, packaged Windows and formal source-paired acceptance remain open.
-- **follow_up:** Complete full validation, record EV-0141, update the evidence overlay and publish to main.
+- **follow_up:** Published source and EV-0141 to origin/main; fresh fetch confirmed exact refs.
+
+### PAR-0064 agent initialization recovery publication — 2026-11-23
+
+- **id:** hermes-par0064-agent-init-publication-20261123
+- **timestamp:** 2026-11-23T17:47:40Z
+- **what:** Published source commit d80fc07 and EV-0141/progress commit c9f37fe, followed by plan publication record fa9b13b.
+- **why:** Keep the user-selected main branch current with the validated agent-init recovery and its evidence.
+- **components:** Hermes Native, PAR-0064, EV-0141, progress ledger.
+- **type:** publication.
+- **validation:** Fresh fetch confirms local main and origin/main both equal fa9b13bb687c78a25f627935147b145fad5f7588d.
+- **performance:** Not applicable.
+- **risks:** PAR-0064 remains partial; provider credential recovery, live Gateway, packaged Windows and formal source-paired acceptance remain open.
+- **follow_up:** Continue the remaining pinned PAR-0064 recovery actions.

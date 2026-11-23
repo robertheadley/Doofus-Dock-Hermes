@@ -5115,4 +5115,17 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **validation:** Focused mapping and rendered egui tests pass; full locked suite 654 + 15 + 3, all-target check, Windows debug build, rustfmt/diff, package validator (125 receipts), task-continuity 19/19 and persisted task validation pass.
 - **performance:** No benchmark claim.
 - **risks:** Provider API-key/OAuth repair, live Gateway, packaged Windows and formal source-paired acceptance remain open.
-- **follow_up:** Run full validation, record EV-0141 and publish the completed slice to main.
+- **follow_up:** Published the tested slice and EV-0141 to origin/main; fresh fetch confirmed exact refs.
+
+### Hermes PAR-0064 agent initialization recovery publication — 2026-11-23
+
+- **id:** hermes-par0064-agent-init-publication-20261123
+- **timestamp:** 2026-11-23T17:47:40Z
+- **what:** Published agent-init recovery source, EV-0141, capability mapping and generated progress to main.
+- **why:** Keep the user's selected main branch current with tested implementation and partial evidence.
+- **components:** Doofus-Dock-Hermes main, Hermes Native, PAR-0064, EV-0141.
+- **type:** publication.
+- **validation:** Fresh fetch confirms exact local and remote equality at fa9b13bb687c78a25f627935147b145fad5f7588d.
+- **performance:** Not applicable.
+- **risks:** Live Gateway, packaged Windows, complete auth/provider recovery and formal source-paired acceptance remain open; PAR-0064 stays partial.
+- **follow_up:** Continue remaining pinned error recovery actions.
