@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "6d2f3401e88c38b9f98aba87bb817f5617ff0c81",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Full locked Hermes Native agent-automation suite (656 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug desktop build, rustfmt and diff checks. No live Hermes Gateway or installed Hermes app was used.",
+  "uid": "EV-0143",
+  "scenario": "tls-certificate-error-opens-pinned-setup-guide",
+  "locator": "apps/hermes-native/src/app.rs::tls_certificate_failure_opens_the_pinned_setup_guide;apps/hermes-native/src/app.rs::failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry;.staging/hermes-pinned-878305/apps/desktop/src/lib/error-surface.ts::ERROR_SETUP_GUIDE_URLS",
+  "notes": "Pinned ssl_cert_verification now exposes a user action that opens the fixed Hermes TLS trust guide URL. A rendered egui interaction verifies the accessible action and exact host navigation command; no dynamic server error text is used to construct the URL. The test verifies dispatch only, not external website availability or successful certificate setup. PAR-0064 remains partial; live Gateway, packaged Windows, and source-paired acceptance remain open."
+}

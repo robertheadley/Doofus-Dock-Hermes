@@ -1530,6 +1530,8 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#failed_turn_recovery_action",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0140.json#EV-0140",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0141.json#EV-0141",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0142.json#EV-0142",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0143.json#EV-0143",
             "apps/hermes-native/src/app.rs#payload_too_large_recovery_compresses_the_current_chat",
             "apps/hermes-native/src/app.rs#tls_certificate_failure_opens_the_pinned_setup_guide",
             "apps/hermes-native/src/app.rs#agent_init_failure_opens_current_chat_model_picker",

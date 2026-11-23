@@ -1566,6 +1566,10 @@ capabilities:
       description: For structured billing failures, expose the Nous billing destination only for Nous or the pinned default provider; unknown third-party providers never open an unrelated billing URL.
     - id: agent-init-failed-current-chat-model-recovery
       description: Show the pinned agent-init failure and open the active chat model picker while keeping Retry subject to Hermes retryable state.
+    - id: payload-too-large-compress-current-chat
+      description: For an oversized request, offer the existing owner-scoped conversation compression action and the pinned new-session fallback.
+    - id: tls-certificate-error-opens-pinned-setup-guide
+      description: For a TLS certificate failure, open only Hermes' pinned static TLS trust guide URL from an accessible error action.
   evidence:
   - EV-0028
   - EV-0029
@@ -1580,6 +1584,8 @@ capabilities:
   - EV-0139
   - EV-0140
   - EV-0141
+  - EV-0142
+  - EV-0143
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

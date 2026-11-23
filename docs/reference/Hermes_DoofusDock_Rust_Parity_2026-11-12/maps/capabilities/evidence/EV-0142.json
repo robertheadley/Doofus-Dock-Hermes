@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "6d2f3401e88c38b9f98aba87bb817f5617ff0c81",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Full locked Hermes Native agent-automation suite (656 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug desktop build, rustfmt and diff checks. No live Hermes Gateway or installed Hermes app was used.",
+  "uid": "EV-0142",
+  "scenario": "payload-too-large-compress-current-chat",
+  "locator": "apps/hermes-native/src/app.rs::payload_too_large_recovery_compresses_the_current_chat;apps/hermes-native/src/app.rs::failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry;apps/hermes-native/src/gateway.rs::compress_session_on_independent_socket",
+  "notes": "Pinned payload_too_large now explains the request/attachment limit and offers the existing profile/session-scoped conversation compression action plus Start new session. The rendered UI test checks both actions and verifies the emitted compress command uses the exact runtime session, stored session, and profile. Existing compression tests cover revision/generation fencing, asynchronous completion, refresh behavior, and unknown outcomes. This does not remove attachments or claim a live backend accepted the mutation. PAR-0064 remains partial; live Gateway, packaged Windows, and source-paired acceptance remain open."
+}
