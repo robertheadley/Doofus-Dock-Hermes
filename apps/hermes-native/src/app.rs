@@ -2049,6 +2049,7 @@ pub struct HermesNativeApp {
     chat_model_options_owner: Option<(String, Option<String>, String)>,
     chat_model_options_pending: Option<PendingChatModelOptions>,
     chat_model_options_error: Option<String>,
+    chat_model_picker_requested: bool,
     new_chat_model_options: Option<ModelOptionsSnapshot>,
     new_chat_model_options_owner: Option<(String, String)>,
     new_chat_model_options_pending: Option<PendingNewChatModelOptions>,
@@ -4551,6 +4552,7 @@ fn render_message() -> &'static str {
             chat_model_options_owner: None,
             chat_model_options_pending: None,
             chat_model_options_error: None,
+            chat_model_picker_requested: false,
             new_chat_model_options: None,
             new_chat_model_options_owner: None,
             new_chat_model_options_pending: None,
@@ -7438,6 +7440,7 @@ fn render_message() -> &'static str {
                     });
             let mut retry_failed_submission = None;
             let mut start_new_session = false;
+            let mut open_model_picker = false;
             let active_profile = self.active_session_profile.clone();
             let tool_images = messages
                 .iter()
@@ -7675,6 +7678,20 @@ fn render_message() -> &'static str {
                                                 );
                                             if start.clicked() {
                                                 start_new_session = true;
+                                            }
+                                        }
+                                        FailedTurnRecoveryAction::ChooseModel => {
+                                            let choose = ui
+                                                .add_enabled(
+                                                    self.gateway_connected
+                                                        && self.chat_policy_mutation.is_none(),
+                                                    egui::Button::new("Choose model"),
+                                                )
+                                                .accessible_name(
+                                                    "Choose a different model for this Hermes chat",
+                                                );
+                                            if choose.clicked() {
+                                                open_model_picker = true;
                                             }
                                         }
                                     });
@@ -7992,6 +8009,9 @@ fn render_message() -> &'static str {
             }
             if start_new_session {
                 self.create_blank_session_tab();
+            }
+            if open_model_picker {
+                self.chat_model_picker_requested = true;
             }
             if continue_cut_off_reply {
                 self.continue_cut_off_reply();
@@ -16321,7 +16341,7 @@ fn render_message() -> &'static str {
                 } else {
                     format!("{current_model} · {current_provider}")
                 };
-                ui.add_enabled_ui(!mutation_pending, |ui| {
+                let model_picker = ui.add_enabled_ui(!mutation_pending, |ui| {
                     ui.menu_button(format!("Model · {label}"), |ui| {
                         if options_loading {
                             ui.label("Loading configured models…");
@@ -16356,9 +16376,18 @@ fn render_message() -> &'static str {
                             ui.colored_label(Color32::LIGHT_RED, error);
                         }
                     })
-                })
-                .response
-                .accessible_name("Choose model for this chat session");
+                    .response
+                });
+                let model_picker_response = model_picker
+                    .inner
+                    .accessible_name("Choose model for this chat session");
+                if self.chat_model_picker_requested && !mutation_pending {
+                    egui::Popup::open_id(
+                        ui.ctx(),
+                        egui::Popup::default_response_id(&model_picker_response),
+                    );
+                    self.chat_model_picker_requested = false;
+                }
                 if let Some(error) = &self.chat_model_options_error {
                     ui.colored_label(Color32::LIGHT_RED, error);
                     if ui.button("Retry model list").clicked() {
@@ -36610,11 +36639,15 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
 enum FailedTurnRecoveryAction {
     EditPrompt,
     StartNewSession,
+    ChooseModel,
 }
 
 fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurnRecoveryAction> {
     match message.pointer("/error_surface/code")?.as_str()? {
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
+        "model_not_found" | "provider_policy_blocked" | "free_tier_at_capacity" => {
+            Some(FailedTurnRecoveryAction::ChooseModel)
+        }
         "context_overflow"
         | "payload_too_large"
         | "SESSION_NOT_OWNED"
@@ -39475,6 +39508,16 @@ mod tests {
                 true,
             ),
             (
+                "model_not_found",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
+                "provider_policy_blocked",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
                 "payload_too_large",
                 Some(FailedTurnRecoveryAction::StartNewSession),
                 true,
@@ -39495,7 +39538,7 @@ mod tests {
                 true,
             ),
             ("SESSION_OWNER_UNCONFIRMED", None, false),
-            ("model_not_found", None, true),
+            ("agent_init_failed", None, true),
         ];
         for (code, expected_action, expected_retry) in cases {
             let message = serde_json::json!({
@@ -39545,6 +39588,10 @@ mod tests {
                 "role":"assistant","content":"","error":"context limit reached",
                 "error_surface":{"code":"context_overflow","retryable":false}
             }),
+            serde_json::json!({
+                "role":"assistant","content":"","error":"the selected model is unavailable",
+                "error_surface":{"layer":"provider","code":"model_not_found","retryable":false}
+            }),
         ];
         let app = Rc::new(RefCell::new(app));
         let frame_app = app.clone();
@@ -39574,6 +39621,11 @@ mod tests {
         );
         assert!(
             harness
+                .query_by_label("Choose a different model for this Hermes chat")
+                .is_some()
+        );
+        assert!(
+            harness
                 .query_by_label("Retry failed message with original submission ID")
                 .is_none(),
             "unconfirmed admission must not expose a potentially duplicate retry"
@@ -39596,6 +39648,52 @@ mod tests {
         assert_eq!(edit.text, "please revise this");
         assert_eq!(edit.later_user_turns, 0);
         drop(app_ref);
+        harness
+            .query_by_label("Choose a different model for this Hermes chat")
+            .unwrap()
+            .click();
+        harness.run();
+        assert!(app.borrow().chat_model_picker_requested);
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn composer_opens_model_catalog_after_a_recovery_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        app.chat_model_options_owner =
+            Some(("runtime-session".into(), Some("work".into()), connection_id));
+        app.chat_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "openai".into(),
+                name: "OpenAI".into(),
+                api_url: None,
+                authenticated: Some(true),
+                models: vec!["recovery-model".into()],
+                capabilities: BTreeMap::new(),
+            }],
+            model: Some("missing-model".into()),
+            provider: Some("openai".into()),
+        });
+        app.chat_model_picker_requested = true;
+
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().composer(ui));
+        harness.run_steps(2);
+        assert!(
+            harness.query_by_label("recovery-model").is_some(),
+            "a recovery request opens the same model menu used by the chat composer"
+        );
+        assert!(!app.borrow().chat_model_picker_requested);
 
         drop(harness);
         drop(app);
