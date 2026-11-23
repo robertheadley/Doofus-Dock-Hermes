@@ -1572,6 +1572,8 @@ capabilities:
       description: For a TLS certificate failure, open only Hermes' pinned static TLS trust guide URL from an accessible error action.
     - id: format-and-upstream-error-model-recovery
       description: Route unsupported format and provider upstream errors to the active chat model picker, with a new-session fallback for format errors.
+    - id: free-tier-errors-explain-and-offer-model-recovery
+      description: Explain each pinned Hermes Free failure, preserve its structured message, offer native model selection, and keep Retry gated by Hermes retryability.
   evidence:
   - EV-0028
   - EV-0029
@@ -1589,6 +1591,7 @@ capabilities:
   - EV-0142
   - EV-0143
   - EV-0144
+  - EV-0145
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

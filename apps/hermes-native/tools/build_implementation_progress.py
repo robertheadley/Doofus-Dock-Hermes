@@ -1533,6 +1533,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0142.json#EV-0142",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0143.json#EV-0143",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0144.json#EV-0144",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0145.json#EV-0145",
             "apps/hermes-native/src/app.rs#payload_too_large_recovery_compresses_the_current_chat",
             "apps/hermes-native/src/app.rs#tls_certificate_failure_opens_the_pinned_setup_guide",
             "apps/hermes-native/src/app.rs#format_error_recovery_offers_model_change_and_fresh_session",

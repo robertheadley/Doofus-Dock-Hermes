@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "6dfca7ed3d9532d8e8bc16e1e1c0a90cb973f00a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation suite (658 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug build, cargo fmt --check, git diff --check, progress generators, package validator (128 implementation receipts), and task-continuity tests (19/19). No live Gateway or installed Hermes app was used.",
+  "uid": "EV-0145",
+  "scenario": "free-tier-errors-explain-and-offer-model-recovery",
+  "locator": "apps/hermes-native/src/app.rs::free_tier_failures_show_native_model_fallback_and_respect_retryability;apps/hermes-native/src/app.rs::failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry;.staging/hermes-pinned-878305/agent/error_surface.py::_FREE_TIER_RETRYABLE_KINDS;.staging/hermes-pinned-878305/apps/desktop/src/lib/error-surface.ts::CODE_ACTIONS",
+  "notes": "All seven pinned free_tier_* errors now render distinct fallback titles, prefer Hermes' structured message, and offer the active chat model picker. The exact error_surface.retryable value still controls same-submission retry; the rendered regression proves a nonretryable free-tier error has no Retry action. Native Hermes Free sign-in is not simulated because the separate OAuth/session host flow is absent. EV-0145 is partial evidence; live Gateway, packaged Windows, free-tier sign-in, and formal source-paired acceptance remain open."
+}
