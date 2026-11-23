@@ -7437,6 +7437,7 @@ fn render_message() -> &'static str {
                         Some(pending_session.as_str()) == self.active_runtime_session_id.as_deref()
                     });
             let mut retry_failed_submission = None;
+            let mut start_new_session = false;
             let active_profile = self.active_session_profile.clone();
             let tool_images = messages
                 .iter()
@@ -7632,6 +7633,52 @@ fn render_message() -> &'static str {
                             if let Some((title, explanation)) = &structured_error {
                                 ui.label(RichText::new(title).strong().color(Color32::LIGHT_RED));
                                 ui.label(explanation);
+                                if let Some(recovery_action) = failed_turn_recovery_action(&message)
+                                {
+                                    ui.horizontal_wrapped(|ui| match recovery_action {
+                                        FailedTurnRecoveryAction::EditPrompt => {
+                                            let target = failed_prompt_edit_target(&messages, index);
+                                            let edit = ui
+                                                .add_enabled(
+                                                    edit_action_enabled && target.is_some(),
+                                                    egui::Button::new("Edit failed message"),
+                                                )
+                                                .accessible_name(
+                                                    "Edit the refused prompt without truncating session history",
+                                                );
+                                            if edit.clicked()
+                                                && let Some((
+                                                    prompt_index,
+                                                    row_id,
+                                                    text,
+                                                    submission_id,
+                                                )) = target
+                                            {
+                                                open_message_edit = Some((
+                                                    row_id,
+                                                    text,
+                                                    prompt_index,
+                                                    true,
+                                                    Some(submission_id),
+                                                    false,
+                                                ));
+                                            }
+                                        }
+                                        FailedTurnRecoveryAction::StartNewSession => {
+                                            let start = ui
+                                                .add_enabled(
+                                                    self.pending_create.is_none(),
+                                                    egui::Button::new("Start new session"),
+                                                )
+                                                .accessible_name(
+                                                    "Start a new Hermes session after this turn failure",
+                                                );
+                                            if start.clicked() {
+                                                start_new_session = true;
+                                            }
+                                        }
+                                    });
+                                }
                                 if let Some(raw) = &error_detail {
                                     egui::CollapsingHeader::new("Details")
                                         .id_salt(("provider-error-details", session_id, index))
@@ -7742,11 +7789,7 @@ fn render_message() -> &'static str {
                             if let Some(submission_id) = message
                                 .get("retry_submission_id")
                                 .and_then(|value| value.as_str())
-                                && message
-                                    .get("error_surface")
-                                    .and_then(|surface| surface.get("retryable"))
-                                    .and_then(|value| value.as_bool())
-                                    != Some(false)
+                                && failed_turn_retry_allowed(&message)
                             {
                                 let retry = ui
                                     .add_enabled(
@@ -7946,6 +7989,9 @@ fn render_message() -> &'static str {
             }
             if let Some(submission_id) = retry_failed_submission {
                 self.retry_failed_submission(&submission_id);
+            }
+            if start_new_session {
+                self.create_blank_session_tab();
             }
             if continue_cut_off_reply {
                 self.continue_cut_off_reply();
@@ -19784,12 +19830,7 @@ fn render_message() -> &'static str {
         }) else {
             return;
         };
-        if message
-            .get("error_surface")
-            .and_then(|surface| surface.get("retryable"))
-            .and_then(|value| value.as_bool())
-            == Some(false)
-        {
+        if !failed_turn_retry_allowed(message) {
             self.status = "Hermes marked this failure as not retryable".into();
             return;
         }
@@ -36475,6 +36516,26 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
 
     let layer = surface.get("layer").and_then(serde_json::Value::as_str);
     match code {
+        "SESSION_OWNER_UNCONFIRMED" => Some((
+            "Hermes hasn't confirmed whether this prompt was queued".into(),
+            "It may already be running. Wait for the session to reconcile before sending anything again; retry is disabled to avoid running your prompt twice.".into(),
+        )),
+        "SESSION_NOT_OWNED" | "session_read_only" | "cron_session_read_only" => Some((
+            "This session can't accept messages".into(),
+            "Hermes marked this session as read-only or owned elsewhere. Start a new session to continue.".into(),
+        )),
+        "context_overflow" => Some((
+            "This conversation is too long for the selected model".into(),
+            "Start a new session to continue with a fresh context. Transcript compression is not available in this native client yet.".into(),
+        )),
+        "payload_too_large" => Some((
+            "This message is too large".into(),
+            "Reduce the message or its attachments, or start a new session before trying again.".into(),
+        )),
+        "workspace_unavailable" | "launch_credentials_unavailable" => Some((
+            "Hermes can't prepare this session".into(),
+            "The current workspace or launch credentials aren't available. Start a new session after fixing the workspace connection.".into(),
+        )),
         "model_not_found" => Some((
             "Model not found".into(),
             format!(
@@ -36543,6 +36604,72 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
             None
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FailedTurnRecoveryAction {
+    EditPrompt,
+    StartNewSession,
+}
+
+fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurnRecoveryAction> {
+    match message.pointer("/error_surface/code")?.as_str()? {
+        "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
+        "context_overflow"
+        | "payload_too_large"
+        | "SESSION_NOT_OWNED"
+        | "session_read_only"
+        | "cron_session_read_only"
+        | "launch_credentials_unavailable"
+        | "workspace_unavailable" => Some(FailedTurnRecoveryAction::StartNewSession),
+        _ => None,
+    }
+}
+
+fn failed_turn_retry_allowed(message: &serde_json::Value) -> bool {
+    message
+        .pointer("/error_surface/code")
+        .and_then(serde_json::Value::as_str)
+        != Some("SESSION_OWNER_UNCONFIRMED")
+        && message
+            .pointer("/error_surface/retryable")
+            .and_then(serde_json::Value::as_bool)
+            != Some(false)
+}
+
+fn failed_prompt_edit_target(
+    messages: &[serde_json::Value],
+    assistant_index: usize,
+) -> Option<(usize, u64, String, String)> {
+    let prompt_index = assistant_index.checked_sub(1)?;
+    if !transcript_failed_user_turn(messages, prompt_index) {
+        return None;
+    }
+    let prompt = messages.get(prompt_index)?;
+    let submission_id = prompt
+        .get("submission_id")
+        .or_else(|| prompt.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| !id.trim().is_empty())?;
+    let matching_rows = messages
+        .iter()
+        .filter(|candidate| {
+            candidate
+                .get("submission_id")
+                .or_else(|| candidate.get("id"))
+                .and_then(serde_json::Value::as_str)
+                == Some(submission_id)
+        })
+        .count();
+    if matching_rows != 1 {
+        return None;
+    }
+    let (_, text) = transcript_message(prompt);
+    let row_id = prompt
+        .get("row_id")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+    Some((prompt_index, row_id, text, submission_id.to_owned()))
 }
 
 fn regeneration_target_before(
@@ -39328,6 +39455,147 @@ mod tests {
                 .query_by_label("Continue cut-off response")
                 .is_some()
         );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry() {
+        let cases = [
+            (
+                "content_policy_blocked",
+                Some(FailedTurnRecoveryAction::EditPrompt),
+                true,
+            ),
+            (
+                "context_overflow",
+                Some(FailedTurnRecoveryAction::StartNewSession),
+                true,
+            ),
+            (
+                "payload_too_large",
+                Some(FailedTurnRecoveryAction::StartNewSession),
+                true,
+            ),
+            (
+                "SESSION_NOT_OWNED",
+                Some(FailedTurnRecoveryAction::StartNewSession),
+                true,
+            ),
+            (
+                "session_read_only",
+                Some(FailedTurnRecoveryAction::StartNewSession),
+                true,
+            ),
+            (
+                "cron_session_read_only",
+                Some(FailedTurnRecoveryAction::StartNewSession),
+                true,
+            ),
+            ("SESSION_OWNER_UNCONFIRMED", None, false),
+            ("model_not_found", None, true),
+        ];
+        for (code, expected_action, expected_retry) in cases {
+            let message = serde_json::json!({
+                "role":"assistant","error":"failure",
+                "error_surface":{"code":code,"retryable":true}
+            });
+            assert_eq!(
+                failed_turn_recovery_action(&message),
+                expected_action,
+                "{code}"
+            );
+            assert_eq!(
+                failed_turn_retry_allowed(&message),
+                expected_retry,
+                "{code}"
+            );
+        }
+        let explicitly_nonretryable = serde_json::json!({
+            "error_surface":{"code":"agent_init_failed","retryable":false}
+        });
+        assert!(!failed_turn_retry_allowed(&explicitly_nonretryable));
+    }
+
+    #[test]
+    fn failed_turn_error_card_edits_policy_refusal_and_never_retries_unconfirmed_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({
+                "id":"submission-1","submission_id":"submission-1",
+                "role":"user","content":"please revise this"
+            }),
+            serde_json::json!({
+                "role":"assistant","content":"","error":"raw provider refusal",
+                "error_surface":{"code":"content_policy_blocked","retryable":false}
+            }),
+            serde_json::json!({
+                "role":"assistant","content":"","error":"write outcome unknown",
+                "retry_submission_id":"submission-unknown",
+                "retry_session_id":"runtime-session","retry_profile":"work",
+                "retry_text":"do not send twice","retry_attachments":[],
+                "error_surface":{"code":"SESSION_OWNER_UNCONFIRMED","retryable":true}
+            }),
+            serde_json::json!({
+                "role":"assistant","content":"","error":"context limit reached",
+                "error_surface":{"code":"context_overflow","retryable":false}
+            }),
+        ];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1200.0, 900.0))
+            .build_ui(move |ui| {
+                frame_app
+                    .borrow_mut()
+                    .session_content(ui, "runtime-session")
+            });
+        harness.run_steps(2);
+
+        assert!(
+            harness
+                .query_by_label("Edit the refused prompt without truncating session history")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Start a new Hermes session after this turn failure")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Hermes hasn't confirmed whether this prompt was queued")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Retry failed message with original submission ID")
+                .is_none(),
+            "unconfirmed admission must not expose a potentially duplicate retry"
+        );
+        assert!(
+            harness.query_by_label("raw provider refusal").is_none(),
+            "raw provider detail is collapsed by default"
+        );
+        harness
+            .query_by_label("Edit the refused prompt without truncating session history")
+            .unwrap()
+            .click();
+        harness.run();
+        let app_ref = app.borrow();
+        let edit = app_ref
+            .message_edit
+            .as_ref()
+            .expect("policy action opens editor");
+        assert!(edit.failed_turn);
+        assert_eq!(edit.text, "please revise this");
+        assert_eq!(edit.later_user_turns, 0);
+        drop(app_ref);
 
         drop(harness);
         drop(app);
