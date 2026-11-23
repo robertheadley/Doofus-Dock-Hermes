@@ -15359,6 +15359,7 @@ fn render_message() -> &'static str {
             return;
         };
         let profile = self.active_session_profile.clone();
+        let stored_session_id = self.stored_session_id_for_runtime(&session_id, profile.as_deref());
         let gateway_is_local = self
             .gateway_endpoint
             .as_ref()
@@ -15419,6 +15420,7 @@ fn render_message() -> &'static str {
             if let Err(error) = gateway.attach_composer_file(
                 request_id.clone(),
                 session_id.clone(),
+                stored_session_id.clone(),
                 profile.clone(),
                 path,
                 name,
@@ -19132,6 +19134,8 @@ fn render_message() -> &'static str {
             .gateway_endpoint
             .as_ref()
             .is_some_and(GatewayEndpoint::uses_local_loopback_gateway);
+        let stored_session_id =
+            self.stored_session_id_for_runtime(&edit.session_id, edit.profile.as_deref());
         let (backend_cwd, terminal_backend) = self
             .active_backend_attachment_metadata(&edit.session_id)
             .unwrap_or_default();
@@ -19196,6 +19200,7 @@ fn render_message() -> &'static str {
                     gateway.attach_composer_file(
                         request_id.clone(),
                         edit.session_id.clone(),
+                        stored_session_id.clone(),
                         edit.profile.clone(),
                         path.clone(),
                         name,
@@ -40188,6 +40193,7 @@ mod tests {
     fn message_edit_uploads_new_image_without_touching_composer_and_sends_gateway_reference() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
         app.active_runtime_session_id = Some("runtime-session".into());
         app.active_session_profile = Some("work".into());
         app.draft = "keep current composer draft".into();
@@ -40232,6 +40238,7 @@ mod tests {
         let TestGatewayCommand::AttachComposerFile {
             request_id,
             session_id,
+            stored_session_id,
             profile,
             path,
             name,
@@ -40243,6 +40250,7 @@ mod tests {
             panic!("new edit images use the existing Gateway upload route");
         };
         assert_eq!(session_id, "runtime-session");
+        assert_eq!(stored_session_id.as_deref(), Some("stored-session"));
         assert_eq!(profile.as_deref(), Some("work"));
         assert_eq!(path, attachment_path.to_string_lossy());
         assert_eq!(name, attachment_path.file_name().unwrap().to_string_lossy());
@@ -51314,9 +51322,71 @@ mod tests {
         assert!(app.composer_attachments[1].request_id.is_some());
         assert!(matches!(
             commands.recv_timeout(std::time::Duration::from_secs(1)),
-            Ok(TestGatewayCommand::AttachComposerFile { session_id, profile, name, is_image: false, .. })
+            Ok(TestGatewayCommand::AttachComposerFile { session_id, stored_session_id, profile, name, is_image: false, .. })
                 if session_id == "runtime-session" && profile.as_deref() == Some("work") && name == "second.pdf"
+                    && stored_session_id.as_deref() == Some("stored-session")
         ));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn composer_attachment_runtime_rebind_updates_owner_before_receipt() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = "attachment-connection";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.gateway_discovery = Some(
+            GatewayDiscovery::for_test_session_resume()
+                .0
+                .with_connection_id(connection_id),
+        );
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-stale".into());
+        app.active_session_profile = Some("work".into());
+        app.composer_attachments.push(ComposerAttachment {
+            path: "C:/image.png".into(),
+            source_path: "C:/image.png".into(),
+            name: "image.png".into(),
+            is_image: true,
+            mime: "image/png".into(),
+            attached_session_id: None,
+            ref_text: None,
+            request_id: Some("attach-1".into()),
+            error: None,
+        });
+
+        app.handle_session_runtime_rebound(
+            "attach-1".into(),
+            "stored-session".into(),
+            "runtime-stale".into(),
+            "runtime-recovered".into(),
+            Some("work".into()),
+            Some(connection_id.into()),
+        );
+        assert_eq!(
+            app.active_runtime_session_id.as_deref(),
+            Some("runtime-recovered")
+        );
+        app.handle_composer_attachment_attached(
+            "attach-1".into(),
+            "runtime-recovered".into(),
+            Some("work".into()),
+            Some(connection_id.into()),
+            "C:/image.png".into(),
+            Ok(ComposerAttachmentReceipt {
+                path: "attachments/image.png".into(),
+                ref_text: "@image:attachments/image.png".into(),
+            }),
+        );
+        assert_eq!(app.composer_attachments[0].request_id, None);
+        assert_eq!(
+            app.composer_attachments[0].attached_session_id.as_deref(),
+            Some("runtime-recovered")
+        );
+        assert_eq!(
+            app.composer_attachments[0].ref_text.as_deref(),
+            Some("@image:attachments/image.png")
+        );
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

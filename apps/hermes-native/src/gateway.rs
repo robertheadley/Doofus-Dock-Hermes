@@ -2712,6 +2712,7 @@ enum GatewayCommand {
     AttachComposerFile {
         request_id: String,
         session_id: String,
+        stored_session_id: Option<String>,
         profile: Option<String>,
         path: String,
         name: String,
@@ -3186,6 +3187,7 @@ pub(crate) enum TestGatewayCommand {
     AttachComposerFile {
         request_id: String,
         session_id: String,
+        stored_session_id: Option<String>,
         profile: Option<String>,
         path: String,
         name: String,
@@ -3293,6 +3295,7 @@ impl GatewayDiscovery {
                     GatewayCommand::AttachComposerFile {
                         request_id,
                         session_id,
+                        stored_session_id,
                         profile,
                         path,
                         name,
@@ -3300,6 +3303,7 @@ impl GatewayDiscovery {
                     } => Some(TestGatewayCommand::AttachComposerFile {
                         request_id,
                         session_id,
+                        stored_session_id,
                         profile,
                         path,
                         name,
@@ -3477,6 +3481,7 @@ impl GatewayDiscovery {
                     GatewayCommand::AttachComposerFile {
                         request_id,
                         session_id,
+                        stored_session_id,
                         profile,
                         path,
                         name,
@@ -3484,6 +3489,7 @@ impl GatewayDiscovery {
                     } => TestGatewayCommand::AttachComposerFile {
                         request_id,
                         session_id,
+                        stored_session_id,
                         profile,
                         path,
                         name,
@@ -4926,6 +4932,7 @@ impl GatewayDiscovery {
         &self,
         request_id: String,
         session_id: String,
+        stored_session_id: Option<String>,
         profile: Option<String>,
         path: String,
         name: String,
@@ -4935,6 +4942,7 @@ impl GatewayDiscovery {
             .send(GatewayCommand::AttachComposerFile {
                 request_id,
                 session_id,
+                stored_session_id,
                 profile,
                 path,
                 name,
@@ -8308,6 +8316,7 @@ fn gateway_actor_with_replay(
             Ok(GatewayCommand::AttachComposerFile {
                 request_id,
                 session_id,
+                stored_session_id,
                 profile,
                 path,
                 name,
@@ -8324,54 +8333,29 @@ fn gateway_actor_with_replay(
                     }
                     let bytes = std::fs::read(&path)
                         .map_err(|error| format!("Could not read attachment {}: {error}", name))?;
-                    let (method, params) = composer_attachment_rpc_payload(
+                    let (result, attached_session_id) = attach_composer_file_with_recovery(
+                        socket,
+                        &mut next_request_id,
                         &session_id,
+                        stored_session_id.as_deref(),
                         profile.as_deref(),
+                        &path,
                         &name,
                         is_image,
                         &bytes,
-                    )?;
-                    let result =
-                        rpc_with_events(socket, next_request_id, method, params, Some(&events));
-                    next_request_id = next_request_id.saturating_add(1);
-                    let result = result?;
-                    if result.get("attached").and_then(serde_json::Value::as_bool) != Some(true) {
-                        return Err(result
-                            .get("message")
-                            .and_then(serde_json::Value::as_str)
-                            .unwrap_or("Hermes refused the attachment")
-                            .to_owned());
-                    }
-                    let attached_path = result
-                        .get("path")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or(&path)
-                        .to_owned();
-                    let ref_text = if is_image {
-                        let value = if attached_path.chars().any(char::is_whitespace) {
-                            format!("`{attached_path}`")
-                        } else {
-                            attached_path.clone()
-                        };
-                        format!("@image:{value}")
-                    } else {
-                        result
-                            .get("ref_text")
-                            .and_then(serde_json::Value::as_str)
-                            .ok_or_else(|| {
-                                "Hermes attached the file without a prompt reference".to_owned()
-                            })?
-                            .to_owned()
-                    };
-                    Ok(ComposerAttachmentReceipt {
-                        path: attached_path,
-                        ref_text,
-                    })
+                        &request_id,
+                        &events,
+                    );
+                    Ok((result, attached_session_id))
                 })();
+                let (result, attached_session_id) = match result {
+                    Ok((result, attached_session_id)) => (result, attached_session_id),
+                    Err(error) => (Err(error), None),
+                };
                 if events
                     .send(GatewayEvent::ComposerAttachmentAttached {
                         request_id,
-                        session_id,
+                        session_id: attached_session_id.unwrap_or(session_id),
                         profile,
                         connection_id: None,
                         path,
@@ -9038,6 +9022,140 @@ fn composer_attachment_rpc_payload(
         )
     };
     Ok((method, session_profile_params(payload, profile)?))
+}
+
+fn attach_composer_file_with_recovery(
+    socket: &mut GatewaySocket,
+    next_request_id: &mut u64,
+    runtime_session_id: &str,
+    stored_session_id: Option<&str>,
+    profile: Option<&str>,
+    path: &str,
+    name: &str,
+    is_image: bool,
+    bytes: &[u8],
+    request_id: &str,
+    events: &mpsc::Sender<GatewayEvent>,
+) -> (Result<ComposerAttachmentReceipt, String>, Option<String>) {
+    let attach = |socket: &mut GatewaySocket,
+                  next_request_id: &mut u64,
+                  runtime_id: &str|
+     -> Result<ComposerAttachmentReceipt, String> {
+        let (method, params) =
+            composer_attachment_rpc_payload(runtime_id, profile, name, is_image, bytes)?;
+        let result = rpc_with_events(socket, *next_request_id, method, params, Some(events));
+        *next_request_id = next_request_id.saturating_add(1);
+        let result = result?;
+        if result.get("attached").and_then(serde_json::Value::as_bool) != Some(true) {
+            return Err(result
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("Hermes refused the attachment")
+                .to_owned());
+        }
+        let attached_path = result
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(path)
+            .to_owned();
+        let ref_text = if is_image {
+            let value = if attached_path.chars().any(char::is_whitespace) {
+                format!("`{attached_path}`")
+            } else {
+                attached_path.clone()
+            };
+            format!("@image:{value}")
+        } else {
+            result
+                .get("ref_text")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "Hermes attached the file without a prompt reference".to_owned())?
+                .to_owned()
+        };
+        Ok(ComposerAttachmentReceipt {
+            path: attached_path,
+            ref_text,
+        })
+    };
+
+    match attach(socket, next_request_id, runtime_session_id) {
+        Ok(receipt) => return (Ok(receipt), None),
+        Err(original_error)
+            if original_error
+                .to_ascii_lowercase()
+                .contains("session not found")
+                && stored_session_id.is_some_and(|id| !id.is_empty()) =>
+        {
+            let stored_session_id = stored_session_id.expect("guarded stored session ID");
+            let resume_params = match session_profile_params(
+                serde_json::json!({
+                    "session_id": stored_session_id,
+                    "source": "desktop",
+                    "omit_messages": true
+                }),
+                profile,
+            ) {
+                Ok(params) => params,
+                Err(_) => return (Err(original_error), None),
+            };
+            let resumed = rpc_with_events(
+                socket,
+                *next_request_id,
+                "session.resume",
+                resume_params,
+                Some(events),
+            );
+            *next_request_id = next_request_id.saturating_add(1);
+            let Ok(resumed) = resumed else {
+                return (Err(original_error), None);
+            };
+            if resumed
+                .get("stored_session_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(stored_session_id)
+            {
+                return (
+                    Err("Hermes attachment refused: retry skipped because session.resume returned a different stored session owner".into()),
+                    None,
+                );
+            }
+            let Some(recovered_session_id) = resumed
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned)
+            else {
+                return (
+                    Err("Hermes attachment refused: retry skipped because session.resume omitted its runtime session ID".into()),
+                    None,
+                );
+            };
+            if events
+                .send(GatewayEvent::SessionRuntimeRebound {
+                    submission_id: request_id.to_owned(),
+                    stored_session_id: stored_session_id.to_owned(),
+                    previous_runtime_session_id: runtime_session_id.to_owned(),
+                    runtime_session_id: recovered_session_id.clone(),
+                    profile: profile.map(str::to_owned),
+                    connection_id: None,
+                })
+                .is_err()
+            {
+                return (
+                    Err(
+                        "Hermes UI event receiver closed before attachment recovery completed"
+                            .into(),
+                    ),
+                    Some(recovered_session_id),
+                );
+            }
+            (
+                attach(socket, next_request_id, &recovered_session_id),
+                Some(recovered_session_id),
+            )
+        }
+        Err(error) => (Err(error), None),
+    }
 }
 
 fn rename_runtime_session_rpc(
@@ -17598,6 +17716,285 @@ mod tests {
         assert_eq!(params["name"], "brief.pdf");
         assert_eq!(params["data_url"], "data:application/pdf;base64,AA==");
         assert!(params.get("path").is_none());
+    }
+
+    #[test]
+    fn composer_attachment_resumes_exact_stored_session_and_retries_once() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let read_request = |socket: &mut tungstenite::WebSocket<TcpStream>| match socket
+                .read()
+                .expect("read Gateway request")
+            {
+                Message::Text(text) => {
+                    serde_json::from_str::<serde_json::Value>(&text).expect("parse Gateway request")
+                }
+                other => panic!("expected text request, got {other:?}"),
+            };
+            let reply = |socket: &mut tungstenite::WebSocket<TcpStream>, id, result| {
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":result})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send Gateway reply");
+            };
+
+            let first = read_request(&mut socket);
+            assert_eq!(first["method"], "image.attach_bytes");
+            assert_eq!(first["params"]["session_id"], "runtime-stale");
+            assert_eq!(first["params"]["profile"], "work");
+            assert_eq!(first["params"]["filename"], "capture.png");
+            assert_eq!(first["params"]["content_base64"], "AQID");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":first["id"],"error":{"code":4001,"message":"request failed","data":{"reason":"session not found"}}})
+                        .to_string()
+                        .into(),
+                ))
+                .expect("refuse stale runtime");
+
+            let resume = read_request(&mut socket);
+            assert_eq!(resume["method"], "session.resume");
+            assert_eq!(resume["params"]["session_id"], "stored-session");
+            assert_eq!(resume["params"]["profile"], "work");
+            assert_eq!(resume["params"]["source"], "desktop");
+            assert_eq!(resume["params"]["omit_messages"], true);
+            reply(
+                &mut socket,
+                resume["id"].clone(),
+                json!({"session_id":"runtime-recovered","stored_session_id":"stored-session"}),
+            );
+
+            let retry = read_request(&mut socket);
+            assert_eq!(retry["method"], "image.attach_bytes");
+            assert_eq!(retry["params"]["session_id"], "runtime-recovered");
+            assert_eq!(retry["params"]["profile"], "work");
+            assert_eq!(retry["params"]["filename"], "capture.png");
+            assert_eq!(retry["params"]["content_base64"], "AQID");
+            reply(
+                &mut socket,
+                retry["id"].clone(),
+                json!({"attached":true,"path":"attachments/capture.png"}),
+            );
+            socket.close(None).expect("close fixture socket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("set client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "hermes-attach-recovery-{}-{unique}.png",
+            std::process::id()
+        ));
+        std::fs::write(&path, [1_u8, 2, 3]).expect("write fixture image");
+        command_tx
+            .send(GatewayCommand::AttachComposerFile {
+                request_id: "attach-1".into(),
+                session_id: "runtime-stale".into(),
+                stored_session_id: Some("stored-session".into()),
+                profile: Some("work".into()),
+                path: path.to_string_lossy().into_owned(),
+                name: "capture.png".into(),
+                is_image: true,
+            })
+            .expect("queue attachment");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(1)),
+            Ok(GatewayEvent::SessionRuntimeRebound {
+                submission_id,
+                stored_session_id,
+                previous_runtime_session_id,
+                runtime_session_id,
+                profile: Some(profile),
+                ..
+            }) if submission_id == "attach-1"
+                && stored_session_id == "stored-session"
+                && previous_runtime_session_id == "runtime-stale"
+                && runtime_session_id == "runtime-recovered"
+                && profile == "work"
+        ));
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(1)),
+            Ok(GatewayEvent::ComposerAttachmentAttached {
+                request_id,
+                session_id,
+                result: Ok(ComposerAttachmentReceipt { path, ref_text }),
+                ..
+            }) if request_id == "attach-1"
+                && session_id == "runtime-recovered"
+                && path == "attachments/capture.png"
+                && ref_text == "@image:attachments/capture.png"
+        ));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        std::fs::remove_file(path).expect("remove fixture image");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn composer_attachment_does_not_retry_for_non_stale_or_missing_owner() {
+        for (stored_session_id, refusal) in [
+            (Some("stored-session"), "policy denied"),
+            (None, "session not found"),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+            let address = listener.local_addr().expect("fixture address");
+            let server = thread::spawn(move || {
+                let (stream, _) = listener.accept().expect("accept fixture client");
+                let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+                let request: serde_json::Value = match socket.read().expect("read attach") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse attach"),
+                    other => panic!("expected text request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "image.attach_bytes");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":request["id"],"error":{"code":4001,"message":"request failed","data":{"reason":refusal}}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send refusal");
+                socket.close(None).expect("close fixture socket");
+            });
+            let (mut socket, _) = tungstenite::connect(format!("ws://{address}/api/ws"))
+                .expect("connect fixture client");
+            let (event_tx, event_rx) = mpsc::channel();
+            let mut next_request_id = 1;
+            let (result, recovered) = attach_composer_file_with_recovery(
+                &mut socket,
+                &mut next_request_id,
+                "runtime-1",
+                stored_session_id,
+                Some("work"),
+                "C:/capture.png",
+                "capture.png",
+                true,
+                &[1, 2, 3],
+                "attach-no-retry",
+                &event_tx,
+            );
+            assert!(result.unwrap_err().contains(refusal));
+            assert_eq!(recovered, None);
+            assert!(event_rx.try_recv().is_err());
+            server.join().expect("fixture server exits");
+        }
+    }
+
+    #[test]
+    fn composer_attachment_keeps_original_refusal_when_resume_fails() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for (method, message) in [
+                ("image.attach_bytes", "session not found"),
+                ("session.resume", "database unavailable"),
+            ] {
+                let request: serde_json::Value = match socket.read().expect("read request") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                    other => panic!("expected text request, got {other:?}"),
+                };
+                assert_eq!(request["method"], method);
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":request["id"],"error":{"code":4001,"message":"request failed","data":{"reason":message}}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send refusal");
+            }
+            socket.close(None).expect("close fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut next_request_id = 1;
+        let (result, recovered) = attach_composer_file_with_recovery(
+            &mut socket,
+            &mut next_request_id,
+            "runtime-stale",
+            Some("stored-session"),
+            Some("work"),
+            "C:/capture.png",
+            "capture.png",
+            true,
+            &[1, 2, 3],
+            "attach-resume-failure",
+            &event_tx,
+        );
+        assert!(result.unwrap_err().contains("session not found"));
+        assert_eq!(recovered, None);
+        assert!(event_rx.try_recv().is_err());
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn composer_attachment_rejects_wrong_or_missing_resume_identity_without_retry() {
+        for resume_result in [
+            json!({"session_id":"runtime-recovered","stored_session_id":"different-session"}),
+            json!({"stored_session_id":"stored-session"}),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+            let address = listener.local_addr().expect("fixture address");
+            let server = thread::spawn(move || {
+                let (stream, _) = listener.accept().expect("accept fixture client");
+                let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+                for method in ["image.attach_bytes", "session.resume"] {
+                    let request: serde_json::Value = match socket.read().expect("read request") {
+                        Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                        other => panic!("expected text request, got {other:?}"),
+                    };
+                    assert_eq!(request["method"], method);
+                    let response = if method == "image.attach_bytes" {
+                        json!({"jsonrpc":"2.0","id":request["id"],"error":{"code":4001,"message":"request failed","data":{"reason":"session not found"}}})
+                    } else {
+                        json!({"jsonrpc":"2.0","id":request["id"],"result":resume_result})
+                    };
+                    socket
+                        .send(Message::Text(response.to_string().into()))
+                        .expect("send response");
+                }
+                socket.close(None).expect("close fixture socket");
+            });
+            let (mut socket, _) = tungstenite::connect(format!("ws://{address}/api/ws"))
+                .expect("connect fixture client");
+            let (event_tx, event_rx) = mpsc::channel();
+            let mut next_request_id = 1;
+            let (result, recovered) = attach_composer_file_with_recovery(
+                &mut socket,
+                &mut next_request_id,
+                "runtime-stale",
+                Some("stored-session"),
+                Some("work"),
+                "C:/capture.png",
+                "capture.png",
+                true,
+                &[1, 2, 3],
+                "attach-bad-resume",
+                &event_tx,
+            );
+            assert!(result.unwrap_err().contains("retry skipped"));
+            assert_eq!(recovered, None);
+            assert!(event_rx.try_recv().is_err());
+            server.join().expect("fixture server exits");
+        }
     }
 
     #[test]
