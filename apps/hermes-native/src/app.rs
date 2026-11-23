@@ -1765,6 +1765,11 @@ struct VaultUnlockPrompt {
 }
 
 enum VaultAgentPromptKind {
+    Secret {
+        env_var: String,
+        prompt: String,
+        value: Zeroizing<String>,
+    },
     Code {
         site: String,
         hint: String,
@@ -1797,6 +1802,7 @@ struct VaultSavedLoginValue<'a> {
 impl VaultAgentPrompt {
     fn clear_sensitive(&mut self) {
         match &mut self.kind {
+            VaultAgentPromptKind::Secret { value, .. } => value.zeroize(),
             VaultAgentPromptKind::Code { code, .. } => code.zeroize(),
             VaultAgentPromptKind::SaveLogin {
                 identifier,
@@ -7222,7 +7228,7 @@ fn render_message() -> &'static str {
 
     fn workspace_content(&mut self, ui: &mut egui::Ui) {
         self.clear_inactive_sudo_passwords(ui);
-        self.clear_inactive_vault_unlock_passwords(ui);
+        self.clear_inactive_credential_prompt_secrets(ui);
         if self.route.is_overlay() {
             return;
         }
@@ -8513,7 +8519,7 @@ fn render_message() -> &'static str {
         }
     }
 
-    fn clear_inactive_vault_unlock_passwords(&mut self, ui: &Ui) {
+    fn clear_inactive_credential_prompt_secrets(&mut self, ui: &Ui) {
         let session_id = self.active_runtime_session_id.clone();
         let profile = self.active_session_profile.clone();
         let active_connection = self.active_gateway_connection_id().to_owned();
@@ -8543,6 +8549,7 @@ fn render_message() -> &'static str {
             if !visible_owner {
                 prompt.clear_sensitive();
                 for widget_key in [
+                    "vault-agent-secret",
                     "vault-agent-code",
                     "vault-agent-identifier",
                     "vault-agent-password",
@@ -8822,6 +8829,7 @@ fn render_message() -> &'static str {
             .collect::<Vec<_>>();
         let mut actions = Vec::new();
         for prompt_key in prompt_keys {
+            let secret_widget = ui.make_persistent_id(("vault-agent-secret", prompt_key.as_str()));
             let code_widget = ui.make_persistent_id(("vault-agent-code", prompt_key.as_str()));
             let identifier_widget =
                 ui.make_persistent_id(("vault-agent-identifier", prompt_key.as_str()));
@@ -8834,6 +8842,68 @@ fn render_message() -> &'static str {
                 ui.add_space(8.0);
                 ui.group(|ui| {
                     match &mut prompt.kind {
+                        VaultAgentPromptKind::Secret {
+                            env_var,
+                            prompt: prompt_text,
+                            value,
+                        } => {
+                            let title = if env_var.is_empty() {
+                                "Secret required".to_owned()
+                            } else {
+                                format!("Secret required: {env_var}")
+                            };
+                            ui.label(RichText::new(&title).strong().color(ACCENT))
+                                .accessible_name(title);
+                            if !prompt_text.is_empty() {
+                                ui.label(prompt_text.as_str())
+                                    .accessible_name("Secret request details");
+                            }
+                            ui.add_enabled_ui(self.gateway_connected && !pending, |ui| {
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut **value)
+                                        .id(secret_widget)
+                                        .password(true)
+                                        .desired_width(ui.available_width())
+                                        .hint_text(if env_var.is_empty() {
+                                            "Enter the requested secret"
+                                        } else {
+                                            env_var.as_str()
+                                        }),
+                                )
+                                .accessible_name(format!(
+                                    "Secret value for request {}",
+                                    prompt.server_request_id
+                                ));
+                                if let Some(mut state) =
+                                    egui::TextEdit::load_state(ui.ctx(), secret_widget)
+                                {
+                                    state.clear_undoer();
+                                    state.store(ui.ctx(), secret_widget);
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                let send = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !pending && !value.is_empty(),
+                                        egui::Button::new("Send secret"),
+                                    )
+                                    .accessible_name(format!(
+                                        "Send secret for request {}",
+                                        prompt.server_request_id
+                                    ));
+                                accept = send.clicked();
+                                decline = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !pending,
+                                        egui::Button::new("Cancel"),
+                                    )
+                                    .accessible_name(format!(
+                                        "Decline secret request {}",
+                                        prompt.server_request_id
+                                    ))
+                                    .clicked();
+                            });
+                        }
                         VaultAgentPromptKind::Code { site, hint, code } => {
                             ui.label(
                                 RichText::new(format!("Verification code requested for {site}"))
@@ -21513,7 +21583,10 @@ fn render_message() -> &'static str {
             self.handle_vault_unlock_request(server_request_id, params, connection_id);
             return;
         }
-        if matches!(method.as_str(), "vault.code" | "vault.save_login") {
+        if matches!(
+            method.as_str(),
+            "secret" | "vault.code" | "vault.save_login"
+        ) {
             self.handle_vault_agent_request(server_request_id, method, params, connection_id);
             return;
         }
@@ -21837,6 +21910,30 @@ fn render_message() -> &'static str {
             return;
         }
         let kind = match method.as_str() {
+            "secret" => {
+                let env_var = params
+                    .get("env_var")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                let prompt = params
+                    .get("prompt")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                if env_var.len() > 1024 || prompt.len() > 4096 {
+                    self.reject_server_request(
+                        server_request_id,
+                        request_profile.map(str::to_owned),
+                        -32602,
+                        "Secret prompt details exceed the supported size",
+                    );
+                    return;
+                }
+                VaultAgentPromptKind::Secret {
+                    env_var: env_var.to_owned(),
+                    prompt: prompt.to_owned(),
+                    value: Zeroizing::new(String::new()),
+                }
+            }
             "vault.code" => {
                 let site = params
                     .get("site")
@@ -22409,7 +22506,7 @@ fn render_message() -> &'static str {
             match result {
                 Ok(()) => {
                     self.vault_agent_prompts.remove(&prompt_key);
-                    self.status = "Vault authentication response sent to Hermes".into();
+                    self.status = "Secure prompt response sent to Hermes".into();
                 }
                 Err(_) => {
                     if let Some(prompt) = self.vault_agent_prompts.get_mut(&prompt_key) {
@@ -22417,7 +22514,7 @@ fn render_message() -> &'static str {
                         prompt.response_unknown = true;
                     }
                     self.status =
-                        "Vault response outcome is unknown; do not resend these credentials."
+                        "Secure prompt response outcome is unknown; do not resend its secret."
                             .into();
                 }
             }
@@ -27410,6 +27507,19 @@ fn render_message() -> &'static str {
         }
 
         let response = match &prompt.kind {
+            VaultAgentPromptKind::Secret { value, .. } => {
+                if !accepted {
+                    json!({"value":""})
+                } else {
+                    if value.is_empty() {
+                        return Err("Enter the requested secret or choose Cancel".into());
+                    }
+                    if value.len() > 16_384 || value.chars().any(|character| character == '\0') {
+                        return Err("The requested secret exceeds the supported size".into());
+                    }
+                    json!({"value":value.as_str()})
+                }
+            }
             VaultAgentPromptKind::Code { code, .. } => {
                 if !accepted {
                     json!({"value":""})
@@ -27471,7 +27581,7 @@ fn render_message() -> &'static str {
             prompt.clear_sensitive();
             prompt.response_pending = true;
         }
-        self.status = "Sending secure vault response to Hermes…".into();
+        self.status = "Sending secure credential response to Hermes…".into();
         Ok(())
     }
 
@@ -58957,6 +59067,244 @@ mod tests {
     }
 
     #[test]
+    fn secret_request_is_masked_ephemeral_and_answers_its_gateway_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.handle_server_request_from_connection(
+            "secret-wire-1".into(),
+            "secret".into(),
+            json!({
+                "session_id":"runtime-session",
+                "profile":"work",
+                "env_var":"API_TOKEN",
+                "prompt":"Enter the token for the skill",
+                "metadata":{"source":"skill","token":"must-not-be-rendered"}
+            }),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key =
+            gateway_prompt_key(Some("gateway-connection-1"), Some("work"), "secret-wire-1");
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        assert!(
+            harness
+                .query_by_label("Secret value for request secret-wire-1")
+                .is_some()
+        );
+        harness
+            .get_by_label("Secret value for request secret-wire-1")
+            .click();
+        harness
+            .get_by_label("Secret value for request secret-wire-1")
+            .type_text("fixture-secret-value");
+        harness.run();
+        assert!(matches!(
+            &app.borrow().vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::Secret { value, .. }
+                if value.as_str() == "fixture-secret-value"
+        ));
+        assert!(
+            harness
+                .query_all_by(|node| node
+                    .label()
+                    .is_some_and(|label| label.contains("fixture-secret-value")
+                        || label.contains("must-not-be-rendered")))
+                .next()
+                .is_none(),
+            "entered values and unrendered metadata stay out of accessible labels"
+        );
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::Z);
+        harness.run();
+        assert!(
+            matches!(
+                &app.borrow().vault_agent_prompts[&prompt_key].kind,
+                VaultAgentPromptKind::Secret { value, .. }
+                    if value.as_str() == "fixture-secret-value"
+            ),
+            "the password editor cannot undo to a prior secret"
+        );
+        harness
+            .get_by_label("Send secret for request secret-wire-1")
+            .click();
+        harness.run();
+        assert!(app.borrow().vault_agent_prompts[&prompt_key].response_pending);
+        assert!(matches!(
+            &app.borrow().vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::Secret { value, .. } if value.is_empty()
+        ));
+        assert!(
+            serde_json::to_string(&app.borrow().automation_state())
+                .expect("automation state serializes")
+                .find("fixture-secret-value")
+                .is_none()
+        );
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("secret response reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "secret-wire-1".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":"fixture-secret-value"})),
+            }
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn secret_request_decline_and_unknown_outcome_do_not_leak_or_resend() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.handle_server_request_from_connection(
+            "secret-decline".into(),
+            "secret".into(),
+            json!({"session_id":"runtime-session","profile":"work","env_var":"API_TOKEN","prompt":"Enter token"}),
+            Some("gateway-connection-1".into()),
+        );
+        let decline_key =
+            gateway_prompt_key(Some("gateway-connection-1"), Some("work"), "secret-decline");
+        app.respond_to_vault_agent_prompt(&decline_key, false)
+            .expect("decline sends an empty value");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("decline reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "secret-decline".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":""})),
+            }
+        );
+
+        app.handle_server_request_from_connection(
+            "secret-unknown".into(),
+            "secret".into(),
+            json!({"session_id":"runtime-session","profile":"work","env_var":"API_TOKEN","prompt":"Enter token"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key =
+            gateway_prompt_key(Some("gateway-connection-1"), Some("work"), "secret-unknown");
+        let Some(VaultAgentPromptKind::Secret { value, .. }) = app
+            .vault_agent_prompts
+            .get_mut(&prompt_key)
+            .map(|prompt| &mut prompt.kind)
+        else {
+            panic!("secret request creates a secure prompt");
+        };
+        value.push_str("must-not-be-resubmitted");
+        app.respond_to_vault_agent_prompt(&prompt_key, true)
+            .expect("queue the first secret response");
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(TestGatewayCommand::RespondServerRequest { id, .. }) if id == "secret-unknown"
+        ));
+        app.handle_server_request_answered_from_connection(
+            "secret-unknown".into(),
+            Err("connection closed after write".into()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts[&prompt_key].response_unknown);
+        assert!(matches!(
+            &app.vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::Secret { value, .. } if value.is_empty()
+        ));
+        assert!(
+            app.respond_to_vault_agent_prompt(&prompt_key, true)
+                .is_err()
+        );
+        app.handle_server_request_from_connection(
+            "secret-unknown".into(),
+            "secret".into(),
+            json!({"session_id":"runtime-session","profile":"work","env_var":"API_TOKEN","prompt":"Enter token"}),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts[&prompt_key].response_unknown);
+        assert!(
+            commands
+                .recv_timeout(std::time::Duration::from_millis(50))
+                .is_err()
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn secret_request_route_change_erases_value_and_text_undo_history() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "secret-route-change".into(),
+            "secret".into(),
+            json!({"session_id":"runtime-session","profile":"work","env_var":"API_TOKEN","prompt":"Enter token"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "secret-route-change",
+        );
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness
+            .get_by_label("Secret value for request secret-route-change")
+            .click();
+        harness
+            .get_by_label("Secret value for request secret-route-change")
+            .type_text("route-only-secret");
+        harness.run();
+        assert!(matches!(
+            &app.borrow().vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::Secret { value, .. }
+                if value.as_str() == "route-only-secret"
+        ));
+        app.borrow_mut().route = AppRoute::Settings;
+        harness.run();
+        assert!(matches!(
+            &app.borrow().vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::Secret { value, .. } if value.is_empty()
+        ));
+        app.borrow_mut().route = AppRoute::Session("stored-session".into());
+        harness.run();
+        harness.key_press_modifiers(egui::Modifiers::CTRL, egui::Key::Z);
+        harness.run();
+        assert!(
+            matches!(
+                &app.borrow().vault_agent_prompts[&prompt_key].kind,
+                VaultAgentPromptKind::Secret { value, .. } if value.is_empty()
+            ),
+            "route-away secret cannot return through text undo"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn vault_code_prompt_normalizes_and_answers_the_originating_gateway_request() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
@@ -59488,6 +59836,19 @@ mod tests {
         app.gateway_connection_id = Some("gateway-a".into());
         for (connection_id, profile) in [("gateway-a", "work"), ("gateway-b", "personal")] {
             let key = gateway_prompt_key(Some(connection_id), Some(profile), "reused-vault-id");
+            let kind = if connection_id == "gateway-a" {
+                VaultAgentPromptKind::Code {
+                    site: "example.test".into(),
+                    hint: String::new(),
+                    code: Zeroizing::new("local-only-code".into()),
+                }
+            } else {
+                VaultAgentPromptKind::Secret {
+                    env_var: "API_TOKEN".into(),
+                    prompt: "Enter the token".into(),
+                    value: Zeroizing::new("local-only-secret".into()),
+                }
+            };
             app.vault_agent_prompts.insert(
                 key,
                 VaultAgentPrompt {
@@ -59495,11 +59856,7 @@ mod tests {
                     profile: Some(profile.into()),
                     connection_id: Some(connection_id.into()),
                     server_request_id: "reused-vault-id".into(),
-                    kind: VaultAgentPromptKind::Code {
-                        site: "example.test".into(),
-                        hint: String::new(),
-                        code: Zeroizing::new("local-only-code".into()),
-                    },
+                    kind,
                     response_pending: false,
                     response_unknown: false,
                 },
@@ -59524,7 +59881,7 @@ mod tests {
         drop(harness);
         assert!(matches!(
             &app.vault_agent_prompts[&remaining_key].kind,
-            VaultAgentPromptKind::Code { code, .. } if code.is_empty()
+            VaultAgentPromptKind::Secret { value, .. } if value.is_empty()
         ));
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
@@ -63425,6 +63782,9 @@ impl HermesNativeApp {
                 "sudo_pending_count": self.sudo_prompts.len(),
                 "vault_unlock_pending_count": self.vault_unlock_prompts.len(),
                 "vault_agent_pending_count": self.vault_agent_prompts.len(),
+                "secret_pending_count": self.vault_agent_prompts.values().filter(|prompt| {
+                    matches!(&prompt.kind, VaultAgentPromptKind::Secret { .. })
+                }).count(),
                 "clarify_pending_count": self.clarify_prompts.len() + self.batch_clarify_prompts.len(),
                 "can_stop": self.gateway_connected
                     && self.active_runtime_session_id.as_ref().is_some_and(|session_id| {

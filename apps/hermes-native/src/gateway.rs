@@ -8982,6 +8982,7 @@ fn gateway_actor_with_replay(
                             "approval"
                                 | "clarify"
                                 | "sudo"
+                                | "secret"
                                 | "vault.unlock_prompt"
                                 | "vault.code"
                                 | "vault.save_login"
@@ -22200,6 +22201,12 @@ mod tests {
             let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
             for (id, method, params, expected) in [
                 (
+                    "secret-wire-1",
+                    "secret",
+                    json!({"session_id":"runtime-1","env_var":"API_TOKEN","prompt":"Enter the API token"}),
+                    json!({"value":"fixture-secret"}),
+                ),
+                (
                     "vault-code-wire-1",
                     "vault.code",
                     json!({"session_id":"runtime-1","site":"github.com","hint":"SMS"}),
@@ -22240,6 +22247,12 @@ mod tests {
         let (events, event_receiver) = mpsc::channel();
         let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
         for (id, method, profile, response) in [
+            (
+                "secret-wire-1",
+                "secret",
+                "work",
+                json!({"value":"fixture-secret"}),
+            ),
             (
                 "vault-code-wire-1",
                 "vault.code",

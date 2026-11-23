@@ -3554,3 +3554,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No performance change measured.
 - **risks:** `.doofus` task runtime and `apps/hermes-native/work/` remain local and uncommitted by design.
 - **follow_up:** Continue the first-version agent workflow gaps; live Gateway and packaged Windows acceptance remain open.
+
+
+### 2026-11-23 — Native secret server prompt
+
+- **id:** hermes-secret-request-20261123
+- **what:** Added masked, ephemeral handling for the pinned Gateway `secret` request and documented it with the existing vault code and saved-login prompts.
+- **why:** Skills and tool workflows can require a secret mid-turn; the agent UI must answer that exact request without exposing the value in accessibility text, status, or replay.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, agent workflow documentation.
+- **type:** feature
+- **validation:** 670 library, 15 protocol and 3 launcher tests; all-target locked check; rustfmt and diff checks.
+- **performance:** No benchmark required; prompt rendering remains local.
+- **risks:** JSON-RPC serialization temporarily holds a normal JSON value copy; live authenticated Gateway and packaged Windows behavior remain unverified.
+- **follow_up:** Validate against an authenticated Gateway and packaged Windows app; continue session import and branch/fork workflows.

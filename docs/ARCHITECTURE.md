@@ -59,7 +59,7 @@ The Hermes Desktop Plugin SDK is JavaScript/React; DoofusDock extensions are Rus
 
 ### Secure vault code and saved-login requests
 
-The Gateway actor accepts `vault.code` and `vault.save_login` as server requests and keeps each response on the originating connection/profile. Native prompt drafts use zeroizing strings; password controls are masked, accessibility labels and diagnostics omit entered values, and route/owner changes clear the draft and egui undo history. If a write outcome is unknown, the app clears secret material and blocks same-request replay from resending it. This UI behavior has headless coverage; authenticated Gateway and packaged Windows behavior remain unverified. These are separate from `vault.unlock_prompt`.
+The Gateway actor accepts pinned `secret`, `vault.code`, and `vault.save_login` server requests and keeps each response on the originating connection/profile. Secret prompt cards show only the requested environment variable and prompt text; metadata is not rendered. Native secret drafts use zeroizing strings and masked controls; accessibility labels and diagnostics omit entered values, and route/owner changes clear the draft and egui undo history. If a write outcome is unknown, the app clears secret material and blocks same-request replay from resending it. Headless UI and same-socket actor tests cover these paths; authenticated Gateway and packaged Windows behavior remain unverified. These remain separate from `vault.unlock_prompt`.
 
 ### Background prompt ownership
 

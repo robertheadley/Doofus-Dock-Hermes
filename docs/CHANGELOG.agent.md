@@ -5222,3 +5222,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No performance change measured.
 - **risks:** `.doofus` task runtime and `apps/hermes-native/work/` remain local and uncommitted by design.
 - **follow_up:** Continue the first-version agent workflow gaps; live Gateway and packaged Windows acceptance remain open.
+
+
+### 2026-11-23 — Hermes Native secret request
+
+- **id:** hermes-secret-request-20261123
+- **what:** Added native support for the pinned Hermes Gateway `secret` server request and recorded the remaining runtime validation.
+- **why:** Mid-turn skill/tool credential prompts are part of the agent workflow scope.
+- **components:** Hermes Native UI, Gateway actor, scoped workflow documentation.
+- **type:** feature
+- **validation:** 670 library, 15 protocol and 3 launcher tests; all-target locked check; rustfmt and diff checks.
+- **performance:** No benchmark required.
+- **risks:** Live Gateway and packaged Windows acceptance remain open; outbound serialization temporarily holds a normal JSON value copy.
+- **follow_up:** Continue session import/fork and authenticated runtime acceptance.
