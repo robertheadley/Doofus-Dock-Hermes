@@ -4883,4 +4883,3 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway and packaged Windows acceptance remain open.
 - **follow_up:** Select the next dependency-ready P0 gap and continue toward complete chat/tool, skills, plugin/MCP, provider and context/attachment support.
-
