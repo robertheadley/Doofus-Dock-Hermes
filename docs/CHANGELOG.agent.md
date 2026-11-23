@@ -4922,3 +4922,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No performance-sensitive path or benchmark changed.
 - **risks:** Account/provider setup navigation, compression, scheduled retry, full error taxonomy, live Gateway, and packaged Windows acceptance remain open.
 - **follow_up:** Continue PAR-0064 with the remaining high-value recovery behavior; keep the requirement partial pending runtime acceptance.
+
+### PAR-0064 model-picker publication — 2026-11-23
+
+- **id:** hermes-par0064-model-picker-publication-20261123
+- **timestamp:** 2026-11-23T02:20:00Z
+- **what:** Published source commit `98fcec7` and evidence/docs commit `c9d10945fac188a55fd49732628da3a5691497c4` to `origin/main`.
+- **why:** Keep the user's main-only repository current with validated agent-workflow changes.
+- **components:** `Doofus-Dock-Hermes` main, PAR-0064, EV-0134.
+- **type:** publication.
+- **validation:** Fresh fetch confirmed local `main` and `origin/main` both equal `c9d10945fac188a55fd49732628da3a5691497c4`; operator `.doofus` runtime state and `apps/hermes-native/work/` were excluded.
+- **performance:** Not applicable.
+- **risks:** Live Gateway, packaged Windows, and formal pinned-source acceptance remain open.
+- **follow_up:** Continue the remaining agent-workflow P0 requirements.
