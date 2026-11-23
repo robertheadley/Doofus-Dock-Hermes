@@ -1,5 +1,7 @@
 # Hermes DoofusDock architecture
 
+Hermes Native's PAR-0082 slice provides foreign session import through pinned Hermes Gateway list/preview/import methods. The flow is accessible from Sessions and the command palette, keeps previews read-only until explicit Continue/Open, uses bounded opaque handles, and opens only the validated Hermes session ID in the receipt. Preview content uses the safe CommonMark renderer; safe web links follow the transcript policy, and foreign relative/file links are not resolved against the active local project. Headless tests pass; live Gateway, packaged Windows and source-paired acceptance are still open.
+
 ## Provider-neutral task continuity
 
 The migration defines portable checkpoint and manual provider-handoff contracts in [`AGENT_HANDOFF.md`](AGENT_HANDOFF.md) and [`AGENT_TASK_CONTRACTS.md`](architecture/AGENT_TASK_CONTRACTS.md). `doofus_task.py` validates versioned JSON/JSONL records, records provider leases, and reports implementation, local evidence, runtime, visuals and acceptance separately. The pinned 499-row source matrix remains authoritative. URNE/SQLite is a future rebuildable projection; the current Python gateway remains authoritative and unchanged.

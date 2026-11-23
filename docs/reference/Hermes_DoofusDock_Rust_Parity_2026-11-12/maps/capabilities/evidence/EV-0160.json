@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0160",
+  "capability_id": "ui-detect-gap-and-reload-authoritative-snapshot",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aea4ef8b9b96b6c5d8d441fe1dc23f504c265e1d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 675 library + 15 protocol + 3 launcher tests; all-target locked check. No authenticated live Gateway or packaged-app acceptance.",
+  "scenario": "replay-gap-resumes-exact-owner-and-preserves-transcript-and-draft",
+  "locator": ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-gateway-replay.test.ts#snapshot_required;.staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/replay-gap.test.tsx#replay_gap;apps/hermes-native/src/app.rs#replay_gap_resumes_active_session_and_preserves_transcript_and_draft;apps/hermes-native/src/app.rs#replay_gap_resumes_only_the_exact_open_session_pane_owner;apps/hermes-native/src/gateway.rs#reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
+  "notes": "Headless app recovery resumes only the exact active/open owner and preserves transcript/draft; reconnect does not resubmit an unknown prompt. Critical limitation: native replay transport drops snapshot_required responses instead of emitting session.replay_gap, so the full automatic detection-to-snapshot flow is not complete. Live Gateway and packaged Windows acceptance remain open."
+}

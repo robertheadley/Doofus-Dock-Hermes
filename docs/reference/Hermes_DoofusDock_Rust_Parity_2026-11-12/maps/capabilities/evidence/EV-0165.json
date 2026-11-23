@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0165",
+  "capability_id": "ui-import-and-export-session-data",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "d2dc104585723b44632d1095590630b333f821e9",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked suite: 684 library + 15 protocol + 3 launcher tests; all-target locked check; rustfmt, diff, and execution-log JSON checks. No authenticated live Gateway or packaged-app acceptance.",
+  "scenario": "paged-export-and-foreign-session-import",
+  "locator": "../../../../apps/hermes-native/src/app.rs::foreign_session_import_previews_explicitly_and_opens_only_the_receipt_session",
+  "notes": "Hermes Native now pages Claude Code and Codex sessions through session.foreign.list, previews a bounded transcript tail without import, and imports only after explicit Continue/Open. Only a validated Hermes session_id receipt opens; already-imported sessions are idempotent. Request/profile/connection/selection fencing preserves current work across stale list/preview replies; unknown disconnect outcomes offer a safe retry. Preview uses the shared safe Markdown renderer and does not resolve foreign relative/file links against the active project. Export coverage remains bounded and paged. Partial evidence only: authenticated live Gateway, packaged Windows interaction, and formal source-paired acceptance remain open."
+}

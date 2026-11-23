@@ -2003,8 +2003,6 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
-  - type: test_result
-    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0158.json#EV-0158
   dimensions:
     backend: partial
     ui: partial
@@ -2030,8 +2028,6 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
-  - type: test_result
-    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0155.json#EV-0155
   dimensions:
     backend: partial
     ui: partial
@@ -2039,9 +2035,12 @@ capabilities:
   verification:
     scenarios:
     - id: export-session-data-import-remains-open
-      description: Native export pages oldest-first and enforces size limits. Session import remains missing from the native app; this requirement is partial. Live Gateway and source-paired acceptance remain open.
+      description: Earlier native evidence proves paged, oldest-first export and its size limit; import was still absent at that checkpoint.
+    - id: paged-export-and-foreign-session-import
+      description: Native export pages oldest-first and enforces size limits. Claude Code/Codex sessions list with bounded preview and explicit receipt-gated import/open; stale replies are fenced. Headless Gateway/UI regressions pass. Authenticated live Gateway, packaged Windows behavior, and source-paired acceptance remain open.
   evidence:
   - EV-0155
+  - EV-0165
 
 - id: ui-assign-a-chat-to-project-workspace
   name: Assign a chat to project workspace
@@ -2104,7 +2103,7 @@ capabilities:
   name: Open two concurrent profiles in separate sessions
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can open two concurrent profiles in separate sessions.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2116,9 +2115,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: open-concurrent-profile-sessions-with-colliding-ids-isolated
+      description: "Native panes preserve separate profile ownership, render without replacing the main chat, and keep colliding session IDs distinct. The mapped behavior is partial pending broad profile UX, live Gateway and packaged Windows acceptance."
+  evidence:
+  - EV-0163
+
 - id: ui-follow-a-session-across-multi-window-clients
   name: Follow a session across multi-window clients
   area: sessions-projects
@@ -2162,7 +2168,7 @@ capabilities:
   name: Preserve session ownership after reconnection
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can preserve session ownership after reconnection.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2174,9 +2180,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: reselect-session-reattaches-without-submit-and-rejects-stale-resume
+      description: "Native session reattach and resume results are fenced by Gateway connection and profile, and reconnect never replays an unknown prompt. This is partial; complete live and packaged reconnect lifecycle acceptance remains open."
+  evidence:
+  - EV-0161
+
 - id: ui-page-transcript-with-opaque-cursors
   name: Page transcript with opaque cursors
   area: sessions-projects
@@ -2200,7 +2213,7 @@ capabilities:
   name: Recover cleanly after transcript compaction
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can recover cleanly after transcript compaction.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2212,9 +2225,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: compacted-event-refreshes-failed-transcript-and-clears-compression-state
+      description: "Native compacted-event handling refreshes a failed transcript and waits for the compacted event rather than resuming immediately after a background compression receipt. Full turn lifecycle behavior and live/packaged acceptance remain open."
+  evidence:
+  - EV-0162
+
 - id: ui-show-busy-input-mode-and-scope
   name: Show busy-input mode and scope
   area: sessions-projects
@@ -10030,7 +10050,7 @@ capabilities:
   name: Obtain one-use WebSocket ticket per connection
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can obtain one-use WebSocket ticket per connection.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10042,9 +10062,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: oauth-connection-probe-mints-ticket-before-websocket
+      description: "Native OAuth connection probing mints an endpoint-scoped one-use ticket before WebSocket connection, matching the pinned programmatic integration requirement. A direct native actor reconnect fixture proving fresh tickets on each reconnect, live Gateway and packaged Windows acceptance remain open."
+  evidence:
+  - EV-0164
+
 - id: ui-use-hermes-gateway-v1-json-rpc-frames
   name: Use hermes-gateway-v1 JSON-RPC frames
   area: protocol-reliability
@@ -10228,7 +10255,7 @@ capabilities:
   name: Detect gap and reload authoritative snapshot
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can detect gap and reload authoritative snapshot.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10240,9 +10267,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: replay-gap-resumes-exact-owner-and-preserves-transcript-and-draft
+      description: "Headless app recovery resumes only the exact active/open owner and preserves transcript/draft; reconnect does not resubmit an unknown prompt. Critical limitation: native replay transport drops snapshot_required responses instead of emitting session.replay_gap, so the full automatic detection-to-snapshot flow is not complete. Live Gateway and packaged Windows acceptance remain open."
+  evidence:
+  - EV-0160
+
 - id: ui-answer-gateway-server-initiated-approval-request
   name: Answer gateway server-initiated approval request
   area: protocol-reliability
@@ -10366,7 +10400,7 @@ capabilities:
   name: Return method-not-found for unsupported server request
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can return method-not-found for unsupported server request.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10378,9 +10412,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: unsupported-server-request-returns-method-not-found-and-continues
+      description: "The native Gateway returns JSON-RPC method-not-found for an unhandled server request and continues the original call. This is partial evidence only; supported server requests are mapped separately. Live Gateway and packaged Windows acceptance remain open."
+  evidence:
+  - EV-0159
+
 - id: ui-advertise-client-capabilities-explicitly
   name: Advertise client capabilities explicitly
   area: protocol-reliability

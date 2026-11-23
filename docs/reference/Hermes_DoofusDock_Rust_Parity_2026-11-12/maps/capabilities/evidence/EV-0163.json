@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0163",
+  "capability_id": "ui-open-two-concurrent-profiles-in-separate-sessions",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aea4ef8b9b96b6c5d8d441fe1dc23f504c265e1d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 675 library + 15 protocol + 3 launcher tests; all-target locked check. No authenticated live Gateway or packaged-app acceptance.",
+  "scenario": "open-concurrent-profile-sessions-with-colliding-ids-isolated",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/api/canonical-profile-route.test.ts#sibling profile route survives canonical request translation;.staging/hermes-pinned-878305/apps/desktop/src/api/canonical-ambiguous-owner-reconcile.test.ts#session_id: 'same';apps/hermes-native/src/layout.rs#session_panes_are_profile_scoped_and_survive_profile_close_reopen_and_restore;apps/hermes-native/src/layout.rs#session_pane_owner_scopes_identical_profile_and_session_across_connections;apps/hermes-native/src/app.rs#dynamic_session_pane_renders_its_profile_view_without_replacing_the_main_chat;apps/hermes-native/src/app.rs#session_merge_keeps_colliding_ids_in_separate_profiles",
+  "notes": "Native panes preserve separate profile ownership, render without replacing the main chat, and keep colliding session IDs distinct. The mapped behavior is partial pending broad profile UX, live Gateway and packaged Windows acceptance."
+}

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0164",
+  "capability_id": "ui-obtain-one-use-websocket-ticket-per-connection",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aea4ef8b9b96b6c5d8d441fe1dc23f504c265e1d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 675 library + 15 protocol + 3 launcher tests; all-target locked check. No authenticated live Gateway or packaged-app acceptance.",
+  "scenario": "oauth-connection-probe-mints-ticket-before-websocket",
+  "locator": ".staging/hermes-pinned-878305/website/docs/developer-guide/programmatic-integration.md#ticket;.staging/hermes-pinned-878305/apps/desktop/src/api/canonical-protocol.ts#hermes-gateway-ticket;apps/hermes-native/src/remote_probe.rs#oauth_connection_test_mints_single_use_ticket_before_websocket",
+  "notes": "Native OAuth connection probing mints an endpoint-scoped one-use ticket before WebSocket connection, matching the pinned programmatic integration requirement. A direct native actor reconnect fixture proving fresh tickets on each reconnect, live Gateway and packaged Windows acceptance remain open."
+}

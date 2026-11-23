@@ -5258,3 +5258,46 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No runtime code or benchmark impact.
 - **risks:** Headless evidence only; authenticated Gateway, packaged Windows, transcript-position branching, and formal source-paired acceptance remain open.
 - **follow_up:** Implement foreign session import and continue live runtime acceptance.
+
+- **id:** hermes-par0082-foreign-session-import-20261123
+- **what:** Implemented pinned foreign session listing, bounded preview and explicit import/open behavior for Claude Code and Codex.
+- **why:** Prior agent sessions are part of the requested first-version Hermes workflow.
+- **components:** Hermes Native Gateway actor and UI route; Sessions sidebar and command palette.
+- **type:** feature
+- **validation:** Focused foreign-session suite 7/7; full locked suite 682+15+3; all-target locked check; rustfmt and diff checks pass.
+- **performance:** No benchmark required; pinned page and preview bounds are enforced.
+- **risks:** PAR-0082 remains partial; authenticated live Gateway, packaged Windows and formal source-paired validation remain open.
+- **follow_up:** Bind map evidence after committing source and validate on authenticated Gateway and packaged Windows.
+
+- **id:** hermes-par0082-markdown-preview-20261123
+- **what:** Changed foreign session previews to use the native safe CommonMark transcript renderer; relative/file links are ignored because the foreign cwd is not a trusted local project root.
+- **why:** Preserve Markdown/code/table presentation without resolving foreign paths against an unrelated active Hermes session.
+- **components:** Hermes Native Session Import preview and headless UI coverage.
+- **type:** fix
+- **validation:** Focused Markdown preview regression passes; full locked suite 682+15+3; all-target locked check, rustfmt and diff checks pass.
+- **performance:** Reuses the existing app Markdown cache; source preview bounds remain enforced.
+- **risks:** Live Gateway and packaged Windows checks remain open.
+- **follow_up:** Continue PAR-0082 live/source-paired acceptance.
+
+- **id:** hermes-par0082-stale-request-fencing-20261123
+- **what:** Changed foreign list and preview handlers to ignore stale replies without consuming the matching newer pending request.
+- **why:** Switching source while listing or selecting another row before preview completion could leave the UI permanently waiting.
+- **components:** Hermes Native foreign-session async event handling and regression coverage.
+- **type:** fix
+- **validation:** Stale list/preview regressions 2/2; full locked suite 684+15+3; all-target locked check, rustfmt and diff checks pass.
+- **performance:** No benchmark required.
+- **risks:** Authenticated Gateway and packaged Windows validation remain open.
+- **follow_up:** Continue PAR-0082 live/source-paired acceptance.
+
+### PAR-0082 capability evidence and progress reconciliation — 2026-11-23
+
+- **id:** hermes-par0082-evidence-20261123
+- **timestamp:** 2026-11-23T21:36:32Z
+- **what:** Bound foreign-session import evidence EV-0165 to source commit d2dc104, updated the active capability and progress generator, and corrected the current coverage summary.
+- **why:** Keep the first-version agent-workflow status tied to checked source, tests, and honest runtime gaps.
+- **components:** UCM capability map, evidence store, scoped/broad progress generators and ledgers, completion overview.
+- **type:** evidence
+- **validation:** Package validator: 565 target/UI/test rows, 15 source receipts, 149 implementation receipts. UCM scenario coverage passes; baseline has 178 historical schema errors, 9 reconciliation items, and 236 warnings.
+- **performance:** Documentation and mapping only; no runtime performance change.
+- **risks:** Authenticated live Gateway, packaged Windows behavior and formal source-paired acceptance remain open; 0/176 requirements have live/source-paired acceptance.
+- **follow_up:** Validate the authenticated Gateway and packaged Windows path; preserve PAR-0082 as partial until then.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0161",
+  "capability_id": "ui-preserve-session-ownership-after-reconnection",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aea4ef8b9b96b6c5d8d441fe1dc23f504c265e1d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 675 library + 15 protocol + 3 launcher tests; all-target locked check. No authenticated live Gateway or packaged-app acceptance.",
+  "scenario": "reselect-session-reattaches-without-submit-and-rejects-stale-resume",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/api/canonical-reconnect-replay-owner.test.ts#snapshot_required;.staging/hermes-pinned-878305/apps/desktop/src/api/canonical-ambiguous-owner-reconcile.test.ts#replay_epoch;apps/hermes-native/src/app.rs#reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit;apps/hermes-native/src/app.rs#session_resume_result_is_fenced_by_gateway_owner_and_request_id;apps/hermes-native/src/app.rs#session_actions_fail_closed_for_non_active_connection_owners;apps/hermes-native/src/layout.rs#session_pane_owner_scopes_identical_profile_and_session_across_connections;apps/hermes-native/src/gateway.rs#reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
+  "notes": "Native session reattach and resume results are fenced by Gateway connection and profile, and reconnect never replays an unknown prompt. This is partial; complete live and packaged reconnect lifecycle acceptance remains open."
+}

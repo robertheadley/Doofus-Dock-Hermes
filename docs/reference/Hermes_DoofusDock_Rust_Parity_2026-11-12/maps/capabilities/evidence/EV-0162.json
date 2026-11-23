@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0162",
+  "capability_id": "ui-recover-cleanly-after-transcript-compaction",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aea4ef8b9b96b6c5d8d441fe1dc23f504c265e1d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 675 library + 15 protocol + 3 launcher tests; all-target locked check. No authenticated live Gateway or packaged-app acceptance.",
+  "scenario": "compacted-event-refreshes-failed-transcript-and-clears-compression-state",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/compaction-event.test.tsx#rehydrates the idle active session on the compacted edge;.staging/hermes-pinned-878305/apps/desktop/src/api/sessions.ts#includeCompacted;apps/hermes-native/src/app.rs#compacted_event_refreshes_failed_transcript_and_clears_compression_state;apps/hermes-native/src/gateway.rs#background_compression_receipt_does_not_resume_until_compacted_event",
+  "notes": "Native compacted-event handling refreshes a failed transcript and waits for the compacted event rather than resuming immediately after a background compression receipt. Full turn lifecycle behavior and live/packaged acceptance remain open."
+}

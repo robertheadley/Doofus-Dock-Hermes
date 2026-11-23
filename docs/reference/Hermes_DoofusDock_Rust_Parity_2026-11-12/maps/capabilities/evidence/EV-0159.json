@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0159",
+  "capability_id": "ui-return-method-not-found-for-unsupported-server-request",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aea4ef8b9b96b6c5d8d441fe1dc23f504c265e1d",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 675 library + 15 protocol + 3 launcher tests; all-target locked check. No authenticated live Gateway or packaged-app acceptance.",
+  "scenario": "unsupported-server-request-returns-method-not-found-and-continues",
+  "locator": ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#request.fail;apps/hermes-native/src/gateway.rs#rpc_call_replies_method_not_found_for_unhandled_server_request_and_continues",
+  "notes": "The native Gateway returns JSON-RPC method-not-found for an unhandled server request and continues the original call. This is partial evidence only; supported server requests are mapped separately. Live Gateway and packaged Windows acceptance remain open."
+}
