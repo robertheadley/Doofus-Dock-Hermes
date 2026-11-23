@@ -5301,3 +5301,29 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** Documentation and mapping only; no runtime performance change.
 - **risks:** Authenticated live Gateway, packaged Windows behavior and formal source-paired acceptance remain open; 0/176 requirements have live/source-paired acceptance.
 - **follow_up:** Validate the authenticated Gateway and packaged Windows path; preserve PAR-0082 as partial until then.
+
+### Publish PAR-0082 implementation and evidence — 2026-11-23
+
+- **id:** publish-hermes-par0082-20261123
+- **timestamp:** 2026-11-23T21:41:48Z
+- **what:** Published the validated foreign-session import source and EV-0165 evidence/progress updates to `main`.
+- **why:** Keep the user-selected main branch current with completed, reviewable agent-workflow work.
+- **components:** Hermes Native Gateway/UI, UCM evidence maps, progress ledgers and completion overview.
+- **type:** publication
+- **validation:** Post-push fetch confirmed local and origin `main` both at `0b1d0c64df3deeadf2d9360c41f824092593c258`.
+- **performance:** No runtime performance change.
+- **risks:** Authenticated live Gateway, packaged Windows, and formal source-paired acceptance remain open; PAR-0082 remains partial.
+- **follow_up:** Perform authenticated Gateway and packaged Windows acceptance.
+
+### Restore JSONL record boundaries in execution log — 2026-11-23
+
+- **id:** repair-execution-log-jsonl-20261123
+- **timestamp:** 2026-11-23T21:44:15Z
+- **what:** Split one pair of adjacent JSON objects onto separate lines in the append-only root execution log while preserving both records.
+- **why:** Keep the log machine-readable as one structured record per line.
+- **components:** `docs/EXECUTION_LOGS.md`.
+- **type:** documentation fix
+- **validation:** Parsed all 669 root records and 372 Hermes Native records as JSON.
+- **performance:** No runtime impact.
+- **risks:** None; record payloads were preserved exactly.
+- **follow_up:** Keep future append operations line-delimited and validate after writing.
