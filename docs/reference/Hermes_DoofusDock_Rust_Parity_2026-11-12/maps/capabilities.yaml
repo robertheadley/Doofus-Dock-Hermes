@@ -1564,6 +1564,8 @@ capabilities:
       description: When Hermes explicitly permits use_credits, enable the profile-scoped keep-going setting only on user action and retry the original prompt only after an exact success receipt; refusal, stale owner and disconnect never retry.
     - id: billing-failure-safe-nous-portal-recovery
       description: For structured billing failures, expose the Nous billing destination only for Nous or the pinned default provider; unknown third-party providers never open an unrelated billing URL.
+    - id: agent-init-failed-current-chat-model-recovery
+      description: Show the pinned agent-init failure and open the active chat model picker while keeping Retry subject to Hermes retryable state.
   evidence:
   - EV-0028
   - EV-0029
@@ -1577,6 +1579,7 @@ capabilities:
   - EV-0138
   - EV-0139
   - EV-0140
+  - EV-0141
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

@@ -3435,7 +3435,7 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **why:** Match the pinned secondary `open_model_settings` action while keeping Retry governed by Hermes' `retryable` flag.
 - **components:** Hermes Native transcript error card, PAR-0064, egui recovery action.
 - **type:** feature, validation, evidence.
-- **validation:** Focused mapping and rendered UI regressions pass; full-suite/build/package validation is pending.
+- **validation:** Focused mapping and rendered UI regressions pass; full locked suite 654 + 15 + 3, all-target check, Windows debug build, rustfmt/diff, package validator (125 receipts), task-continuity 19/19 and persisted task validation pass.
 - **performance:** No benchmark claim; the action uses the existing in-app model-picker route.
 - **risks:** Provider API-key and OAuth recovery remain unavailable without a native provider-credential API. Live Gateway, packaged Windows and formal source-paired acceptance remain open.
 - **follow_up:** Complete full validation, record EV-0141, update the evidence overlay and publish to main.

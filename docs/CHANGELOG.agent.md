@@ -5112,7 +5112,7 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **why:** Expose the supported model-settings recovery while preserving the server's retry boundary.
 - **components:** Doofus-Dock-Hermes, Hermes Native, PAR-0064.
 - **type:** feature, validation, evidence.
-- **validation:** Focused mapping and rendered egui tests pass; remaining verification will be recorded before publication.
+- **validation:** Focused mapping and rendered egui tests pass; full locked suite 654 + 15 + 3, all-target check, Windows debug build, rustfmt/diff, package validator (125 receipts), task-continuity 19/19 and persisted task validation pass.
 - **performance:** No benchmark claim.
 - **risks:** Provider API-key/OAuth repair, live Gateway, packaged Windows and formal source-paired acceptance remain open.
 - **follow_up:** Run full validation, record EV-0141 and publish the completed slice to main.

@@ -1529,6 +1529,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#billing_portal_allowed",
             "apps/hermes-native/src/app.rs#failed_turn_recovery_action",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0140.json#EV-0140",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0141.json#EV-0141",
             "apps/hermes-native/src/app.rs#agent_init_failure_opens_current_chat_model_picker",
             "apps/hermes-native/src/app.rs#structured_turn_error_presentation",
         ],

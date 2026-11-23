@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0141",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "d80fc072ad02bf2b1a5011956baeb52f1ac13584",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "agent-init-failed-current-chat-model-recovery",
+  "locator": "apps/hermes-native/src/app.rs::agent_init_failure_opens_current_chat_model_picker;apps/hermes-native/src/app.rs::failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry;apps/hermes-native/src/app.rs::structured_turn_error_presentation",
+  "environment": "Full locked Hermes Native agent-automation suite (654 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug desktop build, rustfmt and diff checks. No live Hermes Gateway or installed Hermes app was used.",
+  "notes": "Pinned agent_init_failed now displays a dedicated recovery explanation and opens the current chat model picker through the existing model-change route. The Retry action remains controlled by Hermes error_surface.retryable; a nonretryable init error still offers model selection but cannot retry. A rendered egui interaction verifies the recovery action opens the picker, and a mapping regression covers both retryable and nonretryable cases. This does not implement provider API-key editing or provider-scoped OAuth reauthentication, which require a native provider-credential API. PAR-0064 remains partial; live Gateway, packaged Windows, remaining error actions, and formal source-paired acceptance remain open."
+}
