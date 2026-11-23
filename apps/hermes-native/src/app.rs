@@ -1955,8 +1955,13 @@ pub struct HermesNativeApp {
     timestamps_config_request: Option<(String, String)>,
     timestamps_config_profile: Option<String>,
     reasoning_enabled: bool,
-    reasoning_config_request: Option<(String, String)>,
+    reasoning_enabled_draft: Option<bool>,
+    reasoning_config_confirmed: Option<bool>,
+    reasoning_config_request: Option<(String, String, Option<String>)>,
+    reasoning_config_save_request: Option<(String, String, Option<String>, bool)>,
     reasoning_config_profile: Option<String>,
+    reasoning_config_connection_id: Option<String>,
+    reasoning_config_error: Option<String>,
     repo_scan_config: Option<RepoScanPolicy>,
     repo_scan_config_profile: Option<String>,
     repo_scan_config_request: Option<(String, String)>,
@@ -1997,6 +2002,7 @@ pub struct HermesNativeApp {
     keybindings_error: Option<String>,
     keybindings_panel: KeybindingsPanel,
     settings_keybindings_active: bool,
+    settings_chat_active: bool,
     settings_model_active: bool,
     settings_fallbacks_active: bool,
     settings_security_active: bool,
@@ -4451,8 +4457,13 @@ fn render_message() -> &'static str {
             timestamps_config_request: None,
             timestamps_config_profile: None,
             reasoning_enabled: false,
+            reasoning_enabled_draft: None,
+            reasoning_config_confirmed: None,
             reasoning_config_request: None,
+            reasoning_config_save_request: None,
             reasoning_config_profile: None,
+            reasoning_config_connection_id: None,
+            reasoning_config_error: None,
             repo_scan_config: None,
             repo_scan_config_profile: None,
             repo_scan_config_request: None,
@@ -4493,6 +4504,7 @@ fn render_message() -> &'static str {
             keybindings_error,
             keybindings_panel: KeybindingsPanel::new(),
             settings_keybindings_active: false,
+            settings_chat_active: false,
             settings_model_active: false,
             settings_fallbacks_active: false,
             settings_security_active: false,
@@ -23386,25 +23398,157 @@ fn render_message() -> &'static str {
         }) else {
             return;
         };
-        if self.reasoning_config_profile.as_deref() != Some(profile.as_str()) {
-            self.reasoning_enabled = false;
-        }
-        if self.reasoning_config_request.is_some()
-            || self.reasoning_config_profile.as_deref() == Some(profile.as_str())
-        {
-            return;
-        }
         let Some(gateway) = &self.gateway_discovery else {
             return;
         };
+        let connection_id = gateway.connection_id().map(str::to_owned);
+        if self.reasoning_config_profile.as_deref() != Some(profile.as_str())
+            || self.reasoning_config_connection_id != connection_id
+        {
+            self.reasoning_enabled = false;
+            self.reasoning_enabled_draft = None;
+            self.reasoning_config_confirmed = None;
+            self.reasoning_config_error = None;
+            self.reasoning_config_request = None;
+            self.reasoning_config_save_request = None;
+            self.reasoning_config_profile = None;
+            self.reasoning_config_connection_id = None;
+        }
+        if self.reasoning_config_request.as_ref().is_some_and(
+            |(_, requested_profile, requested_connection)| {
+                requested_profile == &profile && requested_connection == &connection_id
+            },
+        ) || (self.reasoning_config_profile.as_deref() == Some(profile.as_str())
+            && self.reasoning_config_connection_id == connection_id
+            && (self.reasoning_config_confirmed.is_some() || self.reasoning_config_error.is_some()))
+        {
+            return;
+        }
         let request_id = operation_id("display-reasoning-config");
         if gateway
             .load_display_reasoning(request_id.clone(), Some(profile.clone()))
             .is_ok()
         {
-            self.reasoning_config_request = Some((request_id, profile));
+            self.reasoning_config_request =
+                Some((request_id, profile.clone(), connection_id.clone()));
+            self.reasoning_config_profile = Some(profile);
+            self.reasoning_config_connection_id = connection_id;
+            self.reasoning_config_error = None;
         } else {
             self.reasoning_config_profile = Some(profile);
+            self.reasoning_config_connection_id = connection_id;
+            self.reasoning_config_error = Some("Hermes settings reader is unavailable".into());
+        }
+    }
+
+    fn save_display_reasoning_setting(&mut self, enabled: bool) {
+        let Some(profile) = self.active_session_profile.clone().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        }) else {
+            self.reasoning_config_error =
+                Some("Connect to Hermes before changing this setting".into());
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            self.reasoning_config_error =
+                Some("Chat behavior settings require a single Hermes profile".into());
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.reasoning_config_error = Some("Hermes settings writer is unavailable".into());
+            return;
+        };
+        if self.reasoning_config_confirmed.is_none()
+            || self.reasoning_config_profile.as_deref() != Some(profile.as_str())
+        {
+            self.reasoning_config_error =
+                Some("Load the current profile setting before saving".into());
+            return;
+        }
+        let connection_id = gateway.connection_id().map(str::to_owned);
+        if connection_id != self.reasoning_config_connection_id {
+            self.reasoning_config_error =
+                Some("The Hermes connection changed; reload this setting".into());
+            return;
+        }
+        let request_id = operation_id("display-reasoning-save");
+        match gateway.save_display_reasoning(request_id.clone(), Some(profile.clone()), enabled) {
+            Ok(()) => {
+                self.reasoning_config_save_request =
+                    Some((request_id, profile, connection_id, enabled));
+                self.reasoning_config_error = None;
+            }
+            Err(error) => self.reasoning_config_error = Some(error),
+        }
+    }
+
+    fn show_chat_behavior_settings(&mut self, ui: &mut Ui) {
+        self.sync_display_reasoning_config();
+        ui.heading("Chat · Behavior");
+        ui.label(RichText::new(
+            "Choose whether Hermes reasoning sections are shown in local transcripts when the backend provides them.",
+        ).color(MUTED));
+        let profile = self.active_session_profile.as_deref().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str())
+        });
+        if let Some(profile) = profile {
+            ui.label(RichText::new(format!("Profile · {profile}")).color(MUTED));
+        } else {
+            ui.label(
+                RichText::new("Connect to Hermes to edit chat behavior settings.").color(MUTED),
+            );
+        }
+
+        let busy =
+            self.reasoning_config_request.is_some() || self.reasoning_config_save_request.is_some();
+        let can_edit = self.gateway_connected
+            && profile.is_some_and(|profile| !profile.eq_ignore_ascii_case("all"));
+        if self.reasoning_config_confirmed.is_some() {
+            let mut enabled = self
+                .reasoning_enabled_draft
+                .unwrap_or(self.reasoning_enabled);
+            let response = ui.add_enabled(
+                !busy && can_edit,
+                egui::Checkbox::new(&mut enabled, "Reasoning Blocks"),
+            );
+            response
+                .clone()
+                .on_hover_text("Show reasoning sections when the backend provides them.");
+            if response.changed() {
+                self.reasoning_enabled_draft = Some(enabled);
+            }
+            let dirty = self.reasoning_config_confirmed != Some(enabled);
+            if ui
+                .add_enabled(
+                    !busy && can_edit && dirty,
+                    egui::Button::new("Save chat behavior"),
+                )
+                .clicked()
+            {
+                self.save_display_reasoning_setting(enabled);
+            }
+        } else if self.reasoning_config_request.is_some() {
+            ui.label(RichText::new("Loading chat behavior settings…").color(MUTED));
+        } else if self.reasoning_config_error.is_none() && self.gateway_connected {
+            ui.label(RichText::new("Chat behavior settings have not been loaded.").color(MUTED));
+        }
+        if let Some(error) = self.reasoning_config_error.as_deref() {
+            ui.colored_label(Color32::LIGHT_RED, error);
+            if self.reasoning_config_confirmed.is_none()
+                && ui.button("Retry chat behavior settings").clicked()
+            {
+                self.reasoning_config_profile = None;
+                self.reasoning_config_connection_id = None;
+                self.reasoning_config_error = None;
+                self.sync_display_reasoning_config();
+            }
+        }
+        if busy {
+            ui.label(RichText::new("Loading or saving chat behavior settings…").color(MUTED));
         }
     }
 
@@ -26979,6 +27123,7 @@ fn render_message() -> &'static str {
             if ui
                 .selectable_label(
                     !self.settings_keybindings_active
+                        && !self.settings_chat_active
                         && !self.settings_model_active
                         && !self.settings_fallbacks_active
                         && !self.settings_security_active,
@@ -26988,6 +27133,19 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_chat_active = false;
+                self.settings_model_active = false;
+                self.settings_fallbacks_active = false;
+                self.settings_security_active = false;
+                self.keybindings_panel.cancel_capture();
+            }
+            if ui
+                .selectable_label(self.settings_chat_active, "Chat · Behavior")
+                .accessible_name("Chat behavior settings")
+                .clicked()
+            {
+                self.settings_keybindings_active = false;
+                self.settings_chat_active = true;
                 self.settings_model_active = false;
                 self.settings_fallbacks_active = false;
                 self.settings_security_active = false;
@@ -26999,6 +27157,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_chat_active = false;
                 self.settings_model_active = true;
                 self.settings_fallbacks_active = false;
                 self.settings_security_active = false;
@@ -27010,6 +27169,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_chat_active = false;
                 self.settings_model_active = false;
                 self.settings_fallbacks_active = true;
                 self.settings_security_active = false;
@@ -27021,6 +27181,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = false;
+                self.settings_chat_active = false;
                 self.settings_model_active = false;
                 self.settings_fallbacks_active = false;
                 self.settings_security_active = true;
@@ -27032,6 +27193,7 @@ fn render_message() -> &'static str {
                 .clicked()
             {
                 self.settings_keybindings_active = true;
+                self.settings_chat_active = false;
                 self.settings_model_active = false;
                 self.settings_fallbacks_active = false;
                 self.settings_security_active = false;
@@ -27040,6 +27202,8 @@ fn render_message() -> &'static str {
         ui.separator();
         if self.settings_security_active {
             self.show_security_settings(ui);
+        } else if self.settings_chat_active {
+            self.show_chat_behavior_settings(ui);
         } else if self.settings_model_active {
             self.show_main_model_settings(ui);
         } else if self.settings_keybindings_active {
@@ -33646,10 +33810,13 @@ fn render_message() -> &'static str {
                 GatewayEvent::DisplayReasoningLoaded {
                     request_id,
                     profile,
+                    connection_id,
                     result,
                 } => {
-                    let Some((expected_id, expected_profile)) =
-                        self.reasoning_config_request.as_ref()
+                    let Some((expected_id, expected_profile)) = self
+                        .reasoning_config_request
+                        .as_ref()
+                        .map(|(id, profile, _)| (id, profile))
                     else {
                         continue;
                     };
@@ -33657,19 +33824,97 @@ fn render_message() -> &'static str {
                         continue;
                     }
                     let expected_profile = expected_profile.clone();
+                    let expected_connection = self
+                        .reasoning_config_request
+                        .as_ref()
+                        .and_then(|(_, _, connection)| connection.clone());
+                    let current_connection = self
+                        .gateway_discovery
+                        .as_ref()
+                        .and_then(|gateway| gateway.connection_id().map(str::to_owned));
                     let active_profile = self.active_session_profile.as_deref().or_else(|| {
                         self.gateway_endpoint
                             .as_ref()
                             .map(|endpoint| endpoint.profile_id.as_str())
                     });
-                    if active_profile != Some(expected_profile.as_str()) {
+                    if active_profile != Some(expected_profile.as_str())
+                        || connection_id != expected_connection
+                        || current_connection != expected_connection
+                    {
                         self.reasoning_config_request = None;
                         continue;
                     }
                     let loaded_profile = expected_profile;
                     self.reasoning_config_request = None;
                     self.reasoning_config_profile = Some(loaded_profile);
-                    self.reasoning_enabled = result.unwrap_or(false);
+                    self.reasoning_config_connection_id = expected_connection;
+                    match result {
+                        Ok(enabled) => {
+                            self.reasoning_enabled = enabled;
+                            self.reasoning_enabled_draft = Some(enabled);
+                            self.reasoning_config_confirmed = Some(enabled);
+                            self.reasoning_config_error = None;
+                        }
+                        Err(error) => {
+                            self.reasoning_config_confirmed = None;
+                            self.reasoning_enabled_draft = None;
+                            self.reasoning_config_error = Some(error);
+                        }
+                    }
+                }
+                GatewayEvent::DisplayReasoningSaved {
+                    request_id,
+                    profile,
+                    connection_id,
+                    result,
+                } => {
+                    let Some((expected_id, expected_profile, expected_connection, requested)) =
+                        self.reasoning_config_save_request.as_ref()
+                    else {
+                        continue;
+                    };
+                    if expected_id != &request_id
+                        || profile.as_deref() != Some(expected_profile)
+                        || connection_id.as_ref() != expected_connection.as_ref()
+                    {
+                        continue;
+                    }
+                    let expected_profile = expected_profile.clone();
+                    let expected_connection = expected_connection.clone();
+                    let requested = *requested;
+                    let current_connection = self
+                        .gateway_discovery
+                        .as_ref()
+                        .and_then(|gateway| gateway.connection_id().map(str::to_owned));
+                    let active_profile = self.active_session_profile.as_deref().or_else(|| {
+                        self.gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.as_str())
+                    });
+                    if active_profile != Some(expected_profile.as_str())
+                        || current_connection.as_ref() != expected_connection.as_ref()
+                    {
+                        self.reasoning_config_save_request = None;
+                        continue;
+                    }
+                    self.reasoning_config_save_request = None;
+                    match result {
+                        Ok(enabled) if enabled == requested => {
+                            self.reasoning_enabled = enabled;
+                            self.reasoning_enabled_draft = Some(enabled);
+                            self.reasoning_config_confirmed = Some(enabled);
+                            self.reasoning_config_profile = Some(expected_profile);
+                            self.reasoning_config_connection_id = expected_connection;
+                            self.reasoning_config_error = None;
+                        }
+                        Ok(_) => {
+                            self.reasoning_config_error = Some(
+                                "Hermes returned a different reasoning setting than requested"
+                                    .into(),
+                            );
+                        }
+                        Err(error) => self.reasoning_config_error = Some(error),
+                    }
                 }
                 GatewayEvent::RepoScanConfigLoaded {
                     request_id,
@@ -41538,6 +41783,110 @@ mod tests {
             );
         }
         drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn chat_behavior_settings_render_reasoning_blocks_and_keep_edits_as_a_draft() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Settings;
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.active_session_profile = Some("work".into());
+        app.reasoning_enabled = true;
+        app.reasoning_enabled_draft = Some(true);
+        app.reasoning_config_confirmed = Some(true);
+        app.reasoning_config_profile = Some("work".into());
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().show_settings(ui));
+        harness.run();
+        harness.get_by_label("Chat behavior settings").click();
+        harness.run();
+        assert!(harness.query_by_label("Reasoning Blocks").is_some());
+        assert!(
+            harness
+                .query_by_label("Save chat behavior")
+                .is_some_and(|button| { button.accesskit_node().is_disabled() })
+        );
+
+        harness.get_by_label("Reasoning Blocks").click();
+        harness.run();
+        assert!(
+            app.borrow().reasoning_enabled,
+            "unsaved choice does not affect the transcript"
+        );
+        assert_eq!(app.borrow().reasoning_enabled_draft, Some(false));
+        assert!(
+            harness
+                .query_by_label("Save chat behavior")
+                .is_some_and(|button| { !button.accesskit_node().is_disabled() })
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn reasoning_setting_save_receipt_is_fenced_to_the_current_gateway_connection() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:9999".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.active_session_profile = Some("work".into());
+        app.reasoning_enabled = false;
+        app.reasoning_enabled_draft = Some(true);
+        app.reasoning_config_confirmed = Some(false);
+        app.reasoning_config_profile = Some("work".into());
+        app.reasoning_config_connection_id = Some("connection-a".into());
+        app.reasoning_config_save_request = Some((
+            "save-1".into(),
+            "work".into(),
+            Some("connection-a".into()),
+            true,
+        ));
+        let (discovery, event_sender, _status_sender) =
+            GatewayDiscovery::for_test_event_poll_with_status(Some("connection-b"));
+        app.gateway_discovery = Some(discovery);
+        event_sender
+            .send(GatewayEvent::DisplayReasoningSaved {
+                request_id: "save-1".into(),
+                profile: Some("work".into()),
+                connection_id: Some("connection-a".into()),
+                result: Ok(true),
+            })
+            .unwrap();
+
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(!app.reasoning_enabled);
+        assert_eq!(app.reasoning_enabled_draft, None);
+        assert_eq!(app.reasoning_config_confirmed, None);
+        assert_eq!(
+            app.reasoning_config_connection_id.as_deref(),
+            Some("connection-b")
+        );
+        assert!(app.reasoning_config_save_request.is_none());
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

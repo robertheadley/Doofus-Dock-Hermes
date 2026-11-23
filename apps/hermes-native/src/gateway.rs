@@ -2254,6 +2254,13 @@ pub enum GatewayEvent {
     DisplayReasoningLoaded {
         request_id: String,
         profile: Option<String>,
+        connection_id: Option<String>,
+        result: Result<bool, String>,
+    },
+    DisplayReasoningSaved {
+        request_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
         result: Result<bool, String>,
     },
     RepoScanConfigLoaded {
@@ -3025,6 +3032,11 @@ enum GatewayHttpCommand {
         request_id: String,
         profile: Option<String>,
     },
+    SaveDisplayReasoning {
+        request_id: String,
+        profile: Option<String>,
+        enabled: bool,
+    },
     LoadRepoScanConfig {
         request_id: String,
         profile: Option<String>,
@@ -3532,8 +3544,23 @@ impl GatewayDiscovery {
     }
 
     #[cfg(test)]
-    fn for_test_event_poll(connection_id: Option<&str>) -> (Self, mpsc::Sender<GatewayEvent>) {
-        let (_status_sender, status_receiver) = mpsc::channel();
+    pub(crate) fn for_test_event_poll(
+        connection_id: Option<&str>,
+    ) -> (Self, mpsc::Sender<GatewayEvent>) {
+        let (discovery, event_sender, _status_sender) =
+            Self::for_test_event_poll_with_status(connection_id);
+        (discovery, event_sender)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_event_poll_with_status(
+        connection_id: Option<&str>,
+    ) -> (
+        Self,
+        mpsc::Sender<GatewayEvent>,
+        mpsc::Sender<Result<ConnectedGateway, String>>,
+    ) {
+        let (status_sender, status_receiver) = mpsc::channel();
         let (event_sender, event_receiver) = mpsc::channel();
         let (command_sender, _command_receiver) = mpsc::channel();
         let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
@@ -3557,7 +3584,7 @@ impl GatewayDiscovery {
             artifact_download_sender,
             artifact_image_sender,
         };
-        (discovery, event_sender)
+        (discovery, event_sender, status_sender)
     }
 
     #[cfg(test)]
@@ -4639,7 +4666,9 @@ impl GatewayDiscovery {
             | GatewayEvent::SessionInterrupted { connection_id, .. }
             | GatewayEvent::SessionRuntimeRebound { connection_id, .. }
             | GatewayEvent::ComposerAttachmentAttached { connection_id, .. }
-            | GatewayEvent::SlashCompletionLoaded { connection_id, .. } => {
+            | GatewayEvent::SlashCompletionLoaded { connection_id, .. }
+            | GatewayEvent::DisplayReasoningLoaded { connection_id, .. }
+            | GatewayEvent::DisplayReasoningSaved { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
             GatewayEvent::ServerEvent { connection_id, .. } => {
@@ -5593,6 +5622,21 @@ impl GatewayDiscovery {
             .send(GatewayHttpCommand::LoadDisplayReasoning {
                 request_id,
                 profile,
+            })
+            .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
+    }
+
+    pub fn save_display_reasoning(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        enabled: bool,
+    ) -> Result<(), String> {
+        self.http_sender
+            .send(GatewayHttpCommand::SaveDisplayReasoning {
+                request_id,
+                profile,
+                enabled,
             })
             .map_err(|_| "Hermes profile HTTP worker has closed".to_owned())
     }
@@ -11469,7 +11513,18 @@ fn gateway_http_actor(
             } => GatewayEvent::DisplayReasoningLoaded {
                 request_id,
                 profile: profile.clone(),
+                connection_id: None,
                 result: load_display_reasoning_http(&endpoint, profile.as_deref()),
+            },
+            GatewayHttpCommand::SaveDisplayReasoning {
+                request_id,
+                profile,
+                enabled,
+            } => GatewayEvent::DisplayReasoningSaved {
+                request_id,
+                profile: profile.clone(),
+                connection_id: None,
+                result: save_display_reasoning_http(&endpoint, profile.as_deref(), enabled),
             },
             GatewayHttpCommand::LoadRepoScanConfig {
                 request_id,
@@ -15579,6 +15634,76 @@ fn load_display_reasoning_http(
     )
 }
 
+fn display_reasoning_config_patch(enabled: bool) -> serde_json::Value {
+    serde_json::json!({
+        "config": {
+            "display": {
+                "show_reasoning": enabled,
+                "platforms": {"cli": {"show_reasoning": enabled}},
+            }
+        }
+    })
+}
+
+fn save_display_reasoning_http(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&str>,
+    enabled: bool,
+) -> Result<bool, String> {
+    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let url = format!(
+        "{}/api/config{}",
+        endpoint.api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    let response = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_mutation(
+            endpoint,
+            "PUT",
+            &url,
+            display_reasoning_config_patch(enabled),
+        )?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err(
+                "Hermes display configuration requires the verified loopback API origin".into(),
+            );
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        save_display_reasoning_local(&endpoint.api_origin, ticket.as_str(), profile_id, enabled)?
+    };
+    if response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err("Hermes did not confirm the reasoning setting was saved".into());
+    }
+    Ok(enabled)
+}
+
+fn save_display_reasoning_local(
+    api_origin: &str,
+    ticket: &str,
+    profile_id: &str,
+    enabled: bool,
+) -> Result<serde_json::Value, String> {
+    validate_http_ticket(ticket)?;
+    if !is_bare_loopback_origin(api_origin) {
+        return Err(
+            "Hermes display configuration requires the verified loopback API origin".into(),
+        );
+    }
+    let url = format!(
+        "{}/api/config{}",
+        api_origin.trim_end_matches('/'),
+        session_profile_suffix(profile_id)
+    );
+    cron_local_gateway_http_request_with_ticket(
+        api_origin,
+        ticket,
+        "PUT",
+        &url,
+        Some(display_reasoning_config_patch(enabled)),
+    )
+}
+
 fn load_repo_scan_config_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
@@ -16106,8 +16231,21 @@ fn read_display_reasoning(
 fn display_reasoning_enabled(config: &serde_json::Value) -> bool {
     let value = config
         .pointer("/display/platforms/cli/show_reasoning")
+        .filter(|value| !value.is_null())
         .or_else(|| config.pointer("/display/show_reasoning"));
-    value.is_some_and(display_timestamps_enabled)
+    value.is_some_and(display_reasoning_value_enabled)
+}
+
+fn display_reasoning_value_enabled(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Bool(enabled) => *enabled,
+        serde_json::Value::String(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "true" | "1" | "yes" | "on" | "raw" | "verbose"
+        ),
+        serde_json::Value::Number(value) => value.as_i64() == Some(1),
+        _ => false,
+    }
 }
 
 fn display_timestamps_enabled(value: &serde_json::Value) -> bool {
@@ -22293,6 +22431,28 @@ mod tests {
             .to_string();
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
                 .expect("write display-config fixture response");
+
+            let (mut save_stream, _) = listener.accept().expect("accept display-config save");
+            let save_request = read_http_fixture_request(&mut save_stream);
+            assert!(
+                save_request.starts_with("PUT /api/config?profile=work%20profile HTTP/1.1\r\n")
+            );
+            assert!(
+                save_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n")
+            );
+            let save_body = save_request
+                .split_once("\r\n\r\n")
+                .expect("display config save body")
+                .1;
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(save_body).unwrap(),
+                display_reasoning_config_patch(true)
+            );
+            let receipt = r#"{"ok":true}"#;
+            write!(save_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", receipt.len(), receipt)
+                .expect("write display-config save receipt");
         });
         let enabled = read_display_reasoning(
             &format!("http://{address}"),
@@ -22301,6 +22461,17 @@ mod tests {
         )
         .expect("read source display config");
         assert!(!enabled, "the CLI override wins over the global setting");
+        assert!(
+            save_display_reasoning_local(
+                &format!("http://{address}"),
+                "fixture-native-http-ticket",
+                "work profile",
+                true,
+            )
+            .expect("save source display config")["ok"]
+                .as_bool()
+                .unwrap()
+        );
         server.join().expect("fixture server exits");
     }
 
@@ -22536,6 +22707,71 @@ mod tests {
                 .expect("save profile security setting")
         );
         server.join().expect("security config fixture exits");
+    }
+
+    #[test]
+    fn display_reasoning_remote_read_and_write_use_profile_auth_and_dual_key_patch() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind display reasoning fixture");
+        let address = listener
+            .local_addr()
+            .expect("display reasoning fixture address");
+        let server = thread::spawn(move || {
+            let (mut read_stream, _) = listener.accept().expect("accept display reasoning read");
+            let read_request = read_http_fixture_request(&mut read_stream);
+            assert!(read_request.starts_with("GET /hermes/api/config?profile=work HTTP/1.1\r\n"));
+            assert!(
+                read_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let config = json!({
+                "display":{"show_reasoning":true,"platforms":{"cli":{"show_reasoning":"no"}}}
+            })
+            .to_string();
+            write!(read_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", config.len(), config)
+                .expect("write display reasoning config response");
+
+            let (mut save_stream, _) = listener.accept().expect("accept display reasoning save");
+            let save_request = read_http_fixture_request(&mut save_stream);
+            assert!(save_request.starts_with("PUT /hermes/api/config?profile=work HTTP/1.1\r\n"));
+            assert!(
+                save_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let save_body = save_request
+                .split_once("\r\n\r\n")
+                .expect("display reasoning save body")
+                .1;
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(save_body).unwrap(),
+                display_reasoning_config_patch(true)
+            );
+            let receipt = r#"{"ok":true}"#;
+            write!(save_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", receipt.len(), receipt)
+                .expect("write display reasoning save receipt");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "default".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        assert!(
+            !load_display_reasoning_http(&endpoint, Some("work"))
+                .expect("load profile display reasoning")
+        );
+        assert!(
+            save_display_reasoning_http(&endpoint, Some("work"), true)
+                .expect("save profile display reasoning")
+        );
+        server.join().expect("display reasoning fixture exits");
     }
 
     #[test]
@@ -23915,6 +24151,81 @@ mod tests {
             "display":{"show_reasoning":false,"platforms":{"cli":{"show_reasoning":true}}}
         })));
         assert!(!display_reasoning_enabled(&json!({"display":{}})));
+    }
+
+    #[test]
+    fn display_reasoning_config_matches_pinned_truthy_spellings_and_null_fallback() {
+        for value in ["true", "1", "yes", "on", "raw", "verbose"] {
+            assert!(
+                display_reasoning_enabled(&json!({"display":{"show_reasoning":value}})),
+                "expected {value:?} to follow the pinned truthy set"
+            );
+        }
+        for value in ["false", "0", "no", "off", "", "other"] {
+            assert!(
+                !display_reasoning_enabled(&json!({"display":{"show_reasoning":value}})),
+                "expected {value:?} to be false"
+            );
+        }
+        assert!(display_reasoning_enabled(&json!({
+            "display":{"show_reasoning":true,"platforms":{"cli":{"show_reasoning":null}}}
+        })));
+        assert!(!display_reasoning_enabled(&json!({
+            "display":{"show_reasoning":false,"platforms":{"cli":{"show_reasoning":"false"}}}
+        })));
+        assert!(display_reasoning_enabled(
+            &json!({"display":{"show_reasoning":1}})
+        ));
+        assert!(!display_reasoning_enabled(
+            &json!({"display":{"show_reasoning":0}})
+        ));
+    }
+
+    #[test]
+    fn display_reasoning_config_patch_updates_global_and_cli_local_values() {
+        assert_eq!(
+            display_reasoning_config_patch(true),
+            json!({"config":{"display":{"show_reasoning":true,"platforms":{"cli":{"show_reasoning":true}}}}})
+        );
+        assert_eq!(
+            display_reasoning_config_patch(false),
+            json!({"config":{"display":{"show_reasoning":false,"platforms":{"cli":{"show_reasoning":false}}}}})
+        );
+    }
+
+    #[test]
+    fn display_reasoning_config_results_are_fenced_to_the_discovery_connection() {
+        let (discovery, event_sender) = GatewayDiscovery::for_test_event_poll(Some("connection-a"));
+        event_sender
+            .send(GatewayEvent::DisplayReasoningLoaded {
+                request_id: "load-1".into(),
+                profile: Some("work".into()),
+                connection_id: None,
+                result: Ok(true),
+            })
+            .expect("queue reasoning config load");
+        assert!(matches!(
+            discovery.poll_event(),
+            Some(GatewayEvent::DisplayReasoningLoaded {
+                connection_id: Some(connection_id),
+                ..
+            }) if connection_id == "connection-a"
+        ));
+        event_sender
+            .send(GatewayEvent::DisplayReasoningSaved {
+                request_id: "save-1".into(),
+                profile: Some("work".into()),
+                connection_id: None,
+                result: Ok(true),
+            })
+            .expect("queue reasoning config save");
+        assert!(matches!(
+            discovery.poll_event(),
+            Some(GatewayEvent::DisplayReasoningSaved {
+                connection_id: Some(connection_id),
+                ..
+            }) if connection_id == "connection-a"
+        ));
     }
 
     #[test]
