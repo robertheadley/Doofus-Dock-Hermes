@@ -2184,3 +2184,13 @@ Source implementation commit: `eb1af5f35bbfa498d9e055819d6a9bd74aeedbdf`. Valida
 ### Revision 351 — Record capability-map validator limits — 2026-11-23
 
 The targeted UCM report recognizes all four PAR-0064 scenarios, including `context-overflow-compress-and-unknown-write-guard`, and reports no EV-0136-specific errors. The global validator still exits nonzero with 160 pre-existing map errors across legacy evidence kinds/outcomes, scenario references, and unreferenced receipts; therefore the map is not reported as globally valid. Package validation separately passes, including EV-0136 and its full source SHA.
+
+### Revision 352 — Add owner-fenced scheduled rate-limit retry — 2026-11-23
+
+PAR-0064 now supports a user-armed one-shot retry for known `rate_limit` and `upstream_rate_limit` failures with a valid future reset time. The UI shows a countdown and Cancel, reuses the original submission identity/payload, and fences dispatch to the exact active session/profile/Gateway connection and unchanged tail failure/draft state. Connection or route changes cancel the timer; the schedule is ephemeral across restarts. EV-0137 records four UI regressions.
+
+Source implementation commit: `2a6fb5341fad5d035f0622bd26a8a520bed3bcce`. Validation: full locked suite passes 648 library + 15 automation protocol + 3 launcher tests; all-target locked check, `cargo build -p hermes-native --locked`, rustfmt, and diff check pass. Live Gateway, packaged Windows, and formal pinned-source acceptance remain open. Account/billing setup, usage-window retry actions, and the complete pinned error taxonomy remain gaps; PAR-0064 stays partial.
+
+### Revision 353 — Validate scheduled retry evidence — 2026-11-23
+
+The locked suite passes 648 library, 15 automation-protocol, and 3 launcher tests; all-target `cargo check`, desktop `cargo build`, rustfmt, diff check, 19 task-continuity tests, progress generators, package validation (121 implementation receipts), and persisted task-state validation pass. The targeted UCM report shows all five declared PAR-0064 scenarios, including scheduled rate-limit retry, covered and no EV-0137-specific errors. The UCM checker still exits 1 on 160 pre-existing legacy evidence/scenario errors outside EV-0137; the map is not globally valid. Live Gateway, packaged Windows and formal source-paired acceptance remain open.

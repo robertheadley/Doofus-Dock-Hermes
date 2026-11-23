@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0137",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "2a6fb5341fad5d035f0622bd26a8a520bed3bcce",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "scheduled-rate-limit-retry-is-one-shot-and-owner-fenced",
+  "locator": "apps/hermes-native/src/app.rs::scheduled_retry_respects_reset_codes_timer_bounds_and_countdown;apps/hermes-native/src/app.rs::rendered_scheduled_failed_retry_can_be_cancelled_without_sending;apps/hermes-native/src/app.rs::scheduled_failed_retry_dispatches_once_at_reset_for_exact_current_owner;apps/hermes-native/src/app.rs::scheduled_failed_retry_is_cancelled_when_connection_owner_changes",
+  "environment": "Full locked Hermes Native agent-automation test suite (648 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug desktop build, rustfmt and diff checks. No live Hermes Gateway or installed Hermes app was used.",
+  "notes": "A user-armed retry schedules only known rate_limit/upstream_rate_limit failures with a valid future resets_at value. The UI shows a countdown and Cancel; dispatch is one-shot and fenced to the exact session/profile/connection/submission. The timer is ephemeral and is cancelled on owner or draft changes. Billing/usage-window actions, broader error taxonomy and live/packaged acceptance remain open."
+}

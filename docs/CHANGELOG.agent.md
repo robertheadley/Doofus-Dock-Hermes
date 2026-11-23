@@ -4987,3 +4987,29 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Historical map errors remain and may affect other capability reports.
 - **follow_up:** Reconcile legacy UCM evidence/schema errors in a separately scoped task.
+
+### PAR-0064 scheduled rate-limit retry — 2026-11-23
+
+- **id:** hermes-par0064-scheduled-rate-retry-20261123
+- **timestamp:** 2026-11-23T16:05:00Z
+- **what:** Added headless-tested countdown, cancellation, one-shot dispatch, and owner fencing for scheduled retries on known rate-limit failures; updated the capability evidence and progress recipe.
+- **why:** Preserve the pinned Hermes reset-time retry workflow while preventing stale-session or duplicate submissions.
+- **components:** Hermes Native, PAR-0064, UCM EV-0137, completion/progress docs.
+- **type:** feature, evidence, documentation.
+- **validation:** Full locked suite 648 library + 15 automation protocol + 3 launcher tests; all-target check; desktop build; rustfmt/diff. Package/UCM/task validators pending.
+- **performance:** No benchmark claim; timer polling uses existing bounded app update flow.
+- **risks:** Live Gateway, restart behavior, packaged Windows, and source-paired acceptance remain unverified; usage-window and account/billing actions remain open.
+- **follow_up:** Run repository validators, publish source and evidence/docs to main, then continue the next agent-workflow gap.
+
+### PAR-0064 scheduled retry validation — 2026-11-23
+
+- **id:** hermes-par0064-scheduled-retry-validation-20261123
+- **timestamp:** 2026-11-23T16:07:44Z
+- **what:** Re-ran the full native agent-automation suite and repository checks; refreshed generated progress and validated the scheduled-retry evidence and package.
+- **why:** Ensure the one-shot retry behavior and the published evidence are supported by current results.
+- **components:** Hermes Native, PAR-0064, EV-0137, package/UCM/task validators.
+- **type:** validation.
+- **validation:** 648 library + 15 automation protocol + 3 launcher tests pass; all-target check, desktop build, rustfmt/diff, continuity 19/19, package validation 121 implementation receipts, and task validator pass. All five targeted UCM scenarios are covered with no EV-0137 errors.
+- **performance:** Not applicable.
+- **risks:** UCM global check still reports 160 legacy errors outside this evidence; live Gateway and packaged Windows remain unverified.
+- **follow_up:** Publish source plus evidence/docs to main and continue the next agent-workflow gap.

@@ -1495,7 +1495,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0064": {
         "state": "partial",
-        "level": "headless_ui_gateway_revision_fencing_background_receipt_and_unknown_outcome",
+        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_and_scheduled_rate_limit_retry",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/agent-init-error.test.tsx#renders an agent-init failure as a visible in-transcript error and keeps the optimistic first message",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.test.tsx#names the provider and keeps Retry for a rate limit",
@@ -1513,9 +1513,14 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/gateway.rs#compression_disconnect_after_mutation_is_marked_outcome_unknown",
             "apps/hermes-native/src/app.rs#compacted_event_refreshes_failed_transcript_and_clears_compression_state",
             "apps/hermes-native/src/app.rs#unknown_compression_outcome_stays_visible_and_blocks_an_unsafe_retry",
+            "apps/hermes-native/src/app.rs#scheduled_retry_respects_reset_codes_timer_bounds_and_countdown",
+            "apps/hermes-native/src/app.rs#rendered_scheduled_failed_retry_can_be_cancelled_without_sending",
+            "apps/hermes-native/src/app.rs#scheduled_failed_retry_dispatches_once_at_reset_for_exact_current_owner",
+            "apps/hermes-native/src/app.rs#scheduled_failed_retry_is_cancelled_when_connection_owner_changes",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0136.json#EV-0136",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0137.json#EV-0137",
         ],
-        "gaps": ["account and billing setup navigation and scheduled retry actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "live Gateway compression and recovery behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
+        "gaps": ["account and billing setup navigation and usage-window billing actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "scheduled retry is limited to known rate-limit codes, is not persisted across app restarts, and live Gateway behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
     },
     "PAR-0065": {
         "state": "partial",
