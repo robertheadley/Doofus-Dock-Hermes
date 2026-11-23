@@ -4838,3 +4838,9 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Payload reads are capped at 16 MiB; writes use create-new temporary files and readback validation. No runtime benchmark was run.
 - **risks:** The new helper and staging behavior have headless filesystem coverage; actual Windows OS-drop delivery, live authenticated Gateway outcomes, packaged behavior and source-paired acceptance remain unverified. PAR-0062 remains partial.
 - **follow_up:** Continue authenticated attachment outcomes, Windows drop verification, thumbnails and remaining agent-workflow gaps.
+
+### PAR-0062 publication record — 2026-11-23
+
+- Implementation commit `4392b6ff0267065718ee5006eb76f4f3cfaef4f9` and evidence/docs commit `b10fcdc71db091400d12e915cfd5bb9003d82ae1` were pushed to `main`.
+- Fresh fetch confirmed local `main` and `origin/main` both equal `b10fcdc71db091400d12e915cfd5bb9003d82ae1`.
+- EV-0127 records partial headless evidence for pathless file drops. Windows Gateway acceptance remains open.
