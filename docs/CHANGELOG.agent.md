@@ -4870,4 +4870,3 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Full-map UCM check still reports 160 pre-existing errors and 10 unrelated reconciliation items. Capability stays partial; all 176 chat/tool rows still lack live-runtime verification and pinned-source acceptance.
 - **follow_up:** Continue the next dependency-ready P0 agent-workflow gap; resolve UCM-wide legacy errors separately.
-
