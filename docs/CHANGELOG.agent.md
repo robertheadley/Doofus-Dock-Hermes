@@ -5090,3 +5090,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No benchmark claim.
 - **risks:** Full provider/session billing-block recovery and live/package/source-paired acceptance remain open.
 - **follow_up:** Validate progress/package/task records and publish the partial evidence to main.
+
+### Hermes PAR-0064 billing fallback publication — 2026-11-23
+
+- **id:** hermes-par0064-billing-publication-20261123
+- **timestamp:** 2026-11-23T17:28:23Z
+- **what:** Published safe billing recovery source commit e47b777 and evidence commit 3706f959 to the user-selected origin/main.
+- **why:** Keep main current with the tested behavior and partial source evidence.
+- **components:** Hermes Native, PAR-0064, EV-0140, progress ledger.
+- **type:** publication.
+- **validation:** Fresh fetch confirms exact local and remote equality at 3706f9597751ddfaab42b800d2040d245ea384e3.
+- **performance:** Not applicable.
+- **risks:** Full billing-block recovery, live Gateway, packaged Windows, and formal source acceptance remain open.
+- **follow_up:** Continue remaining PAR-0064 actions.

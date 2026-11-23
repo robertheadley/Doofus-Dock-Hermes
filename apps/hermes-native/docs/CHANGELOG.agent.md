@@ -3413,3 +3413,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark claim; the action routes through the existing native navigation command.
 - **risks:** This fallback lacks the pinned same-provider billing-block descriptor, in-app Billing surface, and billing recovery retry. Live Gateway, packaged Windows, remaining error actions, and source-paired acceptance remain open.
 - **follow_up:** Record EV-0140, validate generated progress/package/task state, and publish to main.
+
+### PAR-0064 safe billing fallback publication — 2026-11-23
+
+- **id:** hermes-par0064-billing-publication-20261123
+- **timestamp:** 2026-11-23T17:28:23Z
+- **what:** Published source commit e47b777 and evidence/documentation commit 3706f959 to origin/main.
+- **why:** Keep the selected main branch current with the tested billing-error fallback and partial evidence.
+- **components:** Doofus-Dock-Hermes main, PAR-0064, EV-0140, progress overlays.
+- **type:** publication.
+- **validation:** Fresh fetch confirmed local main and origin/main both equal 3706f9597751ddfaab42b800d2040d245ea384e3; package validation reports 124 implementation receipts.
+- **performance:** Not applicable.
+- **risks:** Provider/session billing-block recovery, full billing settings, live Gateway, packaged Windows, remaining error actions, and source-paired acceptance remain open; PAR-0064 stays partial.
+- **follow_up:** Continue the remaining pinned PAR-0064 error actions.
