@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-fork-or-branch-a-conversation",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "0c39e1f0d8b437dcb69728cddea7591a3e3e160e",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation suite: 675 library + 15 protocol + 3 launcher tests; all-target cargo check; package validator; rustfmt and git diff check. No authenticated live Gateway or packaged-app run.",
+  "uid": "EV-0158",
+  "scenario": "branch-stored-session-preserves-parent-and-retries-exact-mutation-identity",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/api/canonical-protocol.test.ts#session.branch_stored;apps/hermes-native/src/app.rs#confirmed_stored_session_branch_opens_child_and_preserves_parent;apps/hermes-native/src/app.rs#unknown_branch_receipt_keeps_exact_identity_available_for_retry;apps/hermes-native/src/app.rs#stored_session_branch_retry_keeps_the_same_request_and_fence;apps/hermes-native/src/gateway.rs#stored_session_branch_retries_the_same_revision_generation_and_request_id;apps/hermes-native/src/gateway.rs#stored_session_branch_dispatch_carries_exact_retry_identity",
+  "notes": "Whole stored-session branch follows the pinned session.branch_stored mutation contract. A confirmed receipt opens the child and preserves the parent; an unknown result can be retried with the same request ID, revision and generation. Partial PAR-0081 evidence only. Branching from a transcript position, authenticated live Gateway, packaged Windows interaction, and formal source-paired acceptance remain open."
+}

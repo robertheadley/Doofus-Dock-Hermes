@@ -1136,6 +1136,20 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
     },
+    "PAR-0081": {
+        "state": "partial",
+        "level": "headless_pinned_stored_session_branch",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/canonical-protocol.test.ts#session.branch_stored",
+            "apps/hermes-native/src/app.rs#confirmed_stored_session_branch_opens_child_and_preserves_parent",
+            "apps/hermes-native/src/app.rs#unknown_branch_receipt_keeps_exact_identity_available_for_retry",
+            "apps/hermes-native/src/app.rs#stored_session_branch_retry_keeps_the_same_request_and_fence",
+            "apps/hermes-native/src/gateway.rs#stored_session_branch_retries_the_same_revision_generation_and_request_id",
+            "apps/hermes-native/src/gateway.rs#stored_session_branch_dispatch_carries_exact_retry_identity",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0158.json#EV-0158",
+        ],
+        "gaps": ["branch from a transcript position", "authenticated live Gateway", "packaged Windows behavior", "formal source-paired acceptance"],
+    },
     "PAR-0082": {
         "state": "partial",
         "level": "headless_paged_session_export_import_open",

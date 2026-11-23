@@ -3580,3 +3580,13 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark required; the branch flow reads a lightweight session snapshot before the mutation.
 - **risks:** Branch-from-message and authenticated live Gateway/packaged Windows acceptance remain open.
 - **follow_up:** Implement session import and branch-from-message; verify the branch against an authenticated Gateway and packaged Windows build.
+
+- **id:** hermes-par0081-evidence-20261123
+- **what:** Bound stored-session branch tests to EV-0158 and updated the source capability definition, crosswalk, UI inventory, full map, and generated progress ledgers.
+- **why:** The evidence ledger still marked a newly implemented pinned workflow as unknown.
+- **components:** `apps/hermes-native/tools/build_implementation_progress.py`, `apps/hermes-native/docs/status/`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, pinned capability maps.
+- **type:** evidence
+- **validation:** Full locked Rust suite 675+15+3; all-target locked check; package validator; regenerated ledgers report 97/176 scoped and 131/499 broad mapped/reviewed.
+- **performance:** No runtime code or benchmark impact.
+- **risks:** Headless evidence only; authenticated Gateway, packaged Windows, transcript-position branching, and formal source-paired acceptance remain open.
+- **follow_up:** Implement foreign session import and continue live runtime acceptance.

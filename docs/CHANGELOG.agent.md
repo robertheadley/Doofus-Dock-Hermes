@@ -5248,3 +5248,13 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No benchmark required.
 - **risks:** Branch-from-message, authenticated Gateway, packaged Windows and source-paired acceptance remain open.
 - **follow_up:** Session import and remaining branch variants.
+
+- **id:** hermes-par0081-evidence-20261123
+- **what:** Bound stored-session branch tests to EV-0158 and updated the source capability definition, crosswalk, UI inventory, full map, and generated progress ledgers.
+- **why:** The evidence ledger still marked a newly implemented pinned workflow as unknown.
+- **components:** `apps/hermes-native/tools/build_implementation_progress.py`, `apps/hermes-native/docs/status/`, `apps/hermes-native/docs/COMPLETION_OVERVIEW.md`, pinned capability maps.
+- **type:** evidence
+- **validation:** Full locked Rust suite 675+15+3; all-target locked check; package validator; regenerated ledgers report 97/176 scoped and 131/499 broad mapped/reviewed.
+- **performance:** No runtime code or benchmark impact.
+- **risks:** Headless evidence only; authenticated Gateway, packaged Windows, transcript-position branching, and formal source-paired acceptance remain open.
+- **follow_up:** Implement foreign session import and continue live runtime acceptance.

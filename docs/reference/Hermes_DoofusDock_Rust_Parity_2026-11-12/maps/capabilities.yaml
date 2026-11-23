@@ -1992,7 +1992,7 @@ capabilities:
   name: Fork or branch a conversation
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can fork or branch a conversation.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2003,10 +2003,18 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0158.json#EV-0158
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: branch-stored-session-preserves-parent-and-retries-exact-mutation-identity
+      description: A stored-session branch follows the pinned mutation contract, opens the receipt child, preserves its parent, and retries unknown outcomes using the original request identity. Transcript-position branching and runtime acceptance remain open.
+  evidence:
+  - EV-0158
 - id: ui-import-and-export-session-data
   name: Import and export session data
   area: sessions-projects
