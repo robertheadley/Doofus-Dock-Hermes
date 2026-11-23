@@ -4935,3 +4935,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway, packaged Windows, and formal pinned-source acceptance remain open.
 - **follow_up:** Continue the remaining agent-workflow P0 requirements.
+
+### PAR-0064 provider-settings recovery — 2026-11-23
+
+- **id:** hermes-par0064-provider-settings-recovery-20261123
+- **timestamp:** 2026-11-23T02:24:00Z
+- **what:** Provider-policy error cards now expose an accessible provider settings action for only the pinned OpenRouter and Nous destinations, followed by the existing model picker. Unknown provider identifiers cannot construct or dispatch external URLs.
+- **why:** Complete the pinned primary/secondary recovery action pair while keeping provider-controlled error payloads from becoming navigation targets.
+- **components:** Hermes Native transcript error cards, PAR-0064, EV-0135.
+- **type:** feature, navigation, safety, documentation.
+- **validation:** Full locked suite passes 638 library + 15 automation protocol + 3 launcher tests; all-target check and rustfmt/diff pass. The focused provider-card test verifies exact OpenRouter URL dispatch and rejects arbitrary provider values. Package validator passes after EV-0134's full commit SHA correction.
+- **performance:** No performance-sensitive path or benchmark changed.
+- **risks:** Only two pinned provider destinations are supported; other providers fall back to model selection. Live Gateway and packaged Windows acceptance remain open.
+- **follow_up:** Continue PAR-0064's remaining auth/setup, compression, scheduled retry and error taxonomy gaps.

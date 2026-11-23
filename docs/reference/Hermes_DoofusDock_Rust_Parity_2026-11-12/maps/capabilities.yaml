@@ -1553,7 +1553,7 @@ capabilities:
     - id: same-id-failed-turn-retry
       description: Retry a retryable failed turn through an accessible control using the original submission ID, text, owner scope and attachment metadata without duplicating the user row.
     - id: failed-turn-recovery-actions-and-uncertain-write-guard
-      description: Show pinned-code-specific Edit, Choose model, or Start new session actions, keep raw provider details collapsed, and suppress retry when the Gateway cannot confirm whether a prompt was queued.
+      description: Show pinned-code-specific Edit, supported provider settings, Choose model, or Start new session actions, keep raw provider details collapsed, and suppress retry when the Gateway cannot confirm whether a prompt was queued.
   evidence:
   - EV-0028
   - EV-0029
@@ -1561,6 +1561,7 @@ capabilities:
   - EV-0132
   - EV-0133
   - EV-0134
+  - EV-0135
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

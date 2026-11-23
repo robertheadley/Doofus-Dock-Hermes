@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 348 (implementation in progress).
+- **Working revision:** 349 (implementation in progress).
 - **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -2169,3 +2169,8 @@ Validation: full locked automation-feature suite passes 638 library + 15 automat
 PAR-0064 now presents pinned-code-specific recovery for content-policy refusals and read-only/ownership, context-overflow, oversized-payload, workspace, and launch-credential failures. A policy refusal opens the unique failed prompt in the non-truncating edit path; read-only or capacity failures can start a blank Hermes session. `SESSION_OWNER_UNCONFIRMED` warns that a prompt may already be queued and disables retry regardless of the backend's retryable flag. Existing same-submission-ID retry behavior is retained for retryable failures. Model/account/provider navigation, session compression, scheduled retry, the full source error taxonomy, live Gateway failure variants, and packaged Windows acceptance remain open. EV-0131 through EV-0133 record partial headless evidence for all three declared PAR-0064 scenarios.
 
 Validation: full locked automation-feature suite passes 637 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt, and diff check pass. PAR-0064 remains partial while remaining recovery actions and runtime acceptance are outstanding.
+### Revision 349 — Add provider settings recovery — 2026-11-23
+
+PAR-0064 now matches the pinned provider-policy action order. When the failed turn identifies a supported provider, its card opens only the known provider settings URL (OpenRouter privacy settings or Nous portal), then offers model choice as the fallback. Unknown or arbitrary provider strings never become URLs; they receive model choice only. A headless UI regression verifies the exact OpenRouter navigation command and the deny-by-default mapping.
+
+Validation: full locked automation-feature suite passes 638 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt, and diff check pass. Package validation passes after EV-0134 was corrected to use the full implementation SHA. Provider setup navigation, compression, scheduled retry, remaining error codes, live Gateway, and packaged Windows acceptance remain open.
