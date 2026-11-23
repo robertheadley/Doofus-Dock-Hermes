@@ -890,6 +890,20 @@ pub struct ChatPolicyMutationReceipt {
     pub revision: Option<u64>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct SessionCompressionResult {
+    pub status: String,
+    pub response: serde_json::Value,
+    pub messages: Option<Vec<serde_json::Value>>,
+    pub message_count: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionCompressionError {
+    pub message: String,
+    pub outcome_unknown: bool,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct CronBlueprint {
     pub key: String,
@@ -2541,6 +2555,14 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<ChatPolicyMutationReceipt, String>,
     },
+    SessionCompressed {
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        result: Result<SessionCompressionResult, SessionCompressionError>,
+    },
     SessionDeleted {
         request_id: String,
         session_id: String,
@@ -2698,6 +2720,12 @@ enum GatewayCommand {
         profile: Option<String>,
         operation: String,
         payload: serde_json::Value,
+    },
+    CompressSession {
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
     },
     SubmitPrompt {
         session_id: String,
@@ -3150,6 +3178,12 @@ pub(crate) enum TestGatewayCommand {
         session_id: String,
         profile: Option<String>,
     },
+    CompressSession {
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
+    },
     SubmitPrompt {
         session_id: String,
         profile: Option<String>,
@@ -3284,6 +3318,17 @@ impl GatewayDiscovery {
                         submission_id,
                         text,
                         attachments,
+                    }),
+                    GatewayCommand::CompressSession {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                    } => Some(TestGatewayCommand::CompressSession {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
                     }),
                     GatewayCommand::EditPrompt {
                         session_id,
@@ -4418,8 +4463,20 @@ impl GatewayDiscovery {
     #[cfg(test)]
     pub(crate) fn for_test_transcript_refresh()
     -> (Self, Receiver<(String, String, Option<String>, String)>) {
+        let (discovery, _events, refreshes) = Self::for_test_transcript_refresh_with_events(None);
+        (discovery, refreshes)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test_transcript_refresh_with_events(
+        connection_id: Option<&str>,
+    ) -> (
+        Self,
+        mpsc::Sender<GatewayEvent>,
+        Receiver<(String, String, Option<String>, String)>,
+    ) {
         let (_status_sender, status_receiver) = mpsc::channel();
-        let (_event_sender, event_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
         let (command_sender, _command_receiver) = mpsc::channel();
         let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
         let (http_sender, http_receiver) = mpsc::channel();
@@ -4449,7 +4506,7 @@ impl GatewayDiscovery {
             Self {
                 status_receiver,
                 event_receiver,
-                connection_id: None,
+                connection_id: connection_id.map(str::to_owned),
                 command_sender,
                 plugin_update_all_sender,
                 http_sender,
@@ -4459,6 +4516,7 @@ impl GatewayDiscovery {
                 artifact_download_sender,
                 artifact_image_sender,
             },
+            event_sender,
             refresh_receiver,
         )
     }
@@ -4578,6 +4636,7 @@ impl GatewayDiscovery {
                                 &command_receiver,
                                 event_sender.clone(),
                                 &connected.endpoint.profile_id,
+                                Some(connected.endpoint.clone()),
                                 &mut replay_cursors,
                             );
                             let _ = socket.close(None);
@@ -4669,6 +4728,9 @@ impl GatewayDiscovery {
             | GatewayEvent::SlashCompletionLoaded { connection_id, .. }
             | GatewayEvent::DisplayReasoningLoaded { connection_id, .. }
             | GatewayEvent::DisplayReasoningSaved { connection_id, .. } => {
+                *connection_id = self.connection_id.clone();
+            }
+            GatewayEvent::SessionCompressed { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
             GatewayEvent::ServerEvent { connection_id, .. } => {
@@ -4770,6 +4832,32 @@ impl GatewayDiscovery {
                 profile,
                 operation,
                 payload,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn compress_session(
+        &self,
+        request_id: String,
+        session_id: String,
+        stored_session_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        if request_id.trim().is_empty()
+            || request_id.len() > 128
+            || session_id.trim().is_empty()
+            || session_id.len() > 512
+            || stored_session_id.trim().is_empty()
+            || stored_session_id.len() > 512
+        {
+            return Err("Hermes compression request identity is invalid".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::CompressSession {
+                request_id,
+                session_id,
+                stored_session_id,
+                profile,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -7181,7 +7269,7 @@ fn gateway_actor(
     events: mpsc::Sender<GatewayEvent>,
 ) {
     let mut replay_cursors = HashMap::new();
-    gateway_actor_with_replay(socket, commands, events, "", &mut replay_cursors);
+    gateway_actor_with_replay(socket, commands, events, "", None, &mut replay_cursors);
 }
 
 fn gateway_actor_with_replay(
@@ -7189,6 +7277,7 @@ fn gateway_actor_with_replay(
     commands: &Receiver<GatewayCommand>,
     events: mpsc::Sender<GatewayEvent>,
     profile: &str,
+    endpoint: Option<GatewayEndpoint>,
     replay_cursors: &mut HashMap<(String, String), GatewayReplayCursor>,
 ) {
     let mut next_request_id = 5_u64;
@@ -8254,6 +8343,85 @@ fn gateway_actor_with_replay(
                     .is_err()
                 {
                     return;
+                }
+            }
+            Ok(GatewayCommand::CompressSession {
+                request_id,
+                session_id,
+                stored_session_id,
+                profile,
+            }) => {
+                let Some(endpoint) = endpoint.clone() else {
+                    let _ = events.send(GatewayEvent::SessionCompressed {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                        connection_id: None,
+                        result: Err(SessionCompressionError {
+                            message: "Hermes compression requires an attached gateway endpoint"
+                                .into(),
+                            outcome_unknown: false,
+                        }),
+                    });
+                    continue;
+                };
+                if profile
+                    .as_deref()
+                    .is_some_and(|requested| requested != endpoint.profile_id)
+                {
+                    let _ = events.send(GatewayEvent::SessionCompressed {
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                        connection_id: None,
+                        result: Err(SessionCompressionError {
+                            message:
+                                "Hermes compression profile does not match the attached gateway"
+                                    .into(),
+                            outcome_unknown: false,
+                        }),
+                    });
+                    continue;
+                }
+                let worker_events = events.clone();
+                let fallback_request_id = request_id.clone();
+                let fallback_session_id = session_id.clone();
+                let fallback_stored_session_id = stored_session_id.clone();
+                let fallback_profile = profile.clone();
+                let spawn_result = thread::Builder::new()
+                    .name("hermes-session-compression".into())
+                    .spawn(move || {
+                        let result = compress_session_on_independent_socket(
+                            &endpoint,
+                            &session_id,
+                            &stored_session_id,
+                            profile.as_deref(),
+                            &request_id,
+                            &worker_events,
+                        );
+                        let _ = worker_events.send(GatewayEvent::SessionCompressed {
+                            request_id,
+                            session_id,
+                            stored_session_id,
+                            profile,
+                            connection_id: None,
+                            result,
+                        });
+                    });
+                if let Err(error) = spawn_result {
+                    let _ = events.send(GatewayEvent::SessionCompressed {
+                        request_id: fallback_request_id,
+                        session_id: fallback_session_id,
+                        stored_session_id: fallback_stored_session_id,
+                        profile: fallback_profile,
+                        connection_id: None,
+                        result: Err(SessionCompressionError {
+                            message: format!("Could not start Hermes compression worker: {error}"),
+                            outcome_unknown: false,
+                        }),
+                    });
                 }
             }
             Ok(GatewayCommand::CompleteSlash {
@@ -9402,6 +9570,216 @@ fn mutate_chat_policy_rpc(
     *next_request_id = next_request_id.saturating_add(1);
     let reply = reply?;
     parse_chat_policy_receipt(reply, session_id, operation, revision)
+}
+
+const SESSION_COMPRESS_TIMEOUT: Duration = Duration::from_millis(660_000);
+
+fn compress_session_on_independent_socket(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+    stored_session_id: &str,
+    profile: Option<&str>,
+    request_id: &str,
+    events: &mpsc::Sender<GatewayEvent>,
+) -> Result<SessionCompressionResult, SessionCompressionError> {
+    let fail = |message: String, outcome_unknown| SessionCompressionError {
+        message,
+        outcome_unknown,
+    };
+    if session_id.trim().is_empty()
+        || stored_session_id.trim().is_empty()
+        || request_id.trim().is_empty()
+        || profile.is_some_and(|value| value != endpoint.profile_id)
+    {
+        return Err(fail("Hermes compression owner is invalid".into(), false));
+    }
+    let mut socket = connect_gateway_endpoint(endpoint).map_err(|error| {
+        fail(
+            format!("Could not open a compression connection: {error}"),
+            false,
+        )
+    })?;
+    compress_session_on_socket(
+        &mut socket,
+        session_id,
+        stored_session_id,
+        profile,
+        request_id,
+        events,
+    )
+}
+
+fn compress_session_on_socket(
+    socket: &mut GatewaySocket,
+    session_id: &str,
+    stored_session_id: &str,
+    profile: Option<&str>,
+    request_id: &str,
+    events: &mpsc::Sender<GatewayEvent>,
+) -> Result<SessionCompressionResult, SessionCompressionError> {
+    let fail = |message: String, outcome_unknown| SessionCompressionError {
+        message,
+        outcome_unknown,
+    };
+    let snapshot_params = session_profile_params(
+        serde_json::json!({ "session_id": session_id, "omit_messages": true }),
+        profile,
+    )
+    .map_err(|error| fail(error, false))?;
+    let snapshot = rpc_with_events_timeout_outcome(
+        &mut *socket,
+        3,
+        "session.resume",
+        snapshot_params,
+        Duration::from_secs(60),
+        Some(events),
+    )
+    .map_err(|error| fail(error.message(), false))?;
+    let returned_runtime = snapshot
+        .get("session_id")
+        .and_then(serde_json::Value::as_str);
+    let returned_stored = snapshot
+        .get("stored_session_id")
+        .and_then(serde_json::Value::as_str);
+    if returned_runtime != Some(session_id) && returned_stored != Some(stored_session_id) {
+        return Err(fail(
+            "Hermes compression snapshot belongs to a different session".into(),
+            false,
+        ));
+    }
+    let revision = snapshot
+        .get("revision")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            fail(
+                "Hermes compression snapshot omitted its revision".into(),
+                false,
+            )
+        })?;
+    let generation = snapshot
+        .get("execution_generation")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| {
+            fail(
+                "Hermes compression snapshot omitted its execution generation".into(),
+                false,
+            )
+        })?;
+    let params = session_profile_params(
+        serde_json::json!({
+            "session_id": session_id,
+            "request_id": request_id,
+            "expected_revision": revision,
+            "expected_generation": generation,
+            "operation": "compress",
+            "payload": {},
+        }),
+        profile,
+    )
+    .map_err(|error| fail(error, false))?;
+    let receipt = rpc_with_events_timeout_outcome(
+        &mut *socket,
+        4,
+        "session.mutate",
+        params,
+        SESSION_COMPRESS_TIMEOUT,
+        Some(events),
+    )
+    .map_err(|error| {
+        let outcome_unknown = error.is_unknown();
+        fail(error.message(), outcome_unknown)
+    })?;
+    let status = receipt
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("committed");
+    if receipt
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        != Some(session_id)
+        || receipt.get("operation").and_then(serde_json::Value::as_str) != Some("compress")
+        || !matches!(status, "committed" | "pending" | "noop" | "preview")
+    {
+        return Err(fail(
+            "Hermes returned an invalid session compression receipt".into(),
+            true,
+        ));
+    }
+    if status == "committed"
+        && receipt
+            .get("revision")
+            .and_then(serde_json::Value::as_u64)
+            .is_none_or(|value| value <= revision)
+    {
+        return Err(fail(
+            "Hermes compression receipt did not advance its revision".into(),
+            true,
+        ));
+    }
+    if status == "pending" || status == "preview" {
+        return Ok(SessionCompressionResult {
+            status: status.to_owned(),
+            response: receipt,
+            messages: None,
+            message_count: None,
+        });
+    }
+    let resume_params = session_profile_params(
+        serde_json::json!({ "session_id": session_id, "omit_messages": false }),
+        profile,
+    )
+    .map_err(|error| fail(error, true))?;
+    let resumed = rpc_with_events_timeout_outcome(
+        &mut *socket,
+        5,
+        "session.resume",
+        resume_params,
+        Duration::from_secs(60),
+        Some(events),
+    )
+    .map_err(|error| fail(error.message(), true))?;
+    let resumed_runtime = resumed
+        .get("session_id")
+        .and_then(serde_json::Value::as_str);
+    let resumed_stored = resumed
+        .get("stored_session_id")
+        .and_then(serde_json::Value::as_str);
+    if resumed_runtime != Some(session_id) && resumed_stored != Some(stored_session_id) {
+        return Err(fail(
+            "Hermes returned a different session after compression".into(),
+            true,
+        ));
+    }
+    let messages = resumed
+        .get("messages")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .ok_or_else(|| {
+            fail(
+                "Hermes post-compression snapshot omitted messages".into(),
+                true,
+            )
+        })?;
+    if messages.len() > 50_000
+        || serde_json::to_string(&messages)
+            .map(|serialized| serialized.len() > 32 * 1024 * 1024)
+            .unwrap_or(true)
+    {
+        return Err(fail(
+            "Hermes post-compression transcript exceeds the safe limit".into(),
+            true,
+        ));
+    }
+    let message_count = resumed
+        .get("message_count")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(messages.len() as u64) as usize;
+    Ok(SessionCompressionResult {
+        status: status.to_owned(),
+        response: receipt,
+        messages: Some(messages),
+        message_count: Some(message_count),
+    })
 }
 
 fn parse_chat_policy_receipt(
@@ -26121,6 +26499,186 @@ mod tests {
             wrong_status.expect_err("refusal must not be painted as an applied change"),
             "Hermes returned an unsupported chat mutation status: refused"
         );
+    }
+
+    #[test]
+    fn context_compression_uses_revision_fenced_mutation_and_resumes_transcript() {
+        fn read_request<S: io::Read + io::Write>(
+            socket: &mut tungstenite::WebSocket<S>,
+        ) -> serde_json::Value {
+            match socket.read().expect("read request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected request, got {other:?}"),
+            }
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let snapshot = read_request(&mut socket);
+            assert_eq!(snapshot["id"], 3);
+            assert_eq!(snapshot["method"], "session.resume");
+            assert_eq!(snapshot["params"]["session_id"], "runtime-1");
+            assert_eq!(snapshot["params"]["profile"], "work");
+            assert_eq!(snapshot["params"]["omit_messages"], true);
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":3,"result":{
+                "session_id":"runtime-1","stored_session_id":"stored-1","revision":12,"execution_generation":9
+            }}).to_string().into())).expect("send snapshot");
+
+            let mutation = read_request(&mut socket);
+            assert_eq!(mutation["id"], 4);
+            assert_eq!(mutation["method"], "session.mutate");
+            assert_eq!(mutation["params"]["session_id"], "runtime-1");
+            assert_eq!(mutation["params"]["profile"], "work");
+            assert_eq!(mutation["params"]["request_id"], "compress-1");
+            assert_eq!(mutation["params"]["expected_revision"], 12);
+            assert_eq!(mutation["params"]["expected_generation"], 9);
+            assert_eq!(mutation["params"]["operation"], "compress");
+            assert_eq!(mutation["params"]["payload"], json!({}));
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":4,"result":{
+                "session_id":"runtime-1","operation":"compress","status":"committed","revision":13
+            }}).to_string().into())).expect("send compression receipt");
+
+            let resume = read_request(&mut socket);
+            assert_eq!(resume["id"], 5);
+            assert_eq!(resume["method"], "session.resume");
+            assert_eq!(resume["params"]["omit_messages"], false);
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":5,"result":{
+                "session_id":"runtime-1","stored_session_id":"stored-1","message_count":3,
+                "messages":[{"id":1,"role":"user","content":"earlier"},{"id":2,"role":"assistant","content":"summary"},{"id":3,"role":"user","content":"continue"}]
+            }}).to_string().into())).expect("send fresh transcript");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (events, _) = mpsc::channel();
+        let compressed = compress_session_on_socket(
+            &mut socket,
+            "runtime-1",
+            "stored-1",
+            Some("work"),
+            "compress-1",
+            &events,
+        )
+        .expect("compression and transcript refresh");
+        assert_eq!(compressed.status, "committed");
+        assert_eq!(compressed.response["revision"], 13);
+        assert_eq!(compressed.message_count, Some(3));
+        assert_eq!(compressed.messages.as_ref().map(Vec::len), Some(3));
+        assert_eq!(SESSION_COMPRESS_TIMEOUT, Duration::from_millis(660_000));
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn compression_dispatch_preserves_runtime_and_stored_session_identity() {
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        gateway
+            .compress_session(
+                "compress-1".into(),
+                "runtime-1".into(),
+                "stored-1".into(),
+                Some("work".into()),
+            )
+            .expect("queue compression command");
+        assert_eq!(
+            commands
+                .recv_timeout(Duration::from_secs(1))
+                .expect("compression command"),
+            TestGatewayCommand::CompressSession {
+                request_id: "compress-1".into(),
+                session_id: "runtime-1".into(),
+                stored_session_id: "stored-1".into(),
+                profile: Some("work".into()),
+            }
+        );
+        assert!(
+            gateway
+                .compress_session(" ".into(), "runtime-1".into(), "stored-1".into(), None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn background_compression_receipt_does_not_resume_until_compacted_event() {
+        fn read_request<S: io::Read + io::Write>(
+            socket: &mut tungstenite::WebSocket<S>,
+        ) -> serde_json::Value {
+            match socket.read().expect("read request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected request, got {other:?}"),
+            }
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let snapshot = read_request(&mut socket);
+            let snapshot_id = snapshot["id"].as_u64().expect("snapshot request ID");
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":snapshot_id,"result":{
+                "session_id":"runtime-1","stored_session_id":"stored-1","revision":12,"execution_generation":9
+            }}).to_string().into())).expect("send snapshot");
+            let mutation = read_request(&mut socket);
+            let mutation_id = mutation["id"].as_u64().expect("mutation request ID");
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":mutation_id,"result":{
+                "session_id":"runtime-1","operation":"compress","status":"pending","revision":13
+            }}).to_string().into())).expect("send pending receipt");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (events, _) = mpsc::channel();
+        let result = compress_session_on_socket(
+            &mut socket,
+            "runtime-1",
+            "stored-1",
+            Some("work"),
+            "compress-1",
+            &events,
+        )
+        .expect("background compression receipt");
+        assert_eq!(result.status, "pending");
+        assert!(result.messages.is_none());
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn compression_disconnect_after_mutation_is_marked_outcome_unknown() {
+        fn read_request<S: io::Read + io::Write>(
+            socket: &mut tungstenite::WebSocket<S>,
+        ) -> serde_json::Value {
+            match socket.read().expect("read request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected request, got {other:?}"),
+            }
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let snapshot = read_request(&mut socket);
+            let snapshot_id = snapshot["id"].as_u64().expect("snapshot request ID");
+            socket.send(Message::Text(json!({"jsonrpc":"2.0","id":snapshot_id,"result":{
+                "session_id":"runtime-1","stored_session_id":"stored-1","revision":12,"execution_generation":9
+            }}).to_string().into())).expect("send snapshot");
+            let _mutation = read_request(&mut socket);
+            socket.close(None).expect("close after accepted write");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (events, _) = mpsc::channel();
+        let error = compress_session_on_socket(
+            &mut socket,
+            "runtime-1",
+            "stored-1",
+            Some("work"),
+            "compress-1",
+            &events,
+        )
+        .expect_err("closed response leaves mutation outcome unknown");
+        assert!(error.outcome_unknown);
+        assert!(error.message.contains("disconnected") || error.message.contains("closed"));
+        server.join().expect("fixture server exits");
     }
 
     #[test]

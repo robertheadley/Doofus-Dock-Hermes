@@ -1354,6 +1354,21 @@ struct PendingActiveTranscriptRefresh {
     runtime_session_id: String,
     transcript_snapshot_hash: [u8; 32],
     transcript_snapshot_len: usize,
+    allow_local_error_rows: bool,
+    compression_request_id: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingSessionCompression {
+    request_id: String,
+    stored_session_id: String,
+    runtime_session_id: String,
+    profile: Option<String>,
+    endpoint_profile_id: String,
+    connection_id: String,
+    backend_pending: bool,
+    completion_notified: bool,
+    outcome_unknown: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -2059,6 +2074,7 @@ pub struct HermesNativeApp {
     chat_reasoning_effort: Option<String>,
     chat_reasoning_effort_wire: Option<String>,
     chat_policy_mutation: Option<PendingChatPolicyMutation>,
+    pending_session_compression: Option<PendingSessionCompression>,
     chat_policy_error: Option<String>,
     chat_model_confirmation: Option<PendingModelConfirmation>,
     message_edit: Option<MessageEditDraft>,
@@ -4562,6 +4578,7 @@ fn render_message() -> &'static str {
             chat_reasoning_effort: None,
             chat_reasoning_effort_wire: None,
             chat_policy_mutation: None,
+            pending_session_compression: None,
             chat_policy_error: None,
             chat_model_confirmation: None,
             message_edit: None,
@@ -7441,6 +7458,7 @@ fn render_message() -> &'static str {
             let mut retry_failed_submission = None;
             let mut start_new_session = false;
             let mut open_model_picker = false;
+            let mut compress_context_session: Option<(String, String, Option<String>)> = None;
             let mut open_provider_settings = None;
             let active_profile = self.active_session_profile.clone();
             let tool_images = messages
@@ -7666,6 +7684,56 @@ fn render_message() -> &'static str {
                                                     Some(submission_id),
                                                     false,
                                                 ));
+                                            }
+                                        }
+                                        FailedTurnRecoveryAction::CompressContext => {
+                                            let runtime_session_id =
+                                                self.active_runtime_session_id.clone();
+                                            let compression_state = self
+                                                .pending_session_compression
+                                                .as_ref()
+                                                .filter(|pending| {
+                                                    pending.stored_session_id == session_id
+                                                        && pending.profile == active_profile
+                                                });
+                                            let can_compress = self.gateway_connected
+                                                && self.pending_session_compression.is_none()
+                                                && active_pending.is_none()
+                                                && runtime_session_id.is_some();
+                                            let compress = ui
+                                                .add_enabled(
+                                                    can_compress,
+                                                    egui::Button::new(match compression_state {
+                                                        Some(pending) if pending.outcome_unknown => {
+                                                            "Compression outcome unknown"
+                                                        }
+                                                        Some(_) => "Compression in progress…",
+                                                        None => "Compress context",
+                                                    }),
+                                                )
+                                                .accessible_name(
+                                                    "Compress the current Hermes conversation and keep this session",
+                                                );
+                                            if compress.clicked()
+                                                && let Some(runtime_session_id) =
+                                                    runtime_session_id
+                                            {
+                                                compress_context_session = Some((
+                                                    session_id.to_owned(),
+                                                    runtime_session_id,
+                                                    active_profile.clone(),
+                                                ));
+                                            }
+                                            let start = ui
+                                                .add_enabled(
+                                                    self.pending_create.is_none(),
+                                                    egui::Button::new("Start new session"),
+                                                )
+                                                .accessible_name(
+                                                    "Start a new Hermes session with fresh context",
+                                                );
+                                            if start.clicked() {
+                                                start_new_session = true;
                                             }
                                         }
                                         FailedTurnRecoveryAction::StartNewSession => {
@@ -8037,6 +8105,10 @@ fn render_message() -> &'static str {
             }
             if start_new_session {
                 self.create_blank_session_tab();
+            }
+            if let Some((stored_session_id, runtime_session_id, profile)) = compress_context_session
+            {
+                self.begin_session_compression(stored_session_id, runtime_session_id, profile);
             }
             if open_model_picker {
                 self.chat_model_picker_requested = true;
@@ -17042,6 +17114,17 @@ fn render_message() -> &'static str {
     }
 
     fn refresh_active_transcript_after_change(&mut self) {
+        self.refresh_active_transcript_after_change_with_error_policy(false);
+    }
+
+    fn refresh_active_transcript_after_compression(&mut self) {
+        self.refresh_active_transcript_after_change_with_error_policy(true);
+    }
+
+    fn refresh_active_transcript_after_change_with_error_policy(
+        &mut self,
+        allow_local_error_rows: bool,
+    ) {
         let AppRoute::Session(stored_session_id) = &self.route else {
             return;
         };
@@ -17050,7 +17133,8 @@ fn render_message() -> &'static str {
             || self.transcript.iter().any(|message| {
                 message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
             })
-            || transcript_contains_local_pending_or_error(&self.transcript)
+            || (!allow_local_error_rows
+                && transcript_contains_local_pending_or_error(&self.transcript))
         {
             return;
         }
@@ -17097,6 +17181,14 @@ fn render_message() -> &'static str {
             runtime_session_id,
             transcript_snapshot_hash: transcript_fingerprint(&self.transcript),
             transcript_snapshot_len: self.transcript.len(),
+            allow_local_error_rows,
+            compression_request_id: allow_local_error_rows
+                .then(|| {
+                    self.pending_session_compression
+                        .as_ref()
+                        .map(|p| p.request_id.clone())
+                })
+                .flatten(),
         });
     }
 
@@ -17137,7 +17229,8 @@ fn render_message() -> &'static str {
                 .pending_interrupt
                 .as_ref()
                 .is_some_and(|(_, session)| session == runtime_session_id)
-            && !transcript_contains_local_pending_or_error(&self.transcript)
+            && (pending.allow_local_error_rows
+                || !transcript_contains_local_pending_or_error(&self.transcript))
             && !self.transcript.iter().any(|message| {
                 message.get("streaming").and_then(|value| value.as_bool()) == Some(true)
             });
@@ -17149,12 +17242,16 @@ fn render_message() -> &'static str {
             return;
         }
         match result.and_then(|page| {
-            merge_refreshed_transcript_tail(
-                page.messages,
-                self.transcript.clone(),
-                page.replace_all,
-            )
-            .map(|messages| (messages, page.has_more, page.replace_all))
+            let messages = if pending.allow_local_error_rows {
+                merge_older_transcript_page(self.transcript.clone(), page.messages)
+            } else {
+                merge_refreshed_transcript_tail(
+                    page.messages,
+                    self.transcript.clone(),
+                    page.replace_all,
+                )?
+            };
+            Ok((messages, page.has_more, page.replace_all))
         }) {
             Ok((messages, has_more, replace_all)) => {
                 let previous_has_more = self.transcript_has_more;
@@ -17167,11 +17264,90 @@ fn render_message() -> &'static str {
                     previous_has_more || has_more
                 };
                 self.save_active_chat_view();
+                if pending
+                    .compression_request_id
+                    .as_ref()
+                    .is_some_and(|request_id| {
+                        self.pending_session_compression
+                            .as_ref()
+                            .is_some_and(|compression| &compression.request_id == request_id)
+                    })
+                {
+                    self.pending_session_compression = None;
+                    self.status =
+                        "Hermes compressed the conversation; this session is ready to continue"
+                            .into();
+                }
             }
             Err(error) => {
                 self.status = format!("Could not refresh the active transcript: {error}");
+                if pending
+                    .compression_request_id
+                    .as_ref()
+                    .is_some_and(|request_id| {
+                        self.pending_session_compression
+                            .as_ref()
+                            .is_some_and(|compression| &compression.request_id == request_id)
+                    })
+                {
+                    self.pending_session_compression = None;
+                }
             }
         }
+    }
+
+    fn begin_session_compression(
+        &mut self,
+        stored_session_id: String,
+        runtime_session_id: String,
+        profile: Option<String>,
+    ) {
+        if self.pending_session_compression.is_some()
+            || self.route != AppRoute::Session(stored_session_id.clone())
+            || self.active_runtime_session_id.as_deref() != Some(runtime_session_id.as_str())
+            || self.active_session_profile != profile
+        {
+            return;
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.status = "Hermes gateway is unavailable for compression".into();
+            return;
+        };
+        if profile
+            .as_deref()
+            .is_some_and(|value| value != endpoint.profile_id)
+        {
+            self.status = "The active gateway profile changed; reconnect before compressing".into();
+            return;
+        }
+        let endpoint_profile_id = endpoint.profile_id.clone();
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let request_id = operation_id("session-compress");
+        let Some(gateway) = &self.gateway_discovery else {
+            self.status = "Hermes gateway writer is unavailable".into();
+            return;
+        };
+        if let Err(error) = gateway.compress_session(
+            request_id.clone(),
+            runtime_session_id.clone(),
+            stored_session_id.clone(),
+            profile.clone(),
+        ) {
+            self.status = format!("Could not start conversation compression: {error}");
+            return;
+        }
+        self.pending_session_compression = Some(PendingSessionCompression {
+            request_id,
+            stored_session_id,
+            runtime_session_id,
+            profile,
+            endpoint_profile_id,
+            connection_id,
+            backend_pending: false,
+            completion_notified: false,
+            outcome_unknown: false,
+        });
+        self.status = "Hermes is compressing this conversation…".into();
     }
 
     fn refresh_peer_transcript_targets(&mut self, stored_session_id: &str) {
@@ -21502,6 +21678,44 @@ fn render_message() -> &'static str {
             .get("payload")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+        if event_type == "status.update"
+            && payload.get("kind").and_then(serde_json::Value::as_str) == Some("compacted")
+        {
+            let event_profile = event
+                .get("profile")
+                .or_else(|| payload.get("profile"))
+                .and_then(serde_json::Value::as_str);
+            let active_connection = self.active_gateway_connection_id().to_owned();
+            let endpoint_profile = self
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+                .unwrap_or_default();
+            let completed = self
+                .pending_session_compression
+                .as_mut()
+                .filter(|pending| {
+                    pending.runtime_session_id == session_id.unwrap_or_default()
+                        && pending.connection_id == active_connection
+                        && pending.endpoint_profile_id == endpoint_profile
+                        && event_profile
+                            .is_none_or(|profile| pending.profile.as_deref() == Some(profile))
+                })
+                .map(|pending| {
+                    pending.completion_notified = true;
+                    pending.request_id.clone()
+                });
+            if completed.is_some()
+                && self
+                    .pending_session_compression
+                    .as_ref()
+                    .is_some_and(|pending| {
+                        self.route == AppRoute::Session(pending.stored_session_id.clone())
+                    })
+            {
+                self.refresh_active_transcript_after_compression();
+            }
+        }
         if event_type == "request.cancel" {
             let event_profile = event
                 .get("profile")
@@ -33374,6 +33588,105 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::SessionCompressed {
+                    request_id,
+                    session_id,
+                    stored_session_id,
+                    profile,
+                    connection_id,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_session_compression.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.runtime_session_id != session_id
+                        || pending.stored_session_id != stored_session_id
+                        || pending.profile != profile
+                        || pending.connection_id != connection_id.as_deref().unwrap_or_default()
+                        || pending.endpoint_profile_id
+                            != self
+                                .gateway_endpoint
+                                .as_ref()
+                                .map(|endpoint| endpoint.profile_id.as_str())
+                                .unwrap_or_default()
+                    {
+                        continue;
+                    }
+                    match result {
+                        Err(error) if error.outcome_unknown => {
+                            if let Some(pending) = self.pending_session_compression.as_mut() {
+                                pending.outcome_unknown = true;
+                            }
+                            self.status = format!(
+                                "Compression may have completed. Do not retry it; reconnect or reopen the session to check. {}",
+                                error.message
+                            );
+                        }
+                        Err(error) => {
+                            self.pending_session_compression = None;
+                            self.status =
+                                format!("Could not compress this conversation: {}", error.message);
+                        }
+                        Ok(compressed) if compressed.status == "pending" => {
+                            let completion_notified =
+                                if let Some(pending) = self.pending_session_compression.as_mut() {
+                                    pending.backend_pending = true;
+                                    pending.completion_notified
+                                } else {
+                                    false
+                                };
+                            self.status = if completion_notified {
+                                "Hermes finished compression; refreshing the conversation…".into()
+                            } else {
+                                "Hermes is compressing this conversation in the background…".into()
+                            };
+                            if completion_notified {
+                                self.refresh_active_transcript_after_compression();
+                            }
+                        }
+                        Ok(compressed) if compressed.status == "preview" => {
+                            self.pending_session_compression = None;
+                            self.status =
+                                "Hermes previewed the compression without changing this session"
+                                    .into();
+                        }
+                        Ok(compressed) => {
+                            let active_owner = self.route
+                                == AppRoute::Session(stored_session_id.clone())
+                                && self.active_runtime_session_id.as_deref()
+                                    == Some(session_id.as_str())
+                                && self.active_session_profile == profile
+                                && self.active_gateway_connection_id()
+                                    == connection_id.as_deref().unwrap_or_default();
+                            if let Some(messages) = compressed.messages {
+                                if active_owner {
+                                    let had_older_history = self.transcript_has_more;
+                                    self.transcript = merge_older_transcript_page(
+                                        self.transcript.clone(),
+                                        messages,
+                                    );
+                                    self.transcript_message_count = self
+                                        .transcript_message_count
+                                        .max(compressed.message_count.unwrap_or_default())
+                                        .max(self.transcript.len());
+                                    self.transcript_has_more = had_older_history;
+                                    self.save_active_chat_view();
+                                    self.status = "Hermes compressed the conversation; this session is ready to continue".into();
+                                } else {
+                                    self.status = "Hermes compressed the conversation; reopen the session to continue".into();
+                                }
+                                self.pending_session_compression = None;
+                            } else if self
+                                .pending_session_compression
+                                .as_ref()
+                                .is_some_and(|pending| pending.completion_notified)
+                            {
+                                self.refresh_active_transcript_after_compression();
+                            }
+                        }
+                    }
+                }
                 GatewayEvent::SlashCompletionLoaded {
                     request_id,
                     query,
@@ -36586,7 +36899,7 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
         )),
         "context_overflow" => Some((
             "This conversation is too long for the selected model".into(),
-            "Start a new session to continue with a fresh context. Transcript compression is not available in this native client yet.".into(),
+            "Compress the conversation to keep working in this session, or start a new session with a fresh context.".into(),
         )),
         "payload_too_large" => Some((
             "This message is too large".into(),
@@ -36669,6 +36982,7 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FailedTurnRecoveryAction {
     EditPrompt,
+    CompressContext,
     StartNewSession,
     ChooseModel,
     ProviderPolicy,
@@ -36679,8 +36993,8 @@ fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurn
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
         "model_not_found" | "free_tier_at_capacity" => Some(FailedTurnRecoveryAction::ChooseModel),
         "provider_policy_blocked" => Some(FailedTurnRecoveryAction::ProviderPolicy),
-        "context_overflow"
-        | "payload_too_large"
+        "context_overflow" => Some(FailedTurnRecoveryAction::CompressContext),
+        "payload_too_large"
         | "SESSION_NOT_OWNED"
         | "session_read_only"
         | "cron_session_read_only"
@@ -39550,7 +39864,7 @@ mod tests {
             ),
             (
                 "context_overflow",
-                Some(FailedTurnRecoveryAction::StartNewSession),
+                Some(FailedTurnRecoveryAction::CompressContext),
                 true,
             ),
             (
@@ -39677,7 +39991,12 @@ mod tests {
         );
         assert!(
             harness
-                .query_by_label("Start a new Hermes session after this turn failure")
+                .query_by_label("Compress the current Hermes conversation and keep this session")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Start a new Hermes session with fresh context")
                 .is_some()
         );
         assert!(
@@ -47497,6 +47816,155 @@ mod tests {
     }
 
     #[test]
+    fn compacted_event_refreshes_failed_transcript_and_clears_compression_state() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, events, refreshes) =
+            GatewayDiscovery::for_test_transcript_refresh_with_events(Some("conn-1"));
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("conn-1".into());
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "instance-1".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-1".into());
+        app.active_runtime_session_id = Some("runtime-1".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            json!({"id":1,"role":"user","content":"too large"}),
+            json!({"id":2,"role":"assistant","error":"context overflow","error_surface":{"code":"context_overflow"}}),
+        ];
+        let original = app.transcript.clone();
+        app.pending_session_compression = Some(PendingSessionCompression {
+            request_id: "compress-1".into(),
+            stored_session_id: "stored-1".into(),
+            runtime_session_id: "runtime-1".into(),
+            profile: Some("work".into()),
+            endpoint_profile_id: "work".into(),
+            connection_id: "conn-1".into(),
+            backend_pending: true,
+            completion_notified: false,
+            outcome_unknown: false,
+        });
+        events
+            .send(GatewayEvent::ServerEvent {
+                event: json!({
+                    "type":"status.update",
+                    "session_id":"runtime-1",
+                    "profile":"work",
+                    "payload":{"kind":"compacted"}
+                }),
+                connection_id: None,
+            })
+            .expect("send compaction-complete event");
+        app.update_gateway_discovery(&egui::Context::default());
+        let (request_id, stored_id, profile, runtime_id) = refreshes
+            .recv_timeout(Duration::from_secs(1))
+            .expect("refresh request");
+        assert_eq!(stored_id, "stored-1");
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert_eq!(runtime_id, "runtime-1");
+        assert_ne!(request_id, "compress-1");
+        assert_eq!(
+            app.transcript, original,
+            "keep the visible failure while refreshing"
+        );
+        assert!(
+            app.active_transcript_refresh
+                .as_ref()
+                .is_some_and(|refresh| refresh.allow_local_error_rows)
+        );
+
+        let mut refreshed = original.clone();
+        refreshed.push(json!({"id":3,"role":"assistant","content":"compressed summary"}));
+        events
+            .send(GatewayEvent::ActiveTranscriptRefreshed {
+                request_id,
+                session_id: "stored-1".into(),
+                profile: Some("work".into()),
+                endpoint_profile_id: "work".into(),
+                runtime_session_id: "runtime-1".into(),
+                result: Ok(crate::gateway::OlderTranscriptPage {
+                    messages: refreshed,
+                    has_more: false,
+                    replace_all: false,
+                }),
+            })
+            .expect("send fresh transcript");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), original.len() + 1);
+        assert_eq!(app.transcript[0], original[0]);
+        assert_eq!(app.transcript[1], original[1]);
+        assert_eq!(app.transcript[2]["content"], "compressed summary");
+        assert!(app.pending_session_compression.is_none());
+        assert!(app.active_transcript_refresh.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn unknown_compression_outcome_stays_visible_and_blocks_an_unsafe_retry() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, events) = GatewayDiscovery::for_test_event_poll(Some("conn-1"));
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("conn-1".into());
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "instance-1".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-1".into());
+        app.active_runtime_session_id = Some("runtime-1".into());
+        app.active_session_profile = Some("work".into());
+        app.pending_session_compression = Some(PendingSessionCompression {
+            request_id: "compress-1".into(),
+            stored_session_id: "stored-1".into(),
+            runtime_session_id: "runtime-1".into(),
+            profile: Some("work".into()),
+            endpoint_profile_id: "work".into(),
+            connection_id: "conn-1".into(),
+            backend_pending: false,
+            completion_notified: false,
+            outcome_unknown: false,
+        });
+        events
+            .send(GatewayEvent::SessionCompressed {
+                request_id: "compress-1".into(),
+                session_id: "runtime-1".into(),
+                stored_session_id: "stored-1".into(),
+                profile: Some("work".into()),
+                connection_id: None,
+                result: Err(crate::gateway::SessionCompressionError {
+                    message: "Hermes disconnected during session.mutate".into(),
+                    outcome_unknown: true,
+                }),
+            })
+            .expect("send unknown compression result");
+        app.update_gateway_discovery(&egui::Context::default());
+        let pending = app
+            .pending_session_compression
+            .as_ref()
+            .expect("uncertain write stays pending and cannot be retried");
+        assert!(pending.outcome_unknown);
+        assert_eq!(pending.request_id, "compress-1");
+        assert!(app.status.contains("Do not retry it"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn older_prompt_lookup_uses_the_nearest_predecessor_and_checks_contiguity() {
         let entries = vec![
             crate::gateway::PromptTimelineEntry {
@@ -47733,6 +48201,8 @@ mod tests {
             runtime_session_id: "runtime-session".into(),
             transcript_snapshot_hash: transcript_fingerprint(&initial),
             transcript_snapshot_len: initial.len(),
+            allow_local_error_rows: false,
+            compression_request_id: None,
         });
         app.settle_active_transcript_refresh(
             "refresh-1",
@@ -47782,6 +48252,8 @@ mod tests {
             runtime_session_id: "runtime-session".into(),
             transcript_snapshot_hash: transcript_fingerprint(&before_new_event),
             transcript_snapshot_len: before_new_event.len(),
+            allow_local_error_rows: false,
+            compression_request_id: None,
         });
         app.transcript
             .push(json!({"id":5,"role":"assistant","streaming":false}));
@@ -47814,6 +48286,8 @@ mod tests {
             runtime_session_id: "runtime-session".into(),
             transcript_snapshot_hash: transcript_fingerprint(&busy),
             transcript_snapshot_len: busy.len(),
+            allow_local_error_rows: false,
+            compression_request_id: None,
         });
         app.settle_active_transcript_refresh(
             "refresh-3",
