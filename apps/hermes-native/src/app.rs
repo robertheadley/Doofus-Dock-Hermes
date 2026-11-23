@@ -1450,6 +1450,15 @@ struct PendingChatPolicyMutation {
 }
 
 #[derive(Clone, Debug)]
+struct PendingKeepGoingOnCreditsMutation {
+    request_id: String,
+    session_id: String,
+    profile: Option<String>,
+    connection_id: String,
+    retry_submission_id: String,
+}
+
+#[derive(Clone, Debug)]
 struct PendingModelConfirmation {
     model: String,
     provider: String,
@@ -2086,6 +2095,7 @@ pub struct HermesNativeApp {
     chat_reasoning_effort: Option<String>,
     chat_reasoning_effort_wire: Option<String>,
     chat_policy_mutation: Option<PendingChatPolicyMutation>,
+    keep_going_on_credits_mutation: Option<PendingKeepGoingOnCreditsMutation>,
     pending_session_compression: Option<PendingSessionCompression>,
     scheduled_failed_turn_retry: Option<ScheduledFailedTurnRetry>,
     chat_policy_error: Option<String>,
@@ -4591,6 +4601,7 @@ fn render_message() -> &'static str {
             chat_reasoning_effort: None,
             chat_reasoning_effort_wire: None,
             chat_policy_mutation: None,
+            keep_going_on_credits_mutation: None,
             pending_session_compression: None,
             scheduled_failed_turn_retry: None,
             chat_policy_error: None,
@@ -7473,6 +7484,7 @@ fn render_message() -> &'static str {
             let mut schedule_failed_turn_retry = None;
             let mut cancel_scheduled_failed_turn_retry = false;
             let mut usage_window_model_retry = None;
+            let mut usage_window_credit_retry = None;
             let mut start_new_session = false;
             let mut open_model_picker = false;
             let mut compress_context_session: Option<(String, String, Option<String>)> = None;
@@ -7848,6 +7860,32 @@ fn render_message() -> &'static str {
                                                         suggestion.provider,
                                                         submission_id.to_owned(),
                                                     ));
+                                                }
+                                            }
+                                            if usage_window_use_credits_allowed(&message)
+                                                && let Some(submission_id) = submission_id
+                                            {
+                                                let use_credits = ui
+                                                    .add_enabled(
+                                                        is_current_failed_turn
+                                                            && self.gateway_connected
+                                                            && self.keep_going_on_credits_mutation.is_none()
+                                                            && self.chat_policy_mutation.is_none()
+                                                            && !retry_pending
+                                                            && self.draft.trim().is_empty()
+                                                            && self.composer_attachments.is_empty(),
+                                                        egui::Button::new(if self.keep_going_on_credits_mutation.is_some() {
+                                                            "Enabling credits…"
+                                                        } else {
+                                                            "Use credits"
+                                                        }),
+                                                    )
+                                                    .accessible_name(
+                                                        "Enable Hermes credits and retry the failed prompt after confirmation",
+                                                    );
+                                                if use_credits.clicked() {
+                                                    usage_window_credit_retry =
+                                                        Some(submission_id.to_owned());
                                                 }
                                             }
                                             if usage_window_billing_portal_allowed(&message)
@@ -8258,6 +8296,9 @@ fn render_message() -> &'static str {
             }
             if let Some((model, provider, submission_id)) = usage_window_model_retry {
                 self.mutate_model_and_retry_failed_turn(model, provider, submission_id);
+            }
+            if let Some(submission_id) = usage_window_credit_retry {
+                self.enable_credits_and_retry_failed_turn(&submission_id);
             }
             if cancel_scheduled_failed_turn_retry {
                 self.scheduled_failed_turn_retry = None;
@@ -16502,6 +16543,77 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn enable_credits_and_retry_failed_turn(&mut self, submission_id: &str) {
+        if self.keep_going_on_credits_mutation.is_some() {
+            return;
+        }
+        if !self.gateway_connected {
+            self.chat_policy_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        }
+        if !self.draft.trim().is_empty() || !self.composer_attachments.is_empty() {
+            self.status =
+                "Send or clear the current draft before using credits for the failed message"
+                    .into();
+            return;
+        }
+        let Some(session_id) = self.active_runtime_session_id.clone() else {
+            return;
+        };
+        let profile = self.active_session_profile.clone();
+        let Some(message) = self.transcript.last() else {
+            return;
+        };
+        if message.get("role").and_then(serde_json::Value::as_str) != Some("assistant")
+            || message
+                .get("retry_submission_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(submission_id)
+            || message
+                .get("retry_session_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(session_id.as_str())
+            || message
+                .get("retry_profile")
+                .and_then(serde_json::Value::as_str)
+                != profile.as_deref()
+            || !usage_window_use_credits_allowed(message)
+        {
+            self.status = "The failed message is no longer eligible for the credits action".into();
+            return;
+        }
+        if self
+            .pending_submissions
+            .contains_key(&self.session_identity_key(&session_id, profile.as_deref()))
+        {
+            self.status = "Wait for the current Hermes message before using credits".into();
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            self.chat_policy_error = Some("Hermes Gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("billing-credits");
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        if let Err(error) = gateway.enable_keep_going_on_credits(
+            request_id.clone(),
+            session_id.clone(),
+            profile.clone(),
+        ) {
+            self.chat_policy_error = Some(error);
+            return;
+        }
+        self.keep_going_on_credits_mutation = Some(PendingKeepGoingOnCreditsMutation {
+            request_id,
+            session_id,
+            profile,
+            connection_id,
+            retry_submission_id: submission_id.to_owned(),
+        });
+        self.chat_policy_error = None;
+        self.status = "Waiting for Hermes to confirm the credits setting".into();
+    }
+
     fn composer(&mut self, ui: &mut Ui) {
         self.sync_slash_completion_query();
         let session_id = self.active_runtime_session_id.clone();
@@ -20354,11 +20466,15 @@ fn render_message() -> &'static str {
         self.retry_failed_submission_with_recovery(submission_id, None, true);
     }
 
+    fn retry_failed_submission_after_usage_window_recovery(&mut self, submission_id: &str) {
+        self.retry_failed_submission_with_recovery(submission_id, None, true);
+    }
+
     fn retry_failed_submission_with_recovery(
         &mut self,
         submission_id: &str,
         scheduled_reset_at_ms: Option<u64>,
-        usage_window_model_recovery: bool,
+        usage_window_recovery: bool,
     ) {
         if !self.draft.trim().is_empty() || !self.composer_attachments.is_empty() {
             self.status =
@@ -20387,14 +20503,14 @@ fn render_message() -> &'static str {
         let retry_after_reset_allowed = scheduled_reset_at_ms.is_some_and(|resets_at_ms| {
             scheduled_retry_is_due_for_message(message, resets_at_ms, current_unix_millis())
         });
-        let model_recovery_allowed = usage_window_model_recovery
+        let usage_window_recovery_allowed = usage_window_recovery
             && message
                 .pointer("/error_surface/code")
                 .and_then(serde_json::Value::as_str)
                 == Some("usage_window");
         if !failed_turn_retry_allowed(message)
             && !retry_after_reset_allowed
-            && !model_recovery_allowed
+            && !usage_window_recovery_allowed
         {
             self.status = "Hermes marked this failure as not retryable".into();
             return;
@@ -33938,6 +34054,53 @@ fn render_message() -> &'static str {
                         }
                     }
                 }
+                GatewayEvent::KeepGoingOnCreditsUpdated {
+                    request_id,
+                    session_id,
+                    profile,
+                    result,
+                } => {
+                    let Some(pending) = self.keep_going_on_credits_mutation.as_ref() else {
+                        continue;
+                    };
+                    let active_profile = self.active_session_profile.clone().or_else(|| {
+                        self.gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.clone())
+                    });
+                    if !chat_control_event_matches(
+                        &pending.request_id,
+                        &pending.session_id,
+                        &pending.profile,
+                        &pending.connection_id,
+                        &request_id,
+                        &session_id,
+                        &profile,
+                        self.active_runtime_session_id.as_deref(),
+                        &active_profile,
+                        self.active_gateway_connection_id(),
+                    ) {
+                        continue;
+                    }
+                    let pending = self
+                        .keep_going_on_credits_mutation
+                        .take()
+                        .expect("matching credits receipt has a pending mutation");
+                    match result {
+                        Ok(()) => {
+                            self.chat_policy_error = None;
+                            self.retry_failed_submission_after_usage_window_recovery(
+                                &pending.retry_submission_id,
+                            );
+                        }
+                        Err(error) => {
+                            self.chat_policy_error = Some(error.clone());
+                            self.status = format!(
+                                "Hermes did not confirm enabling credits; the failed prompt was not retried: {error}"
+                            );
+                        }
+                    }
+                }
                 GatewayEvent::SessionCompressed {
                     request_id,
                     session_id,
@@ -36207,6 +36370,12 @@ fn render_message() -> &'static str {
                         .as_ref()
                         .map(|endpoint| endpoint.profile_id.clone());
                     self.gateway_connected = false;
+                    if self.keep_going_on_credits_mutation.take().is_some() {
+                        let note = "Credits setting outcome is unknown after Gateway disconnect; the failed prompt was not retried";
+                        self.chat_policy_error = Some(note.into());
+                        self.status = note.into();
+                        disconnect_uncertainty.push(note.into());
+                    }
                     self.bot_roster_refresh = None;
                     self.active_status_refresh = None;
                     self.active_status_refresh_again = false;
@@ -37401,6 +37570,28 @@ fn usage_window_model_suggestion(
         note: note.to_owned(),
         provider: provider.to_owned(),
     })
+}
+
+fn usage_window_use_credits_allowed(message: &serde_json::Value) -> bool {
+    if message
+        .pointer("/error_surface/code")
+        .and_then(serde_json::Value::as_str)
+        != Some("usage_window")
+        || !usage_window_billing_portal_allowed(message)
+    {
+        return false;
+    }
+    let Some(usage_limit) = message
+        .pointer("/error_surface/usage_limit")
+        .or_else(|| message.pointer("/error_surface/usageLimit"))
+    else {
+        return false;
+    };
+    usage_limit
+        .pointer("/credits/action")
+        .or_else(|| usage_limit.pointer("/creditsAction"))
+        .and_then(serde_json::Value::as_str)
+        == Some("use_credits")
 }
 
 fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurnRecoveryAction> {
@@ -40505,6 +40696,23 @@ mod tests {
             })
         );
         assert!(usage_window_billing_portal_allowed(&usage_window));
+        assert!(!usage_window_use_credits_allowed(&usage_window));
+        assert!(usage_window_use_credits_allowed(&serde_json::json!({
+            "error_surface":{"code":"usage_window","provider":"nous",
+                "usage_limit":{"credits":{"action":"use_credits"}}}
+        })));
+        assert!(usage_window_use_credits_allowed(&serde_json::json!({
+            "error_surface":{"code":"usage_window",
+                "usageLimit":{"credits":{"action":"use_credits"}}}
+        })));
+        assert!(!usage_window_use_credits_allowed(&serde_json::json!({
+            "error_surface":{"code":"usage_window","provider":"openai",
+                "usage_limit":{"credits":{"action":"use_credits"}}}
+        })));
+        assert!(!usage_window_use_credits_allowed(&serde_json::json!({
+            "error_surface":{"code":"usage_window",
+                "usage_limit":{"credits":{"action":"add_credits"}}}
+        })));
         assert!(!usage_window_billing_portal_allowed(&serde_json::json!({
             "error_surface":{"code":"usage_window","provider":"other"}
         })));
@@ -55742,6 +55950,208 @@ mod tests {
         assert_eq!(pending.submission_id, "submission-1");
         assert!(pending.retrying_failed_turn);
         drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn usage_window_credits_retry_waits_for_profile_scoped_success_receipt() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript.push(serde_json::json!({
+            "id":"submission-credits-1","submission_id":"submission-credits-1",
+            "role":"user","content":"hello"
+        }));
+        app.transcript.push(serde_json::json!({
+            "role":"assistant","error":"Plan usage limit reached",
+            "retry_submission_id":"submission-credits-1","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_display_text":"hello",
+            "retry_attachments":[],
+            "error_surface":{"code":"usage_window","provider":"nous","retryable":false,
+                "usage_limit":{"credits":{"action":"use_credits"}}}
+        }));
+
+        app.enable_credits_and_retry_failed_turn("submission-credits-1");
+        let crate::gateway::TestGatewayCommand::KeepGoingOnCredits {
+            request_id,
+            session_id,
+            profile,
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("explicit credits action queues its profile-scoped update")
+        else {
+            panic!("expected keep-going-on-credits command");
+        };
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert!(
+            commands.try_recv().is_err(),
+            "turn is not retried before receipt"
+        );
+
+        events
+            .send(GatewayEvent::KeepGoingOnCreditsUpdated {
+                request_id: request_id.clone(),
+                session_id: session_id.clone(),
+                profile: Some("personal".into()),
+                result: Ok(()),
+            })
+            .expect("deliver stale profile receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(app.keep_going_on_credits_mutation.is_some());
+        assert!(commands.try_recv().is_err(), "stale profile cannot retry");
+
+        events
+            .send(GatewayEvent::KeepGoingOnCreditsUpdated {
+                request_id,
+                session_id,
+                profile,
+                result: Ok(()),
+            })
+            .expect("deliver accepted credits update");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("confirmed credits setting retries the same prompt"),
+            crate::gateway::TestGatewayCommand::SubmitPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                submission_id: "submission-credits-1".into(),
+                text: "hello".into(),
+                attachments: vec![],
+            }
+        );
+        assert!(commands.try_recv().is_err(), "only one retry is emitted");
+        assert!(app.keep_going_on_credits_mutation.is_none());
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "retry preserves one optimistic user row"
+        );
+        let pending_key = app.session_identity_key("runtime-session", Some("work"));
+        assert!(app.pending_submissions[&pending_key].retrying_failed_turn);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn usage_window_credits_refusal_never_retries() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript.push(serde_json::json!({
+            "role":"assistant","error":"Plan usage limit reached",
+            "retry_submission_id":"submission-credits-2","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_attachments":[],
+            "error_surface":{"code":"usage_window","provider":"nous",
+                "usage_limit":{"credits":{"action":"use_credits"}}}
+        }));
+        app.enable_credits_and_retry_failed_turn("submission-credits-2");
+        let crate::gateway::TestGatewayCommand::KeepGoingOnCredits {
+            request_id,
+            session_id,
+            profile,
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap()
+        else {
+            panic!("expected keep-going-on-credits command");
+        };
+        events
+            .send(GatewayEvent::KeepGoingOnCreditsUpdated {
+                request_id,
+                session_id,
+                profile,
+                result: Err("billing:manage scope is required".into()),
+            })
+            .expect("deliver refusal");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            commands.try_recv().is_err(),
+            "refusal never retries the failed prompt"
+        );
+        assert!(app.pending_submissions.is_empty());
+        assert!(app.keep_going_on_credits_mutation.is_none());
+        assert_eq!(
+            app.chat_policy_error.as_deref(),
+            Some("billing:manage scope is required")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn rendered_usage_window_credits_action_sends_only_after_explicit_click() {
+        let (mut native, profile_dir) = isolated_app();
+        let connection_id = native.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_create_and_submit();
+        native.gateway_discovery = Some(gateway);
+        native.gateway_connection_id = Some(connection_id);
+        native.gateway_connected = true;
+        native.route = AppRoute::Session("stored-session".into());
+        native.active_runtime_session_id = Some("runtime-session".into());
+        native.active_session_profile = Some("work".into());
+        native.transcript.push(serde_json::json!({
+            "id":"submission-credits-ui","submission_id":"submission-credits-ui",
+            "role":"user","content":"hello"
+        }));
+        native.transcript.push(serde_json::json!({
+            "role":"assistant","error":"Plan usage limit reached",
+            "retry_submission_id":"submission-credits-ui","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_attachments":[],
+            "error_surface":{"code":"usage_window","provider":"nous","retryable":false,
+                "usage_limit":{"credits":{"action":"use_credits"}}}
+        }));
+        let native = std::rc::Rc::new(std::cell::RefCell::new(native));
+        let frame_native = native.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3200.0))
+            .build_ui(move |ui| frame_native.borrow_mut().draw(ui));
+        while commands.try_recv().is_ok() {}
+        let use_credits = harness
+            .query_by_label("Enable Hermes credits and retry the failed prompt after confirmation")
+            .expect("backend use_credits action is rendered accessibly");
+        assert!(!use_credits.accesskit_node().is_disabled());
+        use_credits.click();
+        harness.run();
+        let command = loop {
+            match commands.recv_timeout(std::time::Duration::from_secs(1)) {
+                Ok(crate::gateway::TestGatewayCommand::Other) => continue,
+                Ok(command @ crate::gateway::TestGatewayCommand::KeepGoingOnCredits { .. }) => {
+                    break command;
+                }
+                Ok(command) => panic!("unexpected command before credits receipt: {command:?}"),
+                Err(error) => panic!("credits action did not emit a Gateway command: {error}"),
+            }
+        };
+        assert!(matches!(
+            command,
+            crate::gateway::TestGatewayCommand::KeepGoingOnCredits {
+                session_id,
+                profile: Some(profile),
+                ..
+            } if session_id == "runtime-session" && profile == "work"
+        ));
+        assert!(
+            commands.try_recv().is_err(),
+            "click does not retry before confirmation"
+        );
+        assert!(native.borrow().keep_going_on_credits_mutation.is_some());
+        drop(harness);
+        drop(native);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 

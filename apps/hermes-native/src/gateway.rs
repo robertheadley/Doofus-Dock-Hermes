@@ -2555,6 +2555,12 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<ChatPolicyMutationReceipt, String>,
     },
+    KeepGoingOnCreditsUpdated {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        result: Result<(), String>,
+    },
     SessionCompressed {
         request_id: String,
         session_id: String,
@@ -2720,6 +2726,11 @@ enum GatewayCommand {
         profile: Option<String>,
         operation: String,
         payload: serde_json::Value,
+    },
+    KeepGoingOnCredits {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
     },
     CompressSession {
         request_id: String,
@@ -3225,6 +3236,11 @@ pub(crate) enum TestGatewayCommand {
         operation: String,
         payload: serde_json::Value,
     },
+    KeepGoingOnCredits {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+    },
     RespondServerRequest {
         id: String,
         profile: Option<String>,
@@ -3338,6 +3354,15 @@ impl GatewayDiscovery {
                         profile,
                         operation,
                         payload,
+                    }),
+                    GatewayCommand::KeepGoingOnCredits {
+                        request_id,
+                        session_id,
+                        profile,
+                    } => Some(TestGatewayCommand::KeepGoingOnCredits {
+                        request_id,
+                        session_id,
+                        profile,
                     }),
                     GatewayCommand::CompressSession {
                         request_id,
@@ -4852,6 +4877,21 @@ impl GatewayDiscovery {
                 profile,
                 operation,
                 payload,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn enable_keep_going_on_credits(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::KeepGoingOnCredits {
+                request_id,
+                session_id,
+                profile,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -8365,6 +8405,29 @@ fn gateway_actor_with_replay(
                     return;
                 }
             }
+            Ok(GatewayCommand::KeepGoingOnCredits {
+                request_id,
+                session_id,
+                profile,
+            }) => {
+                let result = enable_keep_going_on_credits_rpc(
+                    socket,
+                    &events,
+                    &mut next_request_id,
+                    profile.as_deref(),
+                );
+                if events
+                    .send(GatewayEvent::KeepGoingOnCreditsUpdated {
+                        request_id,
+                        session_id,
+                        profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::CompressSession {
                 request_id,
                 session_id,
@@ -9590,6 +9653,46 @@ fn mutate_chat_policy_rpc(
     *next_request_id = next_request_id.saturating_add(1);
     let reply = reply?;
     parse_chat_policy_receipt(reply, session_id, operation, revision)
+}
+
+fn enable_keep_going_on_credits_rpc(
+    socket: &mut GatewaySocket,
+    events: &mpsc::Sender<GatewayEvent>,
+    next_request_id: &mut u64,
+    profile: Option<&str>,
+) -> Result<(), String> {
+    let params = session_profile_params(serde_json::json!({"enabled": true}), profile)?;
+    let result = rpc_with_events(
+        socket,
+        *next_request_id,
+        "billing.keep_going_on_credits",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    let result = result?;
+    if result.get("ok").and_then(serde_json::Value::as_bool) == Some(true) {
+        return Ok(());
+    }
+    let message = result
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            result
+                .pointer("/error/message")
+                .and_then(serde_json::Value::as_str)
+        })
+        .or_else(|| result.get("error").and_then(serde_json::Value::as_str))
+        .map(|value| {
+            value
+                .chars()
+                .filter(|character| !character.is_control())
+                .take(512)
+                .collect::<String>()
+        })
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "Hermes did not confirm the credits setting".into());
+    Err(format!("Hermes could not enable credits: {message}"))
 }
 
 const SESSION_COMPRESS_TIMEOUT: Duration = Duration::from_millis(660_000);
@@ -26765,6 +26868,47 @@ mod tests {
         assert_eq!(receipt.provider.as_deref(), Some("custom:local-ollama"));
         assert_eq!(receipt.revision, Some(13));
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn keep_going_on_credits_uses_scoped_rpc_and_requires_success_envelope() {
+        for (response, expected) in [
+            (json!({"ok":true}), Ok(())),
+            (
+                json!({"ok":false,"error":{"kind":"insufficient_scope","message":"billing:manage required"}}),
+                Err("Hermes could not enable credits: billing:manage required".to_owned()),
+            ),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+            let address = listener.local_addr().expect("fixture address");
+            let server = thread::spawn(move || {
+                let (stream, _) = listener.accept().expect("accept fixture client");
+                let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+                let request: serde_json::Value = match socket.read().expect("read request") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                    other => panic!("expected request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "billing.keep_going_on_credits");
+                assert_eq!(request["params"], json!({"enabled":true,"profile":"work"}));
+                let id = request["id"].as_u64().expect("request id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":response})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send billing result");
+            });
+            let (mut socket, _) =
+                tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+            let (events, _) = mpsc::channel();
+            let mut rpc_id = 20;
+            let result =
+                enable_keep_going_on_credits_rpc(&mut socket, &events, &mut rpc_id, Some("work"));
+            assert_eq!(result, expected);
+            assert_eq!(rpc_id, 21);
+            server.join().expect("fixture server exits");
+        }
     }
 
     #[test]
