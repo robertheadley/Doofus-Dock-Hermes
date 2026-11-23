@@ -1495,7 +1495,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0064": {
         "state": "partial",
-        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_scheduled_retry_usage_window_model_and_credits_recovery",
+        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_scheduled_retry_usage_window_model_credits_and_safe_billing_recovery",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/agent-init-error.test.tsx#renders an agent-init failure as a visible in-transcript error and keeps the optimistic first message",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.test.tsx#names the provider and keeps Retry for a rate limit",
@@ -1525,8 +1525,12 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#rendered_usage_window_credits_action_sends_only_after_explicit_click",
             "apps/hermes-native/src/gateway.rs#keep_going_on_credits_uses_scoped_rpc_and_requires_success_envelope",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0139.json#EV-0139",
+            "apps/hermes-native/src/app.rs#failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry",
+            "apps/hermes-native/src/app.rs#billing_portal_allowed",
+            "apps/hermes-native/src/app.rs#failed_turn_recovery_action",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0140.json#EV-0140",
         ],
-        "gaps": ["broader Hermes billing settings and the complete pinned Desktop error-code taxonomy are not implemented", "scheduled retry is limited to recognized reset codes and is not persisted across app restarts", "live Gateway behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
+        "gaps": ["full provider/session billing-block recovery and broader Hermes billing settings are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "scheduled retry is limited to recognized reset codes and is not persisted across app restarts", "live Gateway behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
     },
     "PAR-0065": {
         "state": "partial",

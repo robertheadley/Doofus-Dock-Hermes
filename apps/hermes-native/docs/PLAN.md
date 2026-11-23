@@ -2205,3 +2205,7 @@ Implementation commit: `f6ceadd2f6f9a8e650893b951682206677b17efa`; EV-0138 recor
 ### PAR-0064 credits recovery addendum (2026-11-23T17:05:02Z)
 
 The pinned use_credits choice now has an accessible opt-in. It sends billing.keep_going_on_credits { enabled: true } with the selected profile. The native app accepts only a matching request/session/profile/Gateway-connection receipt with { ok: true }, then retries the exact previous submission once. Refusals, stale receipts, disconnects, occupied composers, and non-eligible error payloads do not retry. Focused and full-suite tests pass. PAR-0064 remains partial while remaining error-code actions, billing settings, live Gateway, packaged Windows, and source-paired acceptance are open.
+
+### PAR-0064 structured billing error fallback (2026-11-23)
+
+The pinned `billing` code now routes to the Nous billing portal only when the provider is explicitly Nous or absent (the Hermes default). An arbitrary provider never becomes a navigation URL and falls back to model choice. Focused tests and the full locked suite pass. The native app still lacks the pinned provider/session billing-block descriptor, same-provider validation, in-app Billing settings, and its retry action; this is a safe fallback, not full billing parity. EV-0140 records the partial implementation. Live Gateway, packaged Windows and source-paired acceptance remain open.

@@ -3400,3 +3400,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Not applicable.
 - **risks:** Live Gateway, packaged Windows, broader billing settings, complete error taxonomy, and source-paired acceptance remain open; PAR-0064 stays partial.
 - **follow_up:** Continue the remaining pinned PAR-0064 error actions.
+
+### PAR-0064 safe billing-error fallback — 2026-11-23
+
+- **id:** hermes-par0064-safe-billing-fallback-20261123
+- **timestamp:** 2026-11-23T17:25:54Z
+- **what:** Added an accessible Nous billing-portal route for structured billing failures when provider is Nous or missing; other providers fail closed to model choice.
+- **why:** Cover the pinned billing recovery path without misrouting a third-party provider to an unrelated account portal.
+- **components:** Hermes Native failed-turn actions, PAR-0064, UCM EV-0140.
+- **type:** feature, test, evidence, documentation.
+- **validation:** Full locked suite passes 653 library + 15 protocol + 3 launcher tests; all-target check, Windows debug build, rustfmt, and diff checks pass. Source commit: e47b777ee5a226f5863d0d540e9bf031f6d42437.
+- **performance:** No benchmark claim; the action routes through the existing native navigation command.
+- **risks:** This fallback lacks the pinned same-provider billing-block descriptor, in-app Billing surface, and billing recovery retry. Live Gateway, packaged Windows, remaining error actions, and source-paired acceptance remain open.
+- **follow_up:** Record EV-0140, validate generated progress/package/task state, and publish to main.

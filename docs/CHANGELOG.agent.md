@@ -5077,3 +5077,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway, packaged Windows, full billing surface and formal source acceptance remain open.
 - **follow_up:** Continue the remaining pinned PAR-0064 error taxonomy.
+
+### Hermes PAR-0064 safe billing fallback — 2026-11-23
+
+- **id:** hermes-par0064-safe-billing-fallback-20261123
+- **timestamp:** 2026-11-23T17:25:54Z
+- **what:** Added safe recovery navigation for structured billing errors with a known Nous/default provider and model-choice fallback for other providers.
+- **why:** Extend agent failure recovery while keeping third-party billing destinations fail-closed.
+- **components:** Hermes Native, PAR-0064, UCM EV-0140, error-card navigation.
+- **type:** feature, validation, evidence.
+- **validation:** Full locked suite 653 + 15 + 3, all-target check, Windows debug build, rustfmt and diff checks pass.
+- **performance:** No benchmark claim.
+- **risks:** Full provider/session billing-block recovery and live/package/source-paired acceptance remain open.
+- **follow_up:** Validate progress/package/task records and publish the partial evidence to main.

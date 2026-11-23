@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0140",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "e47b777ee5a226f5863d0d540e9bf031f6d42437",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "billing-failure-safe-nous-portal-recovery",
+  "locator": "apps/hermes-native/src/app.rs::failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry;apps/hermes-native/src/app.rs::billing_portal_allowed;apps/hermes-native/src/app.rs::failed_turn_recovery_action",
+  "environment": "Full locked Hermes Native agent-automation suite (653 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug desktop build, rustfmt and diff checks. No live Hermes Gateway or installed Hermes app was used.",
+  "notes": "A structured billing error now exposes the known Nous billing portal when the provider is Nous or absent (the pinned default); arbitrary third-party providers never open the Nous URL and fall back to model choice. Focused tests cover the code action, default-provider rule, and deny-by-default URL behavior. This is a safe fallback, not full upstream billing-block recovery: the native app does not yet consume the provider/session billing-block descriptor or provide the in-app billing settings surface. PAR-0064 remains partial, and live Gateway, packaged Windows, remaining error taxonomy, and source-paired acceptance remain open."
+}
