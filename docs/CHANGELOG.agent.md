@@ -5013,3 +5013,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** UCM global check still reports 160 legacy errors outside this evidence; live Gateway and packaged Windows remain unverified.
 - **follow_up:** Publish source plus evidence/docs to main and continue the next agent-workflow gap.
+
+### PAR-0064 scheduled retry evidence publication — 2026-11-23
+
+- **id:** hermes-par0064-scheduled-retry-publication-20261123
+- **timestamp:** 2026-11-23T16:11:48Z
+- **what:** Published source commit `2a6fb534` and evidence/docs commit `49524258731e479143e76125185189495362e904` to `origin/main`; fresh fetch confirms exact remote equality.
+- **why:** Keep the user's selected main branch current with validated source and its evidence.
+- **components:** Hermes Native, PAR-0064, EV-0137, UCM/progress records, main.
+- **type:** publication.
+- **validation:** Remote main equals local main at `49524258731e479143e76125185189495362e904`; package validator passes with 121 implementation receipts.
+- **performance:** Not applicable.
+- **risks:** Live Gateway, packaged Windows and source-paired acceptance are open; 160 unrelated legacy UCM errors remain.
+- **follow_up:** Continue the next dependency-ready P0 agent-workflow gap.
