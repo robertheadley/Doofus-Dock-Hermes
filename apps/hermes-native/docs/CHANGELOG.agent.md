@@ -3489,4 +3489,4 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **validation:** 658 library + 15 automation-protocol + 3 launcher tests; all-target check, Windows debug build, rustfmt and diff check pass.
 - **performance:** No benchmark claim.
 - **risks:** Free-tier sign-in and live Gateway acceptance remain open.
-- **follow_up:** Evidence and task state validate; publish source commits to origin/main.
+- **follow_up:** Published source and evidence commits to origin/main at 5a0b983256daa7b611086de447d81e9806f05422; local and remote main match.

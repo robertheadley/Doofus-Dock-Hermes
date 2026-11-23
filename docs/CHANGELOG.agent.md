@@ -5166,4 +5166,4 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **validation:** Full locked suite 658 + 15 + 3, all-target check, Windows debug build, rustfmt and diff check pass.
 - **performance:** No benchmark claim.
 - **risks:** Native Hermes Free authentication and live/source-paired acceptance remain open.
-- **follow_up:** Evidence and task state validate; publish source commits to origin/main.
+- **follow_up:** Published source and evidence commits to origin/main at 5a0b983256daa7b611086de447d81e9806f05422; local and remote main match.
