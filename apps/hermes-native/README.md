@@ -8,6 +8,8 @@ Pinned `secret`, `vault.code`, and `vault.save_login` server prompts now have ma
 
 Stored-session rows now offer **Branch session**: Hermes receives the canonical revision/generation-fenced branch mutation, the confirmed child opens, and the parent is preserved. An uncertain write exposes an exact retry using the same mutation identity. Branching from a specific transcript position and live Gateway/packaged Windows acceptance remain open.
 
+The Sessions sidebar and command palette expose **Import sessions** for pinned Claude Code and Codex conversations. The view pages opaque source handles, previews the most recent bounded messages without importing, and requires an explicit Continue/Open action. It opens only the validated Hermes session ID from the import receipt; already-imported sessions are idempotently reopened. Request, profile, connection and selected-row fences reject stale results, import failures can be retried, and a disconnect reports the write as unknown while preserving a safe retry. Headless Gateway and UI coverage passes; authenticated live Gateway and packaged Windows acceptance remain open.
+
 Pinned `background.complete` results now appear as bounded persistent system notices in their originating transcript. The native UI suppresses empty text and repeated task IDs and fences session/profile ownership; late results still land after Stop. This is local headless evidence, with live Gateway, packaged Windows and source-paired acceptance open.
 
 ## Source pins

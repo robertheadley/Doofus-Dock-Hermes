@@ -478,6 +478,7 @@ Existing native code and headless regressions already cover profile routing, ret
 
 - [x] Add saved-session branching through the pinned revision/generation-fenced `session.mutate` contract; exact retries reuse the original request identity, confirmed branches open the child, and the parent remains unchanged. Headless contract and UI tests pass.
 - [ ] Add branch-from-transcript-position behavior and validate saved-session branching with an authenticated Gateway and packaged Windows app.
-- [ ] Implement session import after the already-supported paged export; preserve profile/Gateway ownership and require explicit user action before opening imported sessions.
+- [x] Implement pinned foreign-session list, bounded preview and explicit Continue/Open import for Claude Code and Codex. The result is owner/request fenced, import is idempotent, and only the returned Hermes session ID opens. Headless tests pass.
+- [ ] Validate foreign-session import with an authenticated Hermes Gateway and packaged Windows app; PAR-0082 remains partial until live/source-paired acceptance.
 - [x] Implement pinned `secret`, `vault.code`, and `vault.save_login` request cards with same-socket responses, owner fencing, ephemeral secret handling, masked inputs, and no-resend behavior after unknown writes; headless tests pass.
 - [ ] Verify the three prompt types and saved-session branch against an authenticated Hermes Gateway and packaged Windows app.

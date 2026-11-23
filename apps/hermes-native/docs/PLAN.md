@@ -2257,3 +2257,11 @@ The Sessions row menu now offers **Branch session** for a saved conversation. Th
 ### Revision 364 — Record stored-session branch evidence — 2026-11-23
 
 Committed branch implementation `0c39e1f0d8b437dcb69728cddea7591a3e3e160e` is now bound to EV-0158. PAR-0081 is mapped partial across the capability definition, crosswalk, UI inventory, full capability map, and generated implementation/chat-tool ledgers. Scoped mapping advances from 96/176 to 97/176 (1 implemented, 95 partial, 1 not implemented, 79 unknown); broad review advances to 131/499 (6 implemented, 124 partial, 1 not implemented, 368 unknown). No live Gateway or source-paired acceptance is claimed. Next feature: foreign session import under PAR-0082.
+
+### PAR-0082 — Foreign session import — 2026-11-23
+
+Implemented the pinned foreign list, preview and import RPC flow. The Sessions sidebar and command palette expose `/session-import`; browsing and previewing do not import, and the user explicitly selects Continue/Open. Paged results and previews are bounded and validated, opaque backend IDs stay opaque, and all async results are fenced by request, profile, connection and selection. Only the validated `session_id` from an import receipt opens in Hermes. Already-imported sessions use the idempotent import contract, failures can be retried, and disconnect clears pending state while explaining the unknown outcome and safe retry. Closing the route suppresses late navigation.
+
+Validation: focused foreign-session suite passes 7/7; full locked suite passes 682 library + 15 automation protocol + 3 launcher tests; locked all-target check, rustfmt check and diff check pass. PAR-0082 remains partial pending authenticated live Gateway, packaged Windows and formal source-paired validation. The capability evidence map and generated ledgers are maintained separately; the feature work does not claim live verification.
+
+At this checkpoint, the scoped ledger reports 103/176 requirements mapped (1 implemented, 101 partial, 1 not implemented, 73 unknown); the broad ledger reports 137/499 (6 implemented, 130 partial, 1 not implemented, 362 unknown). These are mapping counts rather than completion percentages, and 0/176 have live-runtime or source-paired verification. PAR-0082 is not yet included in those counts until its evidence is bound.

@@ -3590,3 +3590,39 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime code or benchmark impact.
 - **risks:** Headless evidence only; authenticated Gateway, packaged Windows, transcript-position branching, and formal source-paired acceptance remain open.
 - **follow_up:** Implement foreign session import and continue live runtime acceptance.
+
+### Revision 365 — Import foreign Hermes sessions — 2026-11-23
+
+- **id:** hermes-par0082-foreign-session-import-20261123
+- **what:** Added paged Claude Code/Codex foreign-session listing, bounded preview and an explicit Continue/Open import flow reachable from Sessions and the command palette.
+- **why:** Importing prior agent conversations is part of the requested Hermes agent workflow.
+- **components:** Native Gateway RPC actor, `/session-import` route and route lifecycle, Sessions sidebar, command palette, profile/connection ownership fencing.
+- **type:** feature
+- **validation:** Focused foreign-session suite 7/7; full locked suite 682 library + 15 protocol + 3 launcher; locked all-target check, rustfmt check and diff check pass.
+- **performance:** No performance behavior changed; page and preview sizes remain bounded by the pinned source contract.
+- **risks:** Authenticated Gateway behavior, packaged Windows interaction and formal source-paired acceptance remain unverified. PAR-0082 remains partial.
+- **follow_up:** Bind capability-map evidence after the source commit; validate against an authenticated Gateway and packaged Windows build.
+
+### Revision 366 — Render foreign session previews as safe Markdown — 2026-11-23
+
+- **id:** hermes-par0082-markdown-preview-20261123
+- **what:** Reused the native transcript CommonMark renderer for foreign preview messages and discarded file-preview destinations for this view.
+- **why:** Foreign sessions must render Markdown consistently without treating their paths as belonging to the currently active local project.
+- **components:** Session Import preview renderer and focused headless UI test.
+- **type:** fix
+- **validation:** Preview regression passes for Markdown table/code rendering and for blocked `javascript:` and relative-file navigation; full locked suite 682+15+3; all-target locked check, rustfmt check and focused diff check pass.
+- **performance:** Reuses the app's existing CommonMark cache; message sizes remain bounded by the pinned preview contract.
+- **risks:** Authenticated Gateway and packaged Windows verification remain open.
+- **follow_up:** Continue PAR-0082 live/source-paired acceptance.
+
+### Revision 367 — Preserve newer foreign session requests — 2026-11-23
+
+- **id:** hermes-par0082-stale-request-fencing-20261123
+- **what:** Foreign list and preview responses now match the current request and owner before clearing pending state; stale replies cannot cancel newer source or selection requests.
+- **why:** An old source-list response or earlier row preview could otherwise consume the pending state for the current request and leave the view stuck.
+- **components:** Foreign-session list/preview event handlers and two async race regressions.
+- **type:** fix
+- **validation:** Focused stale-response tests 2/2; full locked suite 684 library + 15 protocol + 3 launcher; all-target check, rustfmt and diff checks pass.
+- **performance:** No runtime performance impact.
+- **risks:** Live Gateway and packaged Windows behavior remain open.
+- **follow_up:** Continue PAR-0082 live/source-paired acceptance.

@@ -11,15 +11,17 @@ use crate::gateway::{
     CommandCenterSystemAction, CommandCenterSystemActionResult, CommandCenterSystemOperation,
     CommandCenterSystemSnapshot, CommandCenterUsageSnapshot, ComposerAttachmentReceipt,
     ConnectorsSnapshot, CronBlueprint, CronBlueprintInstantiatePayload, CronDeliveryTarget,
-    CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload, GatewayActionStatus,
-    GatewayDiscovery, GatewayEndpoint, GatewayEvent, GatewayPromptAttachment, McpCatalogEntry,
-    McpCatalogSnapshot, McpServerTestResult, McpServersSnapshot, MessagingEnvVarInfo,
-    MessagingPlatformInfo, MessagingPlatformUpdate, MessagingPlatformsSnapshot,
-    ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot, PairingUser, ProjectListSnapshot,
-    ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot, PromptSubmitReceipt,
-    RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult, SessionSummary, SkillContent,
-    SkillInfo, SlashCompletionItem, SlashCompletionResult, TelegramOnboardingApplyReceipt,
-    TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo, project_tree_session_colors,
+    CronJobCreatePayload, CronJobInfo, CronJobRunInfo, CronJobUpdatePayload,
+    ForeignSessionImportReceipt, ForeignSessionPage, ForeignSessionPreview, ForeignSessionRow,
+    ForeignSessionSource, GatewayActionStatus, GatewayDiscovery, GatewayEndpoint, GatewayEvent,
+    GatewayPromptAttachment, McpCatalogEntry, McpCatalogSnapshot, McpServerTestResult,
+    McpServersSnapshot, MessagingEnvVarInfo, MessagingPlatformInfo, MessagingPlatformUpdate,
+    MessagingPlatformsSnapshot, ModelOptionsSnapshot, PairingMutationKind, PairingSnapshot,
+    PairingUser, ProjectListSnapshot, ProjectSessionColor, ProjectTreeProject, ProjectTreeSnapshot,
+    PromptSubmitReceipt, RemoteGatewayAuth, SessionExportTranscript, SessionSearchResult,
+    SessionSummary, SkillContent, SkillInfo, SlashCompletionItem, SlashCompletionResult,
+    TelegramOnboardingApplyReceipt, TelegramOnboardingStart, TelegramOnboardingStatus, ToolsetInfo,
+    project_tree_session_colors,
 };
 use crate::gateway_event_dedup::GatewayEventDeduplicator;
 use crate::keybindings::{KeyPlatform, KeybindingStore};
@@ -1371,6 +1373,51 @@ struct PendingSessionCompression {
     outcome_unknown: bool,
 }
 
+#[derive(Clone, Debug)]
+struct PendingForeignSessionList {
+    request_id: String,
+    connection_id: String,
+    profile: String,
+    source: Option<ForeignSessionSource>,
+    offset: usize,
+}
+
+#[derive(Clone, Debug)]
+struct PendingForeignSessionPreview {
+    request_id: String,
+    connection_id: String,
+    profile: String,
+    foreign_session_id: String,
+}
+
+#[derive(Clone, Debug)]
+struct PendingForeignSessionImport {
+    request_id: String,
+    connection_id: String,
+    profile: String,
+    foreign_session_id: String,
+    preview_existing_session: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ForeignSessionImportViewState {
+    owner: Option<(String, String)>,
+    source: Option<ForeignSessionSource>,
+    search: String,
+    rows: Vec<ForeignSessionRow>,
+    next_offset: Option<usize>,
+    host: Option<String>,
+    unreadable: usize,
+    selected_id: Option<String>,
+    preview: Option<ForeignSessionPreview>,
+    list_error: Option<String>,
+    preview_error: Option<String>,
+    import_error: Option<String>,
+    pending_list: Option<PendingForeignSessionList>,
+    pending_preview: Option<PendingForeignSessionPreview>,
+    pending_import: Option<PendingForeignSessionImport>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ScheduledFailedTurnRetry {
     stored_session_id: String,
@@ -2366,6 +2413,7 @@ pub struct HermesNativeApp {
     pending_session_archives: BTreeMap<String, String>,
     pending_session_deletes: BTreeMap<String, String>,
     pending_session_exports: BTreeMap<String, String>,
+    foreign_session_import: ForeignSessionImportViewState,
     last_exported_session_path: Option<std::path::PathBuf>,
     session_list_limit: usize,
     pending_session_renames: BTreeMap<String, String>,
@@ -4875,6 +4923,7 @@ fn render_message() -> &'static str {
             pending_session_archives: BTreeMap::new(),
             pending_session_deletes: BTreeMap::new(),
             pending_session_exports: BTreeMap::new(),
+            foreign_session_import: ForeignSessionImportViewState::default(),
             last_exported_session_path: None,
             session_list_limit: 50,
             pending_session_renames: BTreeMap::new(),
@@ -6138,6 +6187,7 @@ fn render_message() -> &'static str {
             self.create_blank_session_tab();
         }
         self.sidebar_route(ui, AppRoute::Capabilities);
+        self.sidebar_route(ui, AppRoute::SessionImport);
         self.sidebar_route(ui, AppRoute::Messaging);
         self.sidebar_route(ui, AppRoute::Artifacts);
         self.sidebar_route(ui, AppRoute::Cron);
@@ -18913,6 +18963,293 @@ fn render_message() -> &'static str {
         self.status = "Exporting session…".into();
     }
 
+    fn current_foreign_session_owner(&self) -> Option<(String, String)> {
+        let connection_id = self.gateway_connection_id.clone()?;
+        let profile = self.active_session_profile.clone().or_else(|| {
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.clone())
+        })?;
+        Some((connection_id, profile))
+    }
+
+    fn load_foreign_sessions(&mut self, reset: bool) {
+        if reset {
+            self.foreign_session_import.rows.clear();
+            self.foreign_session_import.next_offset = None;
+            self.foreign_session_import.host = None;
+            self.foreign_session_import.unreadable = 0;
+            self.foreign_session_import.selected_id = None;
+            self.foreign_session_import.preview = None;
+            self.foreign_session_import.list_error = None;
+            self.foreign_session_import.preview_error = None;
+            self.foreign_session_import.import_error = None;
+            self.foreign_session_import.pending_preview = None;
+            self.foreign_session_import.pending_import = None;
+        }
+        if !self.gateway_connected {
+            self.foreign_session_import.list_error =
+                Some("Connect to Hermes to find Claude Code and Codex sessions.".into());
+            return;
+        }
+        let Some((connection_id, profile)) = self.current_foreign_session_owner() else {
+            self.foreign_session_import.list_error =
+                Some("A concrete Hermes profile is required to import a session.".into());
+            return;
+        };
+        let Some(gateway) = &self.gateway_discovery else {
+            self.foreign_session_import.list_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let offset = if reset {
+            0
+        } else if let Some(offset) = self.foreign_session_import.next_offset {
+            offset
+        } else {
+            return;
+        };
+        let request_id = operation_id("foreign-session-list");
+        if let Err(error) = gateway.list_foreign_sessions(
+            request_id.clone(),
+            Some(profile.clone()),
+            self.foreign_session_import.source,
+            offset,
+            25,
+        ) {
+            self.foreign_session_import.list_error = Some(error);
+            return;
+        }
+        self.foreign_session_import.owner = Some((connection_id.clone(), profile.clone()));
+        self.foreign_session_import.pending_list = Some(PendingForeignSessionList {
+            request_id,
+            connection_id,
+            profile,
+            source: self.foreign_session_import.source,
+            offset,
+        });
+        self.foreign_session_import.list_error = None;
+    }
+
+    fn select_foreign_session(&mut self, row: &ForeignSessionRow) {
+        self.foreign_session_import.selected_id = Some(row.id.clone());
+        self.foreign_session_import.preview = None;
+        self.foreign_session_import.preview_error = None;
+        self.foreign_session_import.import_error = None;
+        let Some((connection_id, profile)) = self.current_foreign_session_owner() else {
+            self.foreign_session_import.preview_error =
+                Some("A concrete Hermes profile is required to preview a session.".into());
+            return;
+        };
+        let Some(gateway) = &self.gateway_discovery else {
+            self.foreign_session_import.preview_error =
+                Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("foreign-session-preview");
+        if let Err(error) = gateway.preview_foreign_session(
+            request_id.clone(),
+            Some(profile.clone()),
+            row.id.clone(),
+        ) {
+            self.foreign_session_import.preview_error = Some(error);
+            return;
+        }
+        self.foreign_session_import.pending_preview = Some(PendingForeignSessionPreview {
+            request_id,
+            connection_id,
+            profile,
+            foreign_session_id: row.id.clone(),
+        });
+    }
+
+    fn start_foreign_session_import(&mut self) {
+        if self.foreign_session_import.pending_import.is_some() {
+            return;
+        }
+        let Some(foreign_session_id) = self.foreign_session_import.selected_id.clone() else {
+            return;
+        };
+        if self.foreign_session_import.preview.is_none()
+            || self.foreign_session_import.preview_error.is_some()
+        {
+            return;
+        }
+        let Some((connection_id, profile)) = self.current_foreign_session_owner() else {
+            self.foreign_session_import.import_error =
+                Some("A concrete Hermes profile is required to import a session.".into());
+            return;
+        };
+        let Some(gateway) = &self.gateway_discovery else {
+            self.foreign_session_import.import_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let request_id = operation_id("foreign-session-import");
+        if let Err(error) = gateway.import_foreign_session(
+            request_id.clone(),
+            Some(profile.clone()),
+            foreign_session_id.clone(),
+        ) {
+            self.foreign_session_import.import_error = Some(error);
+            return;
+        }
+        self.foreign_session_import.pending_import = Some(PendingForeignSessionImport {
+            request_id,
+            connection_id,
+            profile,
+            foreign_session_id,
+            preview_existing_session: self
+                .foreign_session_import
+                .preview
+                .as_ref()
+                .and_then(|preview| preview.already_imported.clone()),
+        });
+        self.foreign_session_import.import_error = None;
+    }
+
+    fn apply_foreign_sessions_loaded(
+        &mut self,
+        request_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        source: Option<ForeignSessionSource>,
+        offset: usize,
+        result: Result<ForeignSessionPage, String>,
+    ) {
+        let Some(pending) = self.foreign_session_import.pending_list.as_ref() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || profile.as_deref() != Some(pending.profile.as_str())
+            || connection_id.as_deref() != Some(pending.connection_id.as_str())
+            || pending.source != source
+            || pending.offset != offset
+        {
+            return;
+        }
+        if self.foreign_session_import.owner.as_ref()
+            != Some(&(pending.connection_id.clone(), pending.profile.clone()))
+        {
+            return;
+        }
+        if self.foreign_session_import.pending_list.take().is_none() {
+            return;
+        }
+        match result {
+            Ok(page) => {
+                for row in page.sessions {
+                    if !self
+                        .foreign_session_import
+                        .rows
+                        .iter()
+                        .any(|existing| existing.id == row.id)
+                    {
+                        self.foreign_session_import.rows.push(row);
+                    }
+                }
+                self.foreign_session_import.next_offset = page.next_offset;
+                self.foreign_session_import.host = Some(page.host);
+                self.foreign_session_import.unreadable = self
+                    .foreign_session_import
+                    .unreadable
+                    .saturating_add(page.unreadable);
+                self.foreign_session_import.list_error = None;
+            }
+            Err(error) => self.foreign_session_import.list_error = Some(error),
+        }
+    }
+
+    fn apply_foreign_session_preview_loaded(
+        &mut self,
+        request_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        foreign_session_id: String,
+        result: Result<ForeignSessionPreview, String>,
+    ) {
+        let Some(pending) = self.foreign_session_import.pending_preview.as_ref() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.foreign_session_id != foreign_session_id
+            || profile.as_deref() != Some(pending.profile.as_str())
+            || connection_id.as_deref() != Some(pending.connection_id.as_str())
+            || self.foreign_session_import.selected_id.as_deref()
+                != Some(pending.foreign_session_id.as_str())
+            || self.current_foreign_session_owner()
+                != Some((pending.connection_id.clone(), pending.profile.clone()))
+        {
+            return;
+        }
+        if self.foreign_session_import.pending_preview.take().is_none() {
+            return;
+        }
+        match result {
+            Ok(preview) => {
+                self.foreign_session_import.preview = Some(preview);
+                self.foreign_session_import.preview_error = None;
+            }
+            Err(error) => {
+                self.foreign_session_import.preview = None;
+                self.foreign_session_import.preview_error = Some(error);
+            }
+        }
+    }
+
+    fn apply_foreign_session_imported(
+        &mut self,
+        request_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        foreign_session_id: String,
+        result: Result<ForeignSessionImportReceipt, String>,
+    ) {
+        let Some(pending) = self.foreign_session_import.pending_import.take() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.foreign_session_id != foreign_session_id
+            || profile.as_deref() != Some(pending.profile.as_str())
+            || connection_id.as_deref() != Some(pending.connection_id.as_str())
+            || self.current_foreign_session_owner()
+                != Some((pending.connection_id.clone(), pending.profile.clone()))
+        {
+            return;
+        }
+        match result {
+            Ok(receipt) => {
+                if pending
+                    .preview_existing_session
+                    .as_deref()
+                    .is_some_and(|existing| existing != receipt.session_id)
+                {
+                    self.foreign_session_import.import_error = Some(
+                        "Hermes returned a different session than the preview identified.".into(),
+                    );
+                    return;
+                }
+                if self.route != AppRoute::SessionImport {
+                    return;
+                }
+                self.request_session_list_refresh();
+                if let Err(error) =
+                    self.execute_registered_action(RegisteredUiAction::OpenSession {
+                        session_id: receipt.session_id.clone(),
+                        profile: Some(pending.profile.clone()),
+                    })
+                {
+                    self.foreign_session_import.import_error = Some(error);
+                    return;
+                }
+                self.status = if receipt.already_imported {
+                    "Opened the existing imported session".into()
+                } else {
+                    "Imported and opened the Hermes session".into()
+                };
+            }
+            Err(error) => self.foreign_session_import.import_error = Some(error),
+        }
+    }
+
     fn load_command_palette_sessions(&mut self) {
         self.command_palette_sessions_error = None;
         if !self.gateway_connected {
@@ -24383,6 +24720,10 @@ fn render_message() -> &'static str {
                     .as_ref()
                     .map(|endpoint| endpoint.profile_id.clone());
                 self.restore_new_chat_draft_for_current_owner(true);
+            }
+            AppRoute::SessionImport => {
+                self.foreign_session_import = ForeignSessionImportViewState::default();
+                self.load_foreign_sessions(true);
             }
             _ => {}
         }
@@ -31001,6 +31342,314 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn session_import_content(&mut self, ui: &mut egui::Ui) {
+        if self.gateway_connected {
+            let owner = self.current_foreign_session_owner();
+            if owner.is_some() && self.foreign_session_import.owner != owner {
+                self.foreign_session_import.pending_list = None;
+                self.foreign_session_import.pending_preview = None;
+                self.foreign_session_import.pending_import = None;
+                self.foreign_session_import.owner = None;
+                self.load_foreign_sessions(true);
+            }
+        }
+
+        ui.horizontal(|ui| {
+            ui.heading("Import sessions");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui
+                    .button("×")
+                    .accessible_name("Close session import")
+                    .clicked()
+                {
+                    self.execute_registered_action(RegisteredUiAction::Navigate {
+                        path: self.overlay_return.path(),
+                    })
+                    .unwrap_or_else(|error| self.status = error);
+                }
+            });
+        });
+        ui.label(
+            RichText::new(
+                "Preview a Claude Code or Codex conversation before copying it into Hermes.",
+            )
+            .color(MUTED),
+        );
+        if let Some((_, profile)) = self.current_foreign_session_owner() {
+            ui.label(
+                RichText::new(format!("Destination profile · {profile}"))
+                    .small()
+                    .color(MUTED),
+            );
+        }
+        ui.add_space(8.0);
+
+        let mut source_change = None;
+        ui.horizontal(|ui| {
+            for (source, label) in [
+                (None, "All sources"),
+                (Some(ForeignSessionSource::Claude), "Claude Code"),
+                (Some(ForeignSessionSource::Codex), "Codex"),
+            ] {
+                if ui
+                    .selectable_label(self.foreign_session_import.source == source, label)
+                    .accessible_name(format!("Foreign session source: {label}"))
+                    .clicked()
+                {
+                    source_change = Some(source);
+                }
+            }
+            ui.separator();
+            if ui
+                .add_enabled(
+                    self.foreign_session_import.pending_list.is_none(),
+                    egui::Button::new("Refresh"),
+                )
+                .accessible_name("Refresh foreign sessions")
+                .clicked()
+            {
+                source_change = Some(self.foreign_session_import.source);
+            }
+        });
+        if let Some(source) = source_change {
+            self.foreign_session_import.source = source;
+            self.load_foreign_sessions(true);
+        }
+
+        ui.horizontal(|ui| {
+            ui.label("Search");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.foreign_session_import.search)
+                    .hint_text("Title, folder, or preview")
+                    .desired_width(f32::INFINITY),
+            )
+            .accessible_name("Search foreign sessions");
+        });
+
+        let query = self.foreign_session_import.search.trim().to_lowercase();
+        let rows = self
+            .foreign_session_import
+            .rows
+            .iter()
+            .filter(|row| {
+                query.is_empty()
+                    || row
+                        .title
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&query)
+                    || row.label.to_lowercase().contains(&query)
+                    || row
+                        .cwd
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&query)
+                    || row
+                        .excerpt
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&query)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut selected = None;
+        let mut load_more = false;
+        let mut retry_list = false;
+        let mut retry_preview = false;
+        let mut import = false;
+        let available_width = ui.available_width();
+        let available_height = ui.available_height();
+        ui.add_space(8.0);
+        ui.columns(2, |columns| {
+            let list = &mut columns[0];
+            list.set_min_width((available_width * 0.4).max(200.0));
+            if let Some(host) = self.foreign_session_import.host.as_deref() {
+                list.label(RichText::new(format!("From {host}")).small().color(MUTED));
+            }
+            if self.foreign_session_import.pending_list.is_some() {
+                list.label(RichText::new("Finding conversations…").color(MUTED));
+            }
+            if let Some(error) = self.foreign_session_import.list_error.as_deref() {
+                list.colored_label(Color32::from_rgb(220, 150, 100), error);
+                retry_list = list
+                    .button("Retry list")
+                    .accessible_name("Retry foreign session list")
+                    .clicked();
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("foreign-session-list")
+                .max_height((available_height - 64.0).max(120.0))
+                .show(list, |ui| {
+                    for row in &rows {
+                        let title = row
+                            .title
+                            .as_deref()
+                            .filter(|title| !title.trim().is_empty())
+                            .unwrap_or("Untitled conversation");
+                        let subtitle = row
+                            .cwd
+                            .as_deref()
+                            .or(row.excerpt.as_deref())
+                            .unwrap_or_default();
+                        let text = format!(
+                            "{} · {}\n{}\n{}",
+                            row.label,
+                            row.turn_count.unwrap_or_default(),
+                            title,
+                            subtitle
+                        );
+                        let response = ui
+                            .selectable_label(
+                                self.foreign_session_import.selected_id.as_deref() == Some(&row.id),
+                                text,
+                            )
+                            .accessible_name(format!("Preview foreign session: {title}"));
+                        if response.clicked() {
+                            selected = Some(row.clone());
+                        }
+                    }
+                });
+            if self.foreign_session_import.unreadable > 0 {
+                list.label(
+                    RichText::new(format!(
+                        "Skipped {} unreadable conversation files",
+                        self.foreign_session_import.unreadable
+                    ))
+                    .small()
+                    .color(MUTED),
+                );
+            }
+            if self.foreign_session_import.next_offset.is_some() {
+                load_more = list
+                    .add_enabled(
+                        self.foreign_session_import.pending_list.is_none(),
+                        egui::Button::new("Load more"),
+                    )
+                    .accessible_name("Load more foreign sessions")
+                    .clicked();
+            }
+
+            let detail = &mut columns[1];
+            detail.separator();
+            let selected_row = self
+                .foreign_session_import
+                .selected_id
+                .as_ref()
+                .and_then(|id| self.foreign_session_import.rows.iter().find(|row| &row.id == id));
+            if let Some(row) = selected_row {
+                detail.heading(
+                    row.title
+                        .as_deref()
+                        .filter(|title| !title.trim().is_empty())
+                        .unwrap_or("Untitled conversation"),
+                );
+                detail.label(
+                    RichText::new(format!("{} · {} turns", row.label, row.turn_count.unwrap_or_default()))
+                        .small()
+                        .color(MUTED),
+                );
+                if self.foreign_session_import.pending_preview.is_some() {
+                    detail.label(RichText::new("Loading preview…").color(MUTED));
+                } else if let Some(error) = self.foreign_session_import.preview_error.as_deref() {
+                    detail.colored_label(Color32::from_rgb(220, 150, 100), error);
+                    retry_preview = detail
+                        .button("Retry preview")
+                        .accessible_name("Retry foreign session preview")
+                        .clicked();
+                } else if let Some(preview) = self.foreign_session_import.preview.as_ref() {
+                    if let Some(cwd) = preview.cwd.as_deref().or(row.cwd.as_deref()) {
+                        detail.label(RichText::new(cwd).small().color(MUTED));
+                    }
+                    if preview.truncated {
+                        detail.label(
+                            RichText::new("Preview shows the most recent 40 turns, limited to 8,000 characters each.")
+                                .small()
+                                .color(MUTED),
+                        );
+                    }
+                    if preview.already_imported.is_some() {
+                        detail.label(
+                            RichText::new("Already imported into Hermes; the existing session will open.")
+                                .small()
+                                .color(MUTED),
+                        );
+                    }
+                    egui::ScrollArea::vertical()
+                        .id_salt("foreign-session-preview")
+                        .max_height((available_height - 100.0).max(100.0))
+                        .show(detail, |ui| {
+                            let markdown_cache = &mut self.markdown_cache;
+                            for message in &preview.messages {
+                                ui.label(RichText::new(&message.role).strong().small());
+                                // Foreign previews do not establish a trusted local project root.
+                                // Keep CommonMark and safe web-link handling, but never resolve a
+                                // clicked relative/file link against the currently open session.
+                                let _ = render_transcript_markdown(
+                                    ui,
+                                    markdown_cache,
+                                    &message.content,
+                                );
+                                ui.add_space(8.0);
+                            }
+                        });
+                    import = detail
+                        .add_enabled(
+                            self.foreign_session_import.pending_import.is_none(),
+                            egui::Button::new(if preview.already_imported.is_some() {
+                                "Open in Hermes"
+                            } else {
+                                "Continue in Hermes"
+                            }),
+                        )
+                        .accessible_name(if preview.already_imported.is_some() {
+                            "Open already imported session in Hermes"
+                        } else {
+                            "Import and open session in Hermes"
+                        })
+                        .clicked();
+                    if self.foreign_session_import.pending_import.is_some() {
+                        detail.label(RichText::new("Importing into Hermes…").color(MUTED));
+                    }
+                    if let Some(error) = self.foreign_session_import.import_error.as_deref() {
+                        detail.colored_label(Color32::from_rgb(220, 150, 100), error);
+                    }
+                }
+            } else {
+                detail.label(RichText::new("Choose a conversation to preview it.").color(MUTED));
+            }
+        });
+        if let Some(row) = selected {
+            self.select_foreign_session(&row);
+        }
+        if retry_preview
+            && let Some(row) = self
+                .foreign_session_import
+                .selected_id
+                .as_ref()
+                .and_then(|id| {
+                    self.foreign_session_import
+                        .rows
+                        .iter()
+                        .find(|row| &row.id == id)
+                })
+                .cloned()
+        {
+            self.select_foreign_session(&row);
+        }
+        if retry_list {
+            self.load_foreign_sessions(true);
+        }
+        if load_more {
+            self.load_foreign_sessions(false);
+        }
+        if import {
+            self.start_foreign_session_import();
+        }
+    }
+
     fn show_route_overlay(&mut self, ctx: &egui::Context) {
         if !self.route.is_overlay() {
             return;
@@ -31031,6 +31680,15 @@ fn render_message() -> &'static str {
                     .on_hover_text("Close")
                     .clicked();
                 self.command_center_content(ui);
+            } else if self.route == AppRoute::SessionImport {
+                let viewport = ctx.viewport_rect();
+                let overlay_size = egui::vec2(
+                    (viewport.width() - 108.0).max(520.0),
+                    (viewport.height() - 108.0).max(420.0),
+                );
+                ui.set_min_size(overlay_size);
+                ui.set_max_size(overlay_size);
+                self.session_import_content(ui);
             } else {
                 ui.set_min_width(420.0);
                 ui.set_max_width(640.0);
@@ -31631,6 +32289,14 @@ fn render_message() -> &'static str {
                 label: "New session".into(),
                 keywords: "chat create start fresh".into(),
                 action: RegisteredUiAction::Navigate { path: "/".into() },
+            },
+            CommandPaletteEntry {
+                group: "Go to",
+                label: "Import sessions".into(),
+                keywords: "foreign import claude codex history".into(),
+                action: RegisteredUiAction::Navigate {
+                    path: "/session-import".into(),
+                },
             },
             CommandPaletteEntry {
                 group: "Go to",
@@ -33303,6 +33969,47 @@ fn render_message() -> &'static str {
                 } => {
                     self.apply_session_export_loaded(request_id, session_id, profile, result);
                 }
+                GatewayEvent::ForeignSessionsLoaded {
+                    request_id,
+                    profile,
+                    connection_id,
+                    source,
+                    offset,
+                    result,
+                } => self.apply_foreign_sessions_loaded(
+                    request_id,
+                    profile,
+                    connection_id,
+                    source,
+                    offset,
+                    result,
+                ),
+                GatewayEvent::ForeignSessionPreviewLoaded {
+                    request_id,
+                    profile,
+                    connection_id,
+                    foreign_session_id,
+                    result,
+                } => self.apply_foreign_session_preview_loaded(
+                    request_id,
+                    profile,
+                    connection_id,
+                    foreign_session_id,
+                    result,
+                ),
+                GatewayEvent::ForeignSessionImported {
+                    request_id,
+                    profile,
+                    connection_id,
+                    foreign_session_id,
+                    result,
+                } => self.apply_foreign_session_imported(
+                    request_id,
+                    profile,
+                    connection_id,
+                    foreign_session_id,
+                    result,
+                ),
                 GatewayEvent::SessionRenamed {
                     request_id,
                     session_id,
@@ -37285,6 +37992,30 @@ fn render_message() -> &'static str {
                     self.fail_pending_composer_attachments(&error);
                     self.reset_messaging_state();
                     let mut disconnect_uncertainty = Vec::new();
+                    if let Some(pending) = self.foreign_session_import.pending_list.take()
+                        && self.foreign_session_import.owner.as_ref()
+                            == Some(&(pending.connection_id.clone(), pending.profile.clone()))
+                    {
+                        self.foreign_session_import.list_error = Some(
+                            "Foreign session list request was interrupted by a Gateway disconnect; refresh to retry".into(),
+                        );
+                    }
+                    if let Some(pending) = self.foreign_session_import.pending_preview.take()
+                        && self.foreign_session_import.owner.as_ref()
+                            == Some(&(pending.connection_id.clone(), pending.profile.clone()))
+                    {
+                        self.foreign_session_import.preview_error = Some(
+                            "Foreign session preview was interrupted by a Gateway disconnect; select the session again to retry".into(),
+                        );
+                    }
+                    if let Some(pending) = self.foreign_session_import.pending_import.take()
+                        && self.foreign_session_import.owner.as_ref()
+                            == Some(&(pending.connection_id.clone(), pending.profile.clone()))
+                    {
+                        self.foreign_session_import.import_error = Some(
+                            "Import outcome is unknown after a Gateway disconnect; retrying this same foreign session is safe".into(),
+                        );
+                    }
                     if !self.pending_toolset_updates.is_empty() {
                         for (name, pending) in &self.pending_toolset_updates {
                             if let Some(toolset) = self.toolsets.as_mut().and_then(|toolsets| {
@@ -47151,6 +47882,7 @@ mod tests {
             labels,
             [
                 "New session",
+                "Import sessions",
                 "Settings",
                 "Capabilities",
                 "Messaging",
@@ -53628,6 +54360,651 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn foreign_session_import_previews_explicitly_and_opens_only_the_receipt_session() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "foreign-import-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32149".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id.clone()));
+        app.navigate_path("/session-import")
+            .expect("import route is reachable");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("route requests a foreign session page"),
+            crate::gateway::TestGatewayCommand::ListForeignSessions {
+                request_id: app
+                    .foreign_session_import
+                    .pending_list
+                    .as_ref()
+                    .expect("list request is pending")
+                    .request_id
+                    .clone(),
+                profile: Some("work".into()),
+                source: None,
+                offset: 0,
+                limit: 25,
+            }
+        );
+        let foreign_id = "a".repeat(64);
+        events
+            .send(GatewayEvent::ForeignSessionsLoaded {
+                request_id: app
+                    .foreign_session_import
+                    .pending_list
+                    .as_ref()
+                    .expect("list request is pending")
+                    .request_id
+                    .clone(),
+                profile: Some("work".into()),
+                connection_id: None,
+                source: None,
+                offset: 0,
+                result: Ok(ForeignSessionPage {
+                    sessions: vec![ForeignSessionRow {
+                        id: foreign_id.clone(),
+                        source: ForeignSessionSource::Claude,
+                        label: "Claude Code".into(),
+                        title: Some("Repair imports".into()),
+                        cwd: Some("/work/project".into()),
+                        mtime: 1_700_000_000.0,
+                        turn_count: Some(2),
+                        excerpt: Some("Help with imports".into()),
+                    }],
+                    next_offset: None,
+                    host: "studio".into(),
+                    unreadable: 0,
+                }),
+            })
+            .expect("queue foreign session page");
+        app.update_gateway_discovery(&egui::Context::default());
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 1100.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        assert!(
+            harness
+                .query_all_by(|node| node.label().as_deref() == Some("Import sessions"))
+                .next()
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Preview foreign session: Repair imports")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Import and open session in Hermes")
+                .is_none()
+        );
+        harness
+            .query_by_label("Preview foreign session: Repair imports")
+            .expect("foreign row is accessible")
+            .click();
+        harness.run();
+        let preview_request = app
+            .borrow()
+            .foreign_session_import
+            .pending_preview
+            .as_ref()
+            .expect("row click requests a preview")
+            .request_id
+            .clone();
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("preview goes through the requesting Gateway connection"),
+            crate::gateway::TestGatewayCommand::PreviewForeignSession {
+                request_id: preview_request.clone(),
+                profile: Some("work".into()),
+                foreign_session_id: foreign_id.clone(),
+            }
+        );
+        events
+            .send(GatewayEvent::ForeignSessionPreviewLoaded {
+                request_id: preview_request,
+                profile: Some("work".into()),
+                connection_id: None,
+                foreign_session_id: foreign_id.clone(),
+                result: Ok(ForeignSessionPreview {
+                    messages: vec![crate::gateway::ForeignSessionTurn {
+                        role: "user".into(),
+                        content: "**Please repair the imports**\n\n| Check | State |\n| --- | --- |\n| Import | `ready` |\n\n```rust\nfn import() {}\n```\n\n[unsafe](javascript:alert(1)) · [project file](../outside.md)".into(),
+                    }],
+                    total: 2,
+                    truncated: false,
+                    already_imported: None,
+                    cwd: Some("/work/project".into()),
+                }),
+            })
+            .expect("queue preview result");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Please repair the imports")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref() == Some("ready"))
+                .next()
+                .is_some(),
+            "foreign preview renders Markdown table cells"
+        );
+        assert!(
+            harness.query_by_label("Copy").is_some(),
+            "foreign preview renders fenced code with the native copy control"
+        );
+        harness
+            .query_by_label("unsafe")
+            .expect("Markdown link remains accessible")
+            .click();
+        harness.step();
+        harness
+            .query_by_label("project file")
+            .expect("relative file link remains accessible")
+            .click();
+        harness.step();
+        assert!(
+            !harness
+                .output()
+                .platform_output
+                .commands
+                .iter()
+                .any(|command| matches!(command, egui::OutputCommand::OpenUrl(_))),
+            "untrusted foreign-session links do not reach host navigation"
+        );
+        assert_eq!(app.borrow().route, AppRoute::SessionImport);
+        let import_button = harness
+            .query_by_label("Import and open session in Hermes")
+            .expect("import is offered only after a preview is ready");
+        import_button.click();
+        harness.run();
+        assert_eq!(app.borrow().route, AppRoute::SessionImport);
+        let import_request = app
+            .borrow()
+            .foreign_session_import
+            .pending_import
+            .as_ref()
+            .expect("explicit action starts the import")
+            .request_id
+            .clone();
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("explicit import reaches Gateway"),
+            crate::gateway::TestGatewayCommand::ImportForeignSession {
+                request_id: import_request.clone(),
+                profile: Some("work".into()),
+                foreign_session_id: foreign_id,
+            }
+        );
+        events
+            .send(GatewayEvent::ForeignSessionImported {
+                request_id: import_request,
+                profile: Some("work".into()),
+                connection_id: None,
+                foreign_session_id: "a".repeat(64),
+                result: Ok(ForeignSessionImportReceipt {
+                    session_id: "hermes-imported-session".into(),
+                    already_imported: false,
+                }),
+            })
+            .expect("queue import receipt");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.borrow().route,
+            AppRoute::Session("hermes-imported-session".into())
+        );
+        assert_eq!(app.borrow().active_session_profile.as_deref(), Some("work"));
+        assert!(
+            app.borrow()
+                .workspace
+                .session_pane_ids()
+                .iter()
+                .any(|panel| {
+                    app.borrow()
+                        .workspace
+                        .dock
+                        .snapshot()
+                        .document
+                        .descriptor(panel)
+                        .is_some_and(|descriptor| {
+                            descriptor.metadata.get("hermes.session.id")
+                                == Some(&"hermes-imported-session".to_owned())
+                                && descriptor.metadata.get("hermes.session.profile")
+                                    == Some(&"work".to_owned())
+                        })
+                })
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn stale_foreign_session_list_does_not_consume_new_source_request() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "foreign-list-race-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32149".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id.clone()));
+
+        app.load_foreign_sessions(true);
+        let old = app
+            .foreign_session_import
+            .pending_list
+            .as_ref()
+            .expect("initial list request exists")
+            .request_id
+            .clone();
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(crate::gateway::TestGatewayCommand::ListForeignSessions { request_id, source: None, .. })
+                if request_id == old
+        ));
+
+        app.foreign_session_import.source = Some(ForeignSessionSource::Claude);
+        app.load_foreign_sessions(true);
+        let current = app
+            .foreign_session_import
+            .pending_list
+            .as_ref()
+            .expect("new source list request exists")
+            .request_id
+            .clone();
+        assert_ne!(old, current);
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(crate::gateway::TestGatewayCommand::ListForeignSessions { request_id, source: Some(ForeignSessionSource::Claude), .. })
+                if request_id == current
+        ));
+
+        app.apply_foreign_sessions_loaded(
+            old,
+            Some("work".into()),
+            Some(connection_id.clone()),
+            None,
+            0,
+            Ok(ForeignSessionPage {
+                sessions: Vec::new(),
+                next_offset: None,
+                host: "stale-host".into(),
+                unreadable: 0,
+            }),
+        );
+        assert_eq!(
+            app.foreign_session_import
+                .pending_list
+                .as_ref()
+                .map(|pending| pending.request_id.as_str()),
+            Some(current.as_str()),
+            "the stale reply must not consume the current request"
+        );
+        assert!(app.foreign_session_import.rows.is_empty());
+
+        app.apply_foreign_sessions_loaded(
+            current,
+            Some("work".into()),
+            Some(connection_id),
+            Some(ForeignSessionSource::Claude),
+            0,
+            Ok(ForeignSessionPage {
+                sessions: Vec::new(),
+                next_offset: None,
+                host: "claude-host".into(),
+                unreadable: 0,
+            }),
+        );
+        assert!(app.foreign_session_import.pending_list.is_none());
+        assert_eq!(
+            app.foreign_session_import.host.as_deref(),
+            Some("claude-host")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn stale_foreign_session_preview_does_not_consume_new_selection_request() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "foreign-preview-race-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32149".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id.clone()));
+        let make_row = |id: String| ForeignSessionRow {
+            id,
+            source: ForeignSessionSource::Codex,
+            label: "Codex".into(),
+            title: Some("Race fixture".into()),
+            cwd: None,
+            mtime: 1_700_000_000.0,
+            turn_count: Some(1),
+            excerpt: None,
+        };
+        let old_id = "a".repeat(64);
+        let current_id = "b".repeat(64);
+
+        app.select_foreign_session(&make_row(old_id.clone()));
+        let old = app
+            .foreign_session_import
+            .pending_preview
+            .as_ref()
+            .expect("first preview request exists")
+            .request_id
+            .clone();
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(crate::gateway::TestGatewayCommand::PreviewForeignSession { request_id, foreign_session_id, .. })
+                if request_id == old && foreign_session_id == old_id
+        ));
+
+        app.select_foreign_session(&make_row(current_id.clone()));
+        let current = app
+            .foreign_session_import
+            .pending_preview
+            .as_ref()
+            .expect("second preview request exists")
+            .request_id
+            .clone();
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(crate::gateway::TestGatewayCommand::PreviewForeignSession { request_id, foreign_session_id, .. })
+                if request_id == current && foreign_session_id == current_id
+        ));
+
+        app.apply_foreign_session_preview_loaded(
+            old,
+            Some("work".into()),
+            Some(connection_id.clone()),
+            old_id,
+            Ok(ForeignSessionPreview {
+                messages: Vec::new(),
+                total: 0,
+                truncated: false,
+                already_imported: None,
+                cwd: None,
+            }),
+        );
+        assert_eq!(
+            app.foreign_session_import
+                .pending_preview
+                .as_ref()
+                .map(|pending| pending.request_id.as_str()),
+            Some(current.as_str()),
+            "the stale preview must not consume the current request"
+        );
+        assert!(app.foreign_session_import.preview.is_none());
+        assert_eq!(
+            app.foreign_session_import.selected_id.as_deref(),
+            Some(current_id.as_str())
+        );
+
+        app.apply_foreign_session_preview_loaded(
+            current,
+            Some("work".into()),
+            Some(connection_id),
+            current_id.clone(),
+            Ok(ForeignSessionPreview {
+                messages: vec![crate::gateway::ForeignSessionTurn {
+                    role: "user".into(),
+                    content: "current preview".into(),
+                }],
+                total: 1,
+                truncated: false,
+                already_imported: None,
+                cwd: None,
+            }),
+        );
+        assert!(app.foreign_session_import.pending_preview.is_none());
+        assert_eq!(
+            app.foreign_session_import
+                .preview
+                .as_ref()
+                .and_then(|preview| preview.messages.first())
+                .map(|message| message.content.as_str()),
+            Some("current preview")
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn foreign_session_import_retries_after_error_but_never_opens_after_route_closes() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "foreign-import-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32149".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id.clone()));
+        app.route = AppRoute::SessionImport;
+        app.foreign_session_import.owner = Some((connection_id.clone(), "work".into()));
+        app.foreign_session_import.selected_id = Some("b".repeat(64));
+        app.foreign_session_import.preview = Some(ForeignSessionPreview {
+            messages: Vec::new(),
+            total: 0,
+            truncated: false,
+            already_imported: None,
+            cwd: None,
+        });
+
+        app.start_foreign_session_import();
+        let first = app
+            .foreign_session_import
+            .pending_import
+            .as_ref()
+            .expect("initial import request exists")
+            .request_id
+            .clone();
+        let crate::gateway::TestGatewayCommand::ImportForeignSession { request_id, .. } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("import sent")
+        else {
+            panic!("expected import command");
+        };
+        assert_eq!(request_id, first);
+        app.apply_foreign_session_imported(
+            first.clone(),
+            Some("work".into()),
+            Some(connection_id.clone()),
+            "b".repeat(64),
+            Err("temporary backend failure".into()),
+        );
+        assert!(app.foreign_session_import.import_error.is_some());
+        assert!(app.foreign_session_import.pending_import.is_none());
+
+        app.start_foreign_session_import();
+        let retry = app
+            .foreign_session_import
+            .pending_import
+            .as_ref()
+            .expect("retry request exists")
+            .request_id
+            .clone();
+        assert_ne!(retry, first);
+        assert!(matches!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("retry sent"),
+            crate::gateway::TestGatewayCommand::ImportForeignSession { request_id, .. }
+                if request_id == retry
+        ));
+        app.route = AppRoute::NewChat;
+        app.apply_foreign_session_imported(
+            retry,
+            Some("work".into()),
+            Some(connection_id),
+            "b".repeat(64),
+            Ok(ForeignSessionImportReceipt {
+                session_id: "must-not-open-after-close".into(),
+                already_imported: false,
+            }),
+        );
+        assert_eq!(app.route, AppRoute::NewChat);
+        assert!(commands.try_recv().is_err());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn foreign_session_import_rejects_mismatched_existing_receipt() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "foreign-import-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32149".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::SessionImport;
+        app.active_session_profile = Some("work".into());
+        app.foreign_session_import.owner = Some((connection_id.clone(), "work".into()));
+        app.foreign_session_import.selected_id = Some("c".repeat(64));
+        app.foreign_session_import.preview = Some(ForeignSessionPreview {
+            messages: Vec::new(),
+            total: 0,
+            truncated: false,
+            already_imported: Some("existing-session".into()),
+            cwd: None,
+        });
+        app.foreign_session_import.pending_import = Some(PendingForeignSessionImport {
+            request_id: "import-request".into(),
+            connection_id,
+            profile: "work".into(),
+            foreign_session_id: "c".repeat(64),
+            preview_existing_session: Some("existing-session".into()),
+        });
+        app.apply_foreign_session_imported(
+            "import-request".into(),
+            Some("work".into()),
+            app.gateway_connection_id.clone(),
+            "c".repeat(64),
+            Ok(ForeignSessionImportReceipt {
+                session_id: "different-session".into(),
+                already_imported: true,
+            }),
+        );
+        assert_eq!(app.route, AppRoute::SessionImport);
+        assert!(
+            app.foreign_session_import
+                .import_error
+                .as_deref()
+                .is_some_and(|error| error.contains("different session"))
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn foreign_session_import_disconnect_keeps_retryable_unknown_outcome() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "foreign-import-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32149".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::SessionImport;
+        app.foreign_session_import.owner = Some((connection_id.clone(), "work".into()));
+        app.foreign_session_import.selected_id = Some("d".repeat(64));
+        app.foreign_session_import.preview = Some(ForeignSessionPreview {
+            messages: Vec::new(),
+            total: 0,
+            truncated: false,
+            already_imported: None,
+            cwd: None,
+        });
+        app.foreign_session_import.pending_import = Some(PendingForeignSessionImport {
+            request_id: "in-flight-import".into(),
+            connection_id: connection_id.clone(),
+            profile: "work".into(),
+            foreign_session_id: "d".repeat(64),
+            preview_existing_session: None,
+        });
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id));
+        events
+            .send(GatewayEvent::Disconnected("connection lost".into()))
+            .expect("queue Gateway disconnect");
+
+        app.update_gateway_discovery(&egui::Context::default());
+
+        assert!(!app.gateway_connected);
+        assert!(app.foreign_session_import.pending_import.is_none());
+        assert!(app.foreign_session_import.preview.is_some());
+        assert!(app
+            .foreign_session_import
+            .import_error
+            .as_deref()
+            .is_some_and(|error| error.contains("outcome is unknown") && error.contains("safe")));
+        assert!(commands.try_recv().is_err());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

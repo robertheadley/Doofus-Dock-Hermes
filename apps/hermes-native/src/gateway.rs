@@ -1216,6 +1216,69 @@ pub struct SessionBranchReceipt {
     pub copied_messages: usize,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ForeignSessionSource {
+    Claude,
+    Codex,
+}
+
+impl ForeignSessionSource {
+    fn wire_name(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct ForeignSessionRow {
+    pub id: String,
+    pub source: ForeignSessionSource,
+    pub label: String,
+    pub title: Option<String>,
+    pub cwd: Option<String>,
+    pub mtime: f64,
+    pub turn_count: Option<usize>,
+    pub excerpt: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct ForeignSessionPage {
+    #[serde(default)]
+    pub sessions: Vec<ForeignSessionRow>,
+    pub next_offset: Option<usize>,
+    pub host: String,
+    #[serde(default)]
+    pub unreadable: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct ForeignSessionTurn {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct ForeignSessionPreview {
+    #[serde(default)]
+    pub messages: Vec<ForeignSessionTurn>,
+    #[serde(default)]
+    pub total: usize,
+    #[serde(default)]
+    pub truncated: bool,
+    pub already_imported: Option<String>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct ForeignSessionImportReceipt {
+    pub session_id: String,
+    #[serde(default)]
+    pub already_imported: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandCenterSystemAction {
     RestartGateway,
@@ -2597,6 +2660,28 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<SessionExportTranscript, String>,
     },
+    ForeignSessionsLoaded {
+        request_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        source: Option<ForeignSessionSource>,
+        offset: usize,
+        result: Result<ForeignSessionPage, String>,
+    },
+    ForeignSessionPreviewLoaded {
+        request_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        foreign_session_id: String,
+        result: Result<ForeignSessionPreview, String>,
+    },
+    ForeignSessionImported {
+        request_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        foreign_session_id: String,
+        result: Result<ForeignSessionImportReceipt, String>,
+    },
     Disconnected(String),
 }
 
@@ -2738,6 +2823,23 @@ enum GatewayCommand {
         retry_only: bool,
         expected_revision: Option<u64>,
         expected_generation: Option<u64>,
+    },
+    ListForeignSessions {
+        request_id: String,
+        profile: Option<String>,
+        source: Option<ForeignSessionSource>,
+        offset: usize,
+        limit: usize,
+    },
+    PreviewForeignSession {
+        request_id: String,
+        profile: Option<String>,
+        foreign_session_id: String,
+    },
+    ImportForeignSession {
+        request_id: String,
+        profile: Option<String>,
+        foreign_session_id: String,
     },
     LoadChatModelOptions {
         request_id: String,
@@ -3221,6 +3323,23 @@ pub(crate) enum TestGatewayCommand {
         expected_revision: Option<u64>,
         expected_generation: Option<u64>,
     },
+    ListForeignSessions {
+        request_id: String,
+        profile: Option<String>,
+        source: Option<ForeignSessionSource>,
+        offset: usize,
+        limit: usize,
+    },
+    PreviewForeignSession {
+        request_id: String,
+        profile: Option<String>,
+        foreign_session_id: String,
+    },
+    ImportForeignSession {
+        request_id: String,
+        profile: Option<String>,
+        foreign_session_id: String,
+    },
     CompressSession {
         request_id: String,
         session_id: String,
@@ -3375,6 +3494,37 @@ impl GatewayDiscovery {
                         retry_only,
                         expected_revision,
                         expected_generation,
+                    }),
+                    GatewayCommand::ListForeignSessions {
+                        request_id,
+                        profile,
+                        source,
+                        offset,
+                        limit,
+                    } => Some(TestGatewayCommand::ListForeignSessions {
+                        request_id,
+                        profile,
+                        source,
+                        offset,
+                        limit,
+                    }),
+                    GatewayCommand::PreviewForeignSession {
+                        request_id,
+                        profile,
+                        foreign_session_id,
+                    } => Some(TestGatewayCommand::PreviewForeignSession {
+                        request_id,
+                        profile,
+                        foreign_session_id,
+                    }),
+                    GatewayCommand::ImportForeignSession {
+                        request_id,
+                        profile,
+                        foreign_session_id,
+                    } => Some(TestGatewayCommand::ImportForeignSession {
+                        request_id,
+                        profile,
+                        foreign_session_id,
                     }),
                     GatewayCommand::SubmitPrompt {
                         session_id,
@@ -4818,6 +4968,9 @@ impl GatewayDiscovery {
             | GatewayEvent::SessionRuntimeRebound { connection_id, .. }
             | GatewayEvent::ComposerAttachmentAttached { connection_id, .. }
             | GatewayEvent::SessionBranched { connection_id, .. }
+            | GatewayEvent::ForeignSessionsLoaded { connection_id, .. }
+            | GatewayEvent::ForeignSessionPreviewLoaded { connection_id, .. }
+            | GatewayEvent::ForeignSessionImported { connection_id, .. }
             | GatewayEvent::SlashCompletionLoaded { connection_id, .. }
             | GatewayEvent::DisplayReasoningLoaded { connection_id, .. }
             | GatewayEvent::DisplayReasoningSaved { connection_id, .. } => {
@@ -6596,6 +6749,58 @@ impl GatewayDiscovery {
                 profile,
             })
             .map_err(|_| "Hermes session writer has closed".to_owned())
+    }
+
+    pub fn list_foreign_sessions(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        source: Option<ForeignSessionSource>,
+        offset: usize,
+        limit: usize,
+    ) -> Result<(), String> {
+        if limit == 0 || limit > 50 {
+            return Err("Foreign session page size must be between 1 and 50".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::ListForeignSessions {
+                request_id,
+                profile,
+                source,
+                offset,
+                limit,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn preview_foreign_session(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        foreign_session_id: String,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::PreviewForeignSession {
+                request_id,
+                profile,
+                foreign_session_id,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn import_foreign_session(
+        &self,
+        request_id: String,
+        profile: Option<String>,
+        foreign_session_id: String,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::ImportForeignSession {
+                request_id,
+                profile,
+                foreign_session_id,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
     pub fn rename_runtime_session(
@@ -8474,6 +8679,86 @@ fn gateway_actor_with_replay(
                     return;
                 }
             }
+            Ok(GatewayCommand::ListForeignSessions {
+                request_id,
+                profile,
+                source,
+                offset,
+                limit,
+            }) => {
+                let result = list_foreign_sessions_rpc(
+                    socket,
+                    &events,
+                    &mut next_request_id,
+                    profile.as_deref(),
+                    source,
+                    offset,
+                    limit,
+                );
+                if events
+                    .send(GatewayEvent::ForeignSessionsLoaded {
+                        request_id,
+                        profile,
+                        connection_id: None,
+                        source,
+                        offset,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::PreviewForeignSession {
+                request_id,
+                profile,
+                foreign_session_id,
+            }) => {
+                let result = preview_foreign_session_rpc(
+                    socket,
+                    &events,
+                    &mut next_request_id,
+                    profile.as_deref(),
+                    &foreign_session_id,
+                );
+                if events
+                    .send(GatewayEvent::ForeignSessionPreviewLoaded {
+                        request_id,
+                        profile,
+                        connection_id: None,
+                        foreign_session_id,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::ImportForeignSession {
+                request_id,
+                profile,
+                foreign_session_id,
+            }) => {
+                let result = import_foreign_session_rpc(
+                    socket,
+                    &events,
+                    &mut next_request_id,
+                    profile.as_deref(),
+                    &foreign_session_id,
+                );
+                if events
+                    .send(GatewayEvent::ForeignSessionImported {
+                        request_id,
+                        profile,
+                        connection_id: None,
+                        foreign_session_id,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::LoadChatModelOptions {
                 request_id,
                 session_id,
@@ -9877,6 +10162,152 @@ fn rename_runtime_session_rpc(
             Err(error)
         }
     }
+}
+
+fn validate_foreign_session_id(id: &str) -> Result<(), String> {
+    if id.len() != 64 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Hermes foreign session handle is invalid".into());
+    }
+    Ok(())
+}
+
+fn list_foreign_sessions_rpc(
+    socket: &mut GatewaySocket,
+    events: &mpsc::Sender<GatewayEvent>,
+    next_request_id: &mut u64,
+    profile: Option<&str>,
+    source: Option<ForeignSessionSource>,
+    offset: usize,
+    limit: usize,
+) -> Result<ForeignSessionPage, String> {
+    if offset > 1_000_000 || !(1..=50).contains(&limit) {
+        return Err("Hermes foreign session page is outside the supported range".into());
+    }
+    let source = source.map(ForeignSessionSource::wire_name);
+    let params = session_profile_params(
+        serde_json::json!({
+            "source": source,
+            "offset": offset,
+            "limit": limit
+        }),
+        profile,
+    )?;
+    let value = rpc_with_events(
+        socket,
+        *next_request_id,
+        "session.foreign.list",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    let page: ForeignSessionPage = serde_json::from_value(value?)
+        .map_err(|_| "Hermes returned a malformed foreign session page".to_owned())?;
+    if page.sessions.len() > limit
+        || page.unreadable > limit
+        || page.host.is_empty()
+        || page.host.len() > 256
+        || page.host.chars().any(char::is_control)
+        || page
+            .next_offset
+            .is_some_and(|next| next <= offset || next > 1_000_000)
+    {
+        return Err("Hermes returned an invalid foreign session page".into());
+    }
+    for row in &page.sessions {
+        validate_foreign_session_id(&row.id)?;
+        if source.is_some_and(|source| source != row.source.wire_name())
+            || row.label.is_empty()
+            || row.label.len() > 128
+            || row.label.chars().any(char::is_control)
+            || row
+                .title
+                .as_ref()
+                .is_some_and(|value| value.len() > 512 || value.chars().any(char::is_control))
+            || row
+                .cwd
+                .as_ref()
+                .is_some_and(|value| value.len() > 4096 || value.chars().any(char::is_control))
+            || row.excerpt.as_ref().is_some_and(|value| {
+                value.chars().count() > 200 || value.chars().any(char::is_control)
+            })
+            || !row.mtime.is_finite()
+            || row.mtime < 0.0
+            || row.turn_count.is_some_and(|count| count > 10_000_000)
+        {
+            return Err("Hermes returned an invalid foreign session row".into());
+        }
+    }
+    Ok(page)
+}
+
+fn preview_foreign_session_rpc(
+    socket: &mut GatewaySocket,
+    events: &mpsc::Sender<GatewayEvent>,
+    next_request_id: &mut u64,
+    profile: Option<&str>,
+    foreign_session_id: &str,
+) -> Result<ForeignSessionPreview, String> {
+    validate_foreign_session_id(foreign_session_id)?;
+    let params = session_profile_params(serde_json::json!({ "id": foreign_session_id }), profile)?;
+    let value = rpc_with_events(
+        socket,
+        *next_request_id,
+        "session.foreign.preview",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    let preview: ForeignSessionPreview = serde_json::from_value(value?)
+        .map_err(|_| "Hermes returned a malformed foreign session preview".to_owned())?;
+    if preview.messages.len() > 40
+        || preview.total < preview.messages.len()
+        || preview.total > 10_000_000
+        || preview
+            .already_imported
+            .as_ref()
+            .is_some_and(|id| id.is_empty() || id.len() > 256 || id.chars().any(char::is_control))
+        || preview
+            .cwd
+            .as_ref()
+            .is_some_and(|cwd| cwd.len() > 4096 || cwd.chars().any(char::is_control))
+        || preview.messages.iter().any(|message| {
+            message.role.is_empty()
+                || message.role.len() > 32
+                || message.role.chars().any(char::is_control)
+                || message.content.chars().count() > 8_000
+        })
+    {
+        return Err("Hermes returned an invalid foreign session preview".into());
+    }
+    Ok(preview)
+}
+
+fn import_foreign_session_rpc(
+    socket: &mut GatewaySocket,
+    events: &mpsc::Sender<GatewayEvent>,
+    next_request_id: &mut u64,
+    profile: Option<&str>,
+    foreign_session_id: &str,
+) -> Result<ForeignSessionImportReceipt, String> {
+    validate_foreign_session_id(foreign_session_id)?;
+    let params = session_profile_params(serde_json::json!({ "id": foreign_session_id }), profile)?;
+    let value = rpc_with_events(
+        socket,
+        *next_request_id,
+        "session.foreign.import",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    let receipt: ForeignSessionImportReceipt = serde_json::from_value(value?)
+        .map_err(|_| "Hermes returned a malformed foreign session import receipt".to_owned())?;
+    if receipt.session_id.is_empty()
+        || receipt.session_id.len() > 256
+        || receipt.session_id.chars().any(char::is_control)
+    {
+        return Err("Hermes returned an invalid imported session ID".into());
+    }
+    Ok(receipt)
 }
 
 fn load_chat_model_options_rpc(
@@ -27153,6 +27584,180 @@ mod tests {
                 .compress_session(" ".into(), "runtime-1".into(), "stored-1".into(), None)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn foreign_session_gateway_api_preserves_profile_filter_and_opaque_id() {
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        gateway
+            .list_foreign_sessions(
+                "list-1".into(),
+                Some("work".into()),
+                Some(ForeignSessionSource::Claude),
+                25,
+                25,
+            )
+            .expect("foreign session list queues");
+        assert_eq!(
+            commands
+                .recv_timeout(Duration::from_secs(1))
+                .expect("list command"),
+            TestGatewayCommand::ListForeignSessions {
+                request_id: "list-1".into(),
+                profile: Some("work".into()),
+                source: Some(ForeignSessionSource::Claude),
+                offset: 25,
+                limit: 25,
+            }
+        );
+        let foreign_id = "d".repeat(64);
+        gateway
+            .preview_foreign_session("preview-1".into(), Some("work".into()), foreign_id.clone())
+            .expect("foreign preview queues");
+        assert_eq!(
+            commands
+                .recv_timeout(Duration::from_secs(1))
+                .expect("preview command"),
+            TestGatewayCommand::PreviewForeignSession {
+                request_id: "preview-1".into(),
+                profile: Some("work".into()),
+                foreign_session_id: foreign_id.clone(),
+            }
+        );
+        gateway
+            .import_foreign_session("import-1".into(), Some("work".into()), foreign_id.clone())
+            .expect("foreign import queues");
+        assert_eq!(
+            commands
+                .recv_timeout(Duration::from_secs(1))
+                .expect("import command"),
+            TestGatewayCommand::ImportForeignSession {
+                request_id: "import-1".into(),
+                profile: Some("work".into()),
+                foreign_session_id: foreign_id,
+            }
+        );
+        assert!(
+            gateway
+                .list_foreign_sessions("bad-limit".into(), Some("work".into()), None, 0, 51)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn foreign_session_websocket_rpcs_match_pinned_contract_and_validate_receipts() {
+        fn read_request<S: io::Read + io::Write>(
+            socket: &mut tungstenite::WebSocket<S>,
+        ) -> serde_json::Value {
+            match socket.read().expect("read foreign RPC") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse foreign RPC"),
+                other => panic!("expected text RPC, got {other:?}"),
+            }
+        }
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let foreign_id = "e".repeat(64);
+        let server_id = foreign_id.clone();
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let list = read_request(&mut socket);
+            assert_eq!(list["method"], "session.foreign.list");
+            assert_eq!(
+                list["params"],
+                json!({"profile":"work","source":"claude","offset":25,"limit":25})
+            );
+            let list_id = list["id"].as_u64().expect("list request id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":list_id,"result":{
+                        "sessions":[{"id":server_id,"source":"claude","label":"Claude Code",
+                            "title":"Conversation","cwd":"/work/project","mtime":1700000000.5,
+                            "turn_count":2,"excerpt":"Help me"}],
+                        "next_offset":50,"host":"studio","unreadable":0
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send foreign list");
+
+            let preview = read_request(&mut socket);
+            assert_eq!(preview["method"], "session.foreign.preview");
+            assert_eq!(preview["params"]["profile"], "work");
+            assert_eq!(preview["params"]["id"], server_id);
+            let preview_id = preview["id"].as_u64().expect("preview request id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":preview_id,"result":{
+                        "messages":[{"role":"user","content":"Please help"}],
+                        "total":1,"truncated":false,"already_imported":null,"cwd":"/work/project"
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send foreign preview");
+
+            let import = read_request(&mut socket);
+            assert_eq!(import["method"], "session.foreign.import");
+            assert_eq!(import["params"]["profile"], "work");
+            assert_eq!(import["params"]["id"], server_id);
+            let import_id = import["id"].as_u64().expect("import request id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":import_id,"result":{
+                        "session_id":"hermes-session-1","already_imported":false
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send foreign import receipt");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (events, _event_rx) = mpsc::channel();
+        let mut next_request_id = 30;
+        let page = list_foreign_sessions_rpc(
+            &mut socket,
+            &events,
+            &mut next_request_id,
+            Some("work"),
+            Some(ForeignSessionSource::Claude),
+            25,
+            25,
+        )
+        .expect("read validated foreign page");
+        assert_eq!(page.sessions.len(), 1);
+        assert_eq!(page.sessions[0].source, ForeignSessionSource::Claude);
+        assert_eq!(page.sessions[0].mtime, 1_700_000_000.5);
+        let preview = preview_foreign_session_rpc(
+            &mut socket,
+            &events,
+            &mut next_request_id,
+            Some("work"),
+            &foreign_id,
+        )
+        .expect("read bounded preview");
+        assert_eq!(preview.messages[0].content, "Please help");
+        let receipt = import_foreign_session_rpc(
+            &mut socket,
+            &events,
+            &mut next_request_id,
+            Some("work"),
+            &foreign_id,
+        )
+        .expect("read import receipt");
+        assert_eq!(receipt.session_id, "hermes-session-1");
+        assert!(!receipt.already_imported);
+        assert_eq!(next_request_id, 33);
+        server.join().expect("foreign RPC fixture exits");
+    }
+
+    #[test]
+    fn foreign_session_rpc_rejects_nonopaque_ids() {
+        assert!(validate_foreign_session_id("../outside/session.json").is_err());
+        assert!(validate_foreign_session_id(&"f".repeat(63)).is_err());
+        assert!(validate_foreign_session_id(&"g".repeat(64)).is_err());
+        assert!(validate_foreign_session_id(&"f".repeat(64)).is_ok());
     }
 
     #[test]
