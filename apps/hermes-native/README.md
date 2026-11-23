@@ -12,6 +12,8 @@ The Sessions sidebar and command palette expose **Import sessions** for pinned C
 
 Pinned `background.complete` results now appear as bounded persistent system notices in their originating transcript. The native UI suppresses empty text and repeated task IDs and fences session/profile ownership; late results still land after Stop. This is local headless evidence, with live Gateway, packaged Windows and source-paired acceptance open.
 
+Session-scoped MCP and connector setup now appears on the originating tool row from pinned `connection.request` and `connection.update` events. The user can inspect each target, open a backend-provided authorization link, approve or skip pending setup, enter required environment values in masked ephemeral fields, or continue without setup. Responses use `connection.respond` with the exact session/profile/Gateway owner; stale sequences are ignored, unknown outcomes lock the action until a newer authoritative update, and environment drafts are zeroized when sent or when the operation settles. Pending-operation hydration from resume snapshots, reissue for failed/expired targets, live Gateway and packaged Windows acceptance remain open.
+
 ## Source pins
 
 - Hermes Agent parity snapshot: `8783054ef6cbafd86f10892241436862c1171a66` (downloaded and fixed on 2026-11-14)

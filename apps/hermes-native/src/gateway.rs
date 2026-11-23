@@ -1587,6 +1587,11 @@ pub struct ConnectorsSnapshot {
     pub accounts: Vec<ConnectorAccountEntry>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct ConnectionRespondReceipt {
+    pub settled: bool,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct McpServerSummary {
     pub name: String,
@@ -2107,6 +2112,15 @@ pub enum GatewayEvent {
         id: String,
         result: Result<(), String>,
         profile: Option<String>,
+        connection_id: Option<String>,
+    },
+    ConnectionResponded {
+        request_id: String,
+        session_id: String,
+        op_id: String,
+        profile: Option<String>,
+        result: Result<ConnectionRespondReceipt, String>,
+        outcome_unknown: bool,
         connection_id: Option<String>,
     },
     SessionCreated(Result<CreatedSession, String>),
@@ -2931,6 +2945,13 @@ enum GatewayCommand {
         profile: Option<String>,
         response: Result<serde_json::Value, (i64, String)>,
     },
+    RespondConnection {
+        request_id: String,
+        session_id: String,
+        op_id: String,
+        profile: Option<String>,
+        result: serde_json::Value,
+    },
     LoadConnectors {
         request_id: String,
     },
@@ -3397,6 +3418,12 @@ pub(crate) enum TestGatewayCommand {
         profile: Option<String>,
         response: Result<serde_json::Value, (i64, String)>,
     },
+    RespondConnection {
+        request_id: String,
+        session_id: String,
+        op_id: String,
+        profile: Option<String>,
+    },
     LockClarify {
         request_id: String,
         clarify_request_id: String,
@@ -3629,6 +3656,18 @@ impl GatewayDiscovery {
                         id,
                         profile,
                         response,
+                    }),
+                    GatewayCommand::RespondConnection {
+                        request_id,
+                        session_id,
+                        op_id,
+                        profile,
+                        result: _,
+                    } => Some(TestGatewayCommand::RespondConnection {
+                        request_id,
+                        session_id,
+                        op_id,
+                        profile,
                     }),
                     GatewayCommand::LockClarify {
                         request_id,
@@ -4986,7 +5025,8 @@ impl GatewayDiscovery {
             | GatewayEvent::ClarifyResponded { connection_id, .. }
             | GatewayEvent::ClarifyLocked { connection_id, .. }
             | GatewayEvent::ServerRequestReceived { connection_id, .. }
-            | GatewayEvent::ServerRequestAnswered { connection_id, .. } => {
+            | GatewayEvent::ServerRequestAnswered { connection_id, .. }
+            | GatewayEvent::ConnectionResponded { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
             _ => {}
@@ -5437,6 +5477,34 @@ impl GatewayDiscovery {
                 id,
                 profile,
                 response,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    /// Answer a session-scoped `connection.request` event through the normal
+    /// `connection.respond` RPC. Credential values in `result` are sent only
+    /// over the owning Gateway connection and are never copied into a receipt.
+    pub fn respond_connection(
+        &self,
+        request_id: String,
+        session_id: String,
+        op_id: String,
+        profile: Option<String>,
+        result: serde_json::Value,
+    ) -> Result<(), String> {
+        if request_id.is_empty() || session_id.is_empty() || op_id.is_empty() {
+            return Err("Hermes connection response identifiers must not be empty".into());
+        }
+        if !result.is_object() {
+            return Err("Hermes connection response must be an object".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::RespondConnection {
+                request_id,
+                session_id,
+                op_id,
+                profile,
+                result,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -9366,6 +9434,76 @@ fn gateway_actor_with_replay(
                         id,
                         result,
                         profile,
+                        connection_id: None,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::RespondConnection {
+                request_id,
+                session_id,
+                op_id,
+                profile,
+                result: answer,
+            }) => {
+                let mut outcome_unknown = false;
+                let result = if session_id.is_empty() || op_id.is_empty() || !answer.is_object() {
+                    Err("Hermes connection response is invalid".to_owned())
+                } else {
+                    session_profile_params(
+                        serde_json::json!({
+                            "owner":{"type":"session","session_id":session_id},
+                            "op_id":op_id,
+                            "result":answer
+                        }),
+                        profile.as_deref(),
+                    )
+                    .and_then(|params| {
+                        let response = rpc_with_events_timeout_outcome(
+                            socket,
+                            next_request_id,
+                            "connection.respond",
+                            params,
+                            Duration::from_secs(60),
+                            Some(&events),
+                        );
+                        let response = match response {
+                            Ok(response) => response,
+                            Err(error) => {
+                                outcome_unknown = error.is_unknown();
+                                return Err(if outcome_unknown {
+                                    "Hermes did not confirm the connection response; its outcome is unknown".into()
+                                } else {
+                                    "Hermes refused the connection response".into()
+                                });
+                            }
+                        };
+                        let status = response.get("status").and_then(serde_json::Value::as_str);
+                        let settled = response.get("settled").and_then(serde_json::Value::as_bool);
+                        if status == Some("ok") {
+                            if let Some(settled) = settled {
+                                Ok(ConnectionRespondReceipt { settled })
+                            } else {
+                                outcome_unknown = true;
+                                Err("Hermes returned an invalid connection response receipt".into())
+                            }
+                        } else {
+                            outcome_unknown = true;
+                            Err("Hermes returned an invalid connection response receipt".into())
+                        }
+                    })
+                };
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::ConnectionResponded {
+                        request_id,
+                        session_id,
+                        op_id,
+                        profile,
+                        result,
+                        outcome_unknown,
                         connection_id: None,
                     })
                     .is_err()
@@ -23049,6 +23187,262 @@ mod tests {
         }
         actor.join().expect("Gateway actor exits");
         server.join().expect("fixture Gateway exits");
+    }
+
+    #[test]
+    fn session_connection_response_uses_owner_scoped_rpc_and_does_not_echo_credentials() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read response RPC") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse response RPC"),
+                other => panic!("expected connection.respond RPC, got {other:?}"),
+            };
+            assert_eq!(request["method"], "connection.respond");
+            assert_eq!(request["params"]["profile"], "work");
+            assert_eq!(
+                request["params"]["owner"],
+                json!({"type":"session","session_id":"runtime-1"})
+            );
+            assert_eq!(request["params"]["op_id"], "connection-op-1");
+            assert_eq!(
+                request["params"]["result"],
+                json!({
+                    "targets":[{
+                        "name":"linear",
+                        "status":"approved",
+                        "env":{"LINEAR_API_KEY":"fixture-only-value"}
+                    }],
+                    "settled_by":"continue"
+                })
+            );
+            let id = request["id"].as_u64().expect("numeric RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"result":{"status":"ok","settled":false}})
+                        .to_string()
+                        .into(),
+                ))
+                .expect("send response receipt");
+            socket.close(None).expect("close fixture socket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (commands, command_receiver) = mpsc::channel();
+        let (events, event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
+        commands
+            .send(GatewayCommand::RespondConnection {
+                request_id: "connection-response-1".into(),
+                session_id: "runtime-1".into(),
+                op_id: "connection-op-1".into(),
+                profile: Some("work".into()),
+                result: json!({
+                    "targets":[{
+                        "name":"linear",
+                        "status":"approved",
+                        "env":{"LINEAR_API_KEY":"fixture-only-value"}
+                    }],
+                    "settled_by":"continue"
+                }),
+            })
+            .expect("queue connection response");
+        let receipt = event_receiver
+            .recv_timeout(Duration::from_secs(3))
+            .expect("connection response receipt");
+        assert!(!format!("{receipt:?}").contains("fixture-only-value"));
+        assert!(matches!(
+            receipt,
+            GatewayEvent::ConnectionResponded {
+                request_id,
+                session_id,
+                op_id,
+                profile: Some(profile),
+                result: Ok(ConnectionRespondReceipt { settled: false }),
+                outcome_unknown: false,
+                ..
+            } if request_id == "connection-response-1"
+                && session_id == "runtime-1"
+                && op_id == "connection-op-1"
+                && profile == "work"
+        ));
+        actor.join().expect("Gateway actor exits");
+        server.join().expect("fixture Gateway exits");
+    }
+
+    #[test]
+    fn session_connection_response_marks_malformed_receipt_unknown() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read response RPC") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse response RPC"),
+                other => panic!("expected connection.respond RPC, got {other:?}"),
+            };
+            let id = request["id"].as_u64().expect("numeric RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"result":{"status":"pending"}})
+                        .to_string()
+                        .into(),
+                ))
+                .expect("send malformed receipt");
+            socket.close(None).expect("close fixture socket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (commands, command_receiver) = mpsc::channel();
+        let (events, event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
+        commands
+            .send(GatewayCommand::RespondConnection {
+                request_id: "connection-response-malformed".into(),
+                session_id: "runtime-1".into(),
+                op_id: "connection-op-1".into(),
+                profile: None,
+                result: json!({"targets":[]}),
+            })
+            .expect("queue connection response");
+        let receipt = event_receiver
+            .recv_timeout(Duration::from_secs(3))
+            .expect("connection response receipt");
+        assert!(matches!(
+            receipt,
+            GatewayEvent::ConnectionResponded {
+                result: Err(message),
+                outcome_unknown: true,
+                ..
+            } if message == "Hermes returned an invalid connection response receipt"
+        ));
+        actor.join().expect("Gateway actor exits");
+        server.join().expect("fixture Gateway exits");
+    }
+
+    #[test]
+    fn session_connection_response_marks_disconnect_outcome_unknown() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read response RPC") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse response RPC"),
+                other => panic!("expected connection.respond RPC, got {other:?}"),
+            };
+            assert_eq!(request["method"], "connection.respond");
+            socket.close(None).expect("close before receipt");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (commands, command_receiver) = mpsc::channel();
+        let (events, event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
+        commands
+            .send(GatewayCommand::RespondConnection {
+                request_id: "connection-response-disconnect".into(),
+                session_id: "runtime-1".into(),
+                op_id: "connection-op-1".into(),
+                profile: None,
+                result: json!({"targets":[]}),
+            })
+            .expect("queue connection response");
+        let mut found = None;
+        for _ in 0..2 {
+            let event = event_receiver
+                .recv_timeout(Duration::from_secs(3))
+                .expect("connection response or disconnect event");
+            if matches!(event, GatewayEvent::ConnectionResponded { .. }) {
+                found = Some(event);
+                break;
+            }
+        }
+        let receipt = found.expect("connection response result is delivered");
+        assert!(matches!(
+            receipt,
+            GatewayEvent::ConnectionResponded {
+                result: Err(_),
+                outcome_unknown: true,
+                ..
+            }
+        ));
+        actor.join().expect("Gateway actor exits");
+        server.join().expect("fixture Gateway exits");
+    }
+
+    #[test]
+    fn connection_response_rejects_empty_ids_and_non_object_answer() {
+        let (discovery, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        assert!(
+            discovery
+                .respond_connection(
+                    "request".into(),
+                    "runtime-1".into(),
+                    "".into(),
+                    None,
+                    json!({"targets":[]}),
+                )
+                .is_err()
+        );
+        assert!(
+            discovery
+                .respond_connection(
+                    "request".into(),
+                    "runtime-1".into(),
+                    "op".into(),
+                    None,
+                    json!([]),
+                )
+                .is_err()
+        );
+        discovery
+            .respond_connection(
+                "request".into(),
+                "runtime-1".into(),
+                "op".into(),
+                None,
+                json!({
+                    "targets":[{
+                        "name":"linear",
+                        "status":"approved",
+                        "env":{"LINEAR_API_KEY":"fixture-only-value"}
+                    }]
+                }),
+            )
+            .expect("queue valid connection response");
+        let command = commands
+            .recv_timeout(Duration::from_secs(3))
+            .expect("observe connection response command");
+        assert!(matches!(
+            &command,
+            TestGatewayCommand::RespondConnection {
+                session_id,
+                op_id,
+                ..
+            } if session_id == "runtime-1" && op_id == "op"
+        ));
+        assert!(!format!("{command:?}").contains("fixture-only-value"));
     }
 
     #[test]

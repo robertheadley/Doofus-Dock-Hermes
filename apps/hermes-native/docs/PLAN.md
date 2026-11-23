@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 349 (implementation in progress).
+- **Working revision:** 369 (implementation in progress).
 - **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
@@ -2270,3 +2270,9 @@ At this checkpoint, the scoped ledger reports 103/176 requirements mapped (1 imp
 ### Revision 368 — Bind foreign session import evidence — 2026-11-23
 
 Source commit `d2dc104585723b44632d1095590630b333f821e9` is now bound to EV-0165. PAR-0082 stays partial across the capability definition and generated ledgers; Claude Code/Codex list, bounded Markdown preview, explicit receipt-gated import, idempotent reopen, stale-response fencing, safe retry, and paged export have local headless evidence. Package validation reports 565 target/UI/test rows, 15 source receipts, and 149 implementation receipts. The UCM check confirms the new scenario and has no PAR-0082 errors; repository-wide findings remain 178 historical errors, 9 reconciliation items, and 236 warnings. Current coverage remains 103/176 scoped and 137/499 broad; 0/176 live-runtime and source-paired acceptance. Next: authenticated Gateway and packaged Windows verification.
+
+### Revision 369 — Add session-scoped MCP setup operations — 2026-11-23
+
+PAR-0518 is now mapped partial. The pinned `connection.request` event is parsed into bounded typed metadata and attached to its existing tool row by tool-call ID. Newer full `connection.update` snapshots are session/operation/sequence fenced. The accessible transcript card exposes target status, authorization links, pending approve/skip, masked setup inputs, and Continue; `connection.respond` sends through the matching session/profile/Gateway actor. Environment drafts use zeroizing strings and clear on send or settlement; unknown outcomes remain locked until a newer authoritative snapshot. Focused parser/reducer, RPC actor, transcript lifecycle, and rendered UI action tests pass. Pending connection-operation resume hydration, failed/expired target reissue, authenticated live Gateway and packaged Windows acceptance remain open, so PAR-0518 stays partial.
+
+Validation: full locked automation-feature suite passes 695 library + 15 protocol + 3 launcher tests; locked workspace all-target check, rustfmt, diff check and persisted task validation pass. Generated ledgers now map 104/176 scoped requirements (1 implemented, 102 partial, 1 not implemented, 72 unknown) and 138/499 broad rows (6 implemented, 131 partial, 1 not implemented, 361 unknown). All 176 scoped rows still lack live-runtime and source-paired acceptance. No live Hermes Gateway or installed Hermes app was used.

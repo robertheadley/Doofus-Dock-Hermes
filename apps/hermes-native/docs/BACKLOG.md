@@ -482,3 +482,9 @@ Existing native code and headless regressions already cover profile routing, ret
 - [ ] Validate foreign-session import with an authenticated Hermes Gateway and packaged Windows app; PAR-0082 remains partial until live/source-paired acceptance.
 - [x] Implement pinned `secret`, `vault.code`, and `vault.save_login` request cards with same-socket responses, owner fencing, ephemeral secret handling, masked inputs, and no-resend behavior after unknown writes; headless tests pass.
 - [ ] Verify the three prompt types and saved-session branch against an authenticated Hermes Gateway and packaged Windows app.
+
+### PAR-0518 — Session-scoped MCP and connector setup operations
+
+- [x] Parse bounded `connection.request` and full `connection.update` snapshots; attach setup state to the originating tool row, ignore stale sequences, render pending approval/skip/authorization/setup-input controls, and send the pinned `connection.respond` RPC through the owning Gateway actor. Secret fields are masked, retained only in zeroizing memory drafts, and excluded from transcript and receipt/debug projections. Local parser, reducer, actor, and headless UI tests pass.
+- [ ] Hydrate pending connection operations from session resume/replay snapshots; support retry/reissue for failed or expired targets and the connector-directory actions.
+- [ ] Validate the full setup flow against an authenticated Hermes Gateway and packaged Windows app; PAR-0518 remains partial pending live and source-paired acceptance.

@@ -2377,6 +2377,7 @@ pub struct HermesNativeApp {
     new_chat_draft: String,
     new_chat_draft_scope: Option<String>,
     transcript: Vec<serde_json::Value>,
+    connection_env_drafts: BTreeMap<String, Zeroizing<String>>,
     transcript_message_count: usize,
     transcript_has_more: bool,
     older_transcript_request: Option<(String, String, Option<String>, usize)>,
@@ -4887,6 +4888,7 @@ fn render_message() -> &'static str {
             new_chat_draft: String::new(),
             new_chat_draft_scope: None,
             transcript: Vec::new(),
+            connection_env_drafts: BTreeMap::new(),
             transcript_message_count: 0,
             transcript_has_more: false,
             older_transcript_request: None,
@@ -7633,6 +7635,7 @@ fn render_message() -> &'static str {
             let mut open_model_picker = false;
             let mut compress_context_session: Option<(String, String, Option<String>)> = None;
             let mut open_recovery_url = None;
+            let mut connection_responses: Vec<(usize, String, serde_json::Value)> = Vec::new();
             let active_profile = self.active_session_profile.clone();
             let active_connection_id = self.active_gateway_connection_id().to_owned();
             let tool_images = messages
@@ -7714,6 +7717,201 @@ fn render_message() -> &'static str {
                                     .strong()
                                     .color(transcript_speaker_color(&message)),
                             );
+                            if let Some(operation) = message
+                                .get("connection_operation")
+                                .and_then(serde_json::Value::as_object)
+                            {
+                                ui.separator();
+                                ui.label(RichText::new("Hermes setup request").strong());
+                                let op_id = operation
+                                    .get("op_id")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or_default();
+                                let owner_session = operation
+                                    .get("session_id")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or_default();
+                                let settled = operation
+                                    .get("settled")
+                                    .and_then(serde_json::Value::as_bool)
+                                    == Some(true);
+                                let can_respond = !settled
+                                    && !op_id.is_empty()
+                                    && owner_session == self.active_runtime_session_id.as_deref().unwrap_or_default()
+                                    && self.gateway_connected
+                                    && message
+                                        .get("connection_response_state")
+                                        .and_then(serde_json::Value::as_str)
+                                        .is_none_or(|state| state == "ready");
+                                let targets = operation
+                                    .get("targets")
+                                    .and_then(serde_json::Value::as_array)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                for target in targets {
+                                    let name = target
+                                        .get("name")
+                                        .and_then(serde_json::Value::as_str)
+                                        .unwrap_or("Setup target")
+                                        .to_owned();
+                                    let state = target
+                                        .get("state")
+                                        .and_then(serde_json::Value::as_str)
+                                        .unwrap_or("pending");
+                                    let action = target
+                                        .get("action")
+                                        .and_then(serde_json::Value::as_str)
+                                        .unwrap_or("connect");
+                                    let details = target
+                                        .get("instructions")
+                                        .or_else(|| target.get("detail"))
+                                        .or_else(|| target.get("details"))
+                                        .and_then(serde_json::Value::as_str)
+                                        .filter(|text| !text.trim().is_empty());
+                                    let connect_url = target
+                                        .get("connect_url")
+                                        .and_then(serde_json::Value::as_str)
+                                        .filter(|url| !url.trim().is_empty());
+                                    let target_pending = state == "pending";
+                                    let target_needs_approval =
+                                        target_pending && action != "authorize";
+                                    let mut approve_enabled = can_respond && target_needs_approval;
+                                    let env_fields = target
+                                        .get("required_env")
+                                        .and_then(serde_json::Value::as_array)
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    ui.group(|ui| {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.label(RichText::new(&name).strong());
+                                            ui.label(format!("{action} · {state}"));
+                                        });
+                                        if let Some(details) = details {
+                                            ui.label(details);
+                                        }
+                                        if state == "initiated"
+                                            && let Some(url) = connect_url
+                                        {
+                                            if ui.button("Open authorization page").clicked() {
+                                                open_recovery_url = Some(url.to_owned());
+                                            }
+                                        }
+                                        let mut env_values = serde_json::Map::new();
+                                        for field in &env_fields {
+                                            let Some(env_name) = field
+                                                .get("name")
+                                                .and_then(serde_json::Value::as_str)
+                                            else {
+                                                continue;
+                                            };
+                                            let required = field
+                                                .get("required")
+                                                .and_then(serde_json::Value::as_bool)
+                                                .unwrap_or(false);
+                                            let secret = field
+                                                .get("secret")
+                                                .and_then(serde_json::Value::as_bool)
+                                                .unwrap_or(false);
+                                            let prompt = field
+                                                .get("prompt")
+                                                .and_then(serde_json::Value::as_str)
+                                                .filter(|value| !value.is_empty())
+                                                .unwrap_or(env_name);
+                                            let key = connection_env_draft_key(
+                                                owner_session,
+                                                op_id,
+                                                &name,
+                                                env_name,
+                                            );
+                                            let default = if secret {
+                                                String::new()
+                                            } else {
+                                                field
+                                                    .get("default")
+                                                    .and_then(serde_json::Value::as_str)
+                                                    .unwrap_or_default()
+                                                    .to_owned()
+                                            };
+                                            let draft = self
+                                                .connection_env_drafts
+                                                .entry(key)
+                                                .or_insert_with(|| Zeroizing::new(default));
+                                            ui.label(if required {
+                                                format!("{prompt} (required)")
+                                            } else {
+                                                prompt.to_owned()
+                                            });
+                                            ui.add(
+                                                egui::TextEdit::singleline(&mut **draft)
+                                                    .password(secret)
+                                                    .hint_text(env_name),
+                                            )
+                                            .accessible_name(format!("Setup value for {env_name}"));
+                                            let value = draft.trim();
+                                            if required && value.is_empty() {
+                                                approve_enabled = false;
+                                            }
+                                            if !value.is_empty() {
+                                                env_values.insert(
+                                                    env_name.to_owned(),
+                                                    serde_json::Value::String(value.to_owned()),
+                                                );
+                                            }
+                                        }
+                                        if target_needs_approval {
+                                            ui.horizontal(|ui| {
+                                                let approve = ui
+                                                    .add_enabled(approve_enabled, egui::Button::new("Approve setup"))
+                                                    .accessible_name(format!("Approve Hermes setup for {name}"));
+                                                if approve.clicked() {
+                                                    connection_responses.push((
+                                                        index,
+                                                        op_id.to_owned(),
+                                                        serde_json::json!({
+                                                            "targets":[{
+                                                                "name":name.clone(),
+                                                                "status":"approved",
+                                                                "env":env_values
+                                                            }]
+                                                        }),
+                                                    ));
+                                                }
+                                                if ui
+                                                    .add_enabled(can_respond, egui::Button::new("Skip"))
+                                                    .clicked()
+                                                {
+                                                    connection_responses.push((
+                                                        index,
+                                                        op_id.to_owned(),
+                                                        serde_json::json!({
+                                                            "targets":[{"name":name.clone(),"status":"skipped"}]
+                                                        }),
+                                                    ));
+                                                }
+                                            });
+                                        } else if action == "authorize" && state == "pending" {
+                                            ui.label("Waiting for Hermes to prepare authorization…");
+                                        }
+                                    });
+                                }
+                                if !settled {
+                                    if ui
+                                        .add_enabled(can_respond, egui::Button::new("Continue without setup"))
+                                        .clicked()
+                                    {
+                                        connection_responses.push((
+                                            index,
+                                            op_id.to_owned(),
+                                            serde_json::json!({"settled_by":"continue"}),
+                                        ));
+                                    }
+                                }
+                                let response_state = message
+                                    .get("connection_response_state")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or(if settled { "settled" } else { "waiting for your choice" });
+                                ui.label(RichText::new(response_state).weak());
+                            }
                             let failed_turn = transcript_failed_user_turn(&messages, index);
                             let durable_row_id = message
                                 .get("row_id")
@@ -8358,6 +8556,41 @@ fn render_message() -> &'static str {
                 TranscriptScrollPosition::from_metrics(scroll_offset, max_offset);
             chat_view.active_prompt_message_index = active_prompt_message_index;
             chat_view.active_prompt_row_id = active_prompt_row_id;
+            for (_, op_id, result) in connection_responses {
+                let Some(runtime_session_id) = self.active_runtime_session_id.clone() else {
+                    continue;
+                };
+                let Some(gateway) = self.gateway_discovery.as_ref() else {
+                    self.status = "Hermes Gateway is not connected.".into();
+                    continue;
+                };
+                let request_id = connection_response_request_id();
+                let response = gateway.respond_connection(
+                    request_id,
+                    runtime_session_id.clone(),
+                    op_id.clone(),
+                    self.active_session_profile.clone(),
+                    result,
+                );
+                if let Some(row) = self.transcript.iter_mut().rev().find(|row| {
+                    row.get("connection_operation")
+                        .and_then(|operation| operation.get("op_id"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some(op_id.as_str())
+                }) {
+                    row["connection_response_state"] = serde_json::json!(if response.is_ok() {
+                        "awaiting_gateway"
+                    } else {
+                        "failed"
+                    });
+                }
+                self.connection_env_drafts.retain(|key, _| {
+                    !key.starts_with(&connection_env_draft_prefix(&runtime_session_id, &op_id))
+                });
+                if let Err(error) = response {
+                    self.status = error;
+                }
+            }
             if let Some(destination) = open_transcript_file {
                 self.open_transcript_local_file_preview(session_id, &destination);
             }
@@ -23188,6 +23421,63 @@ fn render_message() -> &'static str {
         view.transcript_message_count = view.transcript_message_count.max(view.transcript.len());
     }
 
+    fn apply_connection_operation_server_event(
+        &mut self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+        event_type: &str,
+        payload: &serde_json::Value,
+    ) {
+        if event_type == "connection.update"
+            && let Ok(update) =
+                crate::connection_operation::ConnectionOperationUpdate::parse(payload)
+            && update.session_id == runtime_session_id
+            && update.settled
+        {
+            self.connection_env_drafts.retain(|key, _| {
+                !key.starts_with(&connection_env_draft_prefix(
+                    runtime_session_id,
+                    &update.op_id,
+                ))
+            });
+        }
+        let profile_matches = |candidate: Option<&str>| {
+            candidate.is_none_or(|profile| self.active_session_profile.as_deref() == Some(profile))
+        };
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && profile_matches(profile)
+        {
+            apply_connection_operation_event(
+                &mut self.transcript,
+                runtime_session_id,
+                event_type,
+                payload,
+            );
+            self.transcript_message_count = self.transcript.len();
+            return;
+        }
+
+        let keys = self
+            .session_chat_views
+            .iter()
+            .filter(|(_, view)| {
+                view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                    && profile.is_none_or(|profile| view.profile.as_deref() == Some(profile))
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        let [key] = keys.as_slice() else { return };
+        if let Some(view) = self.session_chat_views.get_mut(key) {
+            apply_connection_operation_event(
+                &mut view.transcript,
+                runtime_session_id,
+                event_type,
+                payload,
+            );
+            view.transcript_message_count = view.transcript.len();
+        }
+    }
+
     #[cfg(test)]
     fn handle_server_event(&mut self, event: serde_json::Value) {
         self.handle_server_event_from_connection(event, None);
@@ -23218,6 +23508,21 @@ fn render_message() -> &'static str {
             .get("payload")
             .cloned()
             .unwrap_or(serde_json::Value::Null);
+        let event_profile = event
+            .get("profile")
+            .or_else(|| payload.get("profile"))
+            .and_then(serde_json::Value::as_str);
+        if matches!(event_type, "connection.request" | "connection.update") {
+            if let Some(runtime_session_id) = session_id {
+                self.apply_connection_operation_server_event(
+                    runtime_session_id,
+                    event_profile,
+                    event_type,
+                    &payload,
+                );
+            }
+            return;
+        }
         if event_type == "status.update"
             && payload.get("kind").and_then(serde_json::Value::as_str) == Some("compacted")
         {
@@ -33626,6 +33931,48 @@ fn render_message() -> &'static str {
                     profile,
                     connection_id,
                 ),
+                GatewayEvent::ConnectionResponded {
+                    request_id: _,
+                    session_id,
+                    op_id,
+                    profile,
+                    result,
+                    outcome_unknown,
+                    connection_id,
+                } => {
+                    let owner_matches = connection_id.as_deref()
+                        == self.gateway_connection_id.as_deref()
+                        && self.active_runtime_session_id.as_deref() == Some(&session_id)
+                        && profile.as_deref() == self.active_session_profile.as_deref();
+                    if owner_matches {
+                        if let Some(row) = self.transcript.iter_mut().rev().find(|row| {
+                            row.get("connection_operation")
+                                .and_then(|operation| operation.get("op_id"))
+                                .and_then(serde_json::Value::as_str)
+                                == Some(op_id.as_str())
+                        }) {
+                            if outcome_unknown {
+                                row["connection_response_state"] =
+                                    serde_json::json!("outcome_unknown");
+                            } else {
+                                match result {
+                                    Ok(receipt) => {
+                                        row["connection_response_state"] =
+                                            serde_json::json!(if receipt.settled {
+                                                "settled"
+                                            } else {
+                                                "accepted"
+                                            });
+                                    }
+                                    Err(_) => {
+                                        row["connection_response_state"] =
+                                            serde_json::json!("failed");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 GatewayEvent::ServerEvent {
                     event,
                     connection_id,
@@ -38442,6 +38789,165 @@ fn append_background_completion_notice(
     transcript.push(row);
 }
 
+fn connection_env_draft_prefix(runtime_session_id: &str, op_id: &str) -> String {
+    format!("{runtime_session_id}\0{op_id}\0")
+}
+
+fn connection_env_draft_key(
+    runtime_session_id: &str,
+    op_id: &str,
+    target: &str,
+    env_name: &str,
+) -> String {
+    format!(
+        "{}{target}\0{env_name}",
+        connection_env_draft_prefix(runtime_session_id, op_id)
+    )
+}
+
+fn connection_response_request_id() -> String {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+    format!(
+        "native-connection-{}-{}",
+        current_unix_millis(),
+        NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+fn apply_connection_operation_event(
+    transcript: &mut Vec<serde_json::Value>,
+    runtime_session_id: &str,
+    event_type: &str,
+    payload: &serde_json::Value,
+) {
+    use crate::connection_operation::{ConnectionOperation, ConnectionOperationUpdate};
+
+    match event_type {
+        "connection.request" => {
+            let Ok(operation) = ConnectionOperation::parse_request(payload, runtime_session_id)
+            else {
+                return;
+            };
+            let op_id = operation.op_id.clone();
+            let seq = operation.seq;
+            let tool_call_id = payload
+                .get("tool_call_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|id| !id.trim().is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("hermes-connection-{op_id}"));
+            let Ok(operation) = serde_json::to_value(operation) else {
+                return;
+            };
+            if let Some(row) = transcript.iter_mut().rev().find(|row| {
+                row.get("tool_call_id").and_then(serde_json::Value::as_str)
+                    == Some(tool_call_id.as_str())
+                    || row
+                        .get("connection_operation")
+                        .and_then(|operation| operation.get("op_id"))
+                        .and_then(serde_json::Value::as_str)
+                        == Some(op_id.as_str())
+            }) {
+                let previous_seq = row
+                    .pointer("/connection_operation/seq")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or_default();
+                if seq <= previous_seq {
+                    return;
+                }
+                row["connection_operation"] = operation;
+                row["status"] = serde_json::json!("running");
+                row["connection_response_state"] = serde_json::json!("ready");
+                return;
+            }
+            transcript.push(serde_json::json!({
+                "type":"tool_call",
+                "tool_call_id":tool_call_id,
+                "name":"manage_connections",
+                "status":"running",
+                "connection_operation":operation,
+                "connection_response_state":"ready"
+            }));
+        }
+        "connection.update" => {
+            let Ok(update) = ConnectionOperationUpdate::parse(payload) else {
+                return;
+            };
+            if update.session_id != runtime_session_id {
+                return;
+            }
+            let op_id = update.op_id.clone();
+            let seq = update.seq;
+            let settled = update.settled;
+            let Ok(update) = serde_json::to_value(update) else {
+                return;
+            };
+            if let Some(row) = transcript.iter_mut().rev().find(|row| {
+                row.get("connection_operation")
+                    .and_then(|operation| operation.get("op_id"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some(op_id.as_str())
+            }) {
+                let operation = &mut row["connection_operation"];
+                if operation
+                    .get("session_id")
+                    .and_then(serde_json::Value::as_str)
+                    != Some(runtime_session_id)
+                    || operation
+                        .get("seq")
+                        .and_then(serde_json::Value::as_u64)
+                        .is_some_and(|previous| seq <= previous)
+                {
+                    return;
+                }
+                for key in [
+                    "seq",
+                    "deadline_at",
+                    "settled",
+                    "settled_at",
+                    "settled_by",
+                    "targets",
+                ] {
+                    if let Some(value) = update.get(key) {
+                        operation[key] = value.clone();
+                    }
+                }
+                row["status"] = serde_json::json!(if settled { "complete" } else { "running" });
+                if settled {
+                    row["connection_response_state"] = serde_json::json!("settled");
+                } else {
+                    // A newer owner-fenced snapshot is authoritative after an
+                    // uncertain response and is the only event that unlocks it.
+                    row["connection_response_state"] = serde_json::json!("ready");
+                }
+            } else {
+                // A resumed transcript can receive a full update before its
+                // original request event. Preserve the authoritative snapshot.
+                let targets = update.get("targets").cloned().unwrap_or_default();
+                let tool_call_id = format!("hermes-connection-{op_id}");
+                transcript.push(serde_json::json!({
+                    "type":"tool_call",
+                    "tool_call_id":tool_call_id,
+                    "name":"manage_connections",
+                    "status":if settled { "complete" } else { "running" },
+                    "connection_operation":{
+                        "session_id":runtime_session_id,
+                        "op_id":op_id,
+                        "seq":seq,
+                        "deadline_at":update.get("deadline_at"),
+                        "settled":settled,
+                        "settled_at":update.get("settled_at"),
+                        "settled_by":update.get("settled_by"),
+                        "targets":targets
+                    },
+                    "connection_response_state":if settled { "settled" } else { "ready" }
+                }));
+            }
+        }
+        _ => {}
+    }
+}
+
 fn apply_stream_event_to_transcript(
     transcript: &mut Vec<serde_json::Value>,
     event_type: &str,
@@ -41945,6 +42451,155 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::time::Duration;
+
+    #[test]
+    fn connection_operation_transcript_applies_new_owner_scoped_snapshots_only() {
+        let request = serde_json::json!({
+            "op_id":"op-a",
+            "seq":1,
+            "deadline_at":1900000000.0,
+            "timeout_seconds":120.0,
+            "tool_call_id":"tool-a",
+            "targets":[{
+                "name":"Linear",
+                "kind":"mcp",
+                "action":"install",
+                "state":"pending",
+                "required_env":[{"name":"LINEAR_TOKEN","required":true,"secret":true}]
+            }]
+        });
+        let mut transcript = vec![serde_json::json!({
+            "type":"tool_call",
+            "tool_call_id":"tool-a",
+            "name":"manage_connections",
+            "status":"running"
+        })];
+        apply_connection_operation_event(
+            &mut transcript,
+            "runtime-a",
+            "connection.request",
+            &request,
+        );
+        assert_eq!(transcript.len(), 1);
+        assert_eq!(transcript[0]["tool_call_id"], "tool-a");
+        assert!(!transcript[0].to_string().contains("LINEAR_TOKEN_VALUE"));
+
+        let update = serde_json::json!({
+            "op_id":"op-a",
+            "seq":2,
+            "deadline_at":1900000000.0,
+            "settled":false,
+            "owner":{"type":"session","session_id":"runtime-a"},
+            "targets":[{
+                "name":"Linear",
+                "kind":"mcp",
+                "action":"install",
+                "state":"connected",
+                "required_env":[]
+            }]
+        });
+        apply_connection_operation_event(
+            &mut transcript,
+            "runtime-a",
+            "connection.update",
+            &update,
+        );
+        assert_eq!(transcript[0]["connection_operation"]["seq"], 2);
+        assert_eq!(
+            transcript[0]["connection_operation"]["targets"][0]["state"],
+            "connected"
+        );
+        assert_eq!(transcript[0]["connection_response_state"], "ready");
+
+        let mut stale = update.clone();
+        stale["targets"][0]["state"] = serde_json::json!("failed");
+        apply_connection_operation_event(&mut transcript, "runtime-a", "connection.update", &stale);
+        assert_eq!(
+            transcript[0]["connection_operation"]["targets"][0]["state"],
+            "connected"
+        );
+
+        let mut wrong_owner = update;
+        wrong_owner["seq"] = serde_json::json!(3);
+        wrong_owner["owner"]["session_id"] = serde_json::json!("runtime-b");
+        apply_connection_operation_event(
+            &mut transcript,
+            "runtime-a",
+            "connection.update",
+            &wrong_owner,
+        );
+        assert_eq!(transcript[0]["connection_operation"]["seq"], 2);
+    }
+
+    #[test]
+    fn connection_operation_card_renders_setup_controls_and_masks_secret_fields() {
+        let (mut app, directory) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some("connection-a".into());
+        app.active_runtime_session_id = Some("runtime-a".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.transcript = vec![serde_json::json!({
+            "type":"tool_call",
+            "tool_call_id":"tool-a",
+            "name":"manage_connections",
+            "status":"running",
+            "connection_operation":{
+                "session_id":"runtime-a",
+                "op_id":"op-a",
+                "seq":1,
+                "deadline_at":1900000000.0,
+                "settled":false,
+                "targets":[{
+                    "name":"Linear",
+                    "kind":"mcp",
+                    "action":"install",
+                    "state":"pending",
+                    "required_env":[{"name":"LINEAR_TOKEN","required":false,"secret":true}]
+                }]
+            },
+            "connection_response_state":"ready"
+        })];
+        app.transcript_message_count = app.transcript.len();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 1000.0))
+            .build_ui(|ui| app.draw(ui));
+        harness.run();
+        assert!(harness.query_by_label("Hermes setup request").is_some());
+        assert!(
+            harness
+                .query_by_label("Approve Hermes setup for Linear")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Skip").is_some());
+        assert!(harness.query_by_label("Continue without setup").is_some());
+        assert!(
+            harness
+                .query_by_label("Setup value for LINEAR_TOKEN")
+                .is_some()
+        );
+        harness
+            .get_by_label("Approve Hermes setup for Linear")
+            .click();
+        harness.run();
+        let command = commands
+            .recv_timeout(Duration::from_secs(1))
+            .expect("setup approval reaches the Gateway actor");
+        assert!(matches!(
+            command,
+            TestGatewayCommand::RespondConnection {
+                session_id,
+                op_id,
+                profile,
+                ..
+            } if session_id == "runtime-a" && op_id == "op-a" && profile == Some("work".into())
+        ));
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(directory).expect("remove isolated test profile");
+    }
 
     #[test]
     fn chat_control_receipts_are_bound_to_the_active_request_owner_and_profile() {

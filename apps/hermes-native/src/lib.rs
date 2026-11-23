@@ -2,6 +2,7 @@ pub mod app;
 pub mod artifacts;
 pub mod clipboard_image;
 pub mod composer_drafts;
+pub mod connection_operation;
 pub mod files;
 pub mod fonts;
 pub mod gateway;

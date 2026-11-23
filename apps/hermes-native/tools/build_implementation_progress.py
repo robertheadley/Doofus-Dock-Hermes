@@ -1873,6 +1873,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway and packaged Windows interaction", "formal pinned-source acceptance", "the secret remains transiently allocated during JSON-RPC serialization and send"],
     },
+    "PAR-0518": {
+        "state": "partial",
+        "level": "headless_session_connection_operation_card_and_rpc",
+        "refs": [
+            ".staging/hermes-pinned-878305/tui_gateway/contracts/connectors_operation.py#class ConnectionRequestPayload",
+            ".staging/hermes-pinned-878305/tui_gateway/contracts/connectors_operation.py#class ConnectionUpdatePayload",
+            ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/mcp-setup-tool.tsx#MCP_VERBS",
+            "apps/hermes-native/src/connection_operation.rs#pub fn parse_request",
+            "apps/hermes-native/src/connection_operation.rs#pub fn apply_update",
+            "apps/hermes-native/src/app.rs#fn apply_connection_operation_event",
+            "apps/hermes-native/src/app.rs#connection_operation_transcript_applies_new_owner_scoped_snapshots_only",
+            "apps/hermes-native/src/app.rs#connection_operation_card_renders_setup_controls_and_masks_secret_fields",
+            "apps/hermes-native/src/gateway.rs#session_connection_response_uses_owner_scoped_rpc_and_does_not_echo_credentials",
+        ],
+        "gaps": ["pending connection-operation resume snapshots are not hydrated yet", "expired/failed target reissue and connector-directory behaviors are not ported", "authenticated live Gateway, packaged Windows, and formal pinned-source acceptance remain open"],
+    },
     "PAR-0520": {
         "state": "partial",
         "level": "headless_client_capability_handshake_tests",

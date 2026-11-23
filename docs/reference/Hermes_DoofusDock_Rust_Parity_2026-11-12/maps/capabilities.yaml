@@ -10381,7 +10381,7 @@ capabilities:
   name: Answer gateway MCP setup request when supported
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can answer gateway MCP setup request when supported.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10393,9 +10393,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: session-connection-request-approval-and-sequence-fence
+      description: Bound `connection.request` metadata to its session/tool row, render approval/setup controls, send `connection.respond` through the owning actor, and reject stale/wrong-session updates without exposing secret values. Partial evidence only: pending resume hydration/reissue, authenticated Gateway and packaged Windows/source-paired acceptance remain open.
+  evidence:
+  - EV-0166
 - id: ui-return-method-not-found-for-unsupported-server-request
   name: Return method-not-found for unsupported server request
   area: protocol-reliability
