@@ -37480,6 +37480,52 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
             "The provider blocked this request".into(),
             format!("{provider} could not complete the request. Choose another model or provider for this chat, then retry."),
         )),
+        "free_tier_disabled"
+        | "free_tier_at_capacity"
+        | "free_tier_model_not_free"
+        | "free_tier_route"
+        | "free_tier_outage"
+        | "free_tier_rate_limited"
+        | "free_tier_refused" => {
+            let (title, fallback) = match code {
+                "free_tier_disabled" => (
+                    "Hermes Free tier is unavailable",
+                    "The Hermes Free tier is disabled for this connection. Choose another configured model or provider for this chat.",
+                ),
+                "free_tier_at_capacity" => (
+                    "Hermes Free tier is at capacity",
+                    "The Hermes Free tier has no capacity right now. Choose another configured model, or retry when Hermes marks this failure as retryable.",
+                ),
+                "free_tier_model_not_free" => (
+                    "This model isn't available on Hermes Free",
+                    "Choose a different model configured for this chat, or use a provider that offers this model.",
+                ),
+                "free_tier_route" => (
+                    "No Hermes Free route is available",
+                    "Hermes couldn't find a Free-tier route for this request. Choose another configured model or provider.",
+                ),
+                "free_tier_outage" => (
+                    "Hermes Free tier is temporarily unavailable",
+                    "The Hermes Free service is having an outage. Retry when allowed, or choose another configured model.",
+                ),
+                "free_tier_rate_limited" => (
+                    "Hermes Free tier is rate limited",
+                    "The Hermes Free service is rate limiting requests. Retry when allowed, or choose another configured model.",
+                ),
+                "free_tier_refused" => (
+                    "Hermes Free tier refused this request",
+                    "Hermes Free couldn't serve this request. Choose another configured model or provider.",
+                ),
+                _ => unreachable!("free-tier code is explicitly matched"),
+            };
+            let explanation = surface
+                .get("message")
+                .and_then(serde_json::Value::as_str)
+                .filter(|message| !message.trim().is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| fallback.to_owned());
+            Some((title.to_owned(), explanation))
+        }
         "model_not_found" => Some((
             "Model not found".into(),
             format!(
@@ -37652,7 +37698,14 @@ fn usage_window_use_credits_allowed(message: &serde_json::Value) -> bool {
 fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurnRecoveryAction> {
     match message.pointer("/error_surface/code")?.as_str()? {
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
-        "model_not_found" | "free_tier_at_capacity" => Some(FailedTurnRecoveryAction::ChooseModel),
+        "model_not_found"
+        | "free_tier_disabled"
+        | "free_tier_at_capacity"
+        | "free_tier_model_not_free"
+        | "free_tier_route"
+        | "free_tier_outage"
+        | "free_tier_rate_limited"
+        | "free_tier_refused" => Some(FailedTurnRecoveryAction::ChooseModel),
         "agent_init_failed" => Some(FailedTurnRecoveryAction::ChooseModel),
         "upstream_blocked" => Some(FailedTurnRecoveryAction::ChooseModel),
         "format_error" => Some(FailedTurnRecoveryAction::ChooseModelAndNewSession),
@@ -40687,6 +40740,41 @@ mod tests {
                 true,
             ),
             (
+                "free_tier_disabled",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
+                "free_tier_at_capacity",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
+                "free_tier_model_not_free",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
+                "free_tier_route",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
+                "free_tier_outage",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
+                "free_tier_rate_limited",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
+                "free_tier_refused",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
                 "provider_policy_blocked",
                 Some(FailedTurnRecoveryAction::ProviderPolicy),
                 true,
@@ -41127,6 +41215,51 @@ mod tests {
             harness
                 .query_by_label("Start a new Hermes session with fresh context")
                 .is_some()
+        );
+        harness.query_by_label(choose).unwrap().click();
+        harness.run();
+        assert!(app.borrow().chat_model_picker_requested);
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn free_tier_failures_show_native_model_fallback_and_respect_retryability() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![serde_json::json!({
+            "role":"assistant","content":"","error":"Free-tier model is not available",
+            "error_surface":{
+                "code":"free_tier_model_not_free","layer":"provider","retryable":false,
+                "message":"This exact model is not included in your Free-tier route."
+            }
+        })];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().session_content(ui, "stored-session"));
+        harness.run_steps(2);
+        assert!(
+            harness
+                .query_by_label("This model isn't available on Hermes Free")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("This exact model is not included in your Free-tier route.")
+                .is_some()
+        );
+        let choose = "Choose a different model for this Hermes chat";
+        assert!(harness.query_by_label(choose).is_some());
+        assert!(
+            harness
+                .query_by_label("Retry failed message with original submission ID")
+                .is_none()
         );
         harness.query_by_label(choose).unwrap().click();
         harness.run();

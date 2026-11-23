@@ -2221,3 +2221,9 @@ Pinned `payload_too_large` now offers context compression followed by Start new 
 ### Revision 357 — Route format and upstream blocks to chat model selection — 2026-11-23
 
 Pinned `format_error` now explains the unsupported response format and offers the active chat model picker plus Start new session. Pinned `upstream_blocked` now routes to that same chat picker, matching the source `switch_provider` handler when the chat surface exists. The UI does not mutate the profile default. Rendered headless coverage verifies format-error actions and picker routing; the recovery matrix verifies both source code mappings. PAR-0064 remains partial; native free-tier sign-in, provider credential repair, live Gateway, packaged Windows and formal source-paired acceptance remain open.
+
+### Revision 358 — Recover Hermes Free-tier errors — 2026-11-23
+
+The pinned free_tier_* error family now renders code-specific recovery copy, preferring Hermes' structured message, and opens the current chat's model picker as the native fallback. A same-submission Retry remains visible only when the server marks that exact failure retryable; the native UI does not imitate Hermes Free sign-in. Rendered headless UI coverage checks the model picker and non-retryable boundary, and the mapping test covers all seven pinned free-tier codes.
+
+Validation: full locked suite passes 658 library + 15 automation protocol + 3 launcher tests; all-target locked check, Windows debug build, rustfmt and diff check pass. EV-0145 and publication remain pending. PAR-0064 remains partial; free-tier OAuth, live Gateway, packaged Windows and formal source-paired acceptance remain open.

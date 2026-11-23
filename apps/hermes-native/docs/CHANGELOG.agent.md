@@ -3477,4 +3477,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **validation:** Full locked suite 657 + 15 + 3, all-target check, Windows debug build, rustfmt, focused rendered test and diff check pass.
 - **performance:** No benchmark claim; both actions use existing UI navigation.
 - **risks:** The source free-tier sign-in flow requires a separate desktop OAuth/session host and is not represented by a model change. Live Gateway and source-paired acceptance remain open.
-- **follow_up:** Record EV-0144, update progress and publish to main.
+- **follow_up:** EV-0144 is recorded with source commit 67fa656046beedddc75a24aaee7447d7c9c4f5c8; publish the validated slice to main.
+### PAR-0064 Hermes Free error recovery — 2026-11-23
+
+- **id:** hermes-par0064-free-tier-recovery-20261123
+- **timestamp:** 2026-11-23T18:16:53Z
+- **what:** Added code-specific explanations for all seven pinned free_tier_* failures, preserved backend guidance, and routed to the session model picker.
+- **why:** Give users a usable native recovery path without pretending the Hermes Free sign-in host exists.
+- **components:** Hermes Native chat error cards, PAR-0064.
+- **type:** feature, validation, evidence.
+- **validation:** 658 library + 15 automation-protocol + 3 launcher tests; all-target check, Windows debug build, rustfmt and diff check pass.
+- **performance:** No benchmark claim.
+- **risks:** Free-tier sign-in and live Gateway acceptance remain open.
+- **follow_up:** Record EV-0145, validate package and task ledger, publish to main.

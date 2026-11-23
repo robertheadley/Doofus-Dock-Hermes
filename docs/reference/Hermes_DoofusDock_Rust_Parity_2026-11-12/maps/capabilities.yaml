@@ -1570,6 +1570,8 @@ capabilities:
       description: For an oversized request, offer the existing owner-scoped conversation compression action and the pinned new-session fallback.
     - id: tls-certificate-error-opens-pinned-setup-guide
       description: For a TLS certificate failure, open only Hermes' pinned static TLS trust guide URL from an accessible error action.
+    - id: format-and-upstream-error-model-recovery
+      description: Route unsupported format and provider upstream errors to the active chat model picker, with a new-session fallback for format errors.
   evidence:
   - EV-0028
   - EV-0029
@@ -1586,6 +1588,7 @@ capabilities:
   - EV-0141
   - EV-0142
   - EV-0143
+  - EV-0144
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

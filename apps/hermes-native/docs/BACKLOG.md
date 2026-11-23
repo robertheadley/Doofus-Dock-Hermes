@@ -471,3 +471,5 @@ The native local UI currently follows the pinned Desktop main-window path: `herm
 ### PAR-0509 — Resume saved sessions with the correct profile
 
 Existing native code and headless regressions already cover profile routing, returned-session identity checks, Gateway/profile/request fencing, in-flight refusal recovery, and opening a saved session without submitting a prompt. PAR-0509 is now mapped as partial rather than unknown. Authenticated live Gateway, packaged Windows cold-start resume and formal source acceptance remain open.
+
+- [ ] Add Hermes Free sign-in host flow for free_tier_* recovery. Current native behavior gives code-specific explanation, offers model selection, and permits retry only when the Gateway marks the failure retryable; authenticated live Gateway and source-paired checks also remain open.

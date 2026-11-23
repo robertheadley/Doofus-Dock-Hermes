@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "67fa656046beedddc75a24aaee7447d7c9c4f5c8",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked automation-feature suite (657 library + 15 protocol + 3 launcher), all-target cargo check, Windows debug build, rustfmt and diff checks. No live Gateway was used.",
+  "uid": "EV-0144",
+  "scenario": "format-and-upstream-error-model-recovery",
+  "locator": "apps/hermes-native/src/app.rs::format_error_recovery_offers_model_change_and_fresh_session;apps/hermes-native/src/app.rs::failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry;.staging/hermes-pinned-878305/apps/desktop/src/lib/error-surface.ts::CODE_ACTIONS",
+  "notes": "Pinned format_error now provides model selection plus a fresh-session fallback; upstream_blocked opens the active chat's model picker. Headless rendered and mapping tests verify the actions and profile defaults remain unchanged. EV-0144 is partial evidence: native Hermes Free sign-in and provider credential repair are unavailable, and live Gateway, packaged Windows, and formal source-paired acceptance remain open."
+}

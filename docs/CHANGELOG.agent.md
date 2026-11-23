@@ -5155,3 +5155,15 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No benchmark claim.
 - **risks:** Native free-tier sign-in still needs its source OAuth/session host; live Gateway and formal source-paired acceptance remain open.
 - **follow_up:** Record EV-0144 and publish the validated slice to main.
+### PAR-0064 Hermes Free error recovery — 2026-11-23
+
+- **id:** hermes-par0064-free-tier-recovery-20261123
+- **timestamp:** 2026-11-23T18:16:53Z
+- **what:** Added code-specific recovery copy and model picker fallback for the pinned Hermes Free error codes.
+- **why:** Make provider/free-tier failures actionable in the native agent workflow.
+- **components:** apps/hermes-native, PAR-0064.
+- **type:** feature, validation.
+- **validation:** Full locked suite 658 + 15 + 3, all-target check, Windows debug build, rustfmt and diff check pass.
+- **performance:** No benchmark claim.
+- **risks:** Native Hermes Free authentication and live/source-paired acceptance remain open.
+- **follow_up:** Record evidence and publish to main.
