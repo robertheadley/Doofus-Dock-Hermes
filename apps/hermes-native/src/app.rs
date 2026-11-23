@@ -16417,6 +16417,8 @@ fn render_message() -> &'static str {
             self.new_chat_model_controls(ui);
         }
         let mut dropped_composer_paths = Vec::new();
+        let mut dropped_pathless_files: Vec<(std::path::PathBuf, egui::DroppedFileHandle)> =
+            Vec::new();
         let mut composer_drop_requires_path = false;
         let mut keyboard_insert = None;
         let mut pasted_image = None;
@@ -16492,19 +16494,28 @@ fn render_message() -> &'static str {
                 .accessible_name("Message composer");
             let input_rect = input.rect;
             let changed = input.changed();
-            let (pointer_position, has_hovered_files, dropped_paths, dropped_file_count) = ui
-                .input(|input| {
+            let (
+                pointer_position,
+                has_hovered_files,
+                dropped_paths,
+                pathless_dropped_files,
+                dropped_file_count,
+            ) = ui.input(|input| {
+                let mut paths = Vec::new();
+                let mut pathless = Vec::new();
+                for file in &input.raw.dropped_files {
+                    let path = file.path();
+                    if path.is_absolute() {
+                        paths.push(path.to_path_buf());
+                    } else {
+                        pathless.push((path.to_path_buf(), file.clone()));
+                    }
+                }
                     (
                         input.pointer.hover_pos(),
                         !input.raw.hovered_files.is_empty(),
-                        input
-                            .raw
-                            .dropped_files
-                            .iter()
-                            .map(|file| file.path())
-                            .filter(|path| !path.as_os_str().is_empty())
-                            .map(std::path::Path::to_path_buf)
-                            .collect::<Vec<_>>(),
+                        paths,
+                        pathless,
                         input.raw.dropped_files.len(),
                     )
                 });
@@ -16533,12 +16544,17 @@ fn render_message() -> &'static str {
             let drop_landed_on_composer = dropped_file_count > 0
                 && pointer_position.is_some_and(|position| input_rect.contains(position));
             composer_drop_requires_path = drop_landed_on_composer
-                && !composer_drop_path_list_is_complete(dropped_file_count, dropped_paths.len());
-            dropped_composer_paths = if composer_drop_requires_path {
-                Vec::new()
+                && !composer_drop_path_list_is_complete(
+                    dropped_file_count,
+                    dropped_paths.len() + pathless_dropped_files.len(),
+                );
+            dropped_pathless_files = if drop_landed_on_composer {
+                pathless_dropped_files
             } else {
-                composer_file_drop_paths(dropped_paths, pointer_position, input_rect)
+                Vec::new()
             };
+            dropped_composer_paths =
+                composer_file_drop_paths(dropped_paths, pointer_position, input_rect);
             input.on_hover_text(if drop_target_active {
                 "Release to attach files or images"
             } else {
@@ -16615,10 +16631,36 @@ fn render_message() -> &'static str {
                 Err(error) => self.status = format!("Could not attach clipboard image: {error}"),
             }
         }
+        for (reported_path, dropped_file) in dropped_pathless_files {
+            let supplied_name = reported_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            match dropped_file.bytes() {
+                Ok(bytes) => match crate::clipboard_image::stage_dropped_file_bytes(
+                    self.workspace.data_directory(),
+                    &operation_id("dropped-file"),
+                    supplied_name,
+                    "",
+                    &bytes,
+                ) {
+                    Ok(path) => dropped_composer_paths.push(path),
+                    Err(error) => {
+                        composer_drop_requires_path = true;
+                        self.status = format!("Could not attach dropped file: {error}");
+                    }
+                },
+                Err(error) => {
+                    composer_drop_requires_path = true;
+                    self.status = format!("Could not read dropped file bytes: {error}");
+                }
+            }
+        }
         if !dropped_composer_paths.is_empty() {
             self.accept_composer_file_drop(dropped_composer_paths);
-        } else if composer_drop_requires_path {
-            self.status = "Some dropped files have no local path. Use Attach file instead.".into();
+        }
+        if composer_drop_requires_path {
+            self.status = "Some dropped files did not provide a readable path or payload. Use Attach file instead.".into();
         }
         if waiting_for_this_session || waiting_for_new_session {
             ui.label(RichText::new("Waiting for Hermes…").size(11.0).color(MUTED));
