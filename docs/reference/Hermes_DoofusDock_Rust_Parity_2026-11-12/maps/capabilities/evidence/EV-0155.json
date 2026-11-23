@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-import-and-export-session-data",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "6dfca7ed3d9532d8e8bc16e1e1c0a90cb973f00a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation-feature headless tests for this behavior; no live Gateway, installed Hermes app, or source-paired visual capture.",
+  "uid": "EV-0155",
+  "scenario": "export-session-data-import-remains-open",
+  "locator": "app.rs::command_center_sessions_export_and_load_more_follow_pinned_contract;gateway.rs::session_export_pages_all_messages_in_oldest_order_and_enforces_size_limit;.staging/hermes-pinned-878305/apps/desktop/src/app/session-import/index.tsx#SessionImportView;.staging/hermes-pinned-878305/apps/desktop/src/app/session-import/index.test.tsx",
+  "notes": "Native export pages oldest-first and enforces size limits. Session import remains missing from the native app; this requirement is partial. Live Gateway and source-paired acceptance remain open."
+}

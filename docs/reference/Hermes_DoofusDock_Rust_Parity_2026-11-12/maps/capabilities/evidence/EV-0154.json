@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-delete-session-after-confirmation",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "6dfca7ed3d9532d8e8bc16e1e1c0a90cb973f00a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation-feature headless tests for this behavior; no live Gateway, installed Hermes app, or source-paired visual capture.",
+  "uid": "EV-0154",
+  "scenario": "delete-session-after-explicit-confirmation",
+  "locator": "app.rs::command_center_sessions_delete_requires_confirmation_and_applies_receipt;gateway.rs::session_delete_fetches_mutation_snapshot_and_sends_fenced_delete_query;.staging/hermes-pinned-878305/apps/desktop/src/app/command-center/delete-confirm.test.tsx",
+  "notes": "Delete requires explicit confirmation and applies only after the matching receipt. Headless UI and Gateway tests pass; live Gateway and source-paired acceptance remain open."
+}

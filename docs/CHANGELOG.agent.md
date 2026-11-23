@@ -5179,3 +5179,7 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No benchmark claim.
 - **risks:** Headless fixtures do not prove authenticated live Gateway or packaged Windows/source-paired behavior.
 - **follow_up:** Continue review with remaining P0 session lifecycle and agent tool workflow requirements.
+
+### 2026-11-23 — Session lifecycle evidence reconciliation
+
+Mapped existing native session listing, archive, search, pin, rename, delete and export behavior as partial with corrected append-only evidence. Scoped progress now reports 96/176 mapped; runtime and source-paired acceptance remain unverified. Antigravity headless command permission was denied, so the delegated audit returned no findings and no permission bypass was used.

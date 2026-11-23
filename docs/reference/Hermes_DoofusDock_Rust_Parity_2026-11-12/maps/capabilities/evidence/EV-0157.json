@@ -1,0 +1,16 @@
+{
+  "capability_id": "ui-create-and-resume-a-saved-session",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "6dfca7ed3d9532d8e8bc16e1e1c0a90cb973f00a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation-feature tests: resume family (7 passed), New Chat first-submit flow (1 passed), opening a saved session (1 passed); no live Gateway, installed app, or source-paired UI capture.",
+  "uid": "EV-0157",
+  "scenario": "create-chat-submit-first-prompt-and-resume-saved-session",
+  "locator": "apps/hermes-native/src/app.rs::new_chat_send_creates_session_then_submits_draft_on_runtime_id;apps/hermes-native/src/app.rs::opening_sidebar_session_persists_gateway_owner_and_queues_only_resume;apps/hermes-native/src/app.rs::session_resume_errors_are_correlated_and_render_on_the_owning_tile;apps/hermes-native/src/app.rs::session_resume_result_is_fenced_by_gateway_owner_and_request_id;apps/hermes-native/src/app.rs::session_resume_success_updates_only_the_matching_pending_request;apps/hermes-native/src/gateway.rs::session_resume_routes_profile_and_preserves_it_in_transcript;apps/hermes-native/src/gateway.rs::session_resume_streams_inflight_events_and_recovers_after_refusal;.staging/hermes-pinned-878305/apps/desktop/src/api/canonical-ambiguous-owner-reconcile.test.ts#session.resume",
+  "notes": "Native New Chat creates a session before submitting the initial prompt, and saved-session resume is profile/connection/request fenced with refusal recovery and transcript preservation. Headless application and Gateway tests pass. This is partial PAR-0070 evidence; live authenticated Gateway, packaged Windows, and formal source-paired acceptance remain open. Appended corrected pass outcome using the same focused tests; the prior evidence record is preserved for history.",
+  "supersedes": "EV-0147"
+}

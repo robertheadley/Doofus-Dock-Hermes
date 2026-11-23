@@ -3502,3 +3502,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark claim.
 - **risks:** Headless fixtures do not prove authenticated live Gateway or packaged Windows/source-paired behavior.
 - **follow_up:** Continue review with remaining P0 session lifecycle and agent tool workflow requirements.
+
+### PAR-0071..0082 session lifecycle evidence review — 2026-11-23
+
+- **id:** hermes-par0071-0082-session-lifecycle-evidence-20261123
+- **timestamp:** 2026-11-23T18:48:30Z
+- **what:** Mapped existing session archive distinction, title/ID search, pin, rename, archive/restore, confirmed deletion and paged export as partial. Added valid evidence EV-0148..EV-0155 and appended EV-0156/EV-0157 to correct the active pass evidence without rewriting published history.
+- **why:** The feature ledger was leaving already-tested native session behaviors as unknown or was inheriting invalid historical evidence outcomes.
+- **components:** Hermes Native session lifecycle, capability map, scoped and broad progress generators.
+- **type:** evidence, validation, documentation.
+- **validation:** Focused session tests passed in the preceding run. Progress generators report 130/499 broad reviewed and 96/176 chat/tool mapped (1 implemented, 94 partial, 1 not implemented, 80 unknown). Package validator accepts 141 implementation receipts; YAML/JSON parsing and task state validation pass.
+- **performance:** No benchmark claim.
+- **risks:** Session import and fork/branch remain gaps. All reviewed session rows remain partial pending authenticated live Gateway, packaged Windows and source-paired acceptance. UCM still reports historical schema errors and 9 reconciliation items.
+- **follow_up:** Implement owner-fenced secure `vault.code` and `vault.save_login` prompts; then address session import/fork, authenticated Gateway and packaged acceptance. Antigravity headless command execution was denied by policy; no blanket bypass was used.

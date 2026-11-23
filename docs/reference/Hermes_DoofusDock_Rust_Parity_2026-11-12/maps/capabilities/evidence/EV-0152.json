@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-rename-or-retitle-a-session",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "6dfca7ed3d9532d8e8bc16e1e1c0a90cb973f00a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation-feature headless tests for this behavior; no live Gateway, installed Hermes app, or source-paired visual capture.",
+  "uid": "EV-0152",
+  "scenario": "rename-profile-owned-sessions",
+  "locator": "app.rs::foreign_profile_session_menu_opens_rename_dialog_with_accessible_input;gateway.rs::session_rename_patch_scopes_profile_and_returns_confirmed_title",
+  "notes": "Native rename UI and profile-scoped confirmed Gateway patch are covered. Live Gateway and source-paired acceptance remain open."
+}

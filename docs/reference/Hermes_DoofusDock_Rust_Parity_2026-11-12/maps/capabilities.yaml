@@ -1693,7 +1693,7 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock first usable agent-workflow scope (2026-11-23)
   - type: test_result
-    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0146.json#EV-0146
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0156.json#EV-0156
   dimensions:
     backend: partial
     ui: partial
@@ -1704,6 +1704,7 @@ capabilities:
       description: The native sidebar and session browser list recent and archived sessions through profile-scoped Gateway routes; archived pages are bounded and paginated.
   evidence:
   - EV-0146
+  - EV-0156
 
 - id: ui-create-and-resume-a-saved-session
   name: Create and resume a saved session
@@ -1721,7 +1722,7 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock first usable agent-workflow scope (2026-11-23)
   - type: test_result
-    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0147.json#EV-0147
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0157.json#EV-0157
   dimensions:
     backend: partial
     ui: partial
@@ -1732,12 +1733,13 @@ capabilities:
       description: Create a session before first-prompt submission and resume saved sessions with profile, connection, and request fencing.
   evidence:
   - EV-0147
+  - EV-0157
 
 - id: ui-distinguish-live-from-archived-sessions
   name: Distinguish live from archived sessions
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can distinguish live from archived sessions.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1748,15 +1750,24 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0148.json#EV-0148
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: distinguish-live-and-archived-sessions
+      description: SessionSummary.archived drives distinct active and archived lists. The headless UI exposes archived rows and a reachable unarchive action. Live runtime and source-paired acceptance remain open.
+  evidence:
+  - EV-0148
+
 - id: ui-search-sessions-by-full-title
   name: Search sessions by full title
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can search sessions by full title.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1767,15 +1778,24 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0149.json#EV-0149
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: search-sessions-by-title
+      description: Local title filtering and ranked Gateway search are covered by headless tests. Full Desktop search semantics, live Gateway and source-paired acceptance remain open.
+  evidence:
+  - EV-0149
+
 - id: ui-search-sessions-by-stable-id
   name: Search sessions by stable id
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can search sessions by stable id.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1786,15 +1806,24 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0150.json#EV-0150
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: search-sessions-by-stable-id
+      description: Stable-ID search is included in native local/server search coverage. Live Gateway and source-paired acceptance remain open.
+  evidence:
+  - EV-0150
+
 - id: ui-pin-or-unpin-sessions
   name: Pin or unpin sessions
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can pin or unpin sessions.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1805,10 +1834,19 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0151.json#EV-0151
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: pin-and-unpin-profile-owned-sessions
+      description: The native session menu exposes pin state and the Gateway uses snapshot-fenced pin mutations. Headless tests pass; live Gateway and source-paired acceptance remain open.
+  evidence:
+  - EV-0151
+
 - id: ui-reorder-pinned-session-rows
   name: Reorder pinned session rows
   area: sessions-projects
@@ -1851,7 +1889,7 @@ capabilities:
   name: Rename or retitle a session
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can rename or retitle a session.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1862,10 +1900,19 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0152.json#EV-0152
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: rename-profile-owned-sessions
+      description: Native rename UI and profile-scoped confirmed Gateway patch are covered. Live Gateway and source-paired acceptance remain open.
+  evidence:
+  - EV-0152
+
 - id: ui-apply-per-session-colors
   name: Apply per-session colors
   area: sessions-projects
@@ -1889,7 +1936,7 @@ capabilities:
   name: Archive and restore session
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can archive and restore session.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1900,15 +1947,24 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0153.json#EV-0153
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: archive-and-restore-sessions
+      description: Native archive listing, restore action and pin clearing are covered by headless tests. Live Gateway and source-paired acceptance remain open.
+  evidence:
+  - EV-0153
+
 - id: ui-delete-session-after-confirmation
   name: Delete session after confirmation
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can delete session after confirmation.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1919,10 +1975,19 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0154.json#EV-0154
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: delete-session-after-explicit-confirmation
+      description: Delete requires explicit confirmation and applies only after the matching receipt. Headless UI and Gateway tests pass; live Gateway and source-paired acceptance remain open.
+  evidence:
+  - EV-0154
+
 - id: ui-fork-or-branch-a-conversation
   name: Fork or branch a conversation
   area: sessions-projects
@@ -1946,7 +2011,7 @@ capabilities:
   name: Import and export session data
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can import and export session data.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1957,10 +2022,19 @@ capabilities:
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0155.json#EV-0155
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: export-session-data-import-remains-open
+      description: Native export pages oldest-first and enforces size limits. Session import remains missing from the native app; this requirement is partial. Live Gateway and source-paired acceptance remain open.
+  evidence:
+  - EV-0155
+
 - id: ui-assign-a-chat-to-project-workspace
   name: Assign a chat to project workspace
   area: sessions-projects

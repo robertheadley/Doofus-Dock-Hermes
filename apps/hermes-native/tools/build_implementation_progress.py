@@ -1062,6 +1062,91 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "physical Windows input, packaged behavior, authenticated live Hermes Gateway and formal pinned-source acceptance remain open",
         ],
     },
+    "PAR-0071": {
+        "state": "partial",
+        "level": "headless_live_archived_session_view_restore",
+        "refs": [
+            "apps/hermes-native/src/app.rs#sessions_view_toggle_switches_to_cached_archived_rows",
+            "apps/hermes-native/src/app.rs#archived_view_shows_archived_rows_and_a_reachable_unarchive_action",
+            "apps/hermes-native/src/gateway.rs#archived_session_list_requests_only_archived_rows_at_the_requested_offset",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0148.json#EV-0148"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
+    "PAR-0072": {
+        "state": "partial",
+        "level": "headless_title_search_with_ranked_server_results",
+        "refs": [
+            "apps/hermes-native/src/app.rs#session_filter_matches_title_preview_and_id_without_case_sensitivity",
+            "apps/hermes-native/src/app.rs#server_session_search_keeps_rank_and_appends_loaded_only_matches",
+            "apps/hermes-native/src/app.rs#command_center_sessions_search_and_open_through_the_real_overlay",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0149.json#EV-0149"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
+    "PAR-0073": {
+        "state": "partial",
+        "level": "headless_stable_id_search_with_ranked_server_results",
+        "refs": [
+            "apps/hermes-native/src/app.rs#session_filter_matches_title_preview_and_id_without_case_sensitivity",
+            "apps/hermes-native/src/app.rs#server_session_search_keeps_rank_and_appends_loaded_only_matches",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0150.json#EV-0150"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
+    "PAR-0074": {
+        "state": "partial",
+        "level": "headless_profile_scoped_session_pin_mutation",
+        "refs": [
+            "apps/hermes-native/src/app.rs#session_rows_expose_the_stored_id_in_the_accessible_name",
+            "apps/hermes-native/src/gateway.rs#session_pin_uses_snapshot_fencing_and_confirms_the_patch",
+            "apps/hermes-native/src/gateway.rs#remote_session_pin_uses_authenticated_snapshot_then_fenced_patch",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0151.json#EV-0151"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
+    "PAR-0077": {
+        "state": "partial",
+        "level": "headless_accessible_profile_scoped_session_rename",
+        "refs": [
+            "apps/hermes-native/src/app.rs#foreign_profile_session_menu_opens_rename_dialog_with_accessible_input",
+            "apps/hermes-native/src/gateway.rs#session_rename_patch_scopes_profile_and_returns_confirmed_title",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0152.json#EV-0152"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
+    "PAR-0079": {
+        "state": "partial",
+        "level": "headless_archive_restore_session_action",
+        "refs": [
+            "apps/hermes-native/src/app.rs#archived_view_shows_archived_rows_and_a_reachable_unarchive_action",
+            "apps/hermes-native/src/app.rs#sessions_view_toggle_switches_to_cached_archived_rows",
+            "apps/hermes-native/src/gateway.rs#archiving_a_session_also_clears_its_pinned_state",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0153.json#EV-0153"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
+    "PAR-0080": {
+        "state": "partial",
+        "level": "headless_confirmed_profile_scoped_session_delete",
+        "refs": [
+            "apps/hermes-native/src/app.rs#command_center_sessions_delete_requires_confirmation_and_applies_receipt",
+            "apps/hermes-native/src/gateway.rs#session_delete_fetches_mutation_snapshot_and_sends_fenced_delete_query",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0154.json#EV-0154"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
+    "PAR-0082": {
+        "state": "partial",
+        "level": "headless_paged_session_export_import_open",
+        "refs": [
+            "apps/hermes-native/src/app.rs#command_center_sessions_export_and_load_more_follow_pinned_contract",
+            "apps/hermes-native/src/gateway.rs#session_export_pages_all_messages_in_oldest_order_and_enforces_size_limit",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session-import/index.tsx#SessionImportView",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0155.json#EV-0155"
+        ],
+        "gaps": ["authenticated live Gateway and formal source-paired acceptance remain open"],
+    },
     "PAR-0069": {
         "state": "partial",
         "level": "headless_profile_scoped_recent_archived_session_listing",
@@ -1071,7 +1156,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/gateway.rs#session_list_preserves_fractional_started_at_for_sidebar_recency",
             "apps/hermes-native/src/gateway.rs#archived_session_list_requests_only_archived_rows_at_the_requested_offset",
             "apps/hermes-native/src/gateway.rs#profile_session_list_reads_last_active_with_a_native_http_ticket",
-            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0146.json#EV-0146",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0156.json#EV-0156",
         ],
         "gaps": ["full Desktop source-paired behavior, authenticated live Gateway, and packaged Windows acceptance remain open"],
     },
@@ -1087,7 +1172,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#session_resume_success_updates_only_the_matching_pending_request",
             "apps/hermes-native/src/gateway.rs#session_resume_routes_profile_and_preserves_it_in_transcript",
             "apps/hermes-native/src/gateway.rs#session_resume_streams_inflight_events_and_recovers_after_refusal",
-            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0147.json#EV-0147",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0157.json#EV-0157",
         ],
         "gaps": ["authenticated live Gateway, packaged Windows, and formal source-paired acceptance remain open"],
     },

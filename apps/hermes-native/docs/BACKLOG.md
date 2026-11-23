@@ -473,3 +473,9 @@ The native local UI currently follows the pinned Desktop main-window path: `herm
 Existing native code and headless regressions already cover profile routing, returned-session identity checks, Gateway/profile/request fencing, in-flight refusal recovery, and opening a saved session without submitting a prompt. PAR-0509 is now mapped as partial rather than unknown. Authenticated live Gateway, packaged Windows cold-start resume and formal source acceptance remain open.
 
 - [ ] Add Hermes Free sign-in host flow for free_tier_* recovery. Current native behavior gives code-specific explanation, offers model selection, and permits retry only when the Gateway marks the failure retryable; authenticated live Gateway and source-paired checks also remain open.
+
+### PAR-0071..0082 follow-up — session lifecycle and secure auth prompts
+
+- [ ] Implement session import and session fork/branch after the already-supported paged export; preserve profile/Gateway ownership and require explicit user action before opening imported sessions.
+- [ ] Add secure `vault.code` and `vault.save_login` request cards with same-request response, owner fencing, ephemeral secret handling and masked-password behavior.
+- [ ] Validate authenticated live Gateway and packaged Windows flows; current headless evidence is partial only.

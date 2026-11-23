@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-distinguish-live-from-archived-sessions",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "6dfca7ed3d9532d8e8bc16e1e1c0a90cb973f00a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation-feature headless tests for this behavior; no live Gateway, installed Hermes app, or source-paired visual capture.",
+  "uid": "EV-0148",
+  "scenario": "distinguish-live-and-archived-sessions",
+  "locator": "app.rs::sessions_view_toggle_switches_to_cached_archived_rows;app.rs::archived_view_shows_archived_rows_and_a_reachable_unarchive_action;gateway.rs::archived_session_list_requests_only_archived_rows_at_the_requested_offset",
+  "notes": "SessionSummary.archived drives distinct active and archived lists. The headless UI exposes archived rows and a reachable unarchive action. Live runtime and source-paired acceptance remain open."
+}

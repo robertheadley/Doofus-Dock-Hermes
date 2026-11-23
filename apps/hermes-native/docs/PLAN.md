@@ -2231,3 +2231,7 @@ Validation: full locked suite passes 658 library + 15 automation protocol + 3 la
 ### Revision 359 — Review session listing and saved-session workflows — 2026-11-23
 
 PAR-0069 and PAR-0070 were marked not implemented in the pinned capability map even though Hermes Native already lists recent and archived sessions, creates new chats, and resumes saved sessions. The gap was stale review metadata rather than missing source behavior. These are now mapped as partial with evidence from profile-scoped Gateway and headless app tests. Archived paging and resume owner/request fencing are covered. Live Gateway, packaged Windows and formal source-paired acceptance remain pending, so neither requirement is marked done.
+
+### Checkpoint — 2026-11-23 session lifecycle evidence
+
+Existing native support for live/archive distinction, title and stable-ID search, pin/unpin, rename, archive/restore, confirmed delete, and paged export is now mapped as partial. Overall scope ledger reports 96/176 chat/tool requirements with evidence (1 implemented, 94 partial, 1 not implemented, 80 unknown); 0/176 are live-runtime verified or source-paired. Import and session fork/branch remain gaps. Next bounded implementation: secure owner-scoped `vault.code` and `vault.save_login` server-request prompts; preserve ephemeral secret handling and never expose values in logs or accessibility labels.

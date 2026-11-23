@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-pin-or-unpin-sessions",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "6dfca7ed3d9532d8e8bc16e1e1c0a90cb973f00a",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation-feature headless tests for this behavior; no live Gateway, installed Hermes app, or source-paired visual capture.",
+  "uid": "EV-0151",
+  "scenario": "pin-and-unpin-profile-owned-sessions",
+  "locator": "app.rs::session_rows_expose_the_stored_id_in_the_accessible_name;gateway.rs::session_pin_uses_snapshot_fencing_and_confirms_the_patch;gateway.rs::remote_session_pin_uses_authenticated_snapshot_then_fenced_patch;app.rs::start_session_pin_update",
+  "notes": "The native session menu exposes pin state and the Gateway uses snapshot-fenced pin mutations. Headless tests pass; live Gateway and source-paired acceptance remain open."
+}
