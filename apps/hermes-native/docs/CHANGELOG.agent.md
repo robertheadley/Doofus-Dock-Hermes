@@ -3426,3 +3426,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Not applicable.
 - **risks:** Provider/session billing-block recovery, full billing settings, live Gateway, packaged Windows, remaining error actions, and source-paired acceptance remain open; PAR-0064 stays partial.
 - **follow_up:** Continue the remaining pinned PAR-0064 error actions.
+
+### PAR-0064 agent initialization recovery — 2026-11-23
+
+- **id:** hermes-par0064-agent-init-recovery-20261123
+- **timestamp:** 2026-11-23T17:37:56Z
+- **what:** Added a dedicated `agent_init_failed` error card and a recovery action that opens the active chat's model picker.
+- **why:** Match the pinned secondary `open_model_settings` action while keeping Retry governed by Hermes' `retryable` flag.
+- **components:** Hermes Native transcript error card, PAR-0064, egui recovery action.
+- **type:** feature, validation, evidence.
+- **validation:** Focused mapping and rendered UI regressions pass; full-suite/build/package validation is pending.
+- **performance:** No benchmark claim; the action uses the existing in-app model-picker route.
+- **risks:** Provider API-key and OAuth recovery remain unavailable without a native provider-credential API. Live Gateway, packaged Windows and formal source-paired acceptance remain open.
+- **follow_up:** Complete full validation, record EV-0141, update the evidence overlay and publish to main.

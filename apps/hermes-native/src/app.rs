@@ -37438,6 +37438,10 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
             "Hermes can't prepare this session".into(),
             "The current workspace or launch credentials aren't available. Start a new session after fixing the workspace connection.".into(),
         )),
+        "agent_init_failed" => Some((
+            "Hermes couldn't start the agent".into(),
+            "The selected model may not be available for this session. Choose a different model, or retry once the session is ready.".into(),
+        )),
         "model_not_found" => Some((
             "Model not found".into(),
             format!(
@@ -37609,6 +37613,7 @@ fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurn
     match message.pointer("/error_surface/code")?.as_str()? {
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
         "model_not_found" | "free_tier_at_capacity" => Some(FailedTurnRecoveryAction::ChooseModel),
+        "agent_init_failed" => Some(FailedTurnRecoveryAction::ChooseModel),
         "provider_policy_blocked" => Some(FailedTurnRecoveryAction::ProviderPolicy),
         "billing" if billing_portal_allowed(message) => Some(FailedTurnRecoveryAction::Billing),
         "billing" => Some(FailedTurnRecoveryAction::ChooseModel),
@@ -40670,7 +40675,11 @@ mod tests {
                 true,
             ),
             ("SESSION_OWNER_UNCONFIRMED", None, false),
-            ("agent_init_failed", None, true),
+            (
+                "agent_init_failed",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
         ];
         for (code, expected_action, expected_retry) in cases {
             let message = serde_json::json!({
@@ -40692,6 +40701,11 @@ mod tests {
             "error_surface":{"code":"agent_init_failed","retryable":false}
         });
         assert!(!failed_turn_retry_allowed(&explicitly_nonretryable));
+        assert_eq!(
+            failed_turn_recovery_action(&explicitly_nonretryable),
+            Some(FailedTurnRecoveryAction::ChooseModel),
+            "model settings remain available when Retry is refused by Hermes"
+        );
         let usage_window = serde_json::json!({
             "error_surface":{"code":"usage_window","retryable":false,
                 "usage_limit":{"suggestions":[{"model":"example/free"}]}}
@@ -40903,6 +40917,37 @@ mod tests {
             .query_by_label("Choose a different model for this Hermes chat")
             .unwrap()
             .click();
+        harness.run();
+        assert!(app.borrow().chat_model_picker_requested);
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_init_failure_opens_current_chat_model_picker() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![serde_json::json!({
+            "role":"assistant","content":"","error":"agent initialization failed",
+            "error_surface":{"code":"agent_init_failed","layer":"runtime","retryable":true}
+        })];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| {
+                frame_app
+                    .borrow_mut()
+                    .session_content(ui, "runtime-session")
+            });
+        harness.run_steps(2);
+        let action = "Choose a different model for this Hermes chat";
+        assert!(harness.query_by_label(action).is_some());
+        harness.query_by_label(action).unwrap().click();
         harness.run();
         assert!(app.borrow().chat_model_picker_requested);
 

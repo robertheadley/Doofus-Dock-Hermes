@@ -1495,7 +1495,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0064": {
         "state": "partial",
-        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_scheduled_retry_usage_window_model_credits_and_safe_billing_recovery",
+        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_scheduled_retry_usage_window_model_credits_safe_billing_and_agent_init_model_recovery",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/agent-init-error.test.tsx#renders an agent-init failure as a visible in-transcript error and keeps the optimistic first message",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.test.tsx#names the provider and keeps Retry for a rate limit",
@@ -1529,6 +1529,8 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#billing_portal_allowed",
             "apps/hermes-native/src/app.rs#failed_turn_recovery_action",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0140.json#EV-0140",
+            "apps/hermes-native/src/app.rs#agent_init_failure_opens_current_chat_model_picker",
+            "apps/hermes-native/src/app.rs#structured_turn_error_presentation",
         ],
         "gaps": ["full provider/session billing-block recovery and broader Hermes billing settings are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "scheduled retry is limited to recognized reset codes and is not persisted across app restarts", "live Gateway behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
     },

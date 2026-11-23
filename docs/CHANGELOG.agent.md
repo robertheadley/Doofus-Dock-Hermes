@@ -5103,3 +5103,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Full billing-block recovery, live Gateway, packaged Windows, and formal source acceptance remain open.
 - **follow_up:** Continue remaining PAR-0064 actions.
+
+### PAR-0064 agent initialization recovery — 2026-11-23
+
+- **id:** hermes-par0064-agent-init-recovery-20261123
+- **timestamp:** 2026-11-23T17:37:56Z
+- **what:** Added a pinned-source recovery card for `agent_init_failed` that opens the current chat's model picker.
+- **why:** Expose the supported model-settings recovery while preserving the server's retry boundary.
+- **components:** Doofus-Dock-Hermes, Hermes Native, PAR-0064.
+- **type:** feature, validation, evidence.
+- **validation:** Focused mapping and rendered egui tests pass; remaining verification will be recorded before publication.
+- **performance:** No benchmark claim.
+- **risks:** Provider API-key/OAuth repair, live Gateway, packaged Windows and formal source-paired acceptance remain open.
+- **follow_up:** Run full validation, record EV-0141 and publish the completed slice to main.

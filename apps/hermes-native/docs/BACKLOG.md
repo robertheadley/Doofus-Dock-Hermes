@@ -2,6 +2,8 @@
 
 The pinned source inventory is downloaded Hermes snapshot 8783054ef6cbafd86f10892241436862c1171a66. The preserved research package has 499 stock Desktop rows and 66 excluded Hermes-Doofus rows. The current milestone is a first usable agent-workflow version: model/provider connection, chat and prompt lifecycle, tool execution/progress/results and approvals, skills, plugins/MCP, plus supporting context and attachments. It is not a full Hermes Desktop replica; pixel matching and unrelated administration are deferred. Doofus Hermes follows the agent-focused milestone.
 
+PAR-0064 now displays a dedicated `agent_init_failed` recovery card and opens the current chat's model picker. The Retry action remains separately controlled by Hermes' `retryable` flag; provider API-key editing and OAuth reauthentication still lack a native provider-secret API and remain out of scope for this recovery action.
+
 **Portable agent continuity:** `.doofus/` now holds versioned, validated checkpoint, task-ledger and append-only event records. `tools/doofus_task.py` provides status/progress, explicit task ownership, recipient handoff preview/resume, checkpoint, process/external-operation record updates, and uncertain-write/worktree reconciliation. Unknown or running process/operation records are visible for takeover reconciliation and persist through handoff. The CLI does not discover provider processes automatically. Handoffs narrow authorization scope and do not infer user approval. Local state is initialized for this checkout; the current Codex lease remains active. See the repository [handoff guide](../../../docs/AGENT_HANDOFF.md).
 
 ## Current user goal — first usable agent workflow (2026-11-20)
