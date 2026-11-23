@@ -1371,6 +1371,16 @@ struct PendingSessionCompression {
     outcome_unknown: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ScheduledFailedTurnRetry {
+    stored_session_id: String,
+    runtime_session_id: String,
+    profile: Option<String>,
+    connection_id: String,
+    submission_id: String,
+    resets_at_ms: u64,
+}
+
 #[derive(Clone, Debug)]
 struct PendingSlashCompletion {
     request_id: String,
@@ -2075,6 +2085,7 @@ pub struct HermesNativeApp {
     chat_reasoning_effort_wire: Option<String>,
     chat_policy_mutation: Option<PendingChatPolicyMutation>,
     pending_session_compression: Option<PendingSessionCompression>,
+    scheduled_failed_turn_retry: Option<ScheduledFailedTurnRetry>,
     chat_policy_error: Option<String>,
     chat_model_confirmation: Option<PendingModelConfirmation>,
     message_edit: Option<MessageEditDraft>,
@@ -4579,6 +4590,7 @@ fn render_message() -> &'static str {
             chat_reasoning_effort_wire: None,
             chat_policy_mutation: None,
             pending_session_compression: None,
+            scheduled_failed_turn_retry: None,
             chat_policy_error: None,
             chat_model_confirmation: None,
             message_edit: None,
@@ -7456,11 +7468,14 @@ fn render_message() -> &'static str {
                         Some(pending_session.as_str()) == self.active_runtime_session_id.as_deref()
                     });
             let mut retry_failed_submission = None;
+            let mut schedule_failed_turn_retry = None;
+            let mut cancel_scheduled_failed_turn_retry = false;
             let mut start_new_session = false;
             let mut open_model_picker = false;
             let mut compress_context_session: Option<(String, String, Option<String>)> = None;
             let mut open_provider_settings = None;
             let active_profile = self.active_session_profile.clone();
+            let active_connection_id = self.active_gateway_connection_id().to_owned();
             let tool_images = messages
                 .iter()
                 .enumerate()
@@ -7919,6 +7934,87 @@ fn render_message() -> &'static str {
                                     retry_failed_submission = Some(submission_id.to_owned());
                                 }
                             }
+                            if let Some(submission_id) = message
+                                .get("retry_submission_id")
+                                .and_then(|value| value.as_str())
+                                && messages.last().is_some_and(|last| {
+                                    last.get("role").and_then(serde_json::Value::as_str)
+                                        == Some("assistant")
+                                        && last
+                                            .get("retry_submission_id")
+                                            .and_then(serde_json::Value::as_str)
+                                            == Some(submission_id)
+                                })
+                                && let Some(resets_at_ms) =
+                                    scheduled_retry_reset_at_ms(&message, current_unix_millis())
+                            {
+                                let matching_schedule = self
+                                    .scheduled_failed_turn_retry
+                                    .as_ref()
+                                    .filter(|scheduled| {
+                                        scheduled.stored_session_id == session_id
+                                            && self.active_runtime_session_id.as_deref()
+                                                == Some(scheduled.runtime_session_id.as_str())
+                                            && scheduled.profile == active_profile
+                                            && scheduled.connection_id == active_connection_id
+                                            && scheduled.submission_id == submission_id
+                                    });
+                                if let Some(scheduled) = matching_schedule {
+                                    let remaining = scheduled
+                                        .resets_at_ms
+                                        .saturating_sub(current_unix_millis());
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(format!(
+                                            "Retrying at {} — in {}",
+                                            format_scheduled_retry_clock(scheduled.resets_at_ms),
+                                            format_scheduled_retry_countdown(remaining),
+                                        ));
+                                        if ui
+                                            .button("Cancel")
+                                            .accessible_name("Cancel scheduled retry")
+                                            .clicked()
+                                        {
+                                            cancel_scheduled_failed_turn_retry = true;
+                                        }
+                                    });
+                                } else if self.scheduled_failed_turn_retry.is_none() {
+                                    let reset_delay = resets_at_ms
+                                        .saturating_sub(current_unix_millis());
+                                    let can_schedule = reset_delay > 0
+                                        && reset_delay <= MAX_SCHEDULED_RETRY_DELAY_MS
+                                        && self.gateway_connected
+                                        && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                                            endpoint.profile_id
+                                                == active_profile.as_deref().unwrap_or("default")
+                                        })
+                                        && !retry_pending
+                                        && self.draft.trim().is_empty()
+                                        && self.composer_attachments.is_empty();
+                                    let schedule = ui
+                                        .add_enabled(
+                                            can_schedule,
+                                            egui::Button::new(format!(
+                                                "Retry at {}",
+                                                format_scheduled_retry_clock(resets_at_ms),
+                                            )),
+                                        )
+                                        .accessible_name(
+                                            "Schedule one retry at the provider reset time",
+                                        );
+                                    if schedule.clicked()
+                                        && let Some(runtime_session_id) =
+                                            self.active_runtime_session_id.clone()
+                                    {
+                                        schedule_failed_turn_retry = Some((
+                                            session_id.to_owned(),
+                                            runtime_session_id,
+                                            active_profile.clone(),
+                                            submission_id.to_owned(),
+                                            resets_at_ms,
+                                        ));
+                                    }
+                                }
+                            }
                             if timestamps_enabled
                                 && let Some((started, completed)) = transcript_timestamp(&message)
                             {
@@ -8101,7 +8197,30 @@ fn render_message() -> &'static str {
                 }
             }
             if let Some(submission_id) = retry_failed_submission {
+                self.scheduled_failed_turn_retry = None;
                 self.retry_failed_submission(&submission_id);
+            }
+            if cancel_scheduled_failed_turn_retry {
+                self.scheduled_failed_turn_retry = None;
+            }
+            if let Some((
+                stored_session_id,
+                runtime_session_id,
+                profile,
+                submission_id,
+                resets_at_ms,
+            )) = schedule_failed_turn_retry
+            {
+                self.scheduled_failed_turn_retry = Some(ScheduledFailedTurnRetry {
+                    stored_session_id,
+                    runtime_session_id,
+                    profile,
+                    connection_id: self.active_gateway_connection_id().to_owned(),
+                    submission_id,
+                    resets_at_ms,
+                });
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_secs(1));
             }
             if start_new_session {
                 self.create_blank_session_tab();
@@ -20041,7 +20160,93 @@ fn render_message() -> &'static str {
         self.save_active_chat_view();
     }
 
+    fn poll_scheduled_failed_turn_retry(&mut self, ctx: &egui::Context) {
+        let Some(scheduled) = self.scheduled_failed_turn_retry.clone() else {
+            return;
+        };
+        let Some(endpoint_profile_id) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.scheduled_failed_turn_retry = None;
+            return;
+        };
+        let active_pending = self
+            .active_runtime_session_id
+            .as_deref()
+            .is_some_and(|runtime_id| {
+                let key =
+                    self.session_identity_key(runtime_id, self.active_session_profile.as_deref());
+                self.pending_submissions.contains_key(&key)
+            });
+        let last_message_matches = self.transcript.last().is_some_and(|message| {
+            message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                && message
+                    .get("retry_submission_id")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(scheduled.submission_id.as_str())
+                && message
+                    .get("retry_session_id")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(scheduled.runtime_session_id.as_str())
+                && message
+                    .get("retry_profile")
+                    .and_then(serde_json::Value::as_str)
+                    == scheduled.profile.as_deref()
+        });
+        let route_matches = matches!(
+            &self.route,
+            AppRoute::Session(stored_session_id) if stored_session_id == &scheduled.stored_session_id
+        );
+        let still_owned = self.gateway_connected
+            && route_matches
+            && self.active_runtime_session_id.as_deref()
+                == Some(scheduled.runtime_session_id.as_str())
+            && self.active_session_profile == scheduled.profile
+            && self.active_gateway_connection_id() == scheduled.connection_id
+            && endpoint_profile_id == scheduled.profile.as_deref().unwrap_or("default");
+        if !still_owned
+            || !last_message_matches
+            || active_pending
+            || !self.draft.trim().is_empty()
+            || !self.composer_attachments.is_empty()
+            || self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, session)| session == &scheduled.runtime_session_id)
+        {
+            self.scheduled_failed_turn_retry = None;
+            return;
+        }
+
+        let now_ms = current_unix_millis();
+        if now_ms < scheduled.resets_at_ms {
+            ctx.request_repaint_after(std::time::Duration::from_millis(
+                scheduled.resets_at_ms.saturating_sub(now_ms).min(1_000),
+            ));
+            return;
+        }
+
+        // Clear before dispatch so the timer is one-shot even if the Gateway
+        // immediately refuses the retry or the UI receives duplicate frames.
+        self.scheduled_failed_turn_retry = None;
+        self.retry_failed_submission_after_reset(&scheduled.submission_id, scheduled.resets_at_ms);
+    }
+
     fn retry_failed_submission(&mut self, submission_id: &str) {
+        self.retry_failed_submission_with_reset(submission_id, None);
+    }
+
+    fn retry_failed_submission_after_reset(&mut self, submission_id: &str, resets_at_ms: u64) {
+        self.retry_failed_submission_with_reset(submission_id, Some(resets_at_ms));
+    }
+
+    fn retry_failed_submission_with_reset(
+        &mut self,
+        submission_id: &str,
+        scheduled_reset_at_ms: Option<u64>,
+    ) {
         if !self.draft.trim().is_empty() || !self.composer_attachments.is_empty() {
             self.status =
                 "Send or clear the current draft before retrying the failed message".into();
@@ -20066,7 +20271,10 @@ fn render_message() -> &'static str {
         }) else {
             return;
         };
-        if !failed_turn_retry_allowed(message) {
+        let retry_after_reset_allowed = scheduled_reset_at_ms.is_some_and(|resets_at_ms| {
+            scheduled_retry_is_due_for_message(message, resets_at_ms, current_unix_millis())
+        });
+        if !failed_turn_retry_allowed(message) && !retry_after_reset_allowed {
             self.status = "Hermes marked this failure as not retryable".into();
             return;
         }
@@ -37019,6 +37227,80 @@ fn failed_turn_provider_settings(message: &serde_json::Value) -> Option<(&'stati
     Some((label, url.to_owned()))
 }
 
+const MAX_SCHEDULED_RETRY_DELAY_MS: u64 = (1_u64 << 31) - 1;
+
+fn current_unix_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or_default()
+}
+
+fn retry_reset_at_unix_millis(message: &serde_json::Value) -> Option<u64> {
+    let code = message.pointer("/error_surface/code")?.as_str()?;
+    if !matches!(code, "rate_limit" | "upstream_rate_limit") {
+        return None;
+    }
+    let seconds = message
+        .pointer("/error_surface/resets_at")
+        .or_else(|| message.pointer("/error_surface/resetsAt"))?
+        .as_f64()?;
+    if !seconds.is_finite() || seconds <= 0.0 || seconds > (u64::MAX as f64 / 1_000.0) {
+        return None;
+    }
+    let millis = (seconds * 1_000.0).ceil();
+    (millis.is_finite() && millis > 0.0 && millis <= u64::MAX as f64).then_some(millis as u64)
+}
+
+fn scheduled_retry_reset_at_ms(message: &serde_json::Value, now_ms: u64) -> Option<u64> {
+    let resets_at_ms = retry_reset_at_unix_millis(message)?;
+    let delay = resets_at_ms.saturating_sub(now_ms);
+    (delay > 0 && delay <= MAX_SCHEDULED_RETRY_DELAY_MS).then_some(resets_at_ms)
+}
+
+fn scheduled_retry_is_due_for_message(
+    message: &serde_json::Value,
+    expected_reset_at_ms: u64,
+    now_ms: u64,
+) -> bool {
+    retry_reset_at_unix_millis(message) == Some(expected_reset_at_ms)
+        && now_ms >= expected_reset_at_ms
+        && message
+            .pointer("/error_surface/code")
+            .and_then(serde_json::Value::as_str)
+            != Some("SESSION_OWNER_UNCONFIRMED")
+}
+
+fn format_scheduled_retry_clock(reset_at_ms: u64) -> String {
+    use time::{OffsetDateTime, UtcOffset};
+
+    let Some(utc) =
+        OffsetDateTime::from_unix_timestamp_nanos(i128::from(reset_at_ms) * 1_000_000).ok()
+    else {
+        return "unknown time".into();
+    };
+    let offset = UtcOffset::local_offset_at(utc).unwrap_or(UtcOffset::UTC);
+    let Ok(format) = time::format_description::parse_borrowed::<2>("[hour]:[minute]") else {
+        return "unknown time".into();
+    };
+    utc.to_offset(offset)
+        .format(&format)
+        .unwrap_or_else(|_| "unknown time".into())
+}
+
+fn format_scheduled_retry_countdown(remaining_ms: u64) -> String {
+    let seconds = remaining_ms.div_ceil(1_000);
+    let hours = seconds / 3_600;
+    let minutes = (seconds % 3_600) / 60;
+    let seconds = seconds % 60;
+    if hours > 0 {
+        format!("{hours}h {minutes:02}m {seconds:02}s")
+    } else {
+        let tail = format!("{minutes:02}m {seconds:02}s");
+        tail.strip_prefix('0').unwrap_or(&tail).to_owned()
+    }
+}
+
 fn failed_turn_retry_allowed(message: &serde_json::Value) -> bool {
     message
         .pointer("/error_surface/code")
@@ -39852,6 +40134,49 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn scheduled_retry_respects_reset_codes_timer_bounds_and_countdown() {
+        let message = serde_json::json!({
+            "error_surface":{"code":"rate_limit","resets_at":130.123}
+        });
+        assert_eq!(
+            retry_reset_at_unix_millis(&message),
+            Some(130_123),
+            "the wire reset time is accepted in epoch seconds"
+        );
+        assert_eq!(
+            scheduled_retry_reset_at_ms(&message, 100_000),
+            Some(130_123)
+        );
+        assert_eq!(scheduled_retry_reset_at_ms(&message, 130_123), None);
+        assert!(!scheduled_retry_is_due_for_message(
+            &message, 130_123, 130_122
+        ));
+        assert!(scheduled_retry_is_due_for_message(
+            &message, 130_123, 130_123
+        ));
+        assert_eq!(format_scheduled_retry_countdown(3_000), "0m 03s");
+        assert_eq!(format_scheduled_retry_countdown(183_000), "3m 03s");
+        assert_eq!(format_scheduled_retry_countdown(3_903_000), "1h 05m 03s");
+
+        let long_wait = serde_json::json!({
+            "error_surface":{"code":"upstream_rate_limit","resets_at":10_000_000}
+        });
+        assert_eq!(scheduled_retry_reset_at_ms(&long_wait, 1), None);
+        let unsupported = serde_json::json!({
+            "error_surface":{"code":"timeout","resets_at":130.123}
+        });
+        assert_eq!(scheduled_retry_reset_at_ms(&unsupported, 100_000), None);
+        let unconfirmed = serde_json::json!({
+            "error_surface":{"code":"SESSION_OWNER_UNCONFIRMED","resets_at":130.123}
+        });
+        assert!(!scheduled_retry_is_due_for_message(
+            &unconfirmed,
+            130_123,
+            130_123
+        ));
     }
 
     #[test]
@@ -55081,6 +55406,185 @@ mod tests {
     }
 
     #[test]
+    fn rendered_scheduled_failed_retry_can_be_cancelled_without_sending() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _) = crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 0,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:3000".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let reset_at_ms = current_unix_millis() + 600_000;
+        app.transcript.push(serde_json::json!({
+            "id":"submission-1","submission_id":"submission-1",
+            "role":"user","content":"hello"
+        }));
+        app.transcript.push(serde_json::json!({
+            "role":"assistant","content":"","error":"Rate limited",
+            "retry_submission_id":"submission-1","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_display_text":"hello",
+            "retry_attachments":[],
+            "error_surface":{"code":"rate_limit","retryable":false,"resets_at":(reset_at_ms as f64)/1000.0}
+        }));
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3200.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        while commands.try_recv().is_ok() {}
+        let schedule = harness
+            .query_by_label("Schedule one retry at the provider reset time")
+            .expect("a current rate-limit failure with a future reset exposes scheduling");
+        assert!(!schedule.accesskit_node().is_disabled());
+        schedule.click();
+        harness.run();
+        assert!(app.borrow().scheduled_failed_turn_retry.is_some());
+        assert!(harness.query_by_label("Cancel scheduled retry").is_some());
+        harness
+            .query_by_label("Cancel scheduled retry")
+            .unwrap()
+            .click();
+        harness.run();
+        assert!(app.borrow().scheduled_failed_turn_retry.is_none());
+        assert!(
+            commands.try_recv().is_err(),
+            "arming/canceling never submits"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn scheduled_failed_retry_dispatches_once_at_reset_for_exact_current_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _) = crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 0,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:3000".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript.push(serde_json::json!({
+            "id":"submission-1","submission_id":"submission-1",
+            "role":"user","content":"hello"
+        }));
+        app.transcript.push(serde_json::json!({
+            "role":"assistant","content":"","error":"Rate limited",
+            "retry_submission_id":"submission-1","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_display_text":"hello",
+            "retry_attachments":[],
+            "error_surface":{"code":"rate_limit","retryable":false,"resets_at":130.123}
+        }));
+        app.scheduled_failed_turn_retry = Some(ScheduledFailedTurnRetry {
+            stored_session_id: "stored-session".into(),
+            runtime_session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id,
+            submission_id: "submission-1".into(),
+            resets_at_ms: 130_123,
+        });
+        while commands.try_recv().is_ok() {}
+        app.poll_scheduled_failed_turn_retry(&egui::Context::default());
+        assert!(app.scheduled_failed_turn_retry.is_none());
+        assert_eq!(
+            commands.try_recv().unwrap(),
+            crate::gateway::TestGatewayCommand::SubmitPrompt {
+                session_id: "runtime-session".into(),
+                profile: Some("work".into()),
+                submission_id: "submission-1".into(),
+                text: "hello".into(),
+                attachments: Vec::new(),
+            }
+        );
+        app.poll_scheduled_failed_turn_retry(&egui::Context::default());
+        assert!(
+            commands.try_recv().is_err(),
+            "the timer dispatches exactly once"
+        );
+        let key = app.session_identity_key("runtime-session", Some("work"));
+        assert!(
+            app.pending_submissions
+                .get(&key)
+                .is_some_and(|pending| pending.retrying_failed_turn)
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn scheduled_failed_retry_is_cancelled_when_connection_owner_changes() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let (gateway, commands, _) = crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some(connection_id);
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 0,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:3000".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let reset_at_ms = current_unix_millis() + 600_000;
+        app.transcript.push(serde_json::json!({
+            "role":"assistant","content":"","error":"Rate limited",
+            "retry_submission_id":"submission-1","retry_session_id":"runtime-session",
+            "retry_profile":"work","retry_text":"hello","retry_display_text":"hello",
+            "retry_attachments":[],
+            "error_surface":{"code":"rate_limit","retryable":false,"resets_at":(reset_at_ms as f64)/1000.0}
+        }));
+        app.scheduled_failed_turn_retry = Some(ScheduledFailedTurnRetry {
+            stored_session_id: "stored-session".into(),
+            runtime_session_id: "runtime-session".into(),
+            profile: Some("work".into()),
+            connection_id: app.active_gateway_connection_id().to_owned(),
+            submission_id: "submission-1".into(),
+            resets_at_ms: reset_at_ms,
+        });
+        app.gateway_connection_id = Some("different-connection".into());
+        while commands.try_recv().is_ok() {}
+        app.poll_scheduled_failed_turn_retry(&egui::Context::default());
+        assert!(app.scheduled_failed_turn_retry.is_none());
+        assert!(
+            commands.try_recv().is_err(),
+            "an old connection never gets the retry"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn replay_gap_resumes_active_session_and_preserves_transcript_and_draft() {
         let (mut app, profile_dir) = isolated_app();
         let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
@@ -59754,6 +60258,7 @@ impl HermesNativeApp {
         let focused = ctx.input(|input| input.focused);
         let now = std::time::Instant::now();
         self.recover_after_focus(focused, now);
+        self.poll_scheduled_failed_turn_retry(&ctx);
         self.poll_active_status_backstop(focused, now);
         self.poll_command_center_maintenance(now);
         if let Some(next_poll) = self.command_center_maintenance_next_poll {
