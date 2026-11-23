@@ -1,5 +1,6 @@
 pub mod app;
 pub mod artifacts;
+pub mod clipboard_image;
 pub mod composer_drafts;
 pub mod files;
 pub mod fonts;

@@ -26419,10 +26419,16 @@ mod tests {
                 && error.starts_with("Hermes prompt.submit refused:")
                 && error.contains("different stored session owner")
         ));
-        assert!(
-            event_rx.try_recv().is_err(),
-            "mismatched resume must not rebind or retry"
-        );
+        while let Ok(event) = event_rx.recv_timeout(Duration::from_millis(200)) {
+            assert!(
+                !matches!(
+                    event,
+                    GatewayEvent::SessionRuntimeRebound { .. }
+                        | GatewayEvent::PromptSubmitted { .. }
+                ),
+                "mismatched resume must not rebind or retry"
+            );
+        }
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

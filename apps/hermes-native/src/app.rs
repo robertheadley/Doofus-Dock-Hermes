@@ -15521,6 +15521,14 @@ fn render_message() -> &'static str {
         path: String,
         result: Result<ComposerAttachmentReceipt, String>,
     ) {
+        if result.is_ok()
+            && let Err(error) = crate::clipboard_image::remove_staged(
+                self.workspace.data_directory(),
+                std::path::Path::new(&path),
+            )
+        {
+            self.status = error;
+        }
         let active_connection_id = self
             .gateway_discovery
             .as_ref()
@@ -16169,6 +16177,12 @@ fn render_message() -> &'static str {
                 }
             }
             if let Some(path) = remove_attachment_path {
+                if let Err(error) = crate::clipboard_image::remove_staged(
+                    self.workspace.data_directory(),
+                    std::path::Path::new(&path),
+                ) {
+                    self.status = error;
+                }
                 self.composer_attachments
                     .retain(|attachment| attachment.path != path);
                 self.persist_active_prepared_image_draft();
@@ -16405,8 +16419,15 @@ fn render_message() -> &'static str {
         let mut dropped_composer_paths = Vec::new();
         let mut composer_drop_requires_path = false;
         let mut keyboard_insert = None;
+        let mut pasted_image = None;
         ui.horizontal(|ui| {
             let composer_id = ui.make_persistent_id("message-composer");
+            pasted_image = self
+                .gateway_connected
+                .then(|| {
+                    crate::clipboard_image::take_focused_image_event(ui.ctx(), composer_id)
+                })
+                .flatten();
             let completion_list_active = ui.ctx().memory(|memory| {
                 memory.focused() == Some(composer_id)
                     && !self.slash_completion_dismissed
@@ -16584,6 +16605,16 @@ fn render_message() -> &'static str {
                 }
             }
         });
+        if let Some(image) = pasted_image {
+            match crate::clipboard_image::stage_png(
+                self.workspace.data_directory(),
+                &operation_id("clipboard-image"),
+                image.as_ref(),
+            ) {
+                Ok(path) => dropped_composer_paths.push(path),
+                Err(error) => self.status = format!("Could not attach clipboard image: {error}"),
+            }
+        }
         if !dropped_composer_paths.is_empty() {
             self.accept_composer_file_drop(dropped_composer_paths);
         } else if composer_drop_requires_path {
