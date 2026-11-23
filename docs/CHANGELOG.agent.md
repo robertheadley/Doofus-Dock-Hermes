@@ -4870,3 +4870,17 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Full-map UCM check still reports 160 pre-existing errors and 10 unrelated reconciliation items. Capability stays partial; all 176 chat/tool rows still lack live-runtime verification and pinned-source acceptance.
 - **follow_up:** Continue the next dependency-ready P0 agent-workflow gap; resolve UCM-wide legacy errors separately.
+
+### PAR-0046 publication record — 2026-11-23
+
+- **id:** PAR-0046-publication
+- **timestamp:** 2026-11-23T01:31:44Z
+- **what:** Published reasoning visibility implementation (`aef5dbd9a07456ca8361f886356d63c31d150619`) and capability/docs evidence (`b6ce88fb68a5c27b9c673f07c6ece518d81d4103`) to the user-selected `main` branch. A changelog whitespace-only cleanup follows in `1496ea010630aa3dc7cb45aa09880f50d1fbc645`.
+- **why:** Keep the repository's main branch current with validated agent-workflow work and its evidence.
+- **components:** `Doofus-Dock-Hermes` main, PAR-0046 source, EV-0128/0129/0130.
+- **type:** publication.
+- **validation:** Fresh fetch confirmed local `main` and `origin/main` both resolve to `1496ea010630aa3dc7cb45aa09880f50d1fbc645` before this publication record. The record will be committed and pushed separately, then exact ref equality rechecked.
+- **performance:** Not applicable.
+- **risks:** Live Gateway and packaged Windows acceptance remain open.
+- **follow_up:** Select the next dependency-ready P0 gap and continue toward complete chat/tool, skills, plugin/MCP, provider and context/attachment support.
+
