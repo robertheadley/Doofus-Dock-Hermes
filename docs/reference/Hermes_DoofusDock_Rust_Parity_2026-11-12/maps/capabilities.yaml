@@ -2541,9 +2541,19 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: pathless-composer-file-drop
+      description: When a dropped file has no usable absolute local path, read and stage its payload only when the drop lands on the composer, enforce the attachment byte bound, sanitize its filename, infer recognized image extensions, and pass it through the existing profile/session-owned upload flow.
+    - id: authenticated-os-file-drop
+      description: Verify native Windows path and byte-only file drops through authenticated Hermes Gateway upload and refusal paths.
+  evidence:
+  - EV-0127
+  - EV-0074
+  - EV-0073
 - id: ui-display-diff-for-modified-file
   name: Display diff for modified file
   area: file-browser

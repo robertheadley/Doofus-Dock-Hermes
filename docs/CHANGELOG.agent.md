@@ -4825,3 +4825,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Clipboard PNG conversion is bounded to 16 megapixels and 16 MiB; no runtime benchmark was run.
 - **risks:** Actual Windows clipboard capture, authenticated live Gateway upload, pathless drops, thumbnails, interrupted-draft restart validity, packaged Windows and formal source-paired acceptance remain open.
 - **follow_up:** Publish EV-0126 and refreshed evidence/progress maps to `main`; then continue remaining attachment paths and live acceptance.
+
+## PAR-0062 — Pathless composer file drops — 2026-11-23
+
+- **id:** PAR-0062-pathless-composer-drop
+- **timestamp:** 2026-11-23T00:49:13Z
+- **what:** Added bounded byte staging for native dropped-file payloads that lack an absolute local path. Composer-only drops now use sanitized basenames, infer recognized image extensions, verify staged bytes before atomic publication, and clean only files in app-generated operation directories. Published source commit `4392b6ff0267065718ee5006eb76f4f3cfaef4f9` to `main`.
+- **why:** A file drop should remain a usable attachment input when the platform supplies bytes and a name but no reusable filesystem path.
+- **components:** `apps/hermes-native/src/app.rs`, `src/clipboard_image.rs`, PAR-0062 evidence/progress, attachment architecture, README and backlog.
+- **type:** feature, headless regression coverage, parity evidence.
+- **validation:** Full locked suite passed (629 library, 15 automation protocol, 3 launcher); workspace/all-target locked check, formatting, diff check, task continuity (19/19), capability package validator (565 target behaviors, 565 inventory items, 111 implementation receipts), and debug build passed.
+- **performance:** Payload reads are capped at 16 MiB; writes use create-new temporary files and readback validation. No runtime benchmark was run.
+- **risks:** The new helper and staging behavior have headless filesystem coverage; actual Windows OS-drop delivery, live authenticated Gateway outcomes, packaged behavior and source-paired acceptance remain unverified. PAR-0062 remains partial.
+- **follow_up:** Continue authenticated attachment outcomes, Windows drop verification, thumbnails and remaining agent-workflow gaps.

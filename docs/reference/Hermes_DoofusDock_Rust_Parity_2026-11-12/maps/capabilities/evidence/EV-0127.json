@@ -1,0 +1,15 @@
+{
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "4392b6ff0267065718ee5006eb76f4f3cfaef4f9",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless egui and local filesystem fixtures. Native OS file drops with absolute paths continue through the local-path route. Pathless dropped-file handles are retained only when the drop lands on the composer; their payloads are bounded to 16 MiB, written to app-owned per-operation directories through create-new temporary files, synced, read back byte-for-byte and atomically renamed. Filenames are reduced to a safe basename, Windows-invalid characters are replaced, and recognized extensionless image types are inferred. Successful upload/removal cleans only the owned staged file and operation directory. Full locked suite passes 629 library + 15 automation protocol + 3 launcher tests; cargo check --workspace --all-targets --locked, rustfmt, diff check, task continuity 19/19, capability package validation and debug build pass.",
+  "uid": "EV-0127",
+  "capability_id": "ui-drag-files-into-composer",
+  "scenario": "pathless-composer-file-drop",
+  "locator": "apps/hermes-native/src/clipboard_image.rs::tests::stages_pathless_dropped_bytes_with_a_safe_name_and_removes_the_owned_file",
+  "notes": "Partial headless evidence. Staging helpers and the complete local suite pass, but actual Windows drop integration, authenticated Gateway upload outcomes, thumbnails, packaged application behavior and formal pinned-source acceptance remain unverified."
+}
