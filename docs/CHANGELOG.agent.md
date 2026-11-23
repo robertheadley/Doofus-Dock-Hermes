@@ -4896,3 +4896,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No performance-sensitive path or benchmark changed.
 - **risks:** Model/account/provider-settings navigation, context compression, scheduled retry, complete pinned error-code coverage, authenticated live Gateway behavior, and packaged Windows acceptance remain open.
 - **follow_up:** Continue the remaining P0 chat/tool work; keep PAR-0064 partial until live Gateway and source acceptance.
+
+### PAR-0064 publication record — 2026-11-23
+
+- **id:** hermes-par0064-publication-20261123
+- **timestamp:** 2026-11-23T01:53:00Z
+- **what:** Published implementation `2c24649455c8b81fd96d6e367b30155f9791fb84` and evidence/docs commit `4bed6b1e8d05f7f01c67d38575ebf9e360892485` to `origin/main`.
+- **why:** Keep the operator-selected main branch current with validated agent-workflow changes.
+- **components:** `Doofus-Dock-Hermes` main, PAR-0064, EV-0131/0132/0133.
+- **type:** publication.
+- **validation:** Fresh fetch after push confirmed local `main` and `origin/main` both at `4bed6b1e8d05f7f01c67d38575ebf9e360892485`; the only worktree changes are excluded `.doofus` task runtime state and operator-owned `apps/hermes-native/work/`.
+- **performance:** Not applicable.
+- **risks:** Live Gateway, packaged Windows, and formal pinned-source acceptance remain open.
+- **follow_up:** Resume the next dependency-ready P0 agent-workflow requirement.
