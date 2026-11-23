@@ -3465,3 +3465,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark claim; compression uses the existing asynchronous Gateway writer.
 - **risks:** Attachment removal remains user-directed; live Gateway, real TLS remediation, packaged Windows and formal source-paired acceptance remain open.
 - **follow_up:** Record EV-0142/0143, update generated progress and publish to main.
+
+### PAR-0064 format and upstream recovery — 2026-11-23
+
+- **id:** hermes-par0064-format-upstream-recovery-20261123
+- **timestamp:** 2026-11-23T18:08:09Z
+- **what:** Added specific `format_error` recovery with model choice and fresh-session fallback, and mapped `upstream_blocked` to the active chat model picker.
+- **why:** Match pinned `switch_provider` behavior through the native session model controls without changing profile defaults.
+- **components:** Hermes Native failed-turn card, PAR-0064, model-picker recovery.
+- **type:** feature, validation, evidence.
+- **validation:** Full locked suite 657 + 15 + 3, all-target check, Windows debug build, rustfmt, focused rendered test and diff check pass.
+- **performance:** No benchmark claim; both actions use existing UI navigation.
+- **risks:** The source free-tier sign-in flow requires a separate desktop OAuth/session host and is not represented by a model change. Live Gateway and source-paired acceptance remain open.
+- **follow_up:** Record EV-0144, update progress and publish to main.

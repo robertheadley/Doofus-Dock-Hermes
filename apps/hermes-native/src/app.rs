@@ -7831,7 +7831,24 @@ fn render_message() -> &'static str {
                 );
             }
         }
-        FailedTurnRecoveryAction::Billing => {
+        FailedTurnRecoveryAction::ChooseModelAndNewSession => {
+    let choose = ui
+        .add_enabled(
+            self.gateway_connected && self.chat_policy_mutation.is_none(),
+            egui::Button::new("Choose model"),
+        )
+        .accessible_name("Choose another model for this Hermes chat");
+    if choose.clicked() {
+        open_model_picker = true;
+    }
+    let start = ui
+        .add_enabled(self.pending_create.is_none(), egui::Button::new("Start new session"))
+        .accessible_name("Start a new Hermes session with fresh context");
+    if start.clicked() {
+        start_new_session = true;
+    }
+}
+                                        FailedTurnRecoveryAction::Billing => {
                                             let open_billing = ui
                                                 .button("Open billing portal")
                                                 .accessible_name("Open Nous billing portal");
@@ -37455,6 +37472,14 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
             "Hermes couldn't start the agent".into(),
             "The selected model may not be available for this session. Choose a different model, or retry once the session is ready.".into(),
         )),
+        "format_error" => Some((
+            "The model can't use this response format".into(),
+            "Choose another model for this chat, or start a new session, then retry.".into(),
+        )),
+        "upstream_blocked" => Some((
+            "The provider blocked this request".into(),
+            format!("{provider} could not complete the request. Choose another model or provider for this chat, then retry."),
+        )),
         "model_not_found" => Some((
             "Model not found".into(),
             format!(
@@ -37542,6 +37567,7 @@ enum FailedTurnRecoveryAction {
     CompressContext,
     StartNewSession,
     ChooseModel,
+    ChooseModelAndNewSession,
     ProviderPolicy,
     Billing,
     UsageWindow,
@@ -37628,6 +37654,8 @@ fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurn
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
         "model_not_found" | "free_tier_at_capacity" => Some(FailedTurnRecoveryAction::ChooseModel),
         "agent_init_failed" => Some(FailedTurnRecoveryAction::ChooseModel),
+        "upstream_blocked" => Some(FailedTurnRecoveryAction::ChooseModel),
+        "format_error" => Some(FailedTurnRecoveryAction::ChooseModelAndNewSession),
         "provider_policy_blocked" => Some(FailedTurnRecoveryAction::ProviderPolicy),
         "billing" if billing_portal_allowed(message) => Some(FailedTurnRecoveryAction::Billing),
         "ssl_cert_verification" => Some(FailedTurnRecoveryAction::TlsSetupGuide),
@@ -40680,6 +40708,16 @@ mod tests {
                 true,
             ),
             (
+                "format_error",
+                Some(FailedTurnRecoveryAction::ChooseModelAndNewSession),
+                true,
+            ),
+            (
+                "upstream_blocked",
+                Some(FailedTurnRecoveryAction::ChooseModel),
+                true,
+            ),
+            (
                 "SESSION_NOT_OWNED",
                 Some(FailedTurnRecoveryAction::StartNewSession),
                 true,
@@ -41061,6 +41099,38 @@ mod tests {
         assert!(harness.output().platform_output.commands.iter().any(|command| {
             matches!(command, egui::OutputCommand::OpenUrl(url) if url.url == "https://hermes-agent.nousresearch.com/docs/user-guide/security#tls-certificate-trust")
         }));
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn format_error_recovery_offers_model_change_and_fresh_session() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![serde_json::json!({
+            "role":"assistant","content":"","error":"unsupported response format",
+            "error_surface":{"code":"format_error","layer":"provider","retryable":true}
+        })];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().session_content(ui, "stored-session"));
+        harness.run_steps(2);
+        let choose = "Choose another model for this Hermes chat";
+        assert!(harness.query_by_label(choose).is_some());
+        assert!(
+            harness
+                .query_by_label("Start a new Hermes session with fresh context")
+                .is_some()
+        );
+        harness.query_by_label(choose).unwrap().click();
+        harness.run();
+        assert!(app.borrow().chat_model_picker_requested);
 
         drop(harness);
         drop(app);

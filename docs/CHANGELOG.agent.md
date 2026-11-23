@@ -5142,3 +5142,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No benchmark claim.
 - **risks:** Live Gateway, actual TLS setup, packaged Windows and formal source acceptance remain open.
 - **follow_up:** Record EV-0142/0143 and publish the validated work to main.
+
+### PAR-0064 format and upstream recovery — 2026-11-23
+
+- **id:** hermes-par0064-format-upstream-recovery-20261123
+- **timestamp:** 2026-11-23T18:08:09Z
+- **what:** Added model-switch recovery for unsupported format and upstream-blocked errors.
+- **why:** Implement the pinned error-card action using the active chat model picker.
+- **components:** Doofus-Dock-Hermes, Hermes Native, PAR-0064.
+- **type:** feature, validation, evidence.
+- **validation:** Full locked suite 657 + 15 + 3, all-target check, Windows debug build, formatting and focused UI test pass.
+- **performance:** No benchmark claim.
+- **risks:** Native free-tier sign-in still needs its source OAuth/session host; live Gateway and formal source-paired acceptance remain open.
+- **follow_up:** Record EV-0144 and publish the validated slice to main.
