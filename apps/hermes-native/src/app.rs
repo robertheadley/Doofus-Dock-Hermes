@@ -2371,6 +2371,9 @@ pub struct HermesNativeApp {
     pending_session_renames: BTreeMap<String, String>,
     runtime_session_renames: BTreeMap<String, (String, String)>,
     uncertain_session_renames: BTreeSet<String>,
+    pending_session_branches: BTreeMap<String, String>,
+    uncertain_session_branches: BTreeMap<String, (u64, u64)>,
+    session_branch_parents: BTreeMap<String, SessionSummary>,
     rename_session: Option<SessionSummary>,
     rename_draft: String,
     pending_session_closes: VecDeque<PanelId>,
@@ -4877,6 +4880,9 @@ fn render_message() -> &'static str {
             pending_session_renames: BTreeMap::new(),
             runtime_session_renames: BTreeMap::new(),
             uncertain_session_renames: BTreeSet::new(),
+            pending_session_branches: BTreeMap::new(),
+            uncertain_session_branches: BTreeMap::new(),
+            session_branch_parents: BTreeMap::new(),
             rename_session: None,
             rename_draft: String::new(),
             pending_session_closes: VecDeque::new(),
@@ -7012,6 +7018,9 @@ fn render_message() -> &'static str {
                 .pending_session_archives
                 .contains_key(&self.session_summary_identity_key(&session));
             let rename_pending = self.pending_session_renames.contains_key(&action_key);
+            let branch_pending = self.pending_session_branches.contains_key(&action_key)
+                && !self.uncertain_session_branches.contains_key(&action_key);
+            let branch_retry = self.uncertain_session_branches.contains_key(&action_key);
             let is_pinned = session.pinned || pinned_row;
             let pin_verb = if is_pinned { "Unpin" } else { "Pin" };
             let pin_label = if scoped_profile_row {
@@ -7066,6 +7075,36 @@ fn render_message() -> &'static str {
                 {
                     self.rename_draft = session.title.clone();
                     self.rename_session = Some(session.clone());
+                    ui.close();
+                }
+                let branch_verb = if branch_retry {
+                    "Retry branch"
+                } else {
+                    "Branch"
+                };
+                let branch_label = if scoped_profile_row {
+                    format!(
+                        "{branch_verb} profile {profile_label} session {}",
+                        session.id
+                    )
+                } else if branch_retry {
+                    format!("{branch_verb} for session {}", session.id)
+                } else {
+                    format!("{branch_verb} session {}", session.id)
+                };
+                if ui
+                    .add_enabled(
+                        self.gateway_connected && !branch_pending,
+                        egui::Button::new(branch_label.clone()),
+                    )
+                    .accessible_name(branch_label)
+                    .clicked()
+                {
+                    if branch_retry {
+                        self.retry_uncertain_session_branch(session.clone());
+                    } else {
+                        self.start_session_branch(session.clone());
+                    }
                     ui.close();
                 }
                 if ui
@@ -18723,6 +18762,70 @@ fn render_message() -> &'static str {
             Ok(()) => {
                 self.uncertain_session_renames.remove(&action_key);
                 self.status = "Checking rename outcome…".into();
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    fn start_session_branch(&mut self, session: SessionSummary) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
+        let action_key = self.session_summary_identity_key(&session);
+        if self.pending_session_branches.contains_key(&action_key) {
+            if self.uncertain_session_branches.contains_key(&action_key) {
+                self.retry_uncertain_session_branch(session);
+            }
+            return;
+        }
+        let Some(gateway) = &self.gateway_discovery else {
+            self.status = "Hermes gateway is unavailable".into();
+            return;
+        };
+        let request_id = operation_id("session-branch");
+        if let Err(error) = gateway.branch_stored_session(
+            request_id.clone(),
+            session.id.clone(),
+            session.profile.clone(),
+        ) {
+            self.status = error;
+            return;
+        }
+        self.pending_session_branches
+            .insert(action_key.clone(), request_id);
+        self.session_branch_parents.insert(action_key, session);
+        self.status = "Branching session…".into();
+    }
+
+    fn retry_uncertain_session_branch(&mut self, session: SessionSummary) {
+        if let Err(error) = self.require_active_session_owner(&session) {
+            self.status = error;
+            return;
+        }
+        let action_key = self.session_summary_identity_key(&session);
+        let Some((expected_revision, expected_generation)) =
+            self.uncertain_session_branches.get(&action_key).copied()
+        else {
+            return;
+        };
+        let Some(request_id) = self.pending_session_branches.get(&action_key).cloned() else {
+            return;
+        };
+        let Some(gateway) = &self.gateway_discovery else {
+            self.status = "Hermes gateway is unavailable for exact branch retry".into();
+            return;
+        };
+        match gateway.retry_stored_session_branch(
+            request_id,
+            session.id,
+            session.profile,
+            expected_revision,
+            expected_generation,
+        ) {
+            Ok(()) => {
+                self.uncertain_session_branches.remove(&action_key);
+                self.status = "Checking branch outcome…".into();
             }
             Err(error) => self.status = error,
         }
@@ -33249,6 +33352,80 @@ fn render_message() -> &'static str {
                                 self.uncertain_session_renames.remove(&action_key);
                                 self.status = error;
                             }
+                        }
+                    }
+                }
+                GatewayEvent::SessionBranched {
+                    request_id,
+                    parent_session_id,
+                    profile,
+                    connection_id,
+                    result,
+                    outcome_unknown,
+                    expected_revision,
+                    expected_generation,
+                } => {
+                    let action_key = self.session_identity_key_for_connection(
+                        connection_id
+                            .as_deref()
+                            .or(Some(self.active_gateway_connection_id())),
+                        &parent_session_id,
+                        profile.as_deref(),
+                    );
+                    if self.pending_session_branches.get(&action_key) != Some(&request_id) {
+                        continue;
+                    }
+                    match result {
+                        Ok(receipt) => {
+                            self.pending_session_branches.remove(&action_key);
+                            self.uncertain_session_branches.remove(&action_key);
+                            let parent = self.session_branch_parents.remove(&action_key);
+                            let same_connection = connection_id
+                                .as_deref()
+                                .is_none_or(|id| id == self.active_gateway_connection_id());
+                            self.status = format!(
+                                "Session branch created · {} messages copied",
+                                receipt.copied_messages
+                            );
+                            if same_connection {
+                                self.broadcast_local_sessions_changed();
+                                self.request_session_list_refresh();
+                                if let Some(mut child) = parent {
+                                    child.lineage_root_id = child
+                                        .lineage_root_id
+                                        .clone()
+                                        .or_else(|| Some(child.id.clone()));
+                                    child.id = receipt.branched_session_id;
+                                    child.message_count = receipt.copied_messages;
+                                    child.preview.clear();
+                                    child.last_active = None;
+                                    child.pinned = false;
+                                    child.unread = false;
+                                    child.archived = false;
+                                    if let Err(error) = self.open_sidebar_session_in_tab(child) {
+                                        self.status = format!(
+                                            "Branch created, but the child could not be opened: {error}"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(error) if outcome_unknown => {
+                            if let (Some(expected_revision), Some(expected_generation)) =
+                                (expected_revision, expected_generation)
+                            {
+                                self.uncertain_session_branches
+                                    .insert(action_key, (expected_revision, expected_generation));
+                            }
+                            self.status = format!(
+                                "Branch outcome unknown; retry the original request to check safely: {error}"
+                            );
+                        }
+                        Err(error) => {
+                            self.pending_session_branches.remove(&action_key);
+                            self.uncertain_session_branches.remove(&action_key);
+                            self.session_branch_parents.remove(&action_key);
+                            self.status = error;
                         }
                     }
                 }
@@ -53443,9 +53620,226 @@ mod tests {
             .next()
             .expect("session archive action is exposed");
         assert!(archive.accesskit_node().is_disabled());
+        let branch = harness
+            .query_all_by(|node| node.label().as_deref() == Some("Branch session sess-42"))
+            .next()
+            .expect("session branch action is exposed");
+        assert!(branch.accesskit_node().is_disabled());
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn stored_session_branch_retry_keeps_the_same_request_and_fence() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id.clone()));
+        let session = SessionSummary {
+            connection_id: Some(connection_id),
+            cwd: None,
+            id: "stored-parent".into(),
+            lineage_root_id: None,
+            profile: Some("work".into()),
+            title: "Parent conversation".into(),
+            preview: "Earlier messages".into(),
+            message_count: 4,
+            source: "desktop".into(),
+            started_at: 1.0,
+            last_active: Some(2.0),
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        let action_key = app.session_summary_identity_key(&session);
+        app.start_session_branch(session.clone());
+        let TestGatewayCommand::BranchStoredSession {
+            request_id,
+            session_id,
+            profile,
+            retry_only,
+            expected_revision,
+            expected_generation,
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("branch request reaches Gateway")
+        else {
+            panic!("expected stored-session branch request");
+        };
+        assert_eq!(session_id, "stored-parent");
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert!(!retry_only);
+        assert_eq!(expected_revision, None);
+        assert_eq!(expected_generation, None);
+        app.uncertain_session_branches.insert(action_key, (12, 9));
+        app.retry_uncertain_session_branch(session);
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("exact retry reaches Gateway"),
+            TestGatewayCommand::BranchStoredSession {
+                request_id,
+                session_id: "stored-parent".into(),
+                profile: Some("work".into()),
+                retry_only: true,
+                expected_revision: Some(12),
+                expected_generation: Some(9),
+            }
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn confirmed_stored_session_branch_opens_child_and_preserves_parent() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "branch-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32149".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, _commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id.clone()));
+        let parent = SessionSummary {
+            connection_id: Some(connection_id),
+            cwd: None,
+            id: "stored-parent".into(),
+            lineage_root_id: None,
+            profile: Some("work".into()),
+            title: "Original conversation".into(),
+            preview: "Keep the parent's content".into(),
+            message_count: 4,
+            source: "desktop".into(),
+            started_at: 1.0,
+            last_active: Some(2.0),
+            pinned: true,
+            unread: false,
+            archived: false,
+        };
+        app.sessions.push(parent.clone());
+        let action_key = app.session_summary_identity_key(&parent);
+        app.pending_session_branches
+            .insert(action_key.clone(), "branch-1".into());
+        app.session_branch_parents
+            .insert(action_key, parent.clone());
+        events
+            .send(GatewayEvent::SessionBranched {
+                request_id: "branch-1".into(),
+                parent_session_id: parent.id.clone(),
+                profile: parent.profile.clone(),
+                connection_id: None,
+                result: Ok(crate::gateway::SessionBranchReceipt {
+                    branched_session_id: "child-1".into(),
+                    copied_messages: 4,
+                }),
+                outcome_unknown: false,
+                expected_revision: Some(12),
+                expected_generation: Some(9),
+            })
+            .expect("queue branch receipt");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.route, AppRoute::Session("child-1".into()));
+        assert_eq!(app.sessions[0].id, "stored-parent");
+        assert_eq!(app.sessions[0].title, "Original conversation");
+        assert_eq!(app.sessions[0].preview, "Keep the parent's content");
+        assert_eq!(app.sessions[0].message_count, 4);
+        assert!(app.pending_session_branches.is_empty());
+        assert!(app.uncertain_session_branches.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn unknown_branch_receipt_keeps_exact_identity_available_for_retry() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some(connection_id.clone());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "branch-unknown-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32150".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let (gateway, commands, events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id.clone()));
+        let parent = SessionSummary {
+            connection_id: Some(connection_id),
+            cwd: None,
+            id: "stored-parent".into(),
+            lineage_root_id: None,
+            profile: Some("work".into()),
+            title: "Original conversation".into(),
+            preview: "Keep the parent's content".into(),
+            message_count: 4,
+            source: "desktop".into(),
+            started_at: 1.0,
+            last_active: Some(2.0),
+            pinned: false,
+            unread: false,
+            archived: false,
+        };
+        let action_key = app.session_summary_identity_key(&parent);
+        app.pending_session_branches
+            .insert(action_key.clone(), "branch-unknown".into());
+        app.session_branch_parents
+            .insert(action_key.clone(), parent.clone());
+        events
+            .send(GatewayEvent::SessionBranched {
+                request_id: "branch-unknown".into(),
+                parent_session_id: parent.id.clone(),
+                profile: parent.profile.clone(),
+                connection_id: None,
+                result: Err("Gateway disconnected after the branch write".into()),
+                outcome_unknown: true,
+                expected_revision: Some(17),
+                expected_generation: Some(5),
+            })
+            .expect("queue unknown branch outcome");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.uncertain_session_branches.get(&action_key),
+            Some(&(17, 5))
+        );
+        assert_eq!(
+            app.pending_session_branches
+                .get(&action_key)
+                .map(String::as_str),
+            Some("branch-unknown")
+        );
+        assert!(app.session_branch_parents.contains_key(&action_key));
+        app.retry_uncertain_session_branch(parent);
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("retry reaches Gateway"),
+            TestGatewayCommand::BranchStoredSession {
+                request_id: "branch-unknown".into(),
+                session_id: "stored-parent".into(),
+                profile: Some("work".into()),
+                retry_only: true,
+                expected_revision: Some(17),
+                expected_generation: Some(5),
+            }
+        );
+        assert!(!app.uncertain_session_branches.contains_key(&action_key));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
@@ -63757,6 +64151,10 @@ impl HermesNativeApp {
                 "session_id": self.rename_session.as_ref().map(|session| session.id.as_str()),
                 "profile": self.rename_session.as_ref().and_then(|session| session.profile.as_deref()),
                 "pending_count": self.pending_session_renames.len(),
+            },
+            "session_branch": {
+                "pending_count": self.pending_session_branches.len(),
+                "uncertain_count": self.uncertain_session_branches.len(),
             },
             "chat": {
                 "active_runtime_session_id": self.active_runtime_session_id.as_deref(),

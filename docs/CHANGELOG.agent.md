@@ -5235,3 +5235,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No benchmark required.
 - **risks:** Live Gateway and packaged Windows acceptance remain open; outbound serialization temporarily holds a normal JSON value copy.
 - **follow_up:** Continue session import/fork and authenticated runtime acceptance.
+
+
+### 2026-11-23 — Hermes Native saved-session branch
+
+- **id:** hermes-stored-session-branch-20261123
+- **what:** Added whole saved-session branching through Hermes' canonical `session.mutate` operation with exact retry fencing.
+- **why:** Conversation fork/branch behavior belongs to the requested agent workflow.
+- **components:** Hermes Native Gateway actor, session menu, branch receipt routing.
+- **type:** feature
+- **validation:** 675 library, 15 protocol, and 3 launcher tests; locked all-target check; package and task validators are next.
+- **performance:** No benchmark required.
+- **risks:** Branch-from-message, authenticated Gateway, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** Session import and remaining branch variants.

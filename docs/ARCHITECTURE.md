@@ -132,3 +132,8 @@ Hermes Native's Sessions sidebar and File browser visibility are semantic worksp
 
 
 The pinned Hermes titlebar folds whole live-tree side groups. Hermes vendors DoofusDock core and presentation at the selected fixed revision with a revision-checked group-minimize operation and renderer restore rails. At usable content widths below 640 px, side groups move out of the normal projection and Sessions/Files/Review/Bots use transient overlays, preserving the canonical tree. Default overlay width follows the pinned 237px pane width with an 85vw cap. The typed agent action accepts the pinned Sessions and Files reveal aliases plus Bots. Bots is a read-only active-profile `profiles.list` pane in the Sessions group, with endpoint/profile fencing and an automation-state roster. Conditional Bot Mode lifecycle, boot-time docking enforcement, exact route aliases, cross-gateway agent union, bot management, zone width overrides, physical Windows acceptance and source-paired visuals remain open; see Hermes Native PLAN Revisions 202–210.
+
+
+### Hermes Native saved-session branching
+
+Hermes Native branches saved conversations with the pinned `session.mutate` `branch` operation, using the parent's revision and execution generation from a profile-scoped snapshot. It accepts only a receipt bound to that parent, opens the confirmed child, preserves the parent, and retains the exact request identity for safe retry after an unknown write outcome. Branch-from-message, live Gateway, and packaged Windows acceptance remain open.

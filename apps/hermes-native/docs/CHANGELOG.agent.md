@@ -3567,3 +3567,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark required; prompt rendering remains local.
 - **risks:** JSON-RPC serialization temporarily holds a normal JSON value copy; live authenticated Gateway and packaged Windows behavior remain unverified.
 - **follow_up:** Validate against an authenticated Gateway and packaged Windows app; continue session import and branch/fork workflows.
+
+
+### 2026-11-23 — Branch saved Hermes sessions
+
+- **id:** hermes-stored-session-branch-20261123
+- **what:** Added an accessible Sessions-row branch action with exact revision/generation fencing, safe unknown-outcome retry, child navigation, and parent preservation.
+- **why:** Forking a conversation is part of the pinned agent conversation lifecycle.
+- **components:** `apps/hermes-native/src/app.rs`, `apps/hermes-native/src/gateway.rs`, session workflow docs.
+- **type:** feature
+- **validation:** Full locked suite: 675 library + 15 protocol + 3 launcher tests; all-target locked check; rustfmt/diff checks.
+- **performance:** No benchmark required; the branch flow reads a lightweight session snapshot before the mutation.
+- **risks:** Branch-from-message and authenticated live Gateway/packaged Windows acceptance remain open.
+- **follow_up:** Implement session import and branch-from-message; verify the branch against an authenticated Gateway and packaged Windows build.

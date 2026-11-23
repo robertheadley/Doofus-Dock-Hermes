@@ -414,3 +414,8 @@ For a structured `billing` error, the native card opens the known Nous billing p
 PAR-0064 free-tier recovery maps known free_tier_* codes to backend-provided guidance and the session-scoped model picker. Retry remains controlled by the Gateway retryability flag. The native client does not fabricate the separate Hermes Free OAuth/session host flow.
 
 Recent/archived session queries and saved-session resumes are connection/profile scoped. The new-chat path creates a runtime session before submitting its first prompt; resume results are fenced by the exact request and owner. Headless tests cover these contracts, while authenticated live Gateway acceptance remains open.
+
+
+### Branch a stored session
+
+The saved-session menu branches the whole stored conversation. The selected row must resolve to the active saved Gateway connection/profile; the Gateway actor reads a lightweight `session.resume` snapshot and requires a valid revision plus execution generation before sending `session.mutate` with `operation: "branch"`, `payload: {}`, and the stable native request ID. Only a receipt naming the original parent and a valid child ID is accepted. The child is opened after that receipt; the parent row, title, preview, and transcript are not mutated. A lost write reply retains the request ID and exact revision/generation in app state, and the accessible Retry action resubmits that same identity after reconnect. Tests cover request shape, lost reply/retry, child navigation, and parent preservation. This implements whole-session branching only; branch-from-message, live Gateway, packaged Windows, and source-paired acceptance remain open.

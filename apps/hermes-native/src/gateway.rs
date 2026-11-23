@@ -1210,6 +1210,12 @@ pub struct SessionExportTranscript {
     pub messages: Vec<serde_json::Value>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionBranchReceipt {
+    pub branched_session_id: String,
+    pub copied_messages: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandCenterSystemAction {
     RestartGateway,
@@ -2543,6 +2549,16 @@ pub enum GatewayEvent {
         profile: Option<String>,
         result: Result<String, String>,
     },
+    SessionBranched {
+        request_id: String,
+        parent_session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        result: Result<SessionBranchReceipt, String>,
+        outcome_unknown: bool,
+        expected_revision: Option<u64>,
+        expected_generation: Option<u64>,
+    },
     ChatModelOptionsLoaded {
         request_id: String,
         session_id: String,
@@ -2714,6 +2730,14 @@ enum GatewayCommand {
         profile: Option<String>,
         title: String,
         retry_only: bool,
+    },
+    BranchStoredSession {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        retry_only: bool,
+        expected_revision: Option<u64>,
+        expected_generation: Option<u64>,
     },
     LoadChatModelOptions {
         request_id: String,
@@ -3189,6 +3213,14 @@ pub(crate) enum TestGatewayCommand {
         session_id: String,
         profile: Option<String>,
     },
+    BranchStoredSession {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        retry_only: bool,
+        expected_revision: Option<u64>,
+        expected_generation: Option<u64>,
+    },
     CompressSession {
         request_id: String,
         session_id: String,
@@ -3329,6 +3361,21 @@ impl GatewayDiscovery {
                     GatewayCommand::CreateSession { request_id, params } => {
                         Some(TestGatewayCommand::CreateSession { request_id, params })
                     }
+                    GatewayCommand::BranchStoredSession {
+                        request_id,
+                        session_id,
+                        profile,
+                        retry_only,
+                        expected_revision,
+                        expected_generation,
+                    } => Some(TestGatewayCommand::BranchStoredSession {
+                        request_id,
+                        session_id,
+                        profile,
+                        retry_only,
+                        expected_revision,
+                        expected_generation,
+                    }),
                     GatewayCommand::SubmitPrompt {
                         session_id,
                         profile,
@@ -4770,6 +4817,7 @@ impl GatewayDiscovery {
             | GatewayEvent::SessionInterrupted { connection_id, .. }
             | GatewayEvent::SessionRuntimeRebound { connection_id, .. }
             | GatewayEvent::ComposerAttachmentAttached { connection_id, .. }
+            | GatewayEvent::SessionBranched { connection_id, .. }
             | GatewayEvent::SlashCompletionLoaded { connection_id, .. }
             | GatewayEvent::DisplayReasoningLoaded { connection_id, .. }
             | GatewayEvent::DisplayReasoningSaved { connection_id, .. } => {
@@ -6589,6 +6637,44 @@ impl GatewayDiscovery {
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
+
+    pub fn branch_stored_session(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::BranchStoredSession {
+                request_id,
+                session_id,
+                profile,
+                retry_only: false,
+                expected_revision: None,
+                expected_generation: None,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn retry_stored_session_branch(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        expected_revision: u64,
+        expected_generation: u64,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::BranchStoredSession {
+                request_id,
+                session_id,
+                profile,
+                retry_only: true,
+                expected_revision: Some(expected_revision),
+                expected_generation: Some(expected_generation),
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
 }
 
 const GATEWAY_RECONNECT_BASE_MS: u64 = 300;
@@ -8352,6 +8438,42 @@ fn gateway_actor_with_replay(
                     return;
                 }
             }
+            Ok(GatewayCommand::BranchStoredSession {
+                request_id,
+                session_id,
+                profile,
+                retry_only,
+                expected_revision,
+                expected_generation,
+            }) => {
+                let (result, outcome_unknown, expected_revision, expected_generation) =
+                    branch_stored_session_rpc(
+                        socket,
+                        &events,
+                        &mut next_request_id,
+                        &request_id,
+                        &session_id,
+                        profile.as_deref(),
+                        retry_only,
+                        expected_revision,
+                        expected_generation,
+                    );
+                if events
+                    .send(GatewayEvent::SessionBranched {
+                        request_id,
+                        parent_session_id: session_id,
+                        profile,
+                        connection_id: None,
+                        result,
+                        outcome_unknown,
+                        expected_revision,
+                        expected_generation,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
             Ok(GatewayCommand::LoadChatModelOptions {
                 request_id,
                 session_id,
@@ -9456,6 +9578,210 @@ fn attach_composer_file_with_recovery(
             )
         }
         Err(error) => (Err(error), None),
+    }
+}
+
+fn branch_stored_session_rpc(
+    socket: &mut GatewaySocket,
+    events: &mpsc::Sender<GatewayEvent>,
+    next_request_id: &mut u64,
+    request_id: &str,
+    stored_session_id: &str,
+    profile: Option<&str>,
+    retry_only: bool,
+    expected_revision: Option<u64>,
+    expected_generation: Option<u64>,
+) -> (
+    Result<SessionBranchReceipt, String>,
+    bool,
+    Option<u64>,
+    Option<u64>,
+) {
+    if let Err(error) = validate_session_mutation_input(stored_session_id, request_id) {
+        return (Err(error), false, None, None);
+    }
+    let (expected_revision, expected_generation) = if retry_only {
+        let (Some(revision), Some(generation)) = (expected_revision, expected_generation) else {
+            return (
+                Err("Hermes exact branch retry is missing its original mutation identity".into()),
+                false,
+                None,
+                None,
+            );
+        };
+        if revision > 9_007_199_254_740_991 || generation > 9_007_199_254_740_991 {
+            return (
+                Err("Hermes exact branch retry identity exceeds the supported range".into()),
+                false,
+                None,
+                None,
+            );
+        }
+        (revision, generation)
+    } else {
+        let snapshot_params = match session_profile_params(
+            serde_json::json!({
+                "session_id": stored_session_id,
+                "source": "desktop",
+                "omit_messages": true
+            }),
+            profile,
+        ) {
+            Ok(params) => params,
+            Err(error) => return (Err(error), false, None, None),
+        };
+        let snapshot = rpc_with_events(
+            socket,
+            *next_request_id,
+            "session.resume",
+            snapshot_params,
+            Some(events),
+        );
+        *next_request_id = next_request_id.saturating_add(1);
+        let snapshot = match snapshot {
+            Ok(snapshot) => snapshot,
+            Err(error) => return (Err(error), false, None, None),
+        };
+        if snapshot
+            .get("session_id")
+            .and_then(serde_json::Value::as_str)
+            != Some(stored_session_id)
+            && snapshot
+                .get("stored_session_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(stored_session_id)
+        {
+            return (
+                Err("Hermes branch snapshot destination mismatch".into()),
+                false,
+                None,
+                None,
+            );
+        }
+        let Some(expected_revision) = snapshot
+            .get("revision")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|value| *value <= 9_007_199_254_740_991)
+        else {
+            return (
+                Err("Hermes branch snapshot omitted a valid revision".into()),
+                false,
+                None,
+                None,
+            );
+        };
+        let Some(expected_generation) = snapshot
+            .get("execution_generation")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|value| *value <= 9_007_199_254_740_991)
+        else {
+            return (
+                Err("Hermes branch snapshot omitted a valid execution generation".into()),
+                false,
+                None,
+                None,
+            );
+        };
+        (expected_revision, expected_generation)
+    };
+    let params = match session_profile_params(
+        serde_json::json!({
+            "session_id": stored_session_id,
+            "request_id": request_id,
+            "expected_revision": expected_revision,
+            "expected_generation": expected_generation,
+            "operation": "branch",
+            "payload": {}
+        }),
+        profile,
+    ) {
+        Ok(params) => params,
+        Err(error) => {
+            return (
+                Err(error),
+                false,
+                Some(expected_revision),
+                Some(expected_generation),
+            );
+        }
+    };
+    let response = rpc_with_events(
+        socket,
+        *next_request_id,
+        "session.mutate",
+        params,
+        Some(events),
+    );
+    *next_request_id = next_request_id.saturating_add(1);
+    match response {
+        Ok(response) => {
+            if response
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                != Some(stored_session_id)
+                || response
+                    .get("operation")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("branch")
+            {
+                return (
+                    Err("Hermes branch receipt destination mismatch".into()),
+                    true,
+                    Some(expected_revision),
+                    Some(expected_generation),
+                );
+            }
+            let Some(branched_session_id) = response
+                .get("branched_session_id")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| {
+                    !value.is_empty()
+                        && value.len() <= 512
+                        && !value.chars().any(char::is_control)
+                        && *value != stored_session_id
+                })
+            else {
+                return (
+                    Err("Hermes branch receipt omitted a valid child session ID".into()),
+                    true,
+                    Some(expected_revision),
+                    Some(expected_generation),
+                );
+            };
+            let Some(copied_messages) = response
+                .get("copied_messages")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+            else {
+                return (
+                    Err("Hermes branch receipt omitted a valid copied-message count".into()),
+                    true,
+                    Some(expected_revision),
+                    Some(expected_generation),
+                );
+            };
+            (
+                Ok(SessionBranchReceipt {
+                    branched_session_id: branched_session_id.to_owned(),
+                    copied_messages,
+                }),
+                false,
+                Some(expected_revision),
+                Some(expected_generation),
+            )
+        }
+        Err(error) if error.starts_with("Hermes session.mutate refused:") => (
+            Err(error),
+            false,
+            Some(expected_revision),
+            Some(expected_generation),
+        ),
+        Err(error) => (
+            Err(error),
+            true,
+            Some(expected_revision),
+            Some(expected_generation),
+        ),
     }
 }
 
@@ -26830,6 +27156,49 @@ mod tests {
     }
 
     #[test]
+    fn stored_session_branch_dispatch_carries_exact_retry_identity() {
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        gateway
+            .branch_stored_session("branch-1".into(), "parent-1".into(), Some("work".into()))
+            .expect("queue stored-session branch");
+        assert_eq!(
+            commands
+                .recv_timeout(Duration::from_secs(1))
+                .expect("branch command"),
+            TestGatewayCommand::BranchStoredSession {
+                request_id: "branch-1".into(),
+                session_id: "parent-1".into(),
+                profile: Some("work".into()),
+                retry_only: false,
+                expected_revision: None,
+                expected_generation: None,
+            }
+        );
+        gateway
+            .retry_stored_session_branch(
+                "branch-1".into(),
+                "parent-1".into(),
+                Some("work".into()),
+                12,
+                9,
+            )
+            .expect("queue exact branch retry");
+        assert_eq!(
+            commands
+                .recv_timeout(Duration::from_secs(1))
+                .expect("exact retry command"),
+            TestGatewayCommand::BranchStoredSession {
+                request_id: "branch-1".into(),
+                session_id: "parent-1".into(),
+                profile: Some("work".into()),
+                retry_only: true,
+                expected_revision: Some(12),
+                expected_generation: Some(9),
+            }
+        );
+    }
+
+    #[test]
     fn background_compression_receipt_does_not_resume_until_compacted_event() {
         fn read_request<S: io::Read + io::Write>(
             socket: &mut tungstenite::WebSocket<S>,
@@ -26975,6 +27344,110 @@ mod tests {
         assert_eq!(receipt.model.as_deref(), Some("m2"));
         assert_eq!(receipt.provider.as_deref(), Some("custom:local-ollama"));
         assert_eq!(receipt.revision, Some(13));
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn stored_session_branch_retries_the_same_revision_generation_and_request_id() {
+        fn read_frame<S: io::Read + io::Write>(
+            socket: &mut tungstenite::WebSocket<S>,
+        ) -> serde_json::Value {
+            match socket.read().expect("read request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected request, got {other:?}"),
+            }
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept first branch attempt");
+            let mut socket = tungstenite::accept(stream).expect("accept first WebSocket");
+            let resume = read_frame(&mut socket);
+            assert_eq!(resume["method"], "session.resume");
+            assert_eq!(resume["params"]["session_id"], "parent-1");
+            assert_eq!(resume["params"]["profile"], "work");
+            assert_eq!(resume["params"]["omit_messages"], true);
+            let resume_id = resume["id"].as_u64().expect("resume request id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":resume_id,"result":{
+                        "session_id":"runtime-parent","stored_session_id":"parent-1",
+                        "revision":12,"execution_generation":9
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send parent snapshot");
+            let first_mutation = read_frame(&mut socket);
+            assert_eq!(first_mutation["method"], "session.mutate");
+            assert_eq!(first_mutation["params"]["session_id"], "parent-1");
+            assert_eq!(first_mutation["params"]["profile"], "work");
+            assert_eq!(first_mutation["params"]["request_id"], "branch-1");
+            assert_eq!(first_mutation["params"]["expected_revision"], 12);
+            assert_eq!(first_mutation["params"]["expected_generation"], 9);
+            assert_eq!(first_mutation["params"]["operation"], "branch");
+            assert_eq!(first_mutation["params"]["payload"], json!({}));
+            socket.close(None).expect("simulate lost mutation receipt");
+
+            let (stream, _) = listener.accept().expect("accept exact retry");
+            let mut socket = tungstenite::accept(stream).expect("accept retry WebSocket");
+            let retry = read_frame(&mut socket);
+            assert_eq!(retry["method"], "session.mutate");
+            assert_eq!(retry["params"], first_mutation["params"]);
+            let retry_id = retry["id"].as_u64().expect("retry request id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":retry_id,"result":{
+                        "session_id":"parent-1","operation":"branch",
+                        "branched_session_id":"child-1","copied_messages":6,"revision":13
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send confirmed child receipt");
+        });
+
+        let (events, _) = mpsc::channel();
+        let (mut first_socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect first attempt");
+        let mut rpc_id = 20;
+        let (first, unknown, revision, generation) = branch_stored_session_rpc(
+            &mut first_socket,
+            &events,
+            &mut rpc_id,
+            "branch-1",
+            "parent-1",
+            Some("work"),
+            false,
+            None,
+            None,
+        );
+        assert!(first.is_err());
+        assert!(unknown);
+        assert_eq!(revision, Some(12));
+        assert_eq!(generation, Some(9));
+        drop(first_socket);
+
+        let (mut retry_socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect exact retry");
+        let (retry, unknown, retry_revision, retry_generation) = branch_stored_session_rpc(
+            &mut retry_socket,
+            &events,
+            &mut rpc_id,
+            "branch-1",
+            "parent-1",
+            Some("work"),
+            true,
+            revision,
+            generation,
+        );
+        let receipt = retry.expect("exact retry returns the original child");
+        assert!(!unknown);
+        assert_eq!(retry_revision, Some(12));
+        assert_eq!(retry_generation, Some(9));
+        assert_eq!(receipt.branched_session_id, "child-1");
+        assert_eq!(receipt.copied_messages, 6);
         server.join().expect("fixture server exits");
     }
 
