@@ -3452,3 +3452,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Not applicable.
 - **risks:** PAR-0064 remains partial; provider credential recovery, live Gateway, packaged Windows and formal source-paired acceptance remain open.
 - **follow_up:** Continue the remaining pinned PAR-0064 recovery actions.
+
+### PAR-0064 payload size and TLS recovery — 2026-11-23
+
+- **id:** hermes-par0064-payload-tls-recovery-20261123
+- **timestamp:** 2026-11-23T17:58:00Z
+- **what:** Mapped `payload_too_large` to owner-scoped context compression with Start new session fallback, and `ssl_cert_verification` to the pinned TLS trust guide.
+- **why:** Match pinned Hermes error actions using existing safe chat compression and a fixed documentation URL.
+- **components:** Hermes Native transcript errors, PAR-0064, Gateway compression command, host URL navigation.
+- **type:** feature, validation, evidence.
+- **validation:** Full locked suite 656 library + 15 protocol + 3 launcher tests pass; all-target check, Windows debug build, rustfmt, focused rendered tests and diff checks pass.
+- **performance:** No benchmark claim; compression uses the existing asynchronous Gateway writer.
+- **risks:** Attachment removal remains user-directed; live Gateway, real TLS remediation, packaged Windows and formal source-paired acceptance remain open.
+- **follow_up:** Record EV-0142/0143, update generated progress and publish to main.

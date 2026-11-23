@@ -7488,7 +7488,7 @@ fn render_message() -> &'static str {
             let mut start_new_session = false;
             let mut open_model_picker = false;
             let mut compress_context_session: Option<(String, String, Option<String>)> = None;
-            let mut open_provider_settings = None;
+            let mut open_recovery_url = None;
             let active_profile = self.active_session_profile.clone();
             let active_connection_id = self.active_gateway_connection_id().to_owned();
             let tool_images = messages
@@ -7790,7 +7790,7 @@ fn render_message() -> &'static str {
                                                     ))
                                                     .clicked()
                                                 {
-                                                    open_provider_settings = Some(url);
+                                                    open_recovery_url = Some(url);
                                                 }
                                             }
                                             let choose = ui
@@ -7820,12 +7820,23 @@ fn render_message() -> &'static str {
                                                 open_model_picker = true;
                                             }
                                         }
-                                        FailedTurnRecoveryAction::Billing => {
+                                        FailedTurnRecoveryAction::TlsSetupGuide => {
+            let guide = ui
+                .button("Open TLS setup guide")
+                .accessible_name("Open Hermes TLS certificate trust setup guide");
+            if guide.clicked() {
+                open_recovery_url = Some(
+                    "https://hermes-agent.nousresearch.com/docs/user-guide/security#tls-certificate-trust"
+                        .to_owned(),
+                );
+            }
+        }
+        FailedTurnRecoveryAction::Billing => {
                                             let open_billing = ui
                                                 .button("Open billing portal")
                                                 .accessible_name("Open Nous billing portal");
                                             if open_billing.clicked() {
-                                                open_provider_settings = Some(
+                                                open_recovery_url = Some(
                                                     "https://portal.nousresearch.com".to_owned(),
                                                 );
                                             }
@@ -7904,7 +7915,7 @@ fn render_message() -> &'static str {
                                                     .accessible_name("Open Nous billing portal")
                                                     .clicked()
                                             {
-                                                open_provider_settings = Some(
+                                                open_recovery_url = Some(
                                                     "https://portal.nousresearch.com".to_owned(),
                                                 );
                                             }
@@ -8342,7 +8353,7 @@ fn render_message() -> &'static str {
             if open_model_picker {
                 self.chat_model_picker_requested = true;
             }
-            if let Some(url) = open_provider_settings {
+            if let Some(url) = open_recovery_url {
                 ui.ctx().open_url(egui::OpenUrl::new_tab(url));
             }
             if continue_cut_off_reply {
@@ -37432,7 +37443,9 @@ fn structured_turn_error_presentation(message: &serde_json::Value) -> Option<(St
         )),
         "payload_too_large" => Some((
             "This message is too large".into(),
-            "Reduce the message or its attachments, or start a new session before trying again.".into(),
+            format!(
+                "The request, including attachments, exceeds {provider}'s size limit. Compress the conversation, remove attachments, or start a new session."
+            ),
         )),
         "workspace_unavailable" | "launch_credentials_unavailable" => Some((
             "Hermes can't prepare this session".into(),
@@ -37532,6 +37545,7 @@ enum FailedTurnRecoveryAction {
     ProviderPolicy,
     Billing,
     UsageWindow,
+    TlsSetupGuide,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37616,11 +37630,12 @@ fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurn
         "agent_init_failed" => Some(FailedTurnRecoveryAction::ChooseModel),
         "provider_policy_blocked" => Some(FailedTurnRecoveryAction::ProviderPolicy),
         "billing" if billing_portal_allowed(message) => Some(FailedTurnRecoveryAction::Billing),
+        "ssl_cert_verification" => Some(FailedTurnRecoveryAction::TlsSetupGuide),
         "billing" => Some(FailedTurnRecoveryAction::ChooseModel),
         "usage_window" => Some(FailedTurnRecoveryAction::UsageWindow),
         "context_overflow" => Some(FailedTurnRecoveryAction::CompressContext),
-        "payload_too_large"
-        | "SESSION_NOT_OWNED"
+        "payload_too_large" => Some(FailedTurnRecoveryAction::CompressContext),
+        "SESSION_NOT_OWNED"
         | "session_read_only"
         | "cron_session_read_only"
         | "launch_credentials_unavailable"
@@ -40656,7 +40671,12 @@ mod tests {
             ),
             (
                 "payload_too_large",
-                Some(FailedTurnRecoveryAction::StartNewSession),
+                Some(FailedTurnRecoveryAction::CompressContext),
+                true,
+            ),
+            (
+                "ssl_cert_verification",
+                Some(FailedTurnRecoveryAction::TlsSetupGuide),
                 true,
             ),
             (
@@ -40950,6 +40970,97 @@ mod tests {
         harness.query_by_label(action).unwrap().click();
         harness.run();
         assert!(app.borrow().chat_model_picker_requested);
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn payload_too_large_recovery_compresses_the_current_chat() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("conn-1".into());
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "instance-1".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-1".into());
+        app.active_runtime_session_id = Some("runtime-1".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![
+            serde_json::json!({"id":1,"role":"user","content":"large prompt"}),
+            serde_json::json!({
+                "role":"assistant","content":"","error":"payload too large",
+                "error_surface":{"code":"payload_too_large","retryable":true,"provider":"Nous"}
+            }),
+        ];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().session_content(ui, "stored-1"));
+        harness.run_steps(2);
+        let compress = "Compress the current Hermes conversation and keep this session";
+        assert!(harness.query_by_label(compress).is_some());
+        assert!(
+            harness
+                .query_by_label("Start a new Hermes session with fresh context")
+                .is_some()
+        );
+        assert!(harness.query_by_label("Nous's size limit").is_none());
+        harness.query_by_label(compress).unwrap().click();
+        harness.run();
+        assert!(
+            app.borrow()
+                .pending_session_compression
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.stored_session_id == "stored-1"
+                        && pending.runtime_session_id == "runtime-1"
+                        && pending.profile.as_deref() == Some("work")
+                })
+        );
+        assert!(matches!(
+            commands.recv_timeout(Duration::from_secs(1)),
+            Ok(crate::gateway::TestGatewayCommand::CompressSession {
+                session_id, stored_session_id, profile: Some(profile), ..
+            }) if session_id == "runtime-1" && stored_session_id == "stored-1" && profile == "work"
+        ));
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn tls_certificate_failure_opens_the_pinned_setup_guide() {
+        let (mut app, profile_dir) = isolated_app();
+        app.transcript = vec![serde_json::json!({
+            "role":"assistant","content":"","error":"certificate verify failed",
+            "error_surface":{"code":"ssl_cert_verification","layer":"network","retryable":true}
+        })];
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| frame_app.borrow_mut().session_content(ui, "stored-session"));
+        harness.run_steps(2);
+        let guide = "Open Hermes TLS certificate trust setup guide";
+        assert!(harness.query_by_label(guide).is_some());
+        harness.query_by_label(guide).unwrap().click();
+        harness.step();
+        assert!(harness.output().platform_output.commands.iter().any(|command| {
+            matches!(command, egui::OutputCommand::OpenUrl(url) if url.url == "https://hermes-agent.nousresearch.com/docs/user-guide/security#tls-certificate-trust")
+        }));
 
         drop(harness);
         drop(app);

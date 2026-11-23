@@ -5129,3 +5129,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway, packaged Windows, complete auth/provider recovery and formal source-paired acceptance remain open; PAR-0064 stays partial.
 - **follow_up:** Continue remaining pinned error recovery actions.
+
+### PAR-0064 payload size and TLS recovery — 2026-11-23
+
+- **id:** hermes-par0064-payload-tls-recovery-20261123
+- **timestamp:** 2026-11-23T17:58:00Z
+- **what:** Added pinned payload-size compression recovery and a fixed TLS trust guide action.
+- **why:** Improve current chat error recovery using the Hermes source contract.
+- **components:** Doofus-Dock-Hermes, Hermes Native, PAR-0064.
+- **type:** feature, validation, evidence.
+- **validation:** Full locked suite 656 + 15 + 3, all-target check, Windows debug build, formatting and focused action regressions pass.
+- **performance:** No benchmark claim.
+- **risks:** Live Gateway, actual TLS setup, packaged Windows and formal source acceptance remain open.
+- **follow_up:** Record EV-0142/0143 and publish the validated work to main.

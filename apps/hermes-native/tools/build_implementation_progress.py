@@ -1495,7 +1495,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0064": {
         "state": "partial",
-        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_scheduled_retry_usage_window_model_credits_safe_billing_and_agent_init_model_recovery",
+        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_scheduled_retry_usage_window_model_credits_safe_billing_agent_init_payload_compress_and_tls_recovery",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/agent-init-error.test.tsx#renders an agent-init failure as a visible in-transcript error and keeps the optimistic first message",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.test.tsx#names the provider and keeps Retry for a rate limit",
@@ -1530,6 +1530,8 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#failed_turn_recovery_action",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0140.json#EV-0140",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0141.json#EV-0141",
+            "apps/hermes-native/src/app.rs#payload_too_large_recovery_compresses_the_current_chat",
+            "apps/hermes-native/src/app.rs#tls_certificate_failure_opens_the_pinned_setup_guide",
             "apps/hermes-native/src/app.rs#agent_init_failure_opens_current_chat_model_picker",
             "apps/hermes-native/src/app.rs#structured_turn_error_presentation",
         ],
