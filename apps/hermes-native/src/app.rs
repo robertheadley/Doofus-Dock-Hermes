@@ -7441,6 +7441,7 @@ fn render_message() -> &'static str {
             let mut retry_failed_submission = None;
             let mut start_new_session = false;
             let mut open_model_picker = false;
+            let mut open_provider_settings = None;
             let active_profile = self.active_session_profile.clone();
             let tool_images = messages
                 .iter()
@@ -7678,6 +7679,33 @@ fn render_message() -> &'static str {
                                                 );
                                             if start.clicked() {
                                                 start_new_session = true;
+                                            }
+                                        }
+                                        FailedTurnRecoveryAction::ProviderPolicy => {
+                                            if let Some((label, url)) =
+                                                failed_turn_provider_settings(&message)
+                                            {
+                                                if ui
+                                                    .add(egui::Button::new("Provider settings"))
+                                                    .accessible_name(format!(
+                                                        "Review {label} provider settings"
+                                                    ))
+                                                    .clicked()
+                                                {
+                                                    open_provider_settings = Some(url);
+                                                }
+                                            }
+                                            let choose = ui
+                                                .add_enabled(
+                                                    self.gateway_connected
+                                                        && self.chat_policy_mutation.is_none(),
+                                                    egui::Button::new("Choose model"),
+                                                )
+                                                .accessible_name(
+                                                    "Choose another model for this Hermes chat",
+                                                );
+                                            if choose.clicked() {
+                                                open_model_picker = true;
                                             }
                                         }
                                         FailedTurnRecoveryAction::ChooseModel => {
@@ -8012,6 +8040,9 @@ fn render_message() -> &'static str {
             }
             if open_model_picker {
                 self.chat_model_picker_requested = true;
+            }
+            if let Some(url) = open_provider_settings {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
             }
             if continue_cut_off_reply {
                 self.continue_cut_off_reply();
@@ -36640,14 +36671,14 @@ enum FailedTurnRecoveryAction {
     EditPrompt,
     StartNewSession,
     ChooseModel,
+    ProviderPolicy,
 }
 
 fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurnRecoveryAction> {
     match message.pointer("/error_surface/code")?.as_str()? {
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
-        "model_not_found" | "provider_policy_blocked" | "free_tier_at_capacity" => {
-            Some(FailedTurnRecoveryAction::ChooseModel)
-        }
+        "model_not_found" | "free_tier_at_capacity" => Some(FailedTurnRecoveryAction::ChooseModel),
+        "provider_policy_blocked" => Some(FailedTurnRecoveryAction::ProviderPolicy),
         "context_overflow"
         | "payload_too_large"
         | "SESSION_NOT_OWNED"
@@ -36657,6 +36688,21 @@ fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurn
         | "workspace_unavailable" => Some(FailedTurnRecoveryAction::StartNewSession),
         _ => None,
     }
+}
+
+fn failed_turn_provider_settings(message: &serde_json::Value) -> Option<(&'static str, String)> {
+    let surface = message.get("error_surface")?;
+    let provider = surface
+        .get("provider")?
+        .as_str()?
+        .trim()
+        .to_ascii_lowercase();
+    let (label, url) = match provider.as_str() {
+        "openrouter" => ("OpenRouter", "https://openrouter.ai/settings/privacy"),
+        "nous" => ("Nous", "https://portal.nousresearch.com"),
+        _ => return None,
+    };
+    Some((label, url.to_owned()))
 }
 
 fn failed_turn_retry_allowed(message: &serde_json::Value) -> bool {
@@ -39514,7 +39560,7 @@ mod tests {
             ),
             (
                 "provider_policy_blocked",
-                Some(FailedTurnRecoveryAction::ChooseModel),
+                Some(FailedTurnRecoveryAction::ProviderPolicy),
                 true,
             ),
             (
@@ -39560,6 +39606,22 @@ mod tests {
             "error_surface":{"code":"agent_init_failed","retryable":false}
         });
         assert!(!failed_turn_retry_allowed(&explicitly_nonretryable));
+        assert_eq!(
+            failed_turn_provider_settings(&serde_json::json!({
+                "error_surface":{"provider":"OpenRouter"}
+            })),
+            Some((
+                "OpenRouter",
+                "https://openrouter.ai/settings/privacy".into()
+            ))
+        );
+        assert_eq!(
+            failed_turn_provider_settings(&serde_json::json!({
+                "error_surface":{"provider":"https://attacker.example"}
+            })),
+            None,
+            "provider data must never be treated as a navigation destination"
+        );
     }
 
     #[test]
@@ -39591,6 +39653,10 @@ mod tests {
             serde_json::json!({
                 "role":"assistant","content":"","error":"the selected model is unavailable",
                 "error_surface":{"layer":"provider","code":"model_not_found","retryable":false}
+            }),
+            serde_json::json!({
+                "role":"assistant","content":"","error":"provider policy blocked request",
+                "error_surface":{"layer":"provider","code":"provider_policy_blocked","retryable":false,"provider":"openrouter"}
             }),
         ];
         let app = Rc::new(RefCell::new(app));
@@ -39626,6 +39692,16 @@ mod tests {
         );
         assert!(
             harness
+                .query_by_label("Review OpenRouter provider settings")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Choose another model for this Hermes chat")
+                .is_some()
+        );
+        assert!(
+            harness
                 .query_by_label("Retry failed message with original submission ID")
                 .is_none(),
             "unconfirmed admission must not expose a potentially duplicate retry"
@@ -39634,6 +39710,14 @@ mod tests {
             harness.query_by_label("raw provider refusal").is_none(),
             "raw provider detail is collapsed by default"
         );
+        harness
+            .query_by_label("Review OpenRouter provider settings")
+            .unwrap()
+            .click();
+        harness.step();
+        assert!(harness.output().platform_output.commands.iter().any(|command| {
+            matches!(command, egui::OutputCommand::OpenUrl(url) if url.url == "https://openrouter.ai/settings/privacy")
+        }));
         harness
             .query_by_label("Edit the refused prompt without truncating session history")
             .unwrap()
