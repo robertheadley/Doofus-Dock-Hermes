@@ -1764,6 +1764,52 @@ struct VaultUnlockPrompt {
     response_unknown: bool,
 }
 
+enum VaultAgentPromptKind {
+    Code {
+        site: String,
+        hint: String,
+        code: Zeroizing<String>,
+    },
+    SaveLogin {
+        origin: String,
+        site: String,
+        identifier: Zeroizing<String>,
+        password: Zeroizing<String>,
+    },
+}
+
+struct VaultAgentPrompt {
+    session_id: String,
+    profile: Option<String>,
+    connection_id: Option<String>,
+    server_request_id: String,
+    kind: VaultAgentPromptKind,
+    response_pending: bool,
+    response_unknown: bool,
+}
+
+#[derive(Serialize)]
+struct VaultSavedLoginValue<'a> {
+    identifier: &'a str,
+    password: &'a str,
+}
+
+impl VaultAgentPrompt {
+    fn clear_sensitive(&mut self) {
+        match &mut self.kind {
+            VaultAgentPromptKind::Code { code, .. } => code.zeroize(),
+            VaultAgentPromptKind::SaveLogin {
+                identifier,
+                password,
+                ..
+            } => {
+                identifier.zeroize();
+                password.zeroize();
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct ClarifyPrompt {
     session_id: String,
@@ -2325,6 +2371,7 @@ pub struct HermesNativeApp {
     approval_prompts: BTreeMap<String, ApprovalPrompt>,
     sudo_prompts: BTreeMap<String, SudoPrompt>,
     vault_unlock_prompts: BTreeMap<String, VaultUnlockPrompt>,
+    vault_agent_prompts: BTreeMap<String, VaultAgentPrompt>,
     clarify_prompts: BTreeMap<String, ClarifyPrompt>,
     batch_clarify_prompts: BTreeMap<String, BatchClarifyPrompt>,
     panel_drag: Option<DragSession<PanelDropTarget>>,
@@ -4830,6 +4877,7 @@ fn render_message() -> &'static str {
             approval_prompts: BTreeMap::new(),
             sudo_prompts: BTreeMap::new(),
             vault_unlock_prompts: BTreeMap::new(),
+            vault_agent_prompts: BTreeMap::new(),
             clarify_prompts: BTreeMap::new(),
             batch_clarify_prompts: BTreeMap::new(),
             panel_drag: None,
@@ -7202,6 +7250,7 @@ fn render_message() -> &'static str {
             self.approval_cards(ui);
             self.sudo_cards(ui);
             self.vault_unlock_cards(ui);
+            self.vault_agent_request_cards(ui);
             self.clarify_cards(ui);
             self.batch_clarify_cards(ui);
             self.composer(ui);
@@ -8485,6 +8534,27 @@ fn render_message() -> &'static str {
                 }
             }
         }
+        for (key, prompt) in &mut self.vault_agent_prompts {
+            let visible_owner = chat_route
+                && self.gateway_connected
+                && session_id.as_deref() == Some(prompt.session_id.as_str())
+                && profile.as_deref() == prompt.profile.as_deref()
+                && connection_id.as_deref() == prompt.connection_id.as_deref();
+            if !visible_owner {
+                prompt.clear_sensitive();
+                for widget_key in [
+                    "vault-agent-code",
+                    "vault-agent-identifier",
+                    "vault-agent-password",
+                ] {
+                    let widget_id = ui.make_persistent_id((widget_key, key.as_str()));
+                    if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), widget_id) {
+                        state.clear_undoer();
+                        state.store(ui.ctx(), widget_id);
+                    }
+                }
+            }
+        }
     }
 
     fn sudo_cards(&mut self, ui: &mut Ui) {
@@ -8720,6 +8790,201 @@ fn render_message() -> &'static str {
                 if let Err(error) = self.respond_to_vault_unlock(&prompt_key, password) {
                     self.status = error;
                 }
+            }
+        }
+    }
+
+    fn vault_agent_request_cards(&mut self, ui: &mut Ui) {
+        let session_id = self.active_runtime_session_id.clone();
+        let profile = self.active_session_profile.clone();
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let connection_id = (!connection_id.is_empty()).then_some(connection_id);
+        for prompt in self.vault_agent_prompts.values_mut() {
+            let visible_owner = session_id.as_deref() == Some(prompt.session_id.as_str())
+                && profile == prompt.profile
+                && prompt.connection_id.as_deref() == connection_id.as_deref();
+            if !visible_owner || !self.gateway_connected {
+                prompt.clear_sensitive();
+            }
+        }
+        let Some(session_id) = session_id else {
+            return;
+        };
+        let prompt_keys = self
+            .vault_agent_prompts
+            .iter()
+            .filter(|(_, prompt)| {
+                prompt.session_id == session_id
+                    && prompt.profile == profile
+                    && prompt.connection_id.as_deref() == connection_id.as_deref()
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        let mut actions = Vec::new();
+        for prompt_key in prompt_keys {
+            let code_widget = ui.make_persistent_id(("vault-agent-code", prompt_key.as_str()));
+            let identifier_widget =
+                ui.make_persistent_id(("vault-agent-identifier", prompt_key.as_str()));
+            let password_widget =
+                ui.make_persistent_id(("vault-agent-password", prompt_key.as_str()));
+            let mut accept = false;
+            let mut decline = false;
+            if let Some(prompt) = self.vault_agent_prompts.get_mut(&prompt_key) {
+                let pending = prompt.response_pending || prompt.response_unknown;
+                ui.add_space(8.0);
+                ui.group(|ui| {
+                    match &mut prompt.kind {
+                        VaultAgentPromptKind::Code { site, hint, code } => {
+                            ui.label(
+                                RichText::new(format!("Verification code requested for {site}"))
+                                    .strong()
+                                    .color(ACCENT),
+                            )
+                            .accessible_name(format!("Verification code requested for {site}"));
+                            if !hint.is_empty() {
+                                ui.label(hint.as_str()).accessible_name("Verification hint");
+                            }
+                            ui.add_enabled_ui(self.gateway_connected && !pending, |ui| {
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut **code)
+                                        .id(code_widget)
+                                        .desired_width(ui.available_width())
+                                        .hint_text("123 456"),
+                                )
+                                .accessible_name(format!(
+                                    "One-time verification code for request {}",
+                                    prompt.server_request_id
+                                ));
+                                if let Some(mut state) =
+                                    egui::TextEdit::load_state(ui.ctx(), code_widget)
+                                {
+                                    state.clear_undoer();
+                                    state.store(ui.ctx(), code_widget);
+                                }
+                            });
+                            let has_code = code
+                                .chars()
+                                .any(|character| !character.is_whitespace() && character != '-');
+                            ui.horizontal(|ui| {
+                                let send = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !pending && has_code,
+                                        egui::Button::new("Send code"),
+                                    )
+                                    .accessible_name(format!(
+                                        "Send verification code for request {}",
+                                        prompt.server_request_id
+                                    ));
+                                accept = send.clicked();
+                                decline = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !pending,
+                                        egui::Button::new("Skip code"),
+                                    )
+                                    .accessible_name(format!(
+                                        "Skip verification code for request {}",
+                                        prompt.server_request_id
+                                    ))
+                                    .clicked();
+                            });
+                        }
+                        VaultAgentPromptKind::SaveLogin {
+                            origin,
+                            site,
+                            identifier,
+                            password,
+                        } => {
+                            ui.label(
+                                RichText::new(format!("Save this login for {site}"))
+                                    .strong()
+                                    .color(ACCENT),
+                            )
+                            .accessible_name(format!("Save this login for {site}"));
+                            ui.label(format!("Hermes is requesting a login for {origin}."));
+                            ui.add_enabled_ui(self.gateway_connected && !pending, |ui| {
+                                ui.label("Identifier");
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut **identifier)
+                                        .id(identifier_widget)
+                                        .desired_width(ui.available_width())
+                                        .hint_text("Username or email"),
+                                )
+                                .accessible_name(format!(
+                                    "Login identifier for request {}",
+                                    prompt.server_request_id
+                                ));
+                                if let Some(mut state) =
+                                    egui::TextEdit::load_state(ui.ctx(), identifier_widget)
+                                {
+                                    state.clear_undoer();
+                                    state.store(ui.ctx(), identifier_widget);
+                                }
+                                ui.label("Password");
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut **password)
+                                        .id(password_widget)
+                                        .password(true)
+                                        .desired_width(ui.available_width()),
+                                )
+                                .accessible_name(format!(
+                                    "Password for saved login request {}",
+                                    prompt.server_request_id
+                                ));
+                                if let Some(mut state) =
+                                    egui::TextEdit::load_state(ui.ctx(), password_widget)
+                                {
+                                    state.clear_undoer();
+                                    state.store(ui.ctx(), password_widget);
+                                }
+                            });
+                            let can_save = !identifier.trim().is_empty() && !password.is_empty();
+                            ui.horizontal(|ui| {
+                                let save = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !pending && can_save,
+                                        egui::Button::new("Save login"),
+                                    )
+                                    .accessible_name(format!(
+                                        "Save login for request {}",
+                                        prompt.server_request_id
+                                    ));
+                                accept = save.clicked();
+                                decline = ui
+                                    .add_enabled(
+                                        self.gateway_connected && !pending,
+                                        egui::Button::new("Don't save"),
+                                    )
+                                    .accessible_name(format!(
+                                        "Don't save login for request {}",
+                                        prompt.server_request_id
+                                    ))
+                                    .clicked();
+                            });
+                        }
+                    }
+                    if prompt.response_unknown {
+                        ui.label(
+                            RichText::new(
+                                "Response outcome unknown — do not resend these credentials.",
+                            )
+                            .color(Color32::YELLOW),
+                        )
+                        .accessible_name(format!(
+                            "Vault response outcome unknown for request {}",
+                            prompt.server_request_id
+                        ));
+                    } else if prompt.response_pending {
+                        ui.label(RichText::new("Sending secure response…").color(MUTED));
+                    }
+                });
+            }
+            if accept || decline {
+                actions.push((prompt_key, accept));
+            }
+        }
+        for (prompt_key, accepted) in actions {
+            if let Err(error) = self.respond_to_vault_agent_prompt(&prompt_key, accepted) {
+                self.status = error;
             }
         }
     }
@@ -17838,6 +18103,10 @@ fn render_message() -> &'static str {
                     .values()
                     .any(|prompt| prompt.session_id == runtime_session_id)
                 || self
+                    .vault_agent_prompts
+                    .values()
+                    .any(|prompt| prompt.session_id == runtime_session_id)
+                || self
                     .clarify_prompts
                     .values()
                     .any(|prompt| prompt.session_id == runtime_session_id)
@@ -21244,6 +21513,10 @@ fn render_message() -> &'static str {
             self.handle_vault_unlock_request(server_request_id, params, connection_id);
             return;
         }
+        if matches!(method.as_str(), "vault.code" | "vault.save_login") {
+            self.handle_vault_agent_request(server_request_id, method, params, connection_id);
+            return;
+        }
         if method != "approval" {
             self.reject_server_request(
                 server_request_id,
@@ -21513,6 +21786,151 @@ fn render_message() -> &'static str {
         self.status = "Hermes is waiting for the password manager to be unlocked".into();
     }
 
+    fn handle_vault_agent_request(
+        &mut self,
+        server_request_id: String,
+        method: String,
+        params: serde_json::Value,
+        connection_id: Option<String>,
+    ) {
+        let request_profile = params
+            .get("profile")
+            .and_then(|value| value.as_str())
+            .or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+        let session_id = params
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty());
+        let Some(session_id) = session_id else {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32602,
+                "Vault authentication request omitted its session ID",
+            );
+            return;
+        };
+        if !self.session_runtime_is_known(session_id, request_profile, connection_id.as_deref()) {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                4404,
+                "This window has no unique open session pane for the vault request",
+            );
+            return;
+        }
+        if self.session_runtime_is_interrupted(
+            session_id,
+            request_profile,
+            connection_id.as_deref(),
+        ) {
+            self.reject_server_request(
+                server_request_id,
+                request_profile.map(str::to_owned),
+                -32603,
+                "session interrupted",
+            );
+            return;
+        }
+        let kind = match method.as_str() {
+            "vault.code" => {
+                let site = params
+                    .get("site")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                let hint = params
+                    .get("hint")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                if site.len() > 1024 || hint.len() > 4096 {
+                    self.reject_server_request(
+                        server_request_id,
+                        request_profile.map(str::to_owned),
+                        -32602,
+                        "Vault code prompt details exceed the supported size",
+                    );
+                    return;
+                }
+                VaultAgentPromptKind::Code {
+                    site: site.to_owned(),
+                    hint: hint.to_owned(),
+                    code: Zeroizing::new(String::new()),
+                }
+            }
+            "vault.save_login" => {
+                let origin = params
+                    .get("origin")
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.trim().is_empty());
+                let Some(origin) = origin else {
+                    self.reject_server_request(
+                        server_request_id,
+                        request_profile.map(str::to_owned),
+                        -32602,
+                        "Vault save-login request omitted its origin",
+                    );
+                    return;
+                };
+                let site = params
+                    .get("site")
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or(origin);
+                if origin.len() > 4096 || site.len() > 1024 {
+                    self.reject_server_request(
+                        server_request_id,
+                        request_profile.map(str::to_owned),
+                        -32602,
+                        "Vault save-login details exceed the supported size",
+                    );
+                    return;
+                }
+                VaultAgentPromptKind::SaveLogin {
+                    origin: origin.to_owned(),
+                    site: site.to_owned(),
+                    identifier: Zeroizing::new(String::new()),
+                    password: Zeroizing::new(String::new()),
+                }
+            }
+            _ => {
+                self.reject_server_request(
+                    server_request_id,
+                    request_profile.map(str::to_owned),
+                    -32601,
+                    "No native handler for this vault request",
+                );
+                return;
+            }
+        };
+        let prompt_key = gateway_prompt_key(
+            connection_id.as_deref(),
+            request_profile,
+            &server_request_id,
+        );
+        if self.vault_agent_prompts.contains_key(&prompt_key) {
+            // A duplicate JSON-RPC ID on the same owner must not answer the
+            // still-pending original request or reset an unknown write.
+            return;
+        }
+        self.vault_agent_prompts.insert(
+            prompt_key,
+            VaultAgentPrompt {
+                session_id: session_id.to_owned(),
+                profile: request_profile.map(str::to_owned),
+                connection_id,
+                server_request_id,
+                kind,
+                response_pending: false,
+                response_unknown: false,
+            },
+        );
+        self.status = "Hermes is waiting for secure vault input".into();
+    }
+
     fn handle_server_request_cancelled(
         &mut self,
         payload: &serde_json::Value,
@@ -21560,6 +21978,18 @@ fn render_message() -> &'static str {
         if let Some(prompt_key) = vault_prompt_key {
             self.vault_unlock_prompts.remove(&prompt_key);
             self.status = "Hermes withdrew the password manager unlock request".into();
+            return;
+        }
+
+        let vault_agent_prompt_key = self.vault_agent_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == server_request_id
+                && prompt.connection_id.as_deref() == connection_id
+                && prompt.profile.as_deref() == event_profile)
+                .then(|| key.clone())
+        });
+        if let Some(prompt_key) = vault_agent_prompt_key {
+            self.vault_agent_prompts.remove(&prompt_key);
+            self.status = "Hermes withdrew the vault authentication request".into();
             return;
         }
 
@@ -21620,6 +22050,61 @@ fn render_message() -> &'static str {
             }
         }
         owners.len() == 1
+    }
+
+    fn session_runtime_is_interrupted(
+        &self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+        connection_id: Option<&str>,
+    ) -> bool {
+        let active_owner_matches = self.active_runtime_session_id.as_deref()
+            == Some(runtime_session_id)
+            && self.active_session_profile.as_deref() == profile
+            && connection_id.is_none_or(|owner| owner == self.active_gateway_connection_id());
+        if active_owner_matches
+            && self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, pending_session)| pending_session == runtime_session_id)
+        {
+            return true;
+        }
+
+        let transcript = if active_owner_matches {
+            Some(&self.transcript)
+        } else {
+            self.session_chat_views.iter().find_map(|(key, view)| {
+                (view.runtime_session_id.as_deref() == Some(runtime_session_id)
+                    && view.profile.as_deref() == profile
+                    && session_id_from_owner_identity_key(key).is_some_and(|stored_session_id| {
+                        key == &self.session_identity_key_for_connection(
+                            connection_id,
+                            stored_session_id,
+                            view.profile.as_deref(),
+                        )
+                    }))
+                .then_some(&view.transcript)
+            })
+        };
+        transcript.is_some_and(|messages| {
+            messages
+                .iter()
+                .rev()
+                .find(|message| {
+                    matches!(
+                        message.get("role").and_then(serde_json::Value::as_str),
+                        Some("user" | "assistant")
+                    )
+                })
+                .is_some_and(|message| {
+                    message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+                        && message
+                            .get("interrupted")
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(true)
+                })
+        })
     }
 
     fn handle_batch_clarify_request(
@@ -21909,6 +22394,35 @@ fn render_message() -> &'static str {
             }
             return;
         }
+
+        let vault_agent_prompt_key = self.vault_agent_prompts.iter().find_map(|(key, prompt)| {
+            (prompt.server_request_id == id
+                && server_request_owner_matches(
+                    prompt.connection_id.as_deref(),
+                    prompt.profile.as_deref(),
+                    connection_id.as_deref(),
+                    profile.as_deref(),
+                ))
+            .then(|| key.clone())
+        });
+        if let Some(prompt_key) = vault_agent_prompt_key {
+            match result {
+                Ok(()) => {
+                    self.vault_agent_prompts.remove(&prompt_key);
+                    self.status = "Vault authentication response sent to Hermes".into();
+                }
+                Err(_) => {
+                    if let Some(prompt) = self.vault_agent_prompts.get_mut(&prompt_key) {
+                        prompt.clear_sensitive();
+                        prompt.response_unknown = true;
+                    }
+                    self.status =
+                        "Vault response outcome is unknown; do not resend these credentials."
+                            .into();
+                }
+            }
+            return;
+        }
         let Some(prompt_id) = self
             .approval_prompts
             .iter()
@@ -21964,6 +22478,12 @@ fn render_message() -> &'static str {
         }
         for prompt in self.vault_unlock_prompts.values_mut() {
             prompt.password.zeroize();
+            if prompt.response_pending {
+                prompt.response_unknown = true;
+            }
+        }
+        for prompt in self.vault_agent_prompts.values_mut() {
+            prompt.clear_sensitive();
             if prompt.response_pending {
                 prompt.response_unknown = true;
             }
@@ -23177,6 +23697,10 @@ fn render_message() -> &'static str {
                             .any(|prompt| prompt.session_id == runtime)
                         && !self
                             .vault_unlock_prompts
+                            .values()
+                            .any(|prompt| prompt.session_id == runtime)
+                        && !self
+                            .vault_agent_prompts
                             .values()
                             .any(|prompt| prompt.session_id == runtime)
                         && !self
@@ -26863,6 +27387,94 @@ fn render_message() -> &'static str {
         Ok(())
     }
 
+    fn respond_to_vault_agent_prompt(
+        &mut self,
+        prompt_key: &str,
+        accepted: bool,
+    ) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before answering the vault request".into());
+        }
+        let Some(prompt) = self.vault_agent_prompts.get(prompt_key) else {
+            return Err("This vault request is no longer pending".into());
+        };
+        if prompt.response_pending || prompt.response_unknown {
+            return Err("This vault response is already pending or has an unknown outcome".into());
+        }
+        if !self.session_runtime_is_known(
+            &prompt.session_id,
+            prompt.profile.as_deref(),
+            prompt.connection_id.as_deref(),
+        ) {
+            return Err("This vault request no longer maps to a unique open session".into());
+        }
+
+        let response = match &prompt.kind {
+            VaultAgentPromptKind::Code { code, .. } => {
+                if !accepted {
+                    json!({"value":""})
+                } else {
+                    let mut value = Zeroizing::new(String::with_capacity(code.len()));
+                    for character in code.chars() {
+                        if !character.is_whitespace() && character != '-' {
+                            value.push(character);
+                        }
+                    }
+                    if value.is_empty() {
+                        return Err("Enter a verification code or choose Skip".into());
+                    }
+                    if value.len() > 4096 || value.chars().any(|character| character == '\0') {
+                        return Err("Verification code exceeds the supported size".into());
+                    }
+                    json!({"value":value.as_str()})
+                }
+            }
+            VaultAgentPromptKind::SaveLogin {
+                identifier,
+                password,
+                ..
+            } => {
+                if !accepted {
+                    json!({"value":""})
+                } else {
+                    let identifier = identifier.trim();
+                    if identifier.is_empty() || password.is_empty() {
+                        return Err(
+                            "Enter both an identifier and password or choose Don't save".into()
+                        );
+                    }
+                    if identifier.len() > 16_384
+                        || password.len() > 16_384
+                        || identifier.chars().any(|character| character == '\0')
+                        || password.chars().any(|character| character == '\0')
+                    {
+                        return Err("Login details exceed the supported size".into());
+                    }
+                    let serialized = Zeroizing::new(
+                        serde_json::to_string(&VaultSavedLoginValue {
+                            identifier,
+                            password: password.as_str(),
+                        })
+                        .map_err(|_| "Could not serialize the vault login response".to_owned())?,
+                    );
+                    json!({"value":serialized.as_str()})
+                }
+            }
+        };
+        let server_request_id = prompt.server_request_id.clone();
+        let profile = prompt.profile.clone();
+        self.gateway_discovery
+            .as_ref()
+            .ok_or_else(|| "Hermes gateway writer is unavailable".to_owned())?
+            .respond_server_request(server_request_id, profile, Ok(response))?;
+        if let Some(prompt) = self.vault_agent_prompts.get_mut(prompt_key) {
+            prompt.clear_sensitive();
+            prompt.response_pending = true;
+        }
+        self.status = "Sending secure vault response to Hermes…".into();
+        Ok(())
+    }
+
     fn respond_to_approval(&mut self, prompt_id: String, choice: String) -> Result<(), String> {
         if !self.gateway_connected {
             return Err("Connect to Hermes before responding to an approval".into());
@@ -30438,6 +31050,14 @@ fn render_message() -> &'static str {
                         .is_none_or(|owner| owner == connection_id)
             })
             || self.vault_unlock_prompts.values().any(|prompt| {
+                prompt.session_id == runtime
+                    && prompt.profile.as_deref() == profile
+                    && prompt
+                        .connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection_id)
+            })
+            || self.vault_agent_prompts.values().any(|prompt| {
                 prompt.session_id == runtime
                     && prompt.profile.as_deref() == profile
                     && prompt
@@ -56650,6 +57270,7 @@ mod tests {
     fn scheduled_failed_retry_dispatches_once_at_reset_for_exact_current_owner() {
         let (mut app, profile_dir) = isolated_app();
         let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        let reset_at = current_unix_millis().saturating_sub(1_000);
         let (gateway, commands, _) = crate::gateway::GatewayDiscovery::for_test_session_resume();
         app.gateway_discovery = Some(gateway);
         app.gateway_connection_id = Some(connection_id.clone());
@@ -56671,26 +57292,31 @@ mod tests {
             "id":"submission-1","submission_id":"submission-1",
             "role":"user","content":"hello"
         }));
-        app.transcript.push(serde_json::json!({
+        let failure = serde_json::json!({
             "role":"assistant","content":"","error":"Rate limited",
             "retry_submission_id":"submission-1","retry_session_id":"runtime-session",
             "retry_profile":"work","retry_text":"hello","retry_display_text":"hello",
             "retry_attachments":[],
-            "error_surface":{"code":"rate_limit","retryable":false,"resets_at":130.123}
-        }));
+            "error_surface":{"code":"rate_limit","retryable":false,"resets_at":(reset_at as f64)/1000.0}
+        });
+        let resets_at_ms = retry_reset_at_unix_millis(&failure)
+            .expect("the fixture reset timestamp uses the production parser");
+        app.transcript.push(failure);
         app.scheduled_failed_turn_retry = Some(ScheduledFailedTurnRetry {
             stored_session_id: "stored-session".into(),
             runtime_session_id: "runtime-session".into(),
             profile: Some("work".into()),
             connection_id,
             submission_id: "submission-1".into(),
-            resets_at_ms: 130_123,
+            resets_at_ms,
         });
         while commands.try_recv().is_ok() {}
         app.poll_scheduled_failed_turn_retry(&egui::Context::default());
         assert!(app.scheduled_failed_turn_retry.is_none());
         assert_eq!(
-            commands.try_recv().unwrap(),
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("the scheduled retry reaches the Gateway actor"),
             crate::gateway::TestGatewayCommand::SubmitPrompt {
                 session_id: "runtime-session".into(),
                 profile: Some("work".into()),
@@ -58326,6 +58952,580 @@ mod tests {
             Ok(app) => app.into_inner(),
             Err(_) => panic!("headless app should have no remaining frame references"),
         };
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_code_prompt_normalizes_and_answers_the_originating_gateway_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "vault-code-wire-1".into(),
+            "vault.code".into(),
+            json!({"session_id":"runtime-session","profile":"work","site":"github.com","hint":"Authenticator code"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-code-wire-1",
+        );
+        let Some(VaultAgentPromptKind::Code { code, .. }) = app
+            .vault_agent_prompts
+            .get_mut(&prompt_key)
+            .map(|prompt| &mut prompt.kind)
+        else {
+            panic!("vault.code request creates a code prompt");
+        };
+        code.push_str("246 810");
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref()
+                        == Some("One-time verification code for request vault-code-wire-1")
+                })
+                .next()
+                .is_some(),
+            "the code input is accessible without exposing its value"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().is_some_and(|label| label.contains("246 810"))
+                })
+                .next()
+                .is_none(),
+            "the one-time code is not an accessibility label"
+        );
+        drop(harness);
+        app.respond_to_vault_agent_prompt(&prompt_key, true)
+            .expect("send the normalized code through the original request");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("vault code response reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "vault-code-wire-1".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":"246810"})),
+            }
+        );
+        let prompt = &app.vault_agent_prompts[&prompt_key];
+        assert!(prompt.response_pending);
+        assert!(matches!(&prompt.kind, VaultAgentPromptKind::Code { code, .. } if code.is_empty()));
+        assert!(!app.status.contains("246810"));
+        assert!(
+            serde_json::to_string(&app.automation_state())
+                .expect("automation state serializes")
+                .find("246810")
+                .is_none(),
+            "automation state never contains the one-time code"
+        );
+        app.handle_server_request_answered_from_connection(
+            "vault-code-wire-1".into(),
+            Ok(()),
+            Some("personal".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts.contains_key(&prompt_key));
+        app.handle_server_request_answered_from_connection(
+            "vault-code-wire-1".into(),
+            Ok(()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(!app.vault_agent_prompts.contains_key(&prompt_key));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_save_login_masks_password_trims_identifier_and_supports_decline() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "vault-save-wire-1".into(),
+            "vault.save_login".into(),
+            json!({"session_id":"runtime-session","profile":"work","origin":"https://github.com/login","site":"github.com"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-save-wire-1",
+        );
+        let Some(VaultAgentPromptKind::SaveLogin {
+            identifier,
+            password,
+            ..
+        }) = app
+            .vault_agent_prompts
+            .get_mut(&prompt_key)
+            .map(|prompt| &mut prompt.kind)
+        else {
+            panic!("vault.save_login creates a save-login prompt");
+        };
+        identifier.push_str("  tek@acme.test  ");
+        password.push_str("fixture-login-password");
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref()
+                        == Some("Password for saved login request vault-save-wire-1")
+                })
+                .next()
+                .is_some(),
+            "the password control is accessible by request without exposing its value"
+        );
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label()
+                        .is_some_and(|label| label.contains("fixture-login-password"))
+                })
+                .next()
+                .is_none(),
+            "the password never appears in the accessible tree"
+        );
+        drop(harness);
+        app.respond_to_vault_agent_prompt(&prompt_key, true)
+            .expect("save login as one JSON value inside ValueResult");
+        let TestGatewayCommand::RespondServerRequest {
+            id,
+            profile,
+            response,
+        } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("save-login response reaches the Gateway actor")
+        else {
+            panic!("expected server-request response");
+        };
+        assert_eq!(id, "vault-save-wire-1");
+        assert_eq!(profile.as_deref(), Some("work"));
+        let response = response.expect("successful response payload");
+        let serialized_login = response["value"].as_str().expect("ValueResult string");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(serialized_login)
+                .expect("serialized login JSON"),
+            json!({"identifier":"tek@acme.test","password":"fixture-login-password"})
+        );
+        assert!(matches!(
+            &app.vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::SaveLogin { identifier, password, .. }
+                if identifier.is_empty() && password.is_empty()
+        ));
+        assert!(!app.status.contains("fixture-login-password"));
+        assert!(
+            serde_json::to_string(&app.automation_state())
+                .expect("automation state serializes")
+                .find("fixture-login-password")
+                .is_none(),
+            "automation state never contains the saved password"
+        );
+
+        app.handle_server_request_from_connection(
+            "vault-save-decline".into(),
+            "vault.save_login".into(),
+            json!({"session_id":"runtime-session","profile":"work","origin":"https://example.test","site":"example.test"}),
+            Some("gateway-connection-1".into()),
+        );
+        let decline_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-save-decline",
+        );
+        app.respond_to_vault_agent_prompt(&decline_key, false)
+            .expect("Don't save returns an explicit empty response");
+        assert_eq!(
+            commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("decline reaches the Gateway actor"),
+            TestGatewayCommand::RespondServerRequest {
+                id: "vault-save-decline".into(),
+                profile: Some("work".into()),
+                response: Ok(json!({"value":""})),
+            }
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_agent_unknown_outcome_clears_secrets_and_never_resends_same_id() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.handle_server_request_from_connection(
+            "vault-code-unknown".into(),
+            "vault.code".into(),
+            json!({"session_id":"runtime-session","profile":"work","site":"example.test"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-code-unknown",
+        );
+        let Some(VaultAgentPromptKind::Code { code, .. }) = app
+            .vault_agent_prompts
+            .get_mut(&prompt_key)
+            .map(|prompt| &mut prompt.kind)
+        else {
+            panic!("vault.code request creates a code prompt");
+        };
+        code.push_str("do-not-resend");
+        app.respond_to_vault_agent_prompt(&prompt_key, true)
+            .expect("queue the first response");
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(TestGatewayCommand::RespondServerRequest { id, .. }) if id == "vault-code-unknown"
+        ));
+        app.handle_server_request_answered_from_connection(
+            "vault-code-unknown".into(),
+            Err("connection closed after write".into()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts[&prompt_key].response_unknown);
+        assert!(matches!(
+            &app.vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::Code { code, .. } if code.is_empty()
+        ));
+        assert!(
+            app.respond_to_vault_agent_prompt(&prompt_key, true)
+                .is_err()
+        );
+        app.handle_server_request_from_connection(
+            "vault-code-unknown".into(),
+            "vault.code".into(),
+            json!({"session_id":"runtime-session","profile":"work","site":"example.test"}),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts[&prompt_key].response_unknown);
+        assert!(
+            commands.try_recv().is_err(),
+            "same-ID replay never resends a secret"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_agent_save_login_unknown_outcome_clears_credentials_and_never_resends() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.handle_server_request_from_connection(
+            "vault-save-unknown".into(),
+            "vault.save_login".into(),
+            json!({"session_id":"runtime-session","profile":"work","origin":"https://example.test","site":"Example"}),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-save-unknown",
+        );
+        let Some(VaultAgentPromptKind::SaveLogin {
+            identifier,
+            password,
+            ..
+        }) = app
+            .vault_agent_prompts
+            .get_mut(&prompt_key)
+            .map(|prompt| &mut prompt.kind)
+        else {
+            panic!("vault.save_login request creates a credential prompt");
+        };
+        identifier.push_str("alice@example.test");
+        password.push_str("do-not-resend-password");
+        app.respond_to_vault_agent_prompt(&prompt_key, true)
+            .expect("queue the first credential response");
+        assert!(matches!(
+            commands.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(TestGatewayCommand::RespondServerRequest { id, .. }) if id == "vault-save-unknown"
+        ));
+        app.handle_server_request_answered_from_connection(
+            "vault-save-unknown".into(),
+            Err("connection closed after write".into()),
+            Some("work".into()),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts[&prompt_key].response_unknown);
+        assert!(matches!(
+            &app.vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::SaveLogin { identifier, password, .. }
+                if identifier.is_empty() && password.is_empty()
+        ));
+        assert!(
+            app.respond_to_vault_agent_prompt(&prompt_key, true)
+                .is_err()
+        );
+        app.handle_server_request_from_connection(
+            "vault-save-unknown".into(),
+            "vault.save_login".into(),
+            json!({"session_id":"runtime-session","profile":"work","origin":"https://example.test","site":"Example"}),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts[&prompt_key].response_unknown);
+        assert!(
+            commands
+                .recv_timeout(std::time::Duration::from_millis(50))
+                .is_err()
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_agent_stopped_session_requests_are_declined_without_prompts() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        app.pending_interrupt = Some(("interrupt-1".into(), "runtime-session".into()));
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        for (request_id, method, params) in [
+            (
+                "stopped-vault-code",
+                "vault.code",
+                json!({"session_id":"runtime-session","profile":"work","site":"Example"}),
+            ),
+            (
+                "stopped-vault-save-login",
+                "vault.save_login",
+                json!({"session_id":"runtime-session","profile":"work","origin":"https://example.test"}),
+            ),
+        ] {
+            app.handle_server_request_from_connection(
+                request_id.into(),
+                method.into(),
+                params,
+                Some("gateway-connection-1".into()),
+            );
+            let TestGatewayCommand::RespondServerRequest { id, response, .. } = commands
+                .recv_timeout(std::time::Duration::from_secs(1))
+                .expect("stopped-session request is answered promptly")
+            else {
+                panic!("expected server-request rejection");
+            };
+            assert_eq!(id, request_id);
+            assert!(matches!(response, Err((-32603, message)) if message == "session interrupted"));
+        }
+        assert!(app.vault_agent_prompts.is_empty());
+
+        app.pending_interrupt = None;
+        app.transcript
+            .push(json!({"role":"assistant","interrupted":true}));
+        app.handle_server_request_from_connection(
+            "already-interrupted-code".into(),
+            "vault.code".into(),
+            json!({"session_id":"runtime-session","profile":"work"}),
+            Some("gateway-connection-1".into()),
+        );
+        let TestGatewayCommand::RespondServerRequest { id, response, .. } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("already interrupted turn is declined")
+        else {
+            panic!("expected server-request rejection");
+        };
+        assert_eq!(id, "already-interrupted-code");
+        assert!(matches!(response, Err((-32603, message)) if message == "session interrupted"));
+        assert!(app.vault_agent_prompts.is_empty());
+
+        app.transcript
+            .push(json!({"role":"user","content":"next turn"}));
+        app.handle_server_request_from_connection(
+            "new-turn-vault-code".into(),
+            "vault.code".into(),
+            json!({"session_id":"runtime-session","profile":"work"}),
+            Some("gateway-connection-1".into()),
+        );
+        assert!(app.vault_agent_prompts.contains_key(&gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "new-turn-vault-code",
+        )));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_agent_duplicate_active_request_id_does_not_answer_original_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        let params = json!({"session_id":"runtime-session","profile":"work","site":"Example"});
+        app.handle_server_request_from_connection(
+            "vault-duplicate-active".into(),
+            "vault.code".into(),
+            params.clone(),
+            Some("gateway-connection-1".into()),
+        );
+        let prompt_key = gateway_prompt_key(
+            Some("gateway-connection-1"),
+            Some("work"),
+            "vault-duplicate-active",
+        );
+        let Some(VaultAgentPromptKind::Code { code, .. }) = app
+            .vault_agent_prompts
+            .get_mut(&prompt_key)
+            .map(|prompt| &mut prompt.kind)
+        else {
+            panic!("original vault.code request remains visible");
+        };
+        code.push_str("original-code");
+        app.handle_server_request_from_connection(
+            "vault-duplicate-active".into(),
+            "vault.code".into(),
+            params,
+            Some("gateway-connection-1".into()),
+        );
+        assert!(matches!(
+            &app.vault_agent_prompts[&prompt_key].kind,
+            VaultAgentPromptKind::Code { code, .. } if **code == "original-code"
+        ));
+        assert!(!app.vault_agent_prompts[&prompt_key].response_unknown);
+        assert!(
+            commands
+                .recv_timeout(std::time::Duration::from_millis(50))
+                .is_err(),
+            "a duplicate ID does not respond to the original request"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_agent_requests_reject_missing_and_unowned_sessions() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-connection-1".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+
+        app.handle_server_request_from_connection(
+            "vault-code-missing-session".into(),
+            "vault.code".into(),
+            json!({"profile":"work","site":"example.test"}),
+            Some("gateway-connection-1".into()),
+        );
+        let TestGatewayCommand::RespondServerRequest { id, response, .. } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("malformed request receives a bounded error response")
+        else {
+            panic!("expected server-request rejection");
+        };
+        assert_eq!(id, "vault-code-missing-session");
+        assert!(matches!(response, Err((code, _)) if code == -32602));
+
+        app.handle_server_request_from_connection(
+            "vault-code-unowned-session".into(),
+            "vault.code".into(),
+            json!({"session_id":"foreign-runtime","profile":"work","site":"example.test"}),
+            Some("gateway-connection-1".into()),
+        );
+        let TestGatewayCommand::RespondServerRequest { id, response, .. } = commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("unowned session receives a bounded error response")
+        else {
+            panic!("expected server-request rejection");
+        };
+        assert_eq!(id, "vault-code-unowned-session");
+        assert!(matches!(response, Err((4404, _))));
+        assert!(app.vault_agent_prompts.is_empty());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn vault_agent_cancellation_is_owner_scoped_and_route_change_erases_drafts() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        app.gateway_connection_id = Some("gateway-a".into());
+        for (connection_id, profile) in [("gateway-a", "work"), ("gateway-b", "personal")] {
+            let key = gateway_prompt_key(Some(connection_id), Some(profile), "reused-vault-id");
+            app.vault_agent_prompts.insert(
+                key,
+                VaultAgentPrompt {
+                    session_id: "runtime-session".into(),
+                    profile: Some(profile.into()),
+                    connection_id: Some(connection_id.into()),
+                    server_request_id: "reused-vault-id".into(),
+                    kind: VaultAgentPromptKind::Code {
+                        site: "example.test".into(),
+                        hint: String::new(),
+                        code: Zeroizing::new("local-only-code".into()),
+                    },
+                    response_pending: false,
+                    response_unknown: false,
+                },
+            );
+        }
+        app.handle_server_request_cancelled(
+            &json!({"id":"reused-vault-id"}),
+            Some("work"),
+            Some("gateway-a"),
+        );
+        assert_eq!(app.vault_agent_prompts.len(), 1);
+        let remaining_key =
+            gateway_prompt_key(Some("gateway-b"), Some("personal"), "reused-vault-id");
+        assert!(app.vault_agent_prompts.contains_key(&remaining_key));
+
+        app.active_session_profile = Some("personal".into());
+        app.gateway_connection_id = Some("gateway-b".into());
+        app.route = AppRoute::Settings;
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 4000.0))
+            .build_ui(|ui| app.draw(ui));
+        drop(harness);
+        assert!(matches!(
+            &app.vault_agent_prompts[&remaining_key].kind,
+            VaultAgentPromptKind::Code { code, .. } if code.is_empty()
+        ));
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
@@ -62224,6 +63424,7 @@ impl HermesNativeApp {
                 "approval_pending_count": self.approval_prompts.len(),
                 "sudo_pending_count": self.sudo_prompts.len(),
                 "vault_unlock_pending_count": self.vault_unlock_prompts.len(),
+                "vault_agent_pending_count": self.vault_agent_prompts.len(),
                 "clarify_pending_count": self.clarify_prompts.len() + self.batch_clarify_prompts.len(),
                 "can_stop": self.gateway_connected
                     && self.active_runtime_session_id.as_ref().is_some_and(|session_id| {

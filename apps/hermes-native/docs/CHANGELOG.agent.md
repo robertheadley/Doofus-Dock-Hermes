@@ -3515,3 +3515,29 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark claim.
 - **risks:** Session import and fork/branch remain gaps. All reviewed session rows remain partial pending authenticated live Gateway, packaged Windows and source-paired acceptance. UCM still reports historical schema errors and 9 reconciliation items.
 - **follow_up:** Implement owner-fenced secure `vault.code` and `vault.save_login` prompts; then address session import/fork, authenticated Gateway and packaged acceptance. Antigravity headless command execution was denied by policy; no blanket bypass was used.
+
+### Revision 360 — Secure vault code and saved-login requests — 2026-11-23
+
+- **id:** hermes-vault-code-save-login-20261123
+- **timestamp:** 2026-11-23T19:22:00Z
+- **what:** Added native `vault.code` and `vault.save_login` prompt handling through the same-socket Gateway actor, including ephemeral input, masked password, request ownership and unknown-outcome fencing.
+- **why:** These are direct agent-workflow interactions required for authenticating to tools and websites during Hermes runs.
+- **components:** Hermes Native app, Gateway actor, secure prompt lifecycle, completion overview and backlog.
+- **type:** implementation, security, validation, documentation.
+- **validation:** 664/664 native library tests pass; all-target locked `cargo check`, rustfmt and `git diff --check` pass. The fixed-source package validator passes 565 inventory rows and 141 implementation receipts; its initial run skipped PyYAML parsing, which is being rerun through the package runner.
+- **performance:** No performance change measured or claimed.
+- **risks:** Authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open. PAR-0517 remains specific to `vault.unlock_prompt`; code/login support is disclosed separately and excluded from its status.
+- **follow_up:** Run authenticated Gateway and packaged Windows acceptance; continue session import/fork and remaining P0 agent workflows. Antigravity CLI returned no usable headless audit findings without a permission bypass.
+
+### Revision 361 — Vault prompt lifecycle review fixes — 2026-11-23
+
+- **id:** hermes-vault-prompt-review-fixes-20261123
+- **timestamp:** 2026-11-23T19:35:00Z
+- **what:** Decline `vault.code` and `vault.save_login` requests for interrupted sessions; ignore duplicate active request IDs; cover Save Login unknown outcomes and no-resend behavior. Stabilized the scheduled-retry test's asynchronous receive and timestamp fixture.
+- **why:** Prevent credential prompts after Stop and prevent a duplicate ID from settling the still-active request.
+- **components:** Native app server-request router, vault prompt lifecycle, Gateway test transport.
+- **type:** security, correctness, tests, documentation.
+- **validation:** Full locked suite: 667 library + 15 protocol + 3 launcher pass. All-target locked check, rustfmt, diff check, persisted task validation and PyYAML-enabled fixed-source package validation pass.
+- **performance:** No performance change measured or claimed.
+- **risks:** Transient JSON values in the outbound Gateway transport are not zeroized; live Gateway and packaged Windows behavior remain unverified.
+- **follow_up:** Complete authenticated Gateway and packaged Windows acceptance; continue remaining agent workflow gaps.

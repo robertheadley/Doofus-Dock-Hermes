@@ -57,6 +57,10 @@ The Hermes Desktop Plugin SDK is JavaScript/React; DoofusDock extensions are Rus
 - Transcript find-in-page opens with Ctrl+F (macOS Command+F), matches loaded message text and speaker labels case-insensitively, shows a result count, steps with buttons/Enter and Ctrl+G (macOS Command+G), and closes with Escape. The selected message card is highlighted and scrolled into view. It currently searches loaded transcript rows and does not highlight individual text spans or other rendered panes; full source parity remains open. Its distinct synthetic 1440×900 review capture is `artifacts/agent-ui/transcript-find-in-page-20261115.png`.
 
 
+### Secure vault code and saved-login requests
+
+The Gateway actor accepts `vault.code` and `vault.save_login` as server requests and keeps each response on the originating connection/profile. Native prompt drafts use zeroizing strings; password controls are masked, accessibility labels and diagnostics omit entered values, and route/owner changes clear the draft and egui undo history. If a write outcome is unknown, the app clears secret material and blocks same-request replay from resending it. This UI behavior has headless coverage; authenticated Gateway and packaged Windows behavior remain unverified. These are separate from `vault.unlock_prompt`.
+
 ### Background prompt ownership
 
 Approval and batch clarification requests are assigned by runtime session ID plus profile to exactly one open native session pane. Prompt state retains that profile, and both human controls and registered semantic actions respond through the same handler using the stored owner scope, even while another pane is selected. Requests with missing/ambiguous ownership or a profile conflicting with the attached gateway endpoint fail closed. Local tests verify routing and UI actions; live authenticated gateway receipts remain unverified.

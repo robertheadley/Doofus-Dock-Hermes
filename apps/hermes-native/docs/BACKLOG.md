@@ -477,5 +477,6 @@ Existing native code and headless regressions already cover profile routing, ret
 ### PAR-0071..0082 follow-up — session lifecycle and secure auth prompts
 
 - [ ] Implement session import and session fork/branch after the already-supported paged export; preserve profile/Gateway ownership and require explicit user action before opening imported sessions.
-- [ ] Add secure `vault.code` and `vault.save_login` request cards with same-request response, owner fencing, ephemeral secret handling and masked-password behavior.
+- [x] Implement secure `vault.code` and `vault.save_login` request cards with same-request response, owner fencing, ephemeral secret handling and masked-password behavior; headless tests pass.
+- [ ] Verify these prompts with an authenticated Hermes Gateway and packaged Windows app; keep session import/fork in the remaining session lifecycle work.
 - [ ] Validate authenticated live Gateway and packaged Windows flows; current headless evidence is partial only.

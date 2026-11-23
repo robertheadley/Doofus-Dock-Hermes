@@ -8979,7 +8979,12 @@ fn gateway_actor_with_replay(
                     if let Some((id, method, params)) = server_request_parts(&frame) {
                         if matches!(
                             method.as_str(),
-                            "approval" | "clarify" | "sudo" | "vault.unlock_prompt"
+                            "approval"
+                                | "clarify"
+                                | "sudo"
+                                | "vault.unlock_prompt"
+                                | "vault.code"
+                                | "vault.save_login"
                         ) {
                             let _ = events.send(GatewayEvent::ServerRequestReceived {
                                 id,
@@ -22184,6 +22189,96 @@ mod tests {
         ));
         actor.join().expect("Gateway actor exits");
         server.join().expect("fixture gateway exits");
+    }
+
+    #[test]
+    fn idle_actor_routes_vault_code_and_save_login_on_the_requesting_socket() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for (id, method, params, expected) in [
+                (
+                    "vault-code-wire-1",
+                    "vault.code",
+                    json!({"session_id":"runtime-1","site":"github.com","hint":"SMS"}),
+                    json!({"value":"246810"}),
+                ),
+                (
+                    "vault-save-wire-1",
+                    "vault.save_login",
+                    json!({"session_id":"runtime-1","origin":"https://github.com","site":"github.com"}),
+                    json!({"value":"{\"identifier\":\"agent@example.test\",\"password\":\"fixture-password\"}"}),
+                ),
+            ] {
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"method":method,"params":params})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send vault server request");
+                let response: serde_json::Value = match socket.read().expect("read server reply") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse server reply"),
+                    other => panic!("expected JSON-RPC response, got {other:?}"),
+                };
+                assert_eq!(response["jsonrpc"], "2.0");
+                assert_eq!(response["id"], id);
+                assert_eq!(response["result"], expected);
+            }
+            socket.close(None).expect("close fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (commands, command_receiver) = mpsc::channel();
+        let (events, event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
+        for (id, method, profile, response) in [
+            (
+                "vault-code-wire-1",
+                "vault.code",
+                "work",
+                json!({"value":"246810"}),
+            ),
+            (
+                "vault-save-wire-1",
+                "vault.save_login",
+                "work",
+                json!({"value":"{\"identifier\":\"agent@example.test\",\"password\":\"fixture-password\"}"}),
+            ),
+        ] {
+            let request = event_receiver
+                .recv_timeout(Duration::from_secs(3))
+                .expect("vault server request reaches the UI event channel");
+            assert!(matches!(
+                request,
+                GatewayEvent::ServerRequestReceived { id: actual_id, method: actual_method, .. }
+                    if actual_id == id && actual_method == method
+            ));
+            commands
+                .send(GatewayCommand::RespondServerRequest {
+                    id: id.into(),
+                    profile: Some(profile.into()),
+                    response: Ok(response),
+                })
+                .expect("queue the exact vault server-request response");
+            let receipt = event_receiver
+                .recv_timeout(Duration::from_secs(3))
+                .expect("vault server-request receipt reaches the UI");
+            assert!(matches!(
+                receipt,
+                GatewayEvent::ServerRequestAnswered { id: actual_id, result: Ok(()), .. }
+                    if actual_id == id
+            ));
+        }
+        actor.join().expect("Gateway actor exits");
+        server.join().expect("fixture Gateway exits");
     }
 
     #[test]
