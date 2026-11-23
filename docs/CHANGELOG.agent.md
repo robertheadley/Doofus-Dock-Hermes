@@ -4883,3 +4883,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway and packaged Windows acceptance remain open.
 - **follow_up:** Select the next dependency-ready P0 gap and continue toward complete chat/tool, skills, plugin/MCP, provider and context/attachment support.
+
+### PAR-0064 — Code-specific failed-turn recovery
+
+- **id:** hermes-par0064-failed-turn-recovery-20261123
+- **timestamp:** 2026-11-23T01:48:30Z
+- **what:** Added source-code-specific error copy and Edit failed message / Start new session actions, while suppressing Retry for `SESSION_OWNER_UNCONFIRMED`. Existing same-submission-ID retry continues to preserve the sole optimistic user row.
+- **why:** Make recovery follow pinned Hermes actions and prevent a prompt from running twice when Gateway admission is uncertain.
+- **components:** Hermes Native transcript error cards, retry policy, PAR-0064 evidence and progress maps.
+- **type:** feature, safety, documentation.
+- **validation:** Focused failed-turn tests pass (8/8). Full locked suite passes (637 library + 15 automation protocol + 3 launcher); all-target locked check, rustfmt and diff check pass. Targeted UCM evidence records the three passing local scenarios; global legacy map findings remain unrelated. Source implementation is commit `2c24649455c8b81fd96d6e367b30155f9791fb84`.
+- **performance:** No performance-sensitive path or benchmark changed.
+- **risks:** Model/account/provider-settings navigation, context compression, scheduled retry, complete pinned error-code coverage, authenticated live Gateway behavior, and packaged Windows acceptance remain open.
+- **follow_up:** Continue the remaining P0 chat/tool work; keep PAR-0064 partial until live Gateway and source acceptance.

@@ -1552,9 +1552,14 @@ capabilities:
       description: Preserve one visible assistant failure and the optimistic user row when Gateway error and terminal completion events arrive in either order.
     - id: same-id-failed-turn-retry
       description: Retry a retryable failed turn through an accessible control using the original submission ID, text, owner scope and attachment metadata without duplicating the user row.
+    - id: failed-turn-recovery-actions-and-uncertain-write-guard
+      description: Show pinned-code-specific Edit or Start new session actions, keep raw provider details collapsed, and suppress retry when the Gateway cannot confirm whether a prompt was queued.
   evidence:
   - EV-0028
   - EV-0029
+  - EV-0131
+  - EV-0132
+  - EV-0133
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

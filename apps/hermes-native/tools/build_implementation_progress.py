@@ -1499,11 +1499,14 @@ EVIDENCE: dict[str, dict[str, object]] = {
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/agent-init-error.test.tsx#renders an agent-init failure as a visible in-transcript error and keeps the optimistic first message",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.test.tsx#names the provider and keeps Retry for a rate limit",
+            ".staging/hermes-pinned-878305/apps/desktop/src/lib/error-surface.ts#CODE_ACTIONS",
             "apps/hermes-native/src/app.rs#failed_turn_events_keep_user_row_merge_in_either_order_and_release_busy_state",
             "apps/hermes-native/src/app.rs#retry_failed_turn_reuses_submission_id_and_keeps_one_user_row",
             "apps/hermes-native/src/app.rs#retry_failed_turn_blocks_nonretryable_errors_and_preserves_occupied_composer",
+            "apps/hermes-native/src/app.rs#failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry",
+            "apps/hermes-native/src/app.rs#failed_turn_error_card_edits_policy_refusal_and_never_retries_unconfirmed_owner",
         ],
-        "gaps": ["code-specific alternate actions such as edit, choose model, sign in, or start a new session are not implemented", "full error-surface action taxonomy and scheduled retry behavior are not implemented", "live Gateway failure variants and source-paired runtime acceptance remain pending"],
+        "gaps": ["model selection, account/billing/provider-setup navigation, compress, and scheduled retry actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "live Gateway failure variants and source-paired runtime acceptance remain pending"],
     },
     "PAR-0065": {
         "state": "partial",

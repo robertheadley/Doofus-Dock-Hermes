@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0131",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "2c24649455c8b81fd96d6e367b30155f9791fb84",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "failed-turn-recovery-actions-and-uncertain-write-guard",
+  "locator": "apps/hermes-native/src/app.rs::failed_turn_error_card_edits_policy_refusal_and_never_retries_unconfirmed_owner",
+  "environment": "Headless Hermes Native egui_kittest and Rust regression tests; no live Hermes Gateway or installed app was used.",
+  "notes": "Pinned error codes now map content-policy refusals to a non-truncating failed-prompt editor and read-only, oversized-context, oversized-payload, and unavailable-workspace failures to Start new session. SESSION_OWNER_UNCONFIRMED remains visible with an explicit warning and cannot expose or execute retry, even if retryable is true. Raw provider details remain collapsed by default. Model/account navigation, compression, scheduled retry, the full error taxonomy, authenticated live Gateway behavior, and packaged Windows acceptance remain open."
+}

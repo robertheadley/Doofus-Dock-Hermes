@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0133",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "2c24649455c8b81fd96d6e367b30155f9791fb84",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "same-id-failed-turn-retry",
+  "locator": "apps/hermes-native/src/app.rs::retry_failed_turn_reuses_submission_id_and_keeps_one_user_row",
+  "environment": "Full locked Hermes Native automation-feature Rust test suite; no live Hermes Gateway or installed app was used.",
+  "notes": "Full-suite regression confirms Retry sends the original submission ID, text, session/profile and staged attachment metadata once, keeps one optimistic user row, and rejects explicit non-retryable failures or an occupied composer. The new SESSION_OWNER_UNCONFIRMED guard is covered separately by EV-0131. This is local behavior evidence, not live Gateway or packaged Windows acceptance."
+}

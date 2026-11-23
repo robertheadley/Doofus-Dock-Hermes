@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0132",
+  "capability_id": "ui-show-per-turn-failure-and-retry-without-duplication",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "2c24649455c8b81fd96d6e367b30155f9791fb84",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "failed-turn-error-completion-ordering",
+  "locator": "apps/hermes-native/src/app.rs::failed_turn_events_keep_user_row_merge_in_either_order_and_release_busy_state",
+  "environment": "Full locked Hermes Native automation-feature Rust test suite; no live Hermes Gateway or installed app was used.",
+  "notes": "Full-suite regression passes both Gateway event orders, preserves one optimistic user row and one assistant failure card, merges the terminal structured error, and releases the matching busy state. This is local behavior evidence, not live Gateway or packaged Windows acceptance."
+}
