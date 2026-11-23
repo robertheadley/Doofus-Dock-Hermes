@@ -5039,3 +5039,15 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No benchmark claim; recovery uses the existing Gateway mutation and prompt submission paths.
 - **risks:** Hermes keep-going-on-credits, an in-app billing surface, live Gateway behavior, packaged Windows interaction, and formal source-paired acceptance remain open; PAR-0064 remains partial.
 - **follow_up:** Validate generated progress/package/UCM/task state, publish source and evidence to main, and continue the next agent-workflow gap.
+### PAR-0064 usage-window recovery publication — 2026-11-23
+
+- **id:** hermes-par0064-usage-window-publication-20261123
+- **timestamp:** 2026-11-23T16:39:48Z
+- **what:** Published source commit `f6ceadd2f6f9a8e650893b951682206677b17efa` and evidence/docs commit `12db3a8c` to `origin/main`.
+- **why:** Keep the user-selected main branch current with the validated native behavior and its capability evidence.
+- **components:** Doofus-Dock-Hermes main, PAR-0064, EV-0138, progress overlays.
+- **type:** publication.
+- **validation:** Fresh fetch confirmed local main and origin/main both equal `12db3a8c`; package validation reports 122 implementation receipts.
+- **performance:** Not applicable.
+- **risks:** Live Gateway, packaged Windows, source-paired acceptance, Hermes credit opt-in and an in-app billing surface remain open; PAR-0064 stays partial.
+- **follow_up:** Continue with exact pinned contracts for Hermes keep-going-on-credits and complete the remaining PAR-0064 error taxonomy.
