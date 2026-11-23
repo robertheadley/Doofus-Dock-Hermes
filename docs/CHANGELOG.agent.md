@@ -5209,3 +5209,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No performance change measured or claimed.
 - **risks:** Transient JSON values in the outbound Gateway transport are not zeroized; live Gateway and packaged Windows behavior remain unverified.
 - **follow_up:** Complete authenticated Gateway and packaged Windows acceptance; continue remaining agent workflow gaps.
+
+### Publication — Secure vault agent prompts — 2026-11-23
+
+- **id:** publish-vault-agent-prompts-d327bc8
+- **timestamp:** 2026-11-23T19:38:13Z
+- **what:** Published commit `d327bc818ea998767a4215392286bcc483f600ab` to `origin/main`.
+- **why:** Make the tested vault code and saved-login agent workflow implementation current on the operator-selected branch.
+- **components:** Hermes Native Rust UI, Gateway actor and implementation documentation.
+- **type:** publication.
+- **validation:** Post-push fetch confirmed local `main` equals `origin/main` at `d327bc818ea998767a4215392286bcc483f600ab`. Full suite (667 + 15 + 3), all-target locked check and package/task validators passed before push.
+- **performance:** No performance change measured.
+- **risks:** `.doofus` task runtime and `apps/hermes-native/work/` remain local and uncommitted by design.
+- **follow_up:** Continue the first-version agent workflow gaps; live Gateway and packaged Windows acceptance remain open.
