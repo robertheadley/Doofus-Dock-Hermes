@@ -7820,6 +7820,16 @@ fn render_message() -> &'static str {
                                                 open_model_picker = true;
                                             }
                                         }
+                                        FailedTurnRecoveryAction::Billing => {
+                                            let open_billing = ui
+                                                .button("Open billing portal")
+                                                .accessible_name("Open Nous billing portal");
+                                            if open_billing.clicked() {
+                                                open_provider_settings = Some(
+                                                    "https://portal.nousresearch.com".to_owned(),
+                                                );
+                                            }
+                                        }
                                         FailedTurnRecoveryAction::UsageWindow => {
                                             let submission_id = message
                                                 .get("retry_submission_id")
@@ -7888,7 +7898,7 @@ fn render_message() -> &'static str {
                                                         Some(submission_id.to_owned());
                                                 }
                                             }
-                                            if usage_window_billing_portal_allowed(&message)
+                                            if billing_portal_allowed(&message)
                                                 && ui
                                                     .button("Open billing portal")
                                                     .accessible_name("Open Nous billing portal")
@@ -37516,6 +37526,7 @@ enum FailedTurnRecoveryAction {
     StartNewSession,
     ChooseModel,
     ProviderPolicy,
+    Billing,
     UsageWindow,
 }
 
@@ -37577,7 +37588,7 @@ fn usage_window_use_credits_allowed(message: &serde_json::Value) -> bool {
         .pointer("/error_surface/code")
         .and_then(serde_json::Value::as_str)
         != Some("usage_window")
-        || !usage_window_billing_portal_allowed(message)
+        || !billing_portal_allowed(message)
     {
         return false;
     }
@@ -37599,6 +37610,8 @@ fn failed_turn_recovery_action(message: &serde_json::Value) -> Option<FailedTurn
         "content_policy_blocked" => Some(FailedTurnRecoveryAction::EditPrompt),
         "model_not_found" | "free_tier_at_capacity" => Some(FailedTurnRecoveryAction::ChooseModel),
         "provider_policy_blocked" => Some(FailedTurnRecoveryAction::ProviderPolicy),
+        "billing" if billing_portal_allowed(message) => Some(FailedTurnRecoveryAction::Billing),
+        "billing" => Some(FailedTurnRecoveryAction::ChooseModel),
         "usage_window" => Some(FailedTurnRecoveryAction::UsageWindow),
         "context_overflow" => Some(FailedTurnRecoveryAction::CompressContext),
         "payload_too_large"
@@ -37626,12 +37639,13 @@ fn failed_turn_provider_settings(message: &serde_json::Value) -> Option<(&'stati
     Some((label, url.to_owned()))
 }
 
-fn usage_window_billing_portal_allowed(message: &serde_json::Value) -> bool {
-    if message
-        .pointer("/error_surface/code")
-        .and_then(serde_json::Value::as_str)
-        != Some("usage_window")
-    {
+fn billing_portal_allowed(message: &serde_json::Value) -> bool {
+    if !matches!(
+        message
+            .pointer("/error_surface/code")
+            .and_then(serde_json::Value::as_str),
+        Some("usage_window" | "billing")
+    ) {
         return false;
     }
     message
@@ -40629,6 +40643,7 @@ mod tests {
                 Some(FailedTurnRecoveryAction::ProviderPolicy),
                 true,
             ),
+            ("billing", Some(FailedTurnRecoveryAction::Billing), true),
             (
                 "usage_window",
                 Some(FailedTurnRecoveryAction::UsageWindow),
@@ -40695,7 +40710,7 @@ mod tests {
                 provider: "nous".into(),
             })
         );
-        assert!(usage_window_billing_portal_allowed(&usage_window));
+        assert!(billing_portal_allowed(&usage_window));
         assert!(!usage_window_use_credits_allowed(&usage_window));
         assert!(usage_window_use_credits_allowed(&serde_json::json!({
             "error_surface":{"code":"usage_window","provider":"nous",
@@ -40713,7 +40728,7 @@ mod tests {
             "error_surface":{"code":"usage_window",
                 "usage_limit":{"credits":{"action":"add_credits"}}}
         })));
-        assert!(!usage_window_billing_portal_allowed(&serde_json::json!({
+        assert!(!billing_portal_allowed(&serde_json::json!({
             "error_surface":{"code":"usage_window","provider":"other"}
         })));
         assert_eq!(
@@ -40750,6 +40765,24 @@ mod tests {
             })),
             None,
             "provider data must never be treated as a navigation destination"
+        );
+        assert!(billing_portal_allowed(&serde_json::json!({
+            "error_surface":{"code":"billing","provider":"nous"}
+        })));
+        assert!(
+            billing_portal_allowed(&serde_json::json!({
+                "error_surface":{"code":"billing"}
+            })),
+            "missing provider follows Hermes' Nous billing default"
+        );
+        let third_party_billing = serde_json::json!({
+            "error_surface":{"code":"billing","provider":"openai"}
+        });
+        assert!(!billing_portal_allowed(&third_party_billing));
+        assert_eq!(
+            failed_turn_recovery_action(&third_party_billing),
+            Some(FailedTurnRecoveryAction::ChooseModel),
+            "unknown provider billing must not open the Nous portal"
         );
     }
 
