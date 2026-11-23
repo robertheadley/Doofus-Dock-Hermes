@@ -4844,3 +4844,30 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - Implementation commit `4392b6ff0267065718ee5006eb76f4f3cfaef4f9` and evidence/docs commit `b10fcdc71db091400d12e915cfd5bb9003d82ae1` were pushed to `main`.
 - Fresh fetch confirmed local `main` and `origin/main` both equal `b10fcdc71db091400d12e915cfd5bb9003d82ae1`.
 - EV-0127 records partial headless evidence for pathless file drops. Windows Gateway acceptance remains open.
+
+### Revision 346 — Profile reasoning visibility control — 2026-11-23
+
+- **id:** PAR-0046-profile-reasoning-visibility
+- **timestamp:** 2026-11-23T01:24:22Z
+- **what:** Added Settings → Chat · Behavior control for `display.show_reasoning`, profile-aware local/remote Gateway config save, CLI-key precedence, save-receipt draft confirmation, and connection fencing. Source commit `aef5dbd9a07456ca8361f886356d63c31d150619`.
+- **why:** Pinned Hermes exposes reasoning visibility as an agent chat behavior preference; the native transcript already separated reasoning but users had no control to enable it.
+- **components:** Hermes Native app/settings, Gateway configuration transport, PAR-0046 capability and progress evidence.
+- **type:** feature, headless regression coverage, capability evidence.
+- **validation:** Full locked suite: 635 library + 15 automation protocol + 3 launcher tests passed. 21 reasoning-focused tests passed; all-target locked check, `cargo fmt --all`, and `git diff --check` passed.
+- **performance:** No performance-sensitive path or benchmark changed.
+- **risks:** No authenticated live Gateway, packaged Windows UI, or source-paired acceptance was run; PAR-0046 remains partial.
+- **follow_up:** Validate against a live authenticated Gateway and pinned UI, then continue the next dependency-ready P0 chat/tool gap.
+
+### PAR-0046 capability evidence reconciliation — 2026-11-23
+
+- **id:** PAR-0046-UCM-evidence-reconciliation
+- **timestamp:** 2026-11-23T01:29:25Z
+- **what:** Appended EV-0128 through EV-0130, declared their test scenarios, and replaced legacy inline capability locators with stable evidence IDs.
+- **why:** Keep the capability map consistent with the current tested profile reasoning setting and distinguish local verification from live acceptance.
+- **components:** Pinned-snapshot capability map, evidence files, generated implementation and chat/tool progress.
+- **type:** evidence, documentation, progress map.
+- **validation:** UCM scoped report finds no capability-specific errors and all three declared scenarios have passing evidence. Package validator passes 565 behavior rows and 112 implementation receipts. Task continuity passed 19/19; task state validator passes.
+- **performance:** Not applicable.
+- **risks:** Full-map UCM check still reports 160 pre-existing errors and 10 unrelated reconciliation items. Capability stays partial; all 176 chat/tool rows still lack live-runtime verification and pinned-source acceptance.
+- **follow_up:** Continue the next dependency-ready P0 agent-workflow gap; resolve UCM-wide legacy errors separately.
+

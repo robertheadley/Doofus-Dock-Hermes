@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0128",
+  "capability_id": "ui-display-thinking-disclosure",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aef5dbd9a07456ca8361f886356d63c31d150619",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "headless-profile-setting-control",
+  "locator": "apps/hermes-native/src/app.rs::chat_behavior_settings_render_reasoning_blocks_and_keep_edits_as_a_draft",
+  "environment": "Headless egui settings interaction; loopback HTTP and authenticated remote HTTP fixture servers. Full locked native test suite: 635 library + 15 automation protocol + 3 launcher tests; all-target locked cargo check and rustfmt pass. Focused reasoning filter: 21 tests pass, including profile precedence/truthy parsing, local and remote read/write, rendered draft/save control, reasoning stream separation, and connection fencing.",
+  "notes": "Implementation-level evidence only. PAR-0046 remains partial until authenticated live Gateway reasoning delivery and persistence, packaged Windows interaction, and pinned-source acceptance are verified."
+}

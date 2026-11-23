@@ -1081,14 +1081,20 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0046": {
         "state": "partial",
-        "level": "headless_ui_gateway_config_and_stream_reducer",
+        "level": "headless_profile_scoped_reasoning_settings_and_stream_reducer",
         "refs": [
             "apps/hermes-native/src/reasoning.rs#three_character_frames_preserve_safe_answer_and_extract_reasoning",
             "apps/hermes-native/src/app.rs#reasoning_stream_is_separate_and_partial_tags_never_enter_answer",
             "apps/hermes-native/src/app.rs#disabled_reasoning_preference_hides_the_disclosure_and_text",
             "apps/hermes-native/src/gateway.rs#display_reasoning_config_read_uses_profile_scoped_source_api",
+            "apps/hermes-native/src/app.rs#chat_behavior_settings_render_reasoning_blocks_and_keep_edits_as_a_draft",
+            "apps/hermes-native/src/app.rs#reasoning_setting_save_receipt_is_fenced_to_the_current_gateway_connection",
+            "apps/hermes-native/src/gateway.rs#display_reasoning_remote_read_and_write_use_profile_auth_and_dual_key_patch",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0128.json#EV-0128",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0129.json#EV-0129",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0130.json#EV-0130",
         ],
-        "gaps": ["native UI control to change display.show_reasoning is not implemented", "live Gateway reasoning delivery and source-paired Windows acceptance remain open"],
+        "gaps": ["live Gateway reasoning delivery and settings persistence, packaged Windows behavior, and formal pinned-source acceptance remain open"],
     },
     "PAR-0047": {
         "state": "partial",

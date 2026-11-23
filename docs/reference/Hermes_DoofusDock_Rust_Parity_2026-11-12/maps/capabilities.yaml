@@ -1110,7 +1110,7 @@ capabilities:
 - id: ui-display-thinking-disclosure
   name: Display thinking disclosure
   area: chat-transcript
-  claim: In the new native Rust DoofusDock UI, a user can display thinking disclosure.
+  claim: In the new native Rust DoofusDock UI, a user can display thinking disclosure and control its profile-level visibility.
   status: partial
   depends_on:
   - hermes-gateway
@@ -1126,11 +1126,20 @@ capabilities:
     backend: partial
     ui: partial
     tests: partial
+  verification:
+    scenarios:
+    - id: reasoning_stream_is_separate_and_partial_tags_never_enter_answer
+      description: Tagged reasoning is separated from the answer during partial stream frames and never leaks into visible answer text.
+    - id: display_reasoning_config_read_uses_profile_scoped_source_api
+      description: The active profile reasoning visibility setting is read with the pinned CLI override precedence and safe default.
+    - id: headless-profile-setting-control
+      description: A user can view and edit the active profile reasoning preference; edits remain drafts until a matching Gateway save receipt and stale connection results are ignored.
   evidence:
-  - type: test_result
-    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0070.json
-  - type: test_result
-    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0072.json
+  - EV-0070
+  - EV-0072
+  - EV-0128
+  - EV-0129
+  - EV-0130
 
 - id: ui-display-reasoning-collapsed-in-simple-mode
   name: Display reasoning collapsed in Simple mode

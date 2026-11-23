@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0129",
+  "capability_id": "ui-display-thinking-disclosure",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "aef5dbd9a07456ca8361f886356d63c31d150619",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "scenario": "reasoning_stream_is_separate_and_partial_tags_never_enter_answer",
+  "locator": "apps/hermes-native/src/app.rs::reasoning_stream_is_separate_and_partial_tags_never_enter_answer",
+  "environment": "Headless Rust regression executed as part of cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1 (635 library + 15 automation protocol + 3 launcher tests passed).",
+  "notes": "Headless transcript reducer and UI tests in the full locked suite passed, verifying partial reasoning tags stay out of the answer bubble while reasoning remains in the separate disclosure. This is local verification, not authenticated live Gateway or packaged-app acceptance."
+}
