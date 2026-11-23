@@ -4948,3 +4948,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** No performance-sensitive path or benchmark changed.
 - **risks:** Only two pinned provider destinations are supported; other providers fall back to model selection. Live Gateway and packaged Windows acceptance remain open.
 - **follow_up:** Continue PAR-0064's remaining auth/setup, compression, scheduled retry and error taxonomy gaps.
+
+### PAR-0064 provider-settings publication — 2026-11-23
+
+- **id:** hermes-par0064-provider-settings-publication-20261123
+- **timestamp:** 2026-11-23T02:27:00Z
+- **what:** Published provider-policy recovery implementation `f60e97e6fcc0dd93c1967fd595650e54f095e072` and evidence/docs commit `79fa78d5dbda914c586eb9a925474d439bd3c75d` to `origin/main`.
+- **why:** Keep main current with validated provider recovery and maintain exact source-bound evidence.
+- **components:** Hermes Native, PAR-0064, EV-0134/EV-0135, main branch.
+- **type:** publication.
+- **validation:** Fresh fetch confirms local `main` and `origin/main` both at `79fa78d5dbda914c586eb9a925474d439bd3c75d`; package validator accepts both full evidence SHAs. `.doofus` and `apps/hermes-native/work/` remain excluded.
+- **performance:** Not applicable.
+- **risks:** Live Gateway and packaged Windows acceptance remain open.
+- **follow_up:** Continue the remaining agent-workflow P0 gaps.
