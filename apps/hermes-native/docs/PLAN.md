@@ -2194,3 +2194,9 @@ Source implementation commit: `2a6fb5341fad5d035f0622bd26a8a520bed3bcce`. Valida
 ### Revision 353 — Validate scheduled retry evidence — 2026-11-23
 
 The locked suite passes 648 library, 15 automation-protocol, and 3 launcher tests; all-target `cargo check`, desktop `cargo build`, rustfmt, diff check, 19 task-continuity tests, progress generators, package validation (121 implementation receipts), and persisted task-state validation pass. The targeted UCM report shows all five declared PAR-0064 scenarios, including scheduled rate-limit retry, covered and no EV-0137-specific errors. The UCM checker still exits 1 on 160 pre-existing legacy evidence/scenario errors outside EV-0137; the map is not globally valid. Live Gateway, packaged Windows and formal source-paired acceptance remain open.
+
+### Revision 354 — Add receipt-gated usage-window model recovery — 2026-11-23
+
+PAR-0064 now parses the pinned usage-window suggestion, offers the first suggested model, and retries the original failed turn only after Hermes confirms the exact session model/provider was applied. Confirmation-required model changes retain the retry intent until the user confirms. Deferred/refused/mismatched receipts do not retry; generic retry remains disabled for usage-window errors. Valid future resets may use the existing bounded scheduled retry, and a recognized Nous usage-window card can open the Nous portal. Hermes keep-going-on-credits and an in-app billing surface remain unsupported.
+
+Implementation commit: `f6ceadd2f6f9a8e650893b951682206677b17efa`; EV-0138 records the headless behavior. Validation: 649 library + 15 automation-protocol + 3 launcher tests pass; all-target locked check, Windows debug build, rustfmt and diff check pass. Live Gateway, packaged Windows and formal source-paired acceptance remain open; PAR-0064 stays partial.

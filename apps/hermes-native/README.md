@@ -247,3 +247,5 @@ The native Gateway now advertises `server_requests: true` for local and remote c
 
 
 Gateway transport recovery now uses the pinned full-jitter reconnect ladder (300 ms base, 15 second cap, five second stable-open reset). On reconnect it refreshes session/transcript state and replays only profile/session/epoch-validated read events. It does not retry `prompt.submit`; ambiguous admissions stay unknown. Headless loopback and full-suite checks pass. PAR-0508/PAR-0511 remain partial: live Gateway and packaged Windows behavior are unverified, and auxiliary HTTP workers do not rebind if the endpoint changes. Current mapped evidence is 85/176 chat/tool rows (1 implemented, 83 partial, 1 known missing, 91 unknown); all 176 live runtime states remain unverified.
+
+Usage-window failures can switch the current Hermes session to its first recommended model and retry the same failed prompt only after an exact `applied` receipt. A future reset can use the bounded scheduled-retry flow, and the Nous portal link is provider-checked. Credit opt-in and an in-app billing view remain unsupported; this slice is headless-tested and awaits live Gateway/packaged acceptance.

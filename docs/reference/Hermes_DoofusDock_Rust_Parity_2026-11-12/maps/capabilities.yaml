@@ -1558,6 +1558,8 @@ capabilities:
       description: Compress the exact context-overflow session using a fresh revision and execution generation; keep the failed turn visible, wait for asynchronous compaction before transcript refresh, and never automatically replay an uncertain mutation.
     - id: scheduled-rate-limit-retry-is-one-shot-and-owner-fenced
       description: For a known rate-limit failure with a valid future reset, allow the user to schedule one retry, show a countdown and Cancel, and prevent dispatch after the owning session/profile/connection/submission changes.
+    - id: usage-window-model-recovery-waits-for-applied-receipt
+      description: Offer the first pinned usage-window model suggestion and retry the exact failed prompt only after Hermes confirms that the same session model was applied; never blind-retry the exhausted model.
   evidence:
   - EV-0028
   - EV-0029
@@ -1568,6 +1570,7 @@ capabilities:
   - EV-0135
   - EV-0136
   - EV-0137
+  - EV-0138
 
 - id: ui-display-local-timestamps-and-message-role
   name: Display local timestamps and message role

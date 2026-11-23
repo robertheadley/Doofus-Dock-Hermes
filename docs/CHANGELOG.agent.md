@@ -5026,3 +5026,16 @@ Published implementation commit `b1baf05e20c02b8e28638c93db0236a2119b6eb2` and E
 - **performance:** Not applicable.
 - **risks:** Live Gateway, packaged Windows and source-paired acceptance are open; 160 unrelated legacy UCM errors remain.
 - **follow_up:** Continue the next dependency-ready P0 agent-workflow gap.
+
+### PAR-0064 usage-window model recovery — 2026-11-23
+
+- **id:** hermes-par0064-usage-window-recovery-20261123
+- **timestamp:** 2026-11-23T16:34:58Z
+- **what:** Added bounded usage-window suggestion parsing, an exact session model change, same-submission retry only after an applied receipt, future-reset scheduling, and a recognized Nous billing-portal link. Generic blind retry is disabled for usage-window failures.
+- **why:** Match the pinned Hermes recovery behavior while preventing retries against an exhausted model or before the new model is confirmed.
+- **components:** Hermes Native transcript recovery, Gateway test command observation, PAR-0064, UCM EV-0138, docs/progress.
+- **type:** feature, test, evidence, documentation.
+- **validation:** Full locked suite passes 649 library + 15 protocol + 3 launcher tests; all-target locked check, Windows debug build, rustfmt, and diff check pass. Package/UCM/task validators and publication pending.
+- **performance:** No benchmark claim; recovery uses the existing Gateway mutation and prompt submission paths.
+- **risks:** Hermes keep-going-on-credits, an in-app billing surface, live Gateway behavior, packaged Windows interaction, and formal source-paired acceptance remain open; PAR-0064 remains partial.
+- **follow_up:** Validate generated progress/package/UCM/task state, publish source and evidence to main, and continue the next agent-workflow gap.

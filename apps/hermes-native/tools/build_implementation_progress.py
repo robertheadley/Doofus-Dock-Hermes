@@ -1495,7 +1495,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0064": {
         "state": "partial",
-        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_and_scheduled_rate_limit_retry",
+        "level": "headless_ui_gateway_revision_fencing_background_receipt_unknown_outcome_scheduled_retry_and_usage_window_model_recovery",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/agent-init-error.test.tsx#renders an agent-init failure as a visible in-transcript error and keeps the optimistic first message",
             ".staging/hermes-pinned-878305/apps/desktop/src/components/assistant-ui/thread/assistant-message.test.tsx#names the provider and keeps Retry for a rate limit",
@@ -1519,8 +1519,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#scheduled_failed_retry_is_cancelled_when_connection_owner_changes",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0136.json#EV-0136",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0137.json#EV-0137",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0138.json#EV-0138",
         ],
-        "gaps": ["account and billing setup navigation and usage-window billing actions are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "scheduled retry is limited to known rate-limit codes, is not persisted across app restarts, and live Gateway behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
+        "gaps": ["Hermes keep-going-on-credits and an in-app billing surface are not implemented", "the complete pinned Desktop error-code taxonomy is not mapped", "scheduled retry is limited to recognized reset codes, is not persisted across app restarts, and live Gateway behavior, restart durability for unknown outcomes, and packaged Windows/source-paired acceptance remain unverified"],
     },
     "PAR-0065": {
         "state": "partial",
