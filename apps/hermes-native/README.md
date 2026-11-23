@@ -253,3 +253,5 @@ Gateway transport recovery now uses the pinned full-jitter reconnect ladder (300
 Usage-window failures can switch the current Hermes session to its first recommended model and retry the same failed prompt only after an exact `applied` receipt. A future reset can use the bounded scheduled-retry flow, and the Nous portal link is provider-checked. Credit opt-in and an in-app billing view remain unsupported; this slice is headless-tested and awaits live Gateway/packaged acceptance.
 
 PAR-0064 now gives each pinned Hermes Free error a distinct explanation and routes users to the current chat model picker. It preserves backend guidance and only offers retry when the Gateway marks the failure retryable; native Hermes Free sign-in remains an explicit gap.
+
+Session support includes recent and archived lists plus create/resume flows with profile and Gateway owner fencing. These paths have headless protocol/UI evidence; authenticated live Gateway and source-paired acceptance remain open.

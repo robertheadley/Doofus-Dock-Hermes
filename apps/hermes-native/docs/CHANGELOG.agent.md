@@ -3490,3 +3490,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark claim.
 - **risks:** Free-tier sign-in and live Gateway acceptance remain open.
 - **follow_up:** Published source and evidence commits to origin/main at 5a0b983256daa7b611086de447d81e9806f05422; local and remote main match.
+### PAR-0069/0070 session listing and resume evidence — 2026-11-23
+
+- **id:** hermes-par0069-0070-session-evidence-20261123
+- **timestamp:** 2026-11-23T18:29:10Z
+- **what:** Reviewed existing session list/archive/create/resume behavior and mapped both P0 requirements as partial with EV-0146 and EV-0147.
+- **why:** The scoped progress view had treated working native behaviors as unknown because the requirements lacked explicit evidence mapping.
+- **components:** Hermes Native Gateway/session lifecycle, chat/tool progress, pinned capability map.
+- **type:** evidence, validation, documentation.
+- **validation:** Focused session-list, archive-page, create-first-prompt, saved-session open, and resume ownership tests pass; progress generator now maps 88/176 scoped requirements; package validator accepts 131 implementation receipts.
+- **performance:** No benchmark claim.
+- **risks:** Headless fixtures do not prove authenticated live Gateway or packaged Windows/source-paired behavior.
+- **follow_up:** Continue review with remaining P0 session lifecycle and agent tool workflow requirements.

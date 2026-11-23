@@ -1681,7 +1681,7 @@ capabilities:
   name: List recent and historical sessions
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can list recent and historical sessions.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1691,16 +1691,25 @@ capabilities:
   - p0
   sources:
   - type: user_requirement
-    locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+    locator: Hermes DoofusDock first usable agent-workflow scope (2026-11-23)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0146.json#EV-0146
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: list-recent-and-archived-sessions-through-profile-scoped-gateway
+      description: The native sidebar and session browser list recent and archived sessions through profile-scoped Gateway routes; archived pages are bounded and paginated.
+  evidence:
+  - EV-0146
+
 - id: ui-create-and-resume-a-saved-session
   name: Create and resume a saved session
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can create and resume a saved session.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -1710,11 +1719,20 @@ capabilities:
   - p0
   sources:
   - type: user_requirement
-    locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
+    locator: Hermes DoofusDock first usable agent-workflow scope (2026-11-23)
+  - type: test_result
+    locator: docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0147.json#EV-0147
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: create-chat-submit-first-prompt-and-resume-saved-session
+      description: Create a session before first-prompt submission and resume saved sessions with profile, connection, and request fencing.
+  evidence:
+  - EV-0147
+
 - id: ui-distinguish-live-from-archived-sessions
   name: Distinguish live from archived sessions
   area: sessions-projects

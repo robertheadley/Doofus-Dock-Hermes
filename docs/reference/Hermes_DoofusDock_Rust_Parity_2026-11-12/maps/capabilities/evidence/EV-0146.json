@@ -1,0 +1,15 @@
+{
+  "capability_id": "ui-list-recent-and-historical-sessions",
+  "kind": "test_result",
+  "outcome": "partial",
+  "date": "2026-11-23",
+  "commit": "c4531a233cdeba5fe0ce5ff94a48394ae0019ef2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation-feature tests: session-list filter (4 passed), archived session page (1 passed); no live Gateway, installed app, or source-paired UI capture.",
+  "uid": "EV-0146",
+  "scenario": "list-recent-and-archived-sessions-through-profile-scoped-gateway",
+  "locator": "apps/hermes-native/src/app.rs::sessions_view_toggle_switches_to_cached_archived_rows;apps/hermes-native/src/gateway.rs::session_list_preserves_fractional_started_at_for_sidebar_recency;apps/hermes-native/src/gateway.rs::archived_session_list_requests_only_archived_rows_at_the_requested_offset;apps/hermes-native/src/gateway.rs::profile_session_list_reads_last_active_with_a_native_http_ticket;.staging/hermes-pinned-878305/apps/desktop/src/AGENTS.md#session.list",
+  "notes": "The native app lists recent sessions, reads last-active and archived session rows through profile-scoped Gateway routes, and paginates archived rows. Headless protocol fixtures pass. This is partial PAR-0069 evidence; complete side-by-side Desktop behavior, authenticated live Gateway, packaged Windows, and source-paired acceptance remain open."
+}

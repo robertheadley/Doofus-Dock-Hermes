@@ -2227,3 +2227,7 @@ Pinned `format_error` now explains the unsupported response format and offers th
 The pinned free_tier_* error family now renders code-specific recovery copy, preferring Hermes' structured message, and opens the current chat's model picker as the native fallback. A same-submission Retry remains visible only when the server marks that exact failure retryable; the native UI does not imitate Hermes Free sign-in. Rendered headless UI coverage checks the model picker and non-retryable boundary, and the mapping test covers all seven pinned free-tier codes.
 
 Validation: full locked suite passes 658 library + 15 automation protocol + 3 launcher tests; all-target locked check, Windows debug build, rustfmt and diff check pass. EV-0145 records partial headless evidence; publication to origin/main remains pending. PAR-0064 remains partial; free-tier OAuth, live Gateway, packaged Windows and formal source-paired acceptance remain open.
+
+### Revision 359 — Review session listing and saved-session workflows — 2026-11-23
+
+PAR-0069 and PAR-0070 were marked not implemented in the pinned capability map even though Hermes Native already lists recent and archived sessions, creates new chats, and resumes saved sessions. The gap was stale review metadata rather than missing source behavior. These are now mapped as partial with evidence from profile-scoped Gateway and headless app tests. Archived paging and resume owner/request fencing are covered. Live Gateway, packaged Windows and formal source-paired acceptance remain pending, so neither requirement is marked done.
