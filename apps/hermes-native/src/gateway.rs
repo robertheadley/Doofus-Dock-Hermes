@@ -21414,17 +21414,42 @@ mod tests {
         let server = thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept projects.list client");
             let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
-            let request: serde_json::Value =
-                match socket.read().expect("read projects.list request") {
-                    Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
-                    other => panic!("expected projects.list request, got {other:?}"),
+            let read_request =
+                |socket: &mut tungstenite::WebSocket<TcpStream>| -> serde_json::Value {
+                    match socket.read().expect("read projects.list request") {
+                        Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                        other => panic!("expected projects.list request, got {other:?}"),
+                    }
                 };
-            assert_eq!(request["method"], "projects.list");
-            assert_eq!(request["params"], json!({"profile":"fixture-profile"}));
-            let id = request["id"].as_u64().expect("numeric RPC id");
+            let first = read_request(&mut socket);
+            assert_eq!(first["jsonrpc"], "2.0");
+            assert_eq!(first["method"], "projects.list");
+            assert_eq!(first["params"], json!({"profile":"fixture-profile"}));
+            let first_id = first["id"].as_u64().expect("numeric RPC id");
+            assert_eq!(first_id, 5);
+
+            // The current actor blocks on each RPC, so a queued second command is not
+            // multiplexed onto the socket until the first response is settled.
+            socket
+                .get_mut()
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("set bounded check for a concurrent request");
+            assert!(
+                matches!(
+                    socket.read(),
+                    Err(tungstenite::Error::Io(ref error))
+                        if matches!(error.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock)
+                ),
+                "the serial Gateway actor must not send the queued second RPC while the first is pending"
+            );
+            socket
+                .get_mut()
+                .set_read_timeout(None)
+                .expect("restore fixture socket read timeout");
+
             socket
                 .send(Message::Text(
-                    json!({"jsonrpc":"2.0","id":id,"result":{
+                    json!({"jsonrpc":"2.0","id":first_id,"result":{
                         "active_id":"p_demo",
                         "projects":[{"id":"p_demo","slug":"demo","name":"Demo",
                             "description":null,"icon":null,"color":null,"board_slug":null,
@@ -21434,7 +21459,42 @@ mod tests {
                     .to_string()
                     .into(),
                 ))
-                .expect("send projects.list response");
+                .expect("send first projects.list response");
+
+            let second = read_request(&mut socket);
+            assert_eq!(second["jsonrpc"], "2.0");
+            assert_eq!(second["method"], "projects.list");
+            assert_eq!(second["params"], json!({"profile":"fixture-profile"}));
+            let second_id = second["id"].as_u64().expect("numeric RPC id");
+            assert_eq!(second_id, first_id + 1);
+
+            // A delayed reply from the completed request must not settle the newer request.
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":first_id,"result":{
+                        "active_id":"p_stale",
+                        "projects":[{"id":"p_stale","slug":"stale","name":"Stale",
+                            "description":null,"icon":null,"color":null,"board_slug":null,
+                            "primary_path":"C:/work/stale","archived":false,"created_at":1.0,
+                            "folders":[]}]
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send stale projects.list response");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":second_id,"result":{
+                        "active_id":"p_second",
+                        "projects":[{"id":"p_second","slug":"second","name":"Second",
+                            "description":null,"icon":null,"color":null,"board_slug":null,
+                            "primary_path":"C:/work/second","archived":false,"created_at":2.0,
+                            "folders":[]}]
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send second projects.list response");
             socket.close(None).expect("close fixture WebSocket");
         });
         let (mut socket, _) =
@@ -21452,7 +21512,13 @@ mod tests {
                 request_id: "project-list-1".into(),
                 profile: "fixture-profile".into(),
             })
-            .expect("queue projects.list read");
+            .and_then(|()| {
+                command_tx.send(GatewayCommand::LoadProjectList {
+                    request_id: "project-list-2".into(),
+                    profile: "fixture-profile".into(),
+                })
+            })
+            .expect("queue projects.list reads");
         assert!(matches!(
             event_rx.recv_timeout(Duration::from_secs(3)).expect("projects.list result"),
             GatewayEvent::ProjectListLoaded {
@@ -21463,6 +21529,17 @@ mod tests {
                 && profile == "fixture-profile"
                 && snapshot.active_id.as_deref() == Some("p_demo")
                 && snapshot.projects[0].name == "Demo"
+        ));
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("second projects.list result"),
+            GatewayEvent::ProjectListLoaded {
+                request_id,
+                profile,
+                result: Ok(snapshot),
+            } if request_id == "project-list-2"
+                && profile == "fixture-profile"
+                && snapshot.active_id.as_deref() == Some("p_second")
+                && snapshot.projects[0].name == "Second"
         ));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
