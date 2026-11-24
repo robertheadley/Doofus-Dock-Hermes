@@ -1302,6 +1302,17 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway and failure transitions", "packaged Windows acceptance", "formal pinned-source acceptance"],
     },
+    "PAR-0086": {
+        "state": "partial",
+        "level": "headless_two_profile_side_by_side_composer_isolation",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/api/canonical-profile-route.test.ts#a sibling profile route survives canonical request translation",
+            "apps/hermes-native/src/app.rs#two_profile_sessions_render_side_by_side_without_crossing_owner_state",
+            "apps/hermes-native/src/app.rs#session_pane_from_another_gateway_shows_blocked_owner_state_without_mutating_chat",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0178.json#EV-0178",
+        ],
+        "gaps": ["authenticated live Gateway submission routing", "packaged Windows acceptance", "formal pinned-source acceptance"],
+    },
     "PAR-0069": {
         "state": "partial",
         "level": "headless_profile_scoped_recent_archived_session_listing",

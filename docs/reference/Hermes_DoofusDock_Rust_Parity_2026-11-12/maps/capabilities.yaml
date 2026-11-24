@@ -2136,6 +2136,7 @@ capabilities:
       description: "Native panes preserve separate profile ownership, render without replacing the main chat, and keep colliding session IDs distinct. The mapped behavior is partial pending broad profile UX, live Gateway and packaged Windows acceptance."
   evidence:
   - EV-0163
+  - EV-0178
 
 - id: ui-follow-a-session-across-multi-window-clients
   name: Follow a session across multi-window clients

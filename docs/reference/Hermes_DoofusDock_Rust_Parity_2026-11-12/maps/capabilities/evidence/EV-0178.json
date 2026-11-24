@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0178",
+  "capability_id": "ui-open-two-concurrent-profiles-in-separate-sessions",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "c26f052ba56b9961425de0412144768fa23bb175",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked workspace suite: 727 library + 15 automation protocol + 3 launcher tests; all-target locked cargo check; headless two-pane egui interaction.",
+  "scenario": "open-two-profile-sessions-with-colliding-stored-session-ids-side-by-side",
+  "locator": "../../../../apps/hermes-native/src/app.rs#two_profile_sessions_render_side_by_side_without_crossing_owner_state",
+  "notes": "The headless UI opens work and personal sessions with the same stored session ID in separate side-by-side Dock panes. It verifies each transcript and draft is independently rendered, focuses and types into each composer, and confirms each resulting draft remains attached to its exact Gateway/session/profile owner key. A separate UI test opens a pane owned by another Gateway and verifies an actionable fail-closed state while the active route, profile, transcript and draft remain unchanged. The renderer tests do not send a prompt or validate authenticated live Gateway routing. Packaged Windows acceptance and formal pinned-source pairing remain open; PAR-0086 stays partial."
+}

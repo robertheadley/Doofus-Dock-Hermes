@@ -43,6 +43,8 @@ The app uses DoofusDock `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`, pinned by Gi
 
 The primary session toolbar includes a separate read-only context row derived from the active session profile, the exact current Gateway connection ID, the Gateway endpoint profile, and the negotiated runtime profile. It never reads the workspace's newly selected connection as a substitute for the session owner and never initiates a Gateway request. A disconnected endpoint reads Offline; an attached endpoint without a negotiated runtime reads Negotiating; mismatched session/endpoint/runtime identity is shown explicitly. The accessible label is `Session context: profile …; Gateway …; state …`.
 
+Each session-pane composer receives a persistent egui widget ID derived from the session owner key (Gateway connection, stored session ID, and profile). This keeps focus and draft editing isolated when Dock displays profile sessions side by side, including same-ID sessions from different profiles. Panes owned by another Gateway are rejected before their chat state is loaded.
+
 ## Protocol implementation sequence
 
 1. Continue implementing the fixed Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`; do not update the parity denominator when upstream moves.

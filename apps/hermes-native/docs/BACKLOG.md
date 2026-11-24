@@ -498,3 +498,10 @@ Existing native code and headless regressions already cover profile routing, ret
 - [x] Parse bounded `connection.request` and full `connection.update` snapshots; attach setup state to the originating tool row, ignore stale sequences, render pending approval/skip/authorization/setup-input controls, and send the pinned `connection.respond` RPC through the owning Gateway actor. Secret fields are masked, retained only in zeroizing memory drafts, and excluded from transcript and receipt/debug projections. Local parser, reducer, actor, and headless UI tests pass.
 - [x] Hydrate pending connection operations from session resume snapshots into the matching tool row without duplication or sequence rewind; safely reissue one failed/expired connector or MCP target on its existing open operation, and clear unknown retry state only after a newer authoritative snapshot. Headless tests pass.
 - [ ] Complete connector-directory actions and validate the full setup flow against an authenticated Hermes Gateway and packaged Windows app; PAR-0518 remains partial pending live and source-paired acceptance.
+
+### PAR-0086 — Concurrent profile sessions
+
+- [x] Keep same-ID sessions separate by Gateway/profile owner and render their transcripts and drafts in side-by-side Dock panes.
+- [x] Scope each composer widget identity to its owning Gateway, stored session ID and profile; headless interaction coverage types into both composers independently.
+- [x] Reject a pane from a different active Gateway with an actionable switch-connection state while preserving the active chat.
+- [ ] Validate actual Gateway prompt routing and packaged Windows behavior; PAR-0086 remains partial until live and source-paired acceptance.

@@ -5542,3 +5542,15 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No polling, file reads, or Gateway RPC was added; the row uses already-held app state during the normal UI frame.
 - **risks:** Authenticated live Gateway, packaged Windows and formal pinned-source acceptance remain open; the state tests and screenshot do not prove those environments. The pinned Desktop only shows its owning-profile marker when multiple profiles are configured; this implementation always surfaces the session profile because it shares a row with Gateway ownership and state, an intentional agent-context choice.
 - **follow_up:** Verify the row through the authenticated Gateway and packaged Windows app, then retain partial status until source-paired acceptance.
+
+### Revision 372 — Isolate concurrent profile session composers — 2026-11-24
+
+- **id:** hermes-par0086-concurrent-profile-composers-20261124
+- **what:** Scoped each chat composer’s persistent widget identity to its Gateway connection, stored session ID and profile. Added a side-by-side same-ID dual-profile test that types into both composers and a foreign-Gateway failure test that verifies the active chat is preserved.
+- **why:** Concurrent profile sessions must retain independent transcript and draft state even when stored session IDs collide; egui composer identity previously allowed simultaneous editors to share widget state.
+- **components:** Native chat composer, session-pane owner projection, DoofusDock split layout, headless UI tests, PAR-0086 evidence.
+- **type:** Agent workflow correctness
+- **validation:** Full locked suite passes 727 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt and diff checks pass. Read-only peer review found no blocking issue. No Gateway request or prompt submission was part of this synthetic UI test.
+- **performance:** Composer ID computation uses the existing owner identity and adds no I/O, polling or RPC.
+- **risks:** Live prompt submission routing, packaged Windows acceptance and formal pinned-source pairing remain open.
+- **follow_up:** Verify both profile composers against an authenticated Gateway and packaged Windows runtime before treating concurrent profile sessions as complete.
