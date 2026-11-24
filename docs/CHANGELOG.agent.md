@@ -5409,3 +5409,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **risks:** Authenticated live Gateway, packaged Windows and formal pinned-source acceptance remain open; feature state remains partial.
 - **follow_up:** Continue with the recommended next P0 gateway task after this validated reconnect contract.
 
+### Gateway reconnect evidence receipt correction — 2026-11-24
+
+- **id:** hermes-par-0505-evidence-sha-correction-20261124
+- **timestamp:** 2026-11-24T17:33:31Z
+- **what:** Bound EV-0170 to the verified full 40-character implementation commit SHA after the package validator rejected the abbreviated hash.
+- **why:** Keep machine-readable capability evidence valid and traceable to the implementation under test.
+- **components:** EV-0170 capability evidence.
+- **type:** evidence correction
+- **validation:** Capability package validator passes structural checks; its YAML parse step was skipped because PyYAML is unavailable.
+- **performance:** No runtime change.
+- **risks:** Source-paired/live acceptance remains open as recorded in EV-0170.
+- **follow_up:** Continue to the next agent-workflow P0 after publishing.
+
