@@ -3697,3 +3697,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No additional network calls; one event is sent only for an explicit gap response and the stale cursor entry is removed.
 - **risks:** Authenticated live Gateway and packaged Windows behavior are not verified; PAR-0513 remains partial.
 - **follow_up:** Validate reconnect and automatic resume against the authenticated Gateway and packaged app.
+
+### Revision 382 — Match composer typeface to pinned Hermes — 2026-11-24
+
+- **id:** hermes-composer-proportional-font-20261124
+- **what:** Changed main and message-edit composer inputs to the scaled proportional UI face. JetBrains Mono remains first for monospace surfaces, with Fira Code as the requested fallback.
+- **why:** The pinned Hermes composer inherits the platform UI font; native composer text was still monospace.
+- **components:** `src/fonts.rs`, font contract tests, README, architecture, plan, automation evidence notes and headless session-pane capture.
+- **type:** visual alignment
+- **validation:** Focused chat typography test passed; `cargo fmt --all -- --check` and `git diff --check` passed; 1440×900 isolated session-pane screenshot captured and visually inspected.
+- **performance:** Uses the existing registered proportional font family; no frame-loop I/O or extra font loading.
+- **risks:** Cross-platform font rasterization and packaged Windows visual behavior remain unverified.
+- **follow_up:** Keep theme-configurable and platform-wide font-stack parity as distinct follow-up work.

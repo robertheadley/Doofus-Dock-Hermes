@@ -32,7 +32,7 @@ pub const MESSAGE_TEXT_INDENT: f32 = 12.0;
 pub const MARKDOWN_LIST_INDENT: f32 = CHAT_BODY_TEXT_SIZE * 1.625;
 
 pub fn chat_composer_font() -> FontId {
-    FontId::new(CHAT_BODY_TEXT_SIZE, FontFamily::Monospace)
+    FontId::new(CHAT_BODY_TEXT_SIZE, FontFamily::Proportional)
 }
 
 /// Install the user's chosen typefaces while retaining egui's bundled fallback
@@ -309,7 +309,7 @@ mod tests {
         assert_eq!(MESSAGE_TEXT_INDENT, 12.0);
         let composer_font = chat_composer_font();
         assert!((composer_font.size - 14.3).abs() < 0.001);
-        assert_eq!(composer_font.family, FontFamily::Monospace);
+        assert_eq!(composer_font.family, FontFamily::Proportional);
 
         let mut markdown_style = style.clone();
         apply_assistant_markdown_line_height(&mut markdown_style);

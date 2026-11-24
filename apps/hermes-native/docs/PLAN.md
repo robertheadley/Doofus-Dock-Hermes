@@ -2349,3 +2349,9 @@ Validation: `cargo test --workspace --locked --features agent-automation -- --te
 ### Revision 381 — Connect replay-gap detection to authoritative resume — 2026-11-24
 
 PAR-0513 now converts only an explicit pinned `snapshot_required: true` replay response into `session.replay_gap`, scoped to the cursor's exact profile and runtime session. It removes that stale cursor, includes returned replay epoch/latest sequence metadata, and does not dispatch rows from the unusable replay window. The app's existing owner-fenced recovery requests one authoritative resume while preserving transcript and draft; no prompt is resubmitted. A loopback WebSocket regression proves transport behavior. EV-0181 records partial evidence; authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open.
+
+### Revision 382 — Match composer typeface to pinned Hermes — 2026-11-24
+
+The main and message-edit composers now use the scaled proportional UI font, matching the pinned source. JetBrains Mono and Fira Code remain registered for monospace content. The chat body/tool/caption sizes, default 110% scale and transcript/list indents remain at their source-derived values.
+
+Validation: focused `chat_scale_and_transcript_rhythm_match_pinned_desktop_defaults` passes; `cargo fmt --all -- --check` and `git diff --check` pass. A gateway-isolated 1440×900 session-pane screenshot was captured and visually reviewed at `artifacts/agent-ui/typography-source-fonts-20261124.png`.

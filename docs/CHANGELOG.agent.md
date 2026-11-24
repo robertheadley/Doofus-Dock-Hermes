@@ -5584,3 +5584,15 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 ### PAR-0513 — Replay-gap transport recovery — 2026-11-24
 
 Native reconnect now turns Hermes' explicit `snapshot_required: true` response into a profile/session-scoped `session.replay_gap`, clears the stale cursor, and suppresses the unusable replay window. Existing owner-fenced app recovery then requests an authoritative session snapshot while preserving transcript/draft and never resubmitting a prompt. Focused loopback and app regressions pass. EV-0181 records the headless evidence; live Gateway, packaged Windows and formal pinned-source acceptance remain open, so the capability stays partial.
+
+### Hermes composer typography follow-up — 2026-11-24
+
+- **id:** hermes-composer-proportional-font-20261124
+- **what:** Switched main and edit chat composers to the pinned source's proportional UI face; kept JetBrains Mono and Fira Code for monospace content.
+- **why:** Source composers inherit the UI font, while native text entry still used monospace.
+- **components:** `apps/hermes-native/src/fonts.rs`, composer typography tests, source-alignment docs and headless capture.
+- **type:** UI typography alignment
+- **validation:** Focused font contract, formatting and diff checks passed; 1440×900 gateway-isolated screenshot visually inspected.
+- **performance:** Existing font-family registration only; no runtime I/O added.
+- **risks:** Platform-specific rendering and packaged Windows acceptance remain unverified.
+- **follow_up:** Evaluate platform and theme-specific font-stack differences separately.
