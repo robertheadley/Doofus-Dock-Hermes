@@ -3685,3 +3685,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No frame-loop I/O, network calls, or additional allocations beyond per-frame style construction in existing scoped UI rendering.
 - **risks:** Native has no distinct HUD/floating rich-composer surface; session panes reuse the same scaled composer. Live Gateway and packaged Windows visual acceptance remain open.
 - **follow_up:** Compare transcript and composer against the pinned Desktop at matched DPI; preserve HUD-only compact spacing as out of scope until Hermes Native has a HUD context.
+
+### Revision 381 — Connect replay-gap detection to authoritative resume — 2026-11-24
+
+- **id:** hermes-par-0513-replay-gap-transport-20261124
+- **what:** Convert explicit Hermes `snapshot_required: true` replay responses into owner-scoped `session.replay_gap` events, clear the stale replay cursor, and suppress unusable replay rows.
+- **why:** The native UI already had safe owner-fenced snapshot recovery, but the reconnect transport dropped the signal that starts it.
+- **components:** Gateway reconnect replay transport, owner-fenced session resume, PAR-0513 progress and UCM evidence.
+- **type:** agent workflow reliability
+- **validation:** Focused real-loopback WebSocket regression passes; full locked workspace suite, all-target check, formatting, progress builders, package validation, and task-state validation recorded in the execution log.
+- **performance:** No additional network calls; one event is sent only for an explicit gap response and the stale cursor entry is removed.
+- **risks:** Authenticated live Gateway and packaged Windows behavior are not verified; PAR-0513 remains partial.
+- **follow_up:** Validate reconnect and automatic resume against the authenticated Gateway and packaged app.

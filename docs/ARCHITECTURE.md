@@ -143,3 +143,5 @@ The pinned Hermes titlebar folds whole live-tree side groups. Hermes vendors Doo
 ### Hermes Native saved-session branching
 
 Hermes Native branches saved conversations with the pinned `session.mutate` `branch` operation, using the parent's revision and execution generation from a profile-scoped snapshot. It accepts only a receipt bound to that parent, opens the confirmed child, preserves the parent, and retains the exact request identity for safe retry after an unknown write outcome. Branch-from-message, live Gateway, and packaged Windows acceptance remain open.
+
+Reconnect replay now converts an explicit Hermes `snapshot_required: true` response into a profile-scoped `session.replay_gap`, removes the stale cursor, and dispatches no rows from the unusable window. The existing handler performs the authoritative resume only for the exact open session owner. This preserves transcript/draft and does not resubmit an uncertain prompt. Loopback transport and app owner-fence tests pass; live Gateway and packaged Windows behavior remain unverified.

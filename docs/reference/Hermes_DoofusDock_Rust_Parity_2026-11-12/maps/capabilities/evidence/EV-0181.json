@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0181",
+  "capability_id": "ui-detect-gap-and-reload-authoritative-snapshot",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "b3ef3c609315f85becd4ddc03e3309899a6ec26c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked agent-automation workspace suite: 754 library + 15 automation protocol + 3 launcher tests; all-target check passed.",
+  "scenario": "snapshot-required-reconnect-emits-profile-scoped-session-replay-gap-clears-stale-cursor-and-does-not-dispatch-events",
+  "locator": "apps/hermes-native/src/gateway.rs#reconnect_snapshot_required_emits_owner_scoped_replay_gap_and_clears_cursor",
+  "notes": "A real loopback WebSocket response with snapshot_required=true is converted into the pinned session.replay_gap event, preserving exact runtime session and profile plus latest_seq/replay_epoch metadata. The stale cursor is removed, replay rows from the failed window are not dispatched, and existing app tests verify owner-fenced authoritative resume preserving transcript/draft. Prompt submission is not replayed. Authenticated live Gateway, packaged Windows and formal pinned-source acceptance remain open; capability remains partial."
+}

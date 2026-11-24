@@ -5580,3 +5580,7 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** Validation-only; no runtime performance effect.
 - **risks:** Authenticated live Gateway, packaged Windows behavior, older transcript pagination, and formal source-paired acceptance remain open.
 - **follow_up:** Continue with live Gateway verification and packaged acceptance.
+
+### PAR-0513 — Replay-gap transport recovery — 2026-11-24
+
+Native reconnect now turns Hermes' explicit `snapshot_required: true` response into a profile/session-scoped `session.replay_gap`, clears the stale cursor, and suppresses the unusable replay window. Existing owner-fenced app recovery then requests an authoritative session snapshot while preserving transcript/draft and never resubmitting a prompt. Focused loopback and app regressions pass. EV-0181 records the headless evidence; live Gateway, packaged Windows and formal pinned-source acceptance remain open, so the capability stays partial.

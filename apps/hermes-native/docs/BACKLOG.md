@@ -517,3 +517,9 @@ Existing native code and headless regressions already cover profile routing, ret
 
 - [x] Use `session.transcript` with opaque cursors for unresolved-owner read-only transcript pages; preserve endpoint and cursor fences, merge duplicate boundaries, honor reset/exhaustion, and keep the primary prompt lane responsive during reads.
 - [ ] Extend the cursor read path to known-owner paging and verify authenticated live Gateway, packaged Windows behavior, and formal source-paired acceptance; the capability remains partial.
+
+### PAR-0513 — Replay-gap detection and authoritative recovery
+
+- [x] Convert an explicit `snapshot_required: true` replay response into the pinned profile/session-scoped `session.replay_gap` event; clear only the stale cursor and suppress unusable replay rows.
+- [x] Verify the loopback transport event metadata and retain owner-fenced snapshot recovery tests that preserve transcript/draft and never resubmit a prompt.
+- [ ] Verify authenticated live Gateway and packaged Windows behavior; keep PAR-0513 partial pending runtime and source-paired acceptance.

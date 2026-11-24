@@ -10325,9 +10325,10 @@ capabilities:
   verification:
     scenarios:
     - id: replay-gap-resumes-exact-owner-and-preserves-transcript-and-draft
-      description: "Headless app recovery resumes only the exact active/open owner and preserves transcript/draft; reconnect does not resubmit an unknown prompt. Critical limitation: native replay transport drops snapshot_required responses instead of emitting session.replay_gap, so the full automatic detection-to-snapshot flow is not complete. Live Gateway and packaged Windows acceptance remain open."
+      description: "Headless app recovery resumes only the exact active/open owner and preserves transcript/draft; reconnect does not resubmit an unknown prompt. A loopback transport regression proves explicit snapshot_required responses dispatch the pinned session.replay_gap event and suppress stale replay rows. Live Gateway and packaged Windows acceptance remain open."
   evidence:
   - EV-0160
+  - EV-0181
 
 - id: ui-answer-gateway-server-initiated-approval-request
   name: Answer gateway server-initiated approval request

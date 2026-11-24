@@ -281,3 +281,5 @@ Side-by-side session panes preserve profile-scoped transcripts and drafts even w
 ### PAR-0088 read-only historical sessions
 
 When a saved session's live owner cannot be resolved, Hermes Native can show a bounded, ID-only stored transcript in read-only mode. Session writes remain unavailable until the user chooses a matching live profile and resume succeeds. Current transcript recovery is limited to the first 120 messages; there is no older-page UI. Live Gateway and packaged Windows validation remain open, so this capability is partial.
+
+On reconnect, a pinned `snapshot_required` replay response now becomes a profile-scoped `session.replay_gap` event. The app then requests an authoritative snapshot for the exact active/open session owner, preserves its transcript and draft, and drops the stale replay cursor. The loopback transport regression and owner-fenced app tests pass; live Gateway and packaged Windows acceptance remain open.

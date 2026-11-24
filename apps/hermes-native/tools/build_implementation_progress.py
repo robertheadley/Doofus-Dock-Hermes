@@ -1162,16 +1162,17 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0513": {
         "state": "partial",
-        "level": "headless_replay_gap_owner_fenced_recovery_with_transport_gap",
+        "level": "headless_replay_gap_transport_to_owner_fenced_snapshot_recovery",
         "refs": [
-            ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-gateway-replay.test.ts#snapshot_required",
+            ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-gateway.ts#applyReplayEpochs",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-message-stream/replay-gap.test.tsx#replay_gap",
+            "apps/hermes-native/src/gateway.rs#reconnect_snapshot_required_emits_owner_scoped_replay_gap_and_clears_cursor",
             "apps/hermes-native/src/app.rs#replay_gap_resumes_active_session_and_preserves_transcript_and_draft",
             "apps/hermes-native/src/app.rs#replay_gap_resumes_only_the_exact_open_session_pane_owner",
             "apps/hermes-native/src/gateway.rs#reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
-            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0160.json#EV-0160",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0181.json#EV-0181",
         ],
-        "gaps": ["native replay transport currently drops snapshot_required responses without synthesizing session.replay_gap, so automatic detection-to-resume is incomplete", "authenticated live Gateway and packaged Windows acceptance"],
+        "gaps": ["authenticated live Gateway and packaged Windows acceptance"],
     },
     "PAR-0089": {
         "state": "partial",
