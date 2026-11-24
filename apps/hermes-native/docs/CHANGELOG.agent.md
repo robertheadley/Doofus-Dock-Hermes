@@ -3661,3 +3661,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No additional background process or frame-loop filesystem access; local file selection is invoked only on user request.
 - **risks:** Authenticated live Gateway, packaged Windows folder picker, denied/offline response behavior and formal source-paired acceptance remain unverified.
 - **follow_up:** Test against the authenticated Hermes Gateway and installed Windows app; retain partial status until those checks pass.
+
+### Revision 379 — Add cursor history pages and source chat typography — 2026-11-24
+
+- **id:** hermes-par0090-cursor-and-chat-typography-20261124
+- **what:** Added bounded, capability-gated `session.transcript` opaque-cursor paging for unresolved-owner read-only history, with request/endpoint/cursor fences, deduplication, reset/exhaustion behavior, and explicit retry. Applied the pinned Desktop's default 110% scale and transcript spacing to chat content, independent of window zoom; preserved the fixed message gutter and the requested JetBrains Mono/Fira Code stack.
+- **why:** Let the user inspect older stored history without guessing a session owner, and match the downloaded source's default conversation typography and spacing.
+- **components:** `src/app.rs`, `src/gateway.rs`, `src/fonts.rs`, UCM evidence and progress overlay, README, architecture, backlog, and plan.
+- **type:** agent workflow + visual alignment
+- **validation:** Full locked workspace suite passes (752 library + 15 automation protocol + 3 launcher tests); `cargo fmt --all -- --check`, `git diff --check`, both progress builders, package validator with PyYAML, independent YAML parse, and `doofus_task.py validate` pass. Headless capture: `artifacts/agent-ui/typography-chat-scale-110-20261124.png`.
+- **performance:** No benchmark performed. Transcript reads use a separate worker lane with a tested two-reader concurrency cap; UI spacing adds no frame-loop I/O.
+- **risks:** Opaque cursor reads are currently used for unresolved-owner read-only history; known-owner native paging remains offset-based. Authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified; PAR-0090 stays partial.
+- **follow_up:** Exercise the cursor flow against the authenticated Gateway and packaged Windows app; assess extending it to known-owner pagination before claiming broader opaque-cursor support.

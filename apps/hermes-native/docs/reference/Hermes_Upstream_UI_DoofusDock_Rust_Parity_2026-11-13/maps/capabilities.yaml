@@ -2239,7 +2239,7 @@ capabilities:
   name: Page transcript with opaque cursors
   area: sessions-projects
   claim: 'The desktop user can: page transcript with opaque cursors'
-  status: not_implemented
+  status: partial
   tags:
   - rust-ui
   - hermes-upstream
@@ -2249,9 +2249,12 @@ capabilities:
   - type: spec
     locator: Hermes desktop.md / programmatic integration
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0180.json
   verification:
     scenarios:
     - id: success

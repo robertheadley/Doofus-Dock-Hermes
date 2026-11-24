@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0180",
+  "capability_id": "ui-page-transcript-with-opaque-cursors",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "a1cb7841cf704dd86330c5c485271accfffe4588",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native headless Rust workspace tests with agent-automation enabled; 752 library, 15 automation protocol, and 3 launcher tests passed.",
+  "scenario": "unresolved-owner-session-transcript-paging-with-opaque-cursors-remains-read-only-and-retryable",
+  "locator": "apps/hermes-native/src/app.rs#read_only_cursor_history_uses_id_only_pages_and_merges_duplicate_boundaries",
+  "notes": "The client uses the advertised session-transcript-v1 RPC for unresolved-owner historical reads, passes opaque cursors unchanged, rejects stale endpoint/cursor responses, merges duplicate row boundaries, honors reset/exhaustion, and exposes explicit retry after an initial read failure. Legacy older-page fallback remains session-ID-only when a selected profile has not been confirmed. This is limited to unresolved-owner read-only history; known-owner native paging remains offset-based. Authenticated live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open, so the capability is partial."
+}

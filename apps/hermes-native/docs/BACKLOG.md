@@ -510,5 +510,10 @@ Existing native code and headless regressions already cover profile routing, ret
 
 - [x] Recover an unresolved-owner transcript by stored session ID and render it read-only; block prompt/session mutations until explicit profile selection and successful live resume.
 - [x] Keep ordinary live-resume errors from silently opening historical fallback; validate headless owner and transport fences.
-- [ ] Add older transcript paging (current display is limited to the first 120 messages).
+- [x] Add explicit older-page controls for the cursor-capable read-only path; failed initial reads can be retried without silently re-resuming or mutating the historical session.
 - [ ] Verify authenticated live Gateway and packaged Windows behavior; keep PAR-0088 partial pending source-paired acceptance.
+
+### PAR-0090 — Opaque-cursor transcript reads
+
+- [x] Use `session.transcript` with opaque cursors for unresolved-owner read-only transcript pages; preserve endpoint and cursor fences, merge duplicate boundaries, honor reset/exhaustion, and keep the primary prompt lane responsive during reads.
+- [ ] Extend the cursor read path to known-owner paging and verify authenticated live Gateway, packaged Windows behavior, and formal source-paired acceptance; the capability remains partial.

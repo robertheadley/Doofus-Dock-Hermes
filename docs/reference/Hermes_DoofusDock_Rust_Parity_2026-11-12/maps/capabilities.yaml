@@ -2215,7 +2215,7 @@ capabilities:
   name: Page transcript with opaque cursors
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can page transcript with opaque cursors.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2227,9 +2227,12 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: implemented
+  evidence:
+  - type: test_result
+    locator: maps/capabilities/evidence/EV-0180.json
 - id: ui-recover-cleanly-after-transcript-compaction
   name: Recover cleanly after transcript compaction
   area: sessions-projects
