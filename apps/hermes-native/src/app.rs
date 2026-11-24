@@ -46535,6 +46535,94 @@ mod tests {
     }
 
     #[test]
+    fn pasting_an_image_into_the_focused_composer_requests_a_scoped_gateway_attachment() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = "clipboard-image-connection";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-local".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "https://gateway.example.test".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway.with_connection_id(connection_id));
+
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 620.0))
+            .build_ui(move |ui| frame_app.borrow_mut().composer(ui));
+        harness.get_by_label("Message composer").click();
+        harness.run();
+        let pasted = Arc::new(egui::ColorImage::new(
+            [2, 2],
+            vec![Color32::from_rgb(27, 108, 194); 4],
+        ));
+        harness.event(egui::Event::PasteImage(pasted));
+        harness.run();
+
+        let (request_id, session_id, stored_session_id, profile, path, name, is_image) = loop {
+            match commands.recv_timeout(std::time::Duration::from_secs(1)) {
+                Ok(TestGatewayCommand::AttachComposerFile {
+                    request_id,
+                    session_id,
+                    stored_session_id,
+                    profile,
+                    path,
+                    name,
+                    is_image,
+                }) => {
+                    break (
+                        request_id,
+                        session_id,
+                        stored_session_id,
+                        profile,
+                        path,
+                        name,
+                        is_image,
+                    );
+                }
+                Ok(TestGatewayCommand::Other) => continue,
+                other => panic!("expected a clipboard image attachment command, got {other:?}"),
+            }
+        };
+        assert!(!request_id.is_empty());
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(stored_session_id.as_deref(), Some("stored-session"));
+        assert_eq!(profile.as_deref(), Some("work"));
+        assert!(name.starts_with("clipboard-hermes-native-clipboard-image-"));
+        assert!(name.ends_with(".png"));
+        assert!(is_image);
+        let staged = std::path::PathBuf::from(path);
+        assert_eq!(
+            staged.file_name().and_then(|file| file.to_str()),
+            Some(name.as_str())
+        );
+        assert!(
+            staged.is_file(),
+            "clipboard image is staged before Gateway upload"
+        );
+        assert_eq!(
+            image::ImageFormat::from_path(&staged).unwrap(),
+            image::ImageFormat::Png
+        );
+        assert_eq!(image::image_dimensions(&staged).unwrap(), (2, 2));
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn minimized_dock_tab_group_is_preserved_for_the_restore_rail() {
         let root = Node::tabs_with_minimized(
             "rail-test",
