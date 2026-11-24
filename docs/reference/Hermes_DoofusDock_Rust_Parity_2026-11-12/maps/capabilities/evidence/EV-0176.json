@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0176",
+  "capability_id": "ui-switch-project-working-directory",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "8d093811290b144221c938358bcfb5ea2b00c1a2",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked workspace suite: 721 library + 15 automation protocol + 3 launcher tests; all-target locked cargo check; headless 1440x900 app capture. No authenticated live Gateway or packaged-app interaction.",
+  "scenario": "profile-scoped-session-working-directory-change",
+  "locator": "../../../../apps/hermes-native/src/app.rs#session_cwd_confirmation_updates_only_the_requesting_session_owner",
+  "notes": "The native chat composer exposes a working-directory dialog. Local loopback sessions can browse folders; remote sessions can enter a path for the remote Hermes host. The request goes through session.cwd.set with the exact runtime session, profile and Gateway connection owner. Active work is rejected locally where known; Hermes remains authoritative and session_busy/error responses keep the draft editable. The UI updates cached cwd and branch only from the validated Hermes confirmation, fenced to the original session owner. Gateway actor, malformed response, busy session, stale owner and headless UI fixture coverage passes. The screenshot fixture uses synthetic offline transcript data and sends no Gateway request. Authenticated live Gateway, packaged Windows interaction and formal source-paired acceptance remain open."
+}

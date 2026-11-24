@@ -3649,3 +3649,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Windows system UI font is read once while building font definitions; no frame-loop filesystem reads were added.
 - **risks:** Windows UI font loading is headless-tested only; other platforms use egui's bundled proportional fallback. Live Hermes Gateway behavior is unaffected.
 - **follow_up:** Compare the captured native transcript with the pinned Hermes surface at matched DPI and continue PAR-0084.
+
+### Revision 370 — Change a session's working directory — 2026-11-24
+
+- **id:** hermes-par0084-working-directory-20261124
+- **what:** Added a chat composer directory action with local folder browsing, remote path entry, idle-session checks, profile/session/connection-fenced `session.cwd.set`, and confirmation-only cwd/branch refresh. Added an offline session/dialog screenshot fixture.
+- **why:** Agent sessions need to move to the intended project workspace without losing owner isolation or displaying an unconfirmed local path as active Hermes state.
+- **components:** Native chat composer and dialog, session view metadata, Gateway actor/result parser, automation fixture, PAR-0084 evidence.
+- **type:** agent workflow feature
+- **validation:** Full locked workspace suite passes (721 library + 15 automation protocol + 3 launcher); all-target locked cargo check, focused busy/stale-owner/protocol tests, rustfmt, diff and package/progress validation pass. The screenshot is an offline synthetic fixture.
+- **performance:** No additional background process or frame-loop filesystem access; local file selection is invoked only on user request.
+- **risks:** Authenticated live Gateway, packaged Windows folder picker, denied/offline response behavior and formal source-paired acceptance remain unverified.
+- **follow_up:** Test against the authenticated Hermes Gateway and installed Windows app; retain partial status until those checks pass.

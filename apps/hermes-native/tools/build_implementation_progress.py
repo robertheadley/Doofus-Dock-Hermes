@@ -1273,6 +1273,20 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway, packaged Windows interaction, and formal source-paired acceptance remain open"]
     },
+    "PAR-0084": {
+        "state": "partial",
+        "level": "headless_profile_session_connection_fenced_working_directory_change",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-cwd-actions.ts#session.cwd.set",
+            ".staging/hermes-pinned-878305/tui_gateway/methods_session.py#@_session_method(\"session.cwd.set\")",
+            "apps/hermes-native/src/app.rs#session_cwd_confirmation_updates_only_the_requesting_session_owner",
+            "apps/hermes-native/src/app.rs#changing_session_directory_is_refused_while_hermes_reports_it_busy",
+            "apps/hermes-native/src/gateway.rs#session_cwd_set_actor_sends_profile_scoped_rpc_and_returns_confirmation",
+            "apps/hermes-native/src/gateway.rs#session_cwd_set_response_requires_confirmed_directory_and_valid_branch",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0176.json#EV-0176",
+        ],
+        "gaps": ["authenticated live Gateway", "packaged Windows folder selection", "offline or denied remote path behavior", "formal pinned-source acceptance"],
+    },
     "PAR-0069": {
         "state": "partial",
         "level": "headless_profile_scoped_recent_archived_session_listing",

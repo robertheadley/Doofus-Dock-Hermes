@@ -419,6 +419,10 @@ PAR-0064 free-tier recovery maps known free_tier_* codes to backend-provided gui
 
 Recent/archived session queries and saved-session resumes are connection/profile scoped. The new-chat path creates a runtime session before submitting its first prompt; resume results are fenced by the exact request and owner. Headless tests cover these contracts, while authenticated live Gateway acceptance remains open.
 
+### Session working-directory changes
+
+The active chat's composer dialog captures the stored ID, runtime ID, profile, Gateway connection and owning view key before dispatch. It calls `session.cwd.set` using the runtime ID and profile scope. A local loopback endpoint may open the native folder picker; remote endpoints use explicit path entry so a local folder is not mistaken for a remote path. The UI pre-checks its profile-scoped active-session status and pending prompts/submissions, but Hermes is authoritative and may return `session_busy`. The request draft stays available on refusal. A successful response must contain a bounded cwd and optional bounded branch, then updates only the still-cached original owner view and matching session summary; the UI never updates optimistically. Headless regressions cover actor wire parameters/receipt, invalid response, busy refusal and stale owner fencing. The screenshot fixture is explicitly offline and does not exercise live Gateway or installed Windows folder selection.
+
 
 ### Branch a stored session
 

@@ -2069,7 +2069,7 @@ capabilities:
   name: Switch project working directory
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can switch project working directory.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2081,9 +2081,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: profile-scoped-session-working-directory-change
+      description: The active idle chat can request a working-directory change through session.cwd.set. Exact profile/session/connection ownership is preserved, busy sessions are refused, and cwd/branch refresh only after a validated Hermes confirmation. Local folder browsing and remote path entry are distinct. Headless UI and WebSocket actor regressions pass; authenticated live Gateway, packaged Windows interaction and formal source-paired acceptance remain open.
+  evidence:
+  - EV-0176
 - id: ui-display-session-profile-and-gateway
   name: Display session profile and gateway
   area: sessions-projects

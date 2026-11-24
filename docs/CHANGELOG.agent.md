@@ -5516,3 +5516,17 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** Thumbnail decode reuses the existing background bounded preview worker and texture cache; no synchronous file decode added to UI frames.
 - **risks:** Live Gateway uploads, restart validity, native OS picker/drop delivery and source-paired Windows acceptance remain unverified.
 - **follow_up:** Continue PAR-0062 with authenticated upload outcomes and remaining path-vs-bytes contract evidence.
+
+
+### PAR-0084 — Session working-directory change — 2026-11-24
+
+- **id:** hermes-par0084-working-directory-20261124
+- **timestamp:** 2026-11-24T19:51:30Z
+- **what:** Added an accessible chat working-directory dialog with local-only folder browsing, remote path entry, profile/session/connection-fenced `session.cwd.set`, idle/busy handling, and confirmation-only cwd/branch updates; added a distinct headless screenshot fixture and partial evidence.
+- **why:** Hermes agent sessions need a safe way to select their project workspace while preserving the exact session and Gateway owner.
+- **components:** Native composer/dialog, session cache, Gateway actor, headless automation CLI, PAR-0084 progress and UCM evidence.
+- **type:** Agent workflow feature
+- **validation:** Full locked suite 721 library + 15 automation protocol + 3 launcher; all-target locked check; focused Gateway/UI tests; rustfmt/diff; capability package and progress generation pass. Screenshot is synthetic/offline and makes no Gateway request.
+- **performance:** No frame-loop filesystem reads or additional background process.
+- **risks:** Authenticated live Gateway, packaged Windows folder selection, denied/offline behavior and formal source-paired acceptance remain open.
+- **follow_up:** Run the flow against authenticated Hermes and the installed Windows app; keep the capability partial pending those checks.

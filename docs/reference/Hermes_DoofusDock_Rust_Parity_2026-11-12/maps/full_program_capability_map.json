@@ -1611,7 +1611,7 @@
       "primitives": "tree/list; search-input; context-menu; badges; confirmation-dialog; breadcrumb",
       "dock_support": "layout shell only; domain widgets application-owned",
       "source_confidence": "upstream-documented+code-index",
-      "target_status": "not_implemented",
+      "target_status": "partial",
       "priority": "P0",
       "acceptance": "With target scope active, a user can switch project working directory; side-by-side behavior and failure case are recorded.",
       "test_id": "PAR-0084",

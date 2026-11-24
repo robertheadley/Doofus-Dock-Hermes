@@ -2313,3 +2313,10 @@ Validation: focused locked agent-automation test passes (1 library test; 712 fil
 PAR-0062 image attachments now render a 32×32 thumbnail in the composer through the existing bounded `FilePreviewStore` decode/cache path. The image node exposes an accessible name derived from the attachment filename. File attachments remain labeled filename chips. EV-0174 records the rendered composer UI and cached texture checks; this does not prove live upload behavior or packaged OS picker/drop behavior.
 
 Validation: focused `cargo test --locked --workspace --features agent-automation thumbnail` passes 3 library tests (2 new, 712 filtered); `cargo check --locked --workspace --all-targets --features agent-automation`, rustfmt and diff checks pass. Live Gateway and installed Windows behavior remain open.
+
+
+### Revision 375 — Add session working-directory changes — 2026-11-24
+
+PAR-0084 now has an accessible active-chat working-directory dialog and profile/session/connection-fenced `session.cwd.set` transport. Known busy states block dispatch; Hermes remains authoritative, and a refusal preserves the draft. Local folder browsing is available only for loopback Hermes; remote sessions accept the remote host path as text. The view updates cwd and branch only from a bounded successful receipt for the original owner. Added actor wire-contract, malformed-result, busy-session and stale-owner regressions plus an offline chat capture fixture.
+
+Validation: full locked suite passes 721 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt, diff and capability/progress validation pass. Screenshot `artifacts/agent-ui/session-working-directory-20261124.png` displays a synthetic offline chat and the opened directory dialog; no live Gateway request is sent. Authenticated live Gateway, packaged Windows folder selection, denied/offline behavior and formal pinned-source acceptance remain open.
