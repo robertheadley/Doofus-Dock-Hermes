@@ -56780,6 +56780,8 @@ mod tests {
     fn reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit() {
         let (mut app, profile_dir) = isolated_app();
         app.gateway_connected = true;
+        let connection_id = app.workspace.selected_gateway_connection_id().to_owned();
+        app.gateway_connection_id = Some(connection_id.clone());
         app.gateway_endpoint = Some(GatewayEndpoint {
             profile_id: "worker".into(),
             instance_id: "active-reselect-instance".into(),
@@ -56799,7 +56801,7 @@ mod tests {
         app.transcript = vec![serde_json::json!({"role":"assistant","content":"Still visible"})];
         app.draft = "Keep this unsent draft".into();
         app.sessions.push(SessionSummary {
-            connection_id: None,
+            connection_id: Some(connection_id.clone()),
             cwd: None,
             id: "active-session".into(),
             lineage_root_id: None,
@@ -56814,7 +56816,8 @@ mod tests {
             unread: false,
             archived: false,
         });
-        let key = session_identity_key("active-session", Some("worker"));
+        let key =
+            session_owner_identity_key("active-session", Some("worker"), Some(&connection_id));
         app.session_chat_views.insert(
             key.clone(),
             SessionChatViewState {
