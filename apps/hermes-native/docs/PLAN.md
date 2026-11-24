@@ -2299,3 +2299,17 @@ Validation: the full locked suite passes 699 library + 15 automation protocol + 
 The `doofus_task.py progress` report now reads the explicit 176-row chat/tool feature ledger. It reports implemented, partial, absent, and unknown states, mapped evidence, live-runtime state, source-pair acceptance, task lifecycle, and ETA availability separately. Tested task counts are labeled as lifecycle counts and cannot be mistaken for feature completion. The historical task tree and task-state validation remain preserved.
 
 Validation: continuity suite passes 19/19; JSON and plain-text progress outputs show the 176-row scope and partial states; persisted task state validates at revision 948. ETA remains unavailable because the plan has too few size-normalized throughput samples.
+
+
+### Revision 373 — Validate exact saved-connection ownership on reattach — 2026-11-24
+
+PAR-0510's active-sidebar reselect fixture now supplies the row's exact selected saved-connection ID as well as its profile. It asserts the resume cache is connection/profile/session scoped, preserves the active transcript and unsent draft, queues exactly one `session.resume` and no `prompt.submit`, and ignores a stale failure. The test is evidence for the selected connection path; it does not implement automatic switching to an inactive saved connection. EV-0173 records this partial headless result.
+
+Validation: focused locked agent-automation test passes (1 library test; 712 filtered); `cargo fmt --all -- --check` and `git diff --check` pass. Live in-flight Gateway, production reconnect, packaged Windows and source-paired acceptance remain open.
+
+
+### Revision 374 — Preview attached images in the native composer — 2026-11-24
+
+PAR-0062 image attachments now render a 32×32 thumbnail in the composer through the existing bounded `FilePreviewStore` decode/cache path. The image node exposes an accessible name derived from the attachment filename. File attachments remain labeled filename chips. EV-0174 records the rendered composer UI and cached texture checks; this does not prove live upload behavior or packaged OS picker/drop behavior.
+
+Validation: focused `cargo test --locked --workspace --features agent-automation thumbnail` passes 3 library tests (2 new, 712 filtered); `cargo check --locked --workspace --all-targets --features agent-automation`, rustfmt and diff checks pass. Live Gateway and installed Windows behavior remain open.

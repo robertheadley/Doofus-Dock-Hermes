@@ -1667,7 +1667,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0062": {
         "state": "partial",
-        "level": "headless_gateway_attachment_recovery_clipboard_paste_and_pathless_drop",
+        "level": "headless_gateway_attachment_recovery_clipboard_pathless_drop_and_accessible_image_preview",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/index.ts#uploadComposerAttachment",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-prompt-actions/utils.ts#withSessionNotFoundResume",
@@ -1686,6 +1686,9 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/gateway.rs#prompt_submit_includes_source_image_attachment_metadata",
             "apps/hermes-native/src/app.rs#composer_attachment_runtime_rebind_updates_owner_before_receipt",
             "apps/hermes-native/src/app.rs#image_only_prompt_uses_source_default_text_and_image_ref_stays_in_attachment_metadata",
+            "apps/hermes-native/src/app.rs#composer_renders_a_named_image_thumbnail_for_attached_images",
+            "apps/hermes-native/src/files.rs#image_thumbnail_renders_a_bounded_cached_texture",
+            "apps/hermes-native/src/files.rs#pub fn show_image_thumbnail",
             "apps/hermes-native/src/app.rs#composer_drop_accepts_multiple_paths_only_when_released_over_input",
             "apps/hermes-native/src/app.rs#fn composer_file_drop_paths",
             "apps/hermes-native/src/app.rs#fn composer_drop_path_list_is_complete",
@@ -1702,7 +1705,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0126.json#EV-0126",
             "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0125.json#EV-0125",
         ],
-        "gaps": ["attachment thumbnails", "pinned local path versus byte-upload policy", "live authenticated Gateway outcome matrix, native Windows clipboard/drop/picker interaction, and formal source-paired acceptance", "interrupted image draft validity after app restart"],
+        "gaps": ["pinned local path versus byte-upload policy", "live authenticated Gateway outcome matrix, native Windows clipboard/drop/picker interaction, and formal source-paired acceptance", "interrupted image draft validity after app restart"],
     },
     "PAR-0116": {
         "state": "partial",
@@ -2151,10 +2154,12 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0510": {
         "state": "partial",
-        "level": "headless_active_reselect_and_loopback_inflight_resume_recovery",
+        "level": "headless_exact_selected_connection_reselect_and_loopback_inflight_resume_recovery",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/contrib/wiring.tsx#openStoredSession",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-route-resume.ts#dispatchRouteResume",
+            "apps/hermes-native/src/gateway.rs#pub fn owner_identity",
+            "apps/hermes-native/src/app.rs#fn require_active_session_owner",
             "apps/hermes-native/src/app.rs#reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit",
             "apps/hermes-native/src/app.rs#explicit_session_resume_skips_rows_with_archive_or_delete_in_flight",
             "apps/hermes-native/src/app.rs#session_resume_errors_are_correlated_and_render_on_the_owning_tile",
@@ -2164,7 +2169,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": [
             "real Hermes gateway/in-flight-turn reattachment and production reconnect behavior not exercised; loopback WebSocket verifies stream forwarding and retry after refusal",
-            "native row identity preserves profile but not the source connection-plus-profile owner route",
+            "a row owned by an inactive saved connection remains fail-closed until the user selects that connection; automatic cross-connection resume routing is not implemented",
             "Windows installed-app and source-paired visual evidence pending",
             "formal source acceptance remains pending",
         ],

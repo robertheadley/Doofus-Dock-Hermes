@@ -1496,11 +1496,14 @@ capabilities:
       description: When the native composer owns focus and the clipboard contains an image without usable text, consume the egui image-paste event, atomically stage a bounded PNG, and pass it through the existing profile/session-owned upload flow; other widgets keep their image-paste event.
     - id: gateway-attachment-stale-runtime-recovery
       description: On a definitive session-not-found attachment refusal, resume the exact stored session under the same profile, publish the new runtime owner, and retry the already-read payload once; reject mismatched or missing resume identity and do not retry other errors.
+    - id: composer-image-thumbnail
+      description: An attached local image renders through the bounded preview pipeline as a cached thumbnail with an accessible filename in the composer.
     - id: authenticated-attachment-upload
       description: Verify image/file upload success, refusal, and offline behavior against an authenticated Hermes Gateway on Windows.
   evidence:
   - EV-0126
   - EV-0125
+  - EV-0174
 - id: ui-restore-interrupted-image-draft-without-sending
   name: Restore interrupted image draft without sending
   area: chat-transcript
@@ -10212,6 +10215,8 @@ capabilities:
     scenarios:
     - id: headless-trigger
       description: An already-active sidebar reselect queues one correctly scoped resume and no prompt submit; the draft and visible transcript stay intact while pending.
+    - id: headless-selected-connection-reselect
+      description: A tagged stored-session row reselects under its exact selected connection and profile, keeps the transcript and unsent draft, ignores a stale resume, and queues one resume without prompt.submit.
     - id: gateway-loopback-inflight
       description: A local WebSocket gateway fixture refuses a resume, accepts the retry, streams start/delta events while the transcript snapshot is pending, and emits completion after the snapshot.
     - id: live-inflight
@@ -10224,6 +10229,7 @@ capabilities:
   - EV-0018
   - EV-0019
   - EV-0023
+  - EV-0173
 - id: ui-replay-session-transcript-after-disconnect
   name: Replay session transcript after disconnect
   area: protocol-reliability

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0174",
+  "capability_id": "ui-attach-image-or-file-to-prompt",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "0c0dd07356768ef71f40462324eb6a37758d1db8",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked Rust workspace with agent-automation feature. Focused thumbnail filter passed 3 library tests (2 newly added, 712 filtered). All-target locked cargo check, rustfmt and diff checks passed. No live Gateway or installed Windows runtime was used.",
+  "scenario": "composer-image-thumbnail",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/attachments.tsx#src={attachment.thumbnailUrl ?? attachment.previewUrl};apps/hermes-native/src/app.rs#composer_renders_a_named_image_thumbnail_for_attached_images;apps/hermes-native/src/files.rs#image_thumbnail_renders_a_bounded_cached_texture;apps/hermes-native/src/files.rs#pub fn show_image_thumbnail",
+  "notes": "The native composer now requests a 32x32 thumbnail for image attachments through FilePreviewStore, whose bounded decoder and texture cache are reused; its image node exposes an accessible name derived from the filename. The rendered composer test waits for the actual preview node. File attachments remain filename chips. Live upload outcomes, native OS delivery and packaged Windows acceptance remain open."
+}

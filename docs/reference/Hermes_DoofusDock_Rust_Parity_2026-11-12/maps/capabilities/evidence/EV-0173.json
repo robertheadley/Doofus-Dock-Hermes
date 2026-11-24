@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0173",
+  "capability_id": "ui-reattach-to-in-flight-turn-without-duplicating-submit",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "c4b3f9b957e7cbed2ef50a4a9b7b799a83e7a1c7",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked Rust workspace with agent-automation feature; focused UI test passed (1 library test, 712 filtered). Rust format and diff checks passed. No authenticated live Gateway or installed Windows app runtime.",
+  "scenario": "headless-exact-selected-connection-reselect",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/app/contrib/wiring.tsx#openStoredSession;apps/hermes-native/src/gateway.rs#SessionSummary::owner_identity;apps/hermes-native/src/app.rs#require_active_session_owner;apps/hermes-native/src/app.rs#reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit",
+  "notes": "The UI fixture tags the stored row with the selected saved connection, keys the pending view by (connectionId, profile, sessionId), preserves the active transcript and unsent draft, and asserts exactly one session.resume with no prompt.submit. A stale failure cannot replace the current request. This proves the selected-connection reattach path only; inactive connection auto-switching, live Gateway in-flight recovery, packaged Windows behavior and source-paired acceptance remain open."
+}

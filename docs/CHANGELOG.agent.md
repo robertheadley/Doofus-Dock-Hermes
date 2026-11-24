@@ -5488,3 +5488,31 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No runtime behavior changed.
 - **risks:** Gateway actor serializes requests; concurrent JSON-RPC pending-map multiplexing, live Gateway and packaged Windows acceptance remain open.
 - **follow_up:** Continue with the next dependency-ready agent workflow requirement.
+
+
+### PAR-0510 exact selected connection on reattach — 2026-11-24
+
+- **id:** hermes-par-0510-exact-selected-owner-20261124
+- **timestamp:** 2026-11-24T18:29:18Z
+- **what:** Strengthened the active-session reselect UI fixture with a connection-tagged session row and exact `(connectionId, profile, sessionId)` cache identity. Added EV-0173 and refreshed the scoped progress evidence.
+- **why:** The previous test used an untagged legacy row, leaving the saved-connection owner path unproven.
+- **components:** Session reattach regression; PAR-0510 progress; UCM evidence; plan and backlog.
+- **type:** Source-aligned headless validation
+- **validation:** Focused locked `agent-automation` UI test passed (1 library test, 712 filtered); `cargo fmt --all -- --check`; `git diff --check`; progress and capability validators.
+- **performance:** No runtime behavior or performance changed; test-only source change.
+- **risks:** Only the currently selected saved connection is exercised. Automatic cross-connection switching, live Gateway, packaged Windows and source-paired acceptance remain open.
+- **follow_up:** Continue the in-flight reattach contract; retain fail-closed behavior until a safe saved-connection handoff can preserve pending-owner and cache fences.
+
+
+### PAR-0062 accessible image previews in the composer — 2026-11-24
+
+- **id:** hermes-par-0062-composer-image-preview-20261124
+- **timestamp:** 2026-11-24T18:41:20Z
+- **what:** Added bounded 32×32 thumbnails to image attachment chips and an accessible preview name based on the file name; added rendered composer and cached texture tests; recorded EV-0174 and refreshed scoped progress.
+- **why:** The pinned Hermes composer shows image previews, while native image attachments were only listed by name.
+- **components:** Native composer, FilePreviewStore image renderer/cache, PAR-0062 progress evidence.
+- **type:** Agent workflow feature
+- **validation:** Focused locked thumbnail tests pass (3 library tests: two new plus remote preview regression); all-target locked cargo check, rustfmt, diff and capability/progress validators pass.
+- **performance:** Thumbnail decode reuses the existing background bounded preview worker and texture cache; no synchronous file decode added to UI frames.
+- **risks:** Live Gateway uploads, restart validity, native OS picker/drop delivery and source-paired Windows acceptance remain unverified.
+- **follow_up:** Continue PAR-0062 with authenticated upload outcomes and remaining path-vs-bytes contract evidence.
