@@ -2094,7 +2094,7 @@ capabilities:
   name: Display session profile and gateway
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can display session profile and gateway.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2107,8 +2107,10 @@ capabilities:
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
     backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    ui: partial
+    tests: partial
+  evidence:
+  - EV-0177
 - id: ui-open-two-concurrent-profiles-in-separate-sessions
   name: Open two concurrent profiles in separate sessions
   area: sessions-projects

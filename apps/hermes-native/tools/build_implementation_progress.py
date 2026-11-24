@@ -1287,6 +1287,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway", "packaged Windows folder selection", "offline or denied remote path behavior", "formal pinned-source acceptance"],
     },
+    "PAR-0085": {
+        "state": "partial",
+        "level": "headless_profile_gateway_session_context_and_state_tests",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/index.tsx#showProfileTag",
+            ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/profile-tag.tsx#ProfileTag",
+            "apps/hermes-native/src/app.rs#session_gateway_context",
+            "apps/hermes-native/src/app.rs#session_gateway_context_names_owner_connection_and_live_state",
+            "apps/hermes-native/src/app.rs#session_gateway_context_distinguishes_offline_and_unnegotiated",
+            "apps/hermes-native/src/app.rs#session_gateway_context_surfaces_session_or_runtime_identity_mismatch",
+            "apps/hermes-native/src/app.rs#session_gateway_header_exposes_profile_connection_and_state_accessibly",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0177.json#EV-0177",
+        ],
+        "gaps": ["authenticated live Gateway and failure transitions", "packaged Windows acceptance", "formal pinned-source acceptance"],
+    },
     "PAR-0069": {
         "state": "partial",
         "level": "headless_profile_scoped_recent_archived_session_listing",

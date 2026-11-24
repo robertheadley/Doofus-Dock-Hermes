@@ -41,6 +41,8 @@ The planned app is a Rust + egui client. The Hermes gateway remains responsible 
 
 The app uses DoofusDock `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`, pinned by Git revision in Cargo. The core, presentation, and egui-renderer crates are repository-local snapshots with per-crate source and license notes; the native host remains a Git dependency at the same pinned revision. Hermes preserves its GroupRail restore projection as a consumer extension. DoofusDock updates are opt-in and do not follow `main` automatically.
 
+The primary session toolbar includes a separate read-only context row derived from the active session profile, the exact current Gateway connection ID, the Gateway endpoint profile, and the negotiated runtime profile. It never reads the workspace's newly selected connection as a substitute for the session owner and never initiates a Gateway request. A disconnected endpoint reads Offline; an attached endpoint without a negotiated runtime reads Negotiating; mismatched session/endpoint/runtime identity is shown explicitly. The accessible label is `Session context: profile …; Gateway …; state …`.
+
 ## Protocol implementation sequence
 
 1. Continue implementing the fixed Hermes snapshot `8783054ef6cbafd86f10892241436862c1171a66`; do not update the parity denominator when upstream moves.

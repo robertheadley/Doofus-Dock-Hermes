@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-11-24T20:19:57Z",
+  "source_commit": "e6a51c78bff8c259ac45e78bd63f304f4f2c13a9",
+  "hermes_source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66",
+  "executable": "target/debug/hermes-automation.exe",
+  "executable_sha256": "4033a9656cc0111a558e4f8391960791bf4abfd58c381b837b31ebdd685fdbc1",
+  "capture_command": "cargo run --locked -p hermes-native --features agent-automation --bin hermes-automation -- --viewport 1440x900 --session-cwd-fixture --inspect --screenshot apps/hermes-native/artifacts/agent-ui/session-profile-gateway-20261124.png",
+  "viewport": "1440x900",
+  "route": "/cwd-demo-session",
+  "profile": "fixture-profile",
+  "gateway": "Local Hermes",
+  "displayed_state": "Negotiating",
+  "accessible_name": "Session context: profile fixture-profile; Gateway Local Hermes; state Negotiating",
+  "data_mode": "synthetic offline fixture",
+  "gateway_requests_sent": 0,
+  "screenshot_sha256": "ea2cc160dbcb5c88562fe7942f68a9a19d3c44a4bd8b562edde8c3dcdf526416"
+}

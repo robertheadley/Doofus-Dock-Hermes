@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0177",
+  "capability_id": "ui-display-session-profile-and-gateway",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "e6a51c78bff8c259ac45e78bd63f304f4f2c13a9",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked workspace suite: 725 library + 15 automation protocol + 3 launcher tests; all-target locked cargo check; headless 1440x900 session view with AccessKit inspection. No authenticated live Gateway or packaged-app interaction.",
+  "scenario": "display-session-owner-profile-gateway-and-connection-state",
+  "locator": "../../../../apps/hermes-native/src/app.rs#session_gateway_header_exposes_profile_connection_and_state_accessibly",
+  "notes": "The session-only context row displays the active session profile, the exact Gateway connection ID's configured display label, and a state derived from confirmed connection/endpoint/runtime identity. It reports Offline when the Gateway is not connected, Negotiating until a runtime description arrives, and Identity mismatch when session, endpoint or runtime profiles disagree. The UI assertion verifies the rendered label and confirms the synthetic fixture sends no Gateway request; unit tests cover confirmed, offline, negotiating and mismatch states. The pinned Desktop source displays the active session's owning-profile tag in apps/desktop/src/app/chat/index.tsx and ProfileTag in profile-tag.tsx. The headless screenshot and semantic tree are fixture evidence only; authenticated live Gateway, packaged Windows acceptance and formal pinned-source pairing remain open."
+}

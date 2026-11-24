@@ -41,6 +41,10 @@ PAR-0076 now has source-shaped date grouping and profile-scoped manual order wit
 
 PAR-0078 now has the source's 12-swatch Appearance submenu, row color markers, atomic local override persistence keyed by the session's durable `_lineage_root_id`, clear action, bounded palette validation, and end-to-end headless menu interaction coverage. Profile-scoped `projects.tree` ownership/color lookup now provides the inherited fallback under the local override. It remains pending because source-paired Windows/live evidence is absent.
 
+### PAR-0085 — Display session profile and Gateway — 2026-11-24
+
+The active chat now shows the session's owning profile, exact current Gateway connection label, and attached/negotiating/offline/identity-mismatch state in a dedicated row below the main toolbar. The view derives labels from the active connection owner and negotiated runtime; it does not substitute the workspace connection picker or send a request. Headless rendering, AccessKit-name, and offline/negotiating/mismatch tests pass. Authenticated live Gateway behavior, packaged Windows acceptance, and formal source-paired review remain open, so the capability stays partial.
+
 - [ ] Complete first-run bootstrap parity: source-style setup choice is rendered after failed initial gateway discovery. Remote discovery and exact-payload token/OAuth tests gate Apply. Apply persists the URL and DPAPI-protected credential, starts authenticated WebSocket attachment, and loads runtime identity and sessions; startup loads saved credentials. Implemented remote HTTP coverage includes session/history/search/capability reads plus session metadata and toolset writes. Still open: remaining remote APIs, live-service verification, legacy/password-provider embedded login, and local Hermes installer/startup/cancel/recovery. Source-paired acceptance remains open and PAR-0001 remains pending.
 
 ## Stage 1 — exact native shell

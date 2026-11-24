@@ -5530,3 +5530,15 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No frame-loop filesystem reads or additional background process.
 - **risks:** Authenticated live Gateway, packaged Windows folder selection, denied/offline behavior and formal source-paired acceptance remain open.
 - **follow_up:** Run the flow against authenticated Hermes and the installed Windows app; keep the capability partial pending those checks.
+
+### Revision 371 — Display session profile and Gateway context — 2026-11-24
+
+- **id:** hermes-par0085-session-gateway-context-20261124
+- **what:** Added a dedicated accessible row below the main toolbar displaying the active session profile, exact active Gateway connection label, and connected, negotiating, offline, or identity-mismatch state. The view is read-only and does not use the workspace's newly selected connection as a replacement for the session owner.
+- **why:** An agent or user needs to know which Hermes profile and Gateway own the active chat and whether the runtime identity is ready, especially across profile changes and connection failures.
+- **components:** Native chat shell, session profile/Gateway context projection, AccessKit label, automation fixture and PAR-0085 evidence.
+- **type:** Agent workflow UI
+- **validation:** Full locked suite passes 725 library + 15 automation protocol + 3 launcher tests; all-target locked check, focused owner/state UI tests, rustfmt and diff checks pass. Headless 1440x900 capture and accessibility tree show `fixture-profile` / `Local Hermes` / `Negotiating`; fixture sends no Gateway requests.
+- **performance:** No polling, file reads, or Gateway RPC was added; the row uses already-held app state during the normal UI frame.
+- **risks:** Authenticated live Gateway, packaged Windows and formal pinned-source acceptance remain open; the state tests and screenshot do not prove those environments. The pinned Desktop only shows its owning-profile marker when multiple profiles are configured; this implementation always surfaces the session profile because it shares a row with Gateway ownership and state, an intentional agent-context choice.
+- **follow_up:** Verify the row through the authenticated Gateway and packaged Windows app, then retain partial status until source-paired acceptance.
