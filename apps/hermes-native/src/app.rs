@@ -1187,6 +1187,15 @@ struct SessionChatViewState {
     resume_request_id: Option<String>,
     resume_connection_operation_at_start: Option<(String, u64)>,
     resume_error: Option<String>,
+    read_only_transcript: bool,
+    owner_resolution_request_id: Option<String>,
+    stored_transcript_request_id: Option<String>,
+    owner_resolution_error: Option<String>,
+    owner_resolution_force: bool,
+    owner_resolution_connection_id: Option<String>,
+    owner_resolution_instance_id: Option<String>,
+    owner_resolution_authority_epoch: Option<u64>,
+    owner_resolved_ambient: bool,
     transcript: Vec<serde_json::Value>,
     transcript_scroll_position: TranscriptScrollPosition,
     active_prompt_message_index: Option<usize>,
@@ -1200,6 +1209,14 @@ struct SessionChatViewState {
     composer_attachments: Vec<ComposerAttachment>,
     active_prepared_image_draft_id: Option<String>,
     restored_prepared_image_draft_id: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct CachedHermesProfiles {
+    connection_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+    names: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2107,6 +2124,7 @@ pub struct HermesNativeApp {
     gateway_event_deduplicator: GatewayEventDeduplicator,
     gateway_endpoint: Option<GatewayEndpoint>,
     gateway_runtime: Option<crate::gateway_runtime::RuntimeDescription>,
+    installed_profile_roster: Option<CachedHermesProfiles>,
     sessions: Vec<SessionSummary>,
     project_session_colors: BTreeMap<(String, String), Option<String>>,
     project_session_color_requests: BTreeMap<String, String>,
@@ -4691,6 +4709,7 @@ fn render_message() -> &'static str {
             gateway_event_deduplicator: GatewayEventDeduplicator::default(),
             gateway_endpoint: None,
             gateway_runtime: None,
+            installed_profile_roster: None,
             sessions: Vec::new(),
             project_session_colors: BTreeMap::new(),
             project_session_color_requests: BTreeMap::new(),
@@ -7675,6 +7694,53 @@ fn render_message() -> &'static str {
 
     fn session_content(&mut self, ui: &mut Ui, session_id: &str) {
         self.transcript_find_bar(ui);
+        let owner_key =
+            self.session_identity_key(session_id, self.active_session_profile.as_deref());
+        let read_only_session = self
+            .session_chat_views
+            .get(&owner_key)
+            .is_some_and(|view| view.read_only_transcript);
+        let read_only_owner_error = self
+            .session_chat_views
+            .get(&owner_key)
+            .filter(|view| view.read_only_transcript)
+            .and_then(|view| view.owner_resolution_error.clone());
+        if let Some(owner_error) = read_only_owner_error {
+            ui.colored_label(
+                Color32::YELLOW,
+                "Read-only history · Hermes could not resolve this session’s owner, so sending and session controls are disabled.",
+            );
+            ui.label(
+                RichText::new(owner_error)
+                    .size(CAPTION_TEXT_SIZE)
+                    .color(MUTED),
+            );
+            if self.route == AppRoute::Session(session_id.to_owned())
+                && let Some(profiles) = self.cached_profiles_for_current_endpoint()
+            {
+                let mut selected_profile = None;
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        RichText::new("If you know the owner, try a profile:")
+                            .size(CAPTION_TEXT_SIZE),
+                    );
+                    for profile in profiles {
+                        if ui
+                            .button(format!("Resume with {profile}"))
+                            .accessible_name(format!(
+                                "Try resuming this historical session with profile {profile}"
+                            ))
+                            .clicked()
+                        {
+                            selected_profile = Some(profile);
+                        }
+                    }
+                });
+                if let Some(profile) = selected_profile {
+                    self.resume_read_only_session_with_profile(session_id, profile);
+                }
+            }
+        }
         let resume_error = self
             .session_chat_views
             .get(&self.session_identity_key(session_id, self.active_session_profile.as_deref()))
@@ -7692,7 +7758,7 @@ fn render_message() -> &'static str {
         } else if self.transcript.is_empty() {
             if !self.gateway_connected {
                 self.route_unavailable(ui, "Connect to Hermes to open this session.");
-            } else if self.transcript_has_more {
+            } else if self.transcript_has_more && !read_only_session {
                 let loading = self.older_transcript_request.is_some();
                 let load_older = ui
                     .add_enabled(
@@ -7724,7 +7790,7 @@ fn render_message() -> &'static str {
                 self.route_unavailable(ui, &format!("Loading session {session_id}…"));
             }
         } else {
-            if self.transcript_has_more {
+            if self.transcript_has_more && !read_only_session {
                 let loading = self.older_transcript_request.is_some();
                 let load_older = ui
                     .add_enabled(
@@ -7751,7 +7817,14 @@ fn render_message() -> &'static str {
                         .color(Color32::LIGHT_RED),
                 );
             }
-            let messages = self.transcript.clone();
+            let mut messages = self.transcript.clone();
+            if read_only_session {
+                for message in &mut messages {
+                    if let Some(message) = message.as_object_mut() {
+                        message.remove("retry_submission_id");
+                    }
+                }
+            }
             let timeline_owner_key =
                 self.session_identity_key(session_id, self.active_session_profile.as_deref());
             let active_prompt_message_index = self
@@ -7831,7 +7904,8 @@ fn render_message() -> &'static str {
                     self.pending_submissions.get(&key).cloned()
                 });
             let retry_pending = active_pending.is_some();
-            let edit_action_enabled = self.gateway_connected
+            let edit_action_enabled = !read_only_session
+                && self.gateway_connected
                 && active_pending
                     .as_ref()
                     .is_none_or(|pending| !pending.uncertain && pending.admission_id.is_some())
@@ -7841,7 +7915,8 @@ fn render_message() -> &'static str {
                     .is_some_and(|(_, pending_session)| {
                         Some(pending_session.as_str()) == self.active_runtime_session_id.as_deref()
                     });
-            let regenerate_action_enabled = self.gateway_connected
+            let regenerate_action_enabled = !read_only_session
+                && self.gateway_connected
                 && active_pending.is_none()
                 && !self
                     .pending_interrupt
@@ -7960,6 +8035,7 @@ fn render_message() -> &'static str {
                                     .and_then(serde_json::Value::as_bool)
                                     == Some(true);
                                 let can_respond = !settled
+                                    && !read_only_session
                                     && !op_id.is_empty()
                                     && owner_session == self.active_runtime_session_id.as_deref().unwrap_or_default()
                                     && self.gateway_connected
@@ -8333,7 +8409,8 @@ fn render_message() -> &'static str {
                                                     pending.stored_session_id == session_id
                                                         && pending.profile == active_profile
                                                 });
-                                            let can_compress = self.gateway_connected
+                                            let can_compress = !read_only_session
+                                                && self.gateway_connected
                                                 && self.pending_session_compression.is_none()
                                                 && active_pending.is_none()
                                                 && runtime_session_id.is_some();
@@ -8821,6 +8898,20 @@ fn render_message() -> &'static str {
                 TranscriptScrollPosition::from_metrics(scroll_offset, max_offset);
             chat_view.active_prompt_message_index = active_prompt_message_index;
             chat_view.active_prompt_row_id = active_prompt_row_id;
+            if read_only_session {
+                retry_failed_submission = None;
+                schedule_failed_turn_retry = None;
+                cancel_scheduled_failed_turn_retry = false;
+                usage_window_model_retry = None;
+                usage_window_credit_retry = None;
+                open_model_picker = false;
+                compress_context_session = None;
+                connection_responses.clear();
+                connection_retries.clear();
+                open_message_edit = None;
+                open_message_regenerate = None;
+                continue_cut_off_reply = false;
+            }
             for (_, op_id, result) in connection_responses {
                 let Some(runtime_session_id) = self.active_runtime_session_id.clone() else {
                     continue;
@@ -9063,6 +9154,9 @@ fn render_message() -> &'static str {
     }
 
     fn approval_cards(&mut self, ui: &mut Ui) {
+        if self.active_session_is_read_only() {
+            return;
+        }
         let Some(session_id) = self.active_runtime_session_id.as_deref() else {
             return;
         };
@@ -9688,6 +9782,9 @@ fn render_message() -> &'static str {
     }
 
     fn clarify_cards(&mut self, ui: &mut Ui) {
+        if self.active_session_is_read_only() {
+            return;
+        }
         let Some(session_id) = self.active_runtime_session_id.as_deref() else {
             return;
         };
@@ -9799,6 +9896,9 @@ fn render_message() -> &'static str {
     }
 
     fn batch_clarify_cards(&mut self, ui: &mut Ui) {
+        if self.active_session_is_read_only() {
+            return;
+        }
         let Some(session_id) = self.active_runtime_session_id.as_deref() else {
             return;
         };
@@ -17500,6 +17600,12 @@ fn render_message() -> &'static str {
         payload: serde_json::Value,
         remember_custom_model: bool,
     ) {
+        if self.active_session_is_read_only() {
+            self.status =
+                "This historical transcript is read-only until its session owner is resolved."
+                    .into();
+            return;
+        }
         let Some(session_id) = self.active_runtime_session_id.clone() else {
             return;
         };
@@ -17575,6 +17681,12 @@ fn render_message() -> &'static str {
         provider: String,
         submission_id: String,
     ) {
+        if self.active_session_is_read_only() {
+            self.status =
+                "This historical transcript is read-only until its session owner is resolved."
+                    .into();
+            return;
+        }
         self.mutate_chat_policy(
             "model",
             serde_json::json!({"model": model, "provider": provider}),
@@ -17599,6 +17711,12 @@ fn render_message() -> &'static str {
     }
 
     fn enable_credits_and_retry_failed_turn(&mut self, submission_id: &str) {
+        if self.active_session_is_read_only() {
+            self.status =
+                "This historical transcript is read-only until its session owner is resolved."
+                    .into();
+            return;
+        }
         if self.keep_going_on_credits_mutation.is_some() {
             return;
         }
@@ -17671,8 +17789,9 @@ fn render_message() -> &'static str {
 
     fn composer(&mut self, ui: &mut Ui) {
         self.sync_slash_completion_query();
+        let read_only = self.active_session_is_read_only();
         let session_id = self.active_runtime_session_id.clone();
-        if session_id.is_some() {
+        if session_id.is_some() && !read_only {
             self.request_chat_model_options();
         }
         let pending_key = session_id.as_deref().map(|session_id| {
@@ -17690,8 +17809,8 @@ fn render_message() -> &'static str {
                 && attachment.ref_text.is_some()
                 && attachment.attached_session_id.as_deref() == session_id.as_deref()
         });
-        let can_submit =
-            self.gateway_connected && !waiting_for_this_session && !waiting_for_new_session;
+        let can_submit = self.gateway_connected
+            && (read_only || (!waiting_for_this_session && !waiting_for_new_session));
         let session_directory = session_id.as_deref().and_then(|runtime| {
             let key = self.session_identity_key(runtime, self.active_session_profile.as_deref());
             self.session_chat_views
@@ -17700,6 +17819,7 @@ fn render_message() -> &'static str {
         });
         let can_change_directory = session_id.as_deref().is_some_and(|runtime| {
             self.gateway_connected
+                && !read_only
                 && self.pending_session_cwd_change.is_none()
                 && !self.session_runtime_is_busy(
                     runtime,
@@ -17735,7 +17855,10 @@ fn render_message() -> &'static str {
             }
             directory.on_hover_text(directory_label);
             let attach = ui
-                .add_enabled(self.gateway_connected, egui::Button::new("Attach file"))
+                .add_enabled(
+                    self.gateway_connected && !read_only,
+                    egui::Button::new("Attach file"),
+                )
                 .accessible_name("Attach an image or file to this prompt");
             if attach.clicked() {
                 #[cfg(windows)]
@@ -17791,7 +17914,11 @@ fn render_message() -> &'static str {
                             MUTED
                         },
                     ));
-                    if attachment.request_id.is_none() && ui.small_button("Remove").clicked() {
+                    if attachment.request_id.is_none()
+                        && ui
+                            .add_enabled(!read_only, egui::Button::new("Remove"))
+                            .clicked()
+                    {
                         remove_attachment_path = Some(attachment.path.clone());
                     }
                 });
@@ -17828,7 +17955,7 @@ fn render_message() -> &'static str {
                         .join(", ");
                     let restore = ui
                         .add_enabled(
-                            !occupied && self.active_runtime_session_id.is_some(),
+                            !read_only && !occupied && self.active_runtime_session_id.is_some(),
                             egui::Button::new(format!("Restore: {label}")),
                         )
                         .accessible_name(format!(
@@ -17848,7 +17975,7 @@ fn render_message() -> &'static str {
                 );
             }
         }
-        if session_id.is_some() {
+        if session_id.is_some() && !read_only {
             let options = self.chat_model_options.clone();
             let options_loading = self.chat_model_options_pending.is_some();
             let mutation_pending = self.chat_policy_mutation.is_some();
@@ -18046,8 +18173,14 @@ fn render_message() -> &'static str {
                         .color(MUTED),
                 );
             }
-        } else {
+        } else if session_id.is_none() {
             self.new_chat_model_controls(ui);
+        } else {
+            ui.label(
+                RichText::new("Session settings are unavailable for unresolved ownership.")
+                    .size(TOOL_TEXT_SIZE)
+                    .color(MUTED),
+            );
         }
         let mut dropped_composer_paths = Vec::new();
         let mut dropped_pathless_files: Vec<(std::path::PathBuf, egui::DroppedFileHandle)> =
@@ -18068,12 +18201,11 @@ fn render_message() -> &'static str {
                 _ => "unscoped-chat-composer".into(),
             };
             let composer_id = ui.make_persistent_id(("message-composer", composer_owner));
-            pasted_image = self
-                .gateway_connected
-                .then(|| {
-                    crate::clipboard_image::take_focused_image_event(ui.ctx(), composer_id)
-                })
-                .flatten();
+            pasted_image = if self.gateway_connected && !read_only {
+                crate::clipboard_image::take_focused_image_event(ui.ctx(), composer_id)
+            } else {
+                None
+            };
             let completion_list_active = ui.ctx().memory(|memory| {
                 memory.focused() == Some(composer_id)
                     && !self.slash_completion_dismissed
@@ -18219,7 +18351,7 @@ fn render_message() -> &'static str {
                         ui.label(RichText::new("Edit admission is unknown. Refresh and verify session history before continuing; it will not be resent automatically.").size(TOOL_TEXT_SIZE).color(Color32::YELLOW));
                     } else if ui
                         .add_enabled(
-                            self.gateway_connected,
+                            self.gateway_connected && !read_only,
                             egui::Button::new("Retry same message"),
                         )
                         .accessible_name("Retry message with original submission ID")
@@ -18236,7 +18368,7 @@ fn render_message() -> &'static str {
                             });
                     let stop = ui
                         .add_enabled(
-                            self.gateway_connected && !stopping,
+                            self.gateway_connected && !read_only && !stopping,
                             egui::Button::new(if stopping { "Stopping…" } else { "Stop" }),
                         )
                         .accessible_name(if stopping {
@@ -18250,10 +18382,15 @@ fn render_message() -> &'static str {
                     }
                 }
             } else {
-                let button = ui.add_enabled(
-                    can_submit
-                        && attachments_ready
-                        && (!self.draft.trim().is_empty() || !self.composer_attachments.is_empty()),
+            let button = ui.add_enabled(
+                can_submit
+                    && (if read_only {
+                        !self.draft.trim().is_empty()
+                    } else {
+                        attachments_ready
+                            && (!self.draft.trim().is_empty()
+                                || !self.composer_attachments.is_empty())
+                    }),
                     egui::Button::new("Send"),
                 );
                 if button.clicked() {
@@ -18301,7 +18438,12 @@ fn render_message() -> &'static str {
             }
         }
         if !dropped_composer_paths.is_empty() {
-            self.accept_composer_file_drop(dropped_composer_paths);
+            if read_only {
+                self.status =
+                    "Attachments are disabled for this read-only historical transcript.".into();
+            } else {
+                self.accept_composer_file_drop(dropped_composer_paths);
+            }
         }
         if composer_drop_requires_path {
             self.status = "Some dropped files did not provide a readable path or payload. Use Attach file instead.".into();
@@ -18313,8 +18455,10 @@ fn render_message() -> &'static str {
                     .color(MUTED),
             );
         }
-        self.request_slash_completion_if_due(ui.ctx());
-        if !self.slash_completion_dismissed && self.slash_completion_query.is_some() {
+        if !read_only {
+            self.request_slash_completion_if_due(ui.ctx());
+        }
+        if !read_only && !self.slash_completion_dismissed && self.slash_completion_query.is_some() {
             if self.slash_completion_pending.is_some() {
                 ui.horizontal(|ui| {
                     ui.spinner();
@@ -18376,6 +18520,10 @@ fn render_message() -> &'static str {
     }
 
     fn load_older_transcript(&mut self, session_id: String) {
+        if self.active_session_is_read_only() {
+            self.status = "Only the stored read-only transcript page is available until this session owner is resolved.".into();
+            return;
+        }
         if self.older_transcript_request.is_some()
             || !self.transcript_has_more
             || self.route != AppRoute::Session(session_id.clone())
@@ -18474,6 +18622,9 @@ fn render_message() -> &'static str {
     }
 
     fn load_prompt_timeline_page(&mut self, session_id: String) {
+        if self.active_session_is_read_only() {
+            return;
+        }
         if self.route != AppRoute::Session(session_id.clone()) {
             return;
         }
@@ -18525,6 +18676,9 @@ fn render_message() -> &'static str {
     }
 
     fn refresh_prompt_timeline(&mut self, session_id: String) {
+        if self.active_session_is_read_only() {
+            return;
+        }
         let profile = self.active_session_profile.clone();
         let owner_key = self.session_identity_key(&session_id, profile.as_deref());
         let Some(state) = self.prompt_timelines.get_mut(&owner_key) else {
@@ -18541,6 +18695,9 @@ fn render_message() -> &'static str {
     }
 
     fn load_prompt_history_window(&mut self, session_id: String, row_id: u64) {
+        if self.active_session_is_read_only() {
+            return;
+        }
         if self.route != AppRoute::Session(session_id.clone()) || row_id == 0 {
             return;
         }
@@ -18760,6 +18917,11 @@ fn render_message() -> &'static str {
         runtime_session_id: String,
         profile: Option<String>,
     ) {
+        if self.active_session_is_read_only() {
+            self.status =
+                "Context compression is unavailable for an unresolved read-only transcript.".into();
+            return;
+        }
         if self.pending_session_compression.is_some()
             || self.route != AppRoute::Session(stored_session_id.clone())
             || self.active_runtime_session_id.as_deref() != Some(runtime_session_id.as_str())
@@ -19202,16 +19364,8 @@ fn render_message() -> &'static str {
         self.status = "Creating Hermes session…".into();
     }
 
-    fn resolved_sidebar_session_profile(&self, session: &SessionSummary) -> Option<String> {
-        session
-            .profile
-            .clone()
-            .or_else(|| {
-                self.gateway_endpoint
-                    .as_ref()
-                    .map(|endpoint| endpoint.profile_id.clone())
-            })
-            .or_else(|| self.active_session_profile.clone())
+    fn sidebar_session_profile_for_open(&self, session: &SessionSummary) -> Option<String> {
+        session.profile.clone()
     }
 
     fn require_active_session_owner(&self, session: &SessionSummary) -> Result<String, String> {
@@ -19244,7 +19398,7 @@ fn render_message() -> &'static str {
 
     fn open_sidebar_session_in_place(&mut self, session: SessionSummary) -> Result<(), String> {
         let connection_id = self.require_active_session_owner(&session)?;
-        let profile = self.resolved_sidebar_session_profile(&session);
+        let profile = self.sidebar_session_profile_for_open(&session);
         let already_open_in_tile = self
             .workspace
             .open_session_pane_owner_identities()
@@ -19274,7 +19428,7 @@ fn render_message() -> &'static str {
 
     fn open_sidebar_session_in_tab(&mut self, session: SessionSummary) -> Result<(), String> {
         let connection_id = self.require_active_session_owner(&session)?;
-        let profile = self.resolved_sidebar_session_profile(&session);
+        let profile = self.sidebar_session_profile_for_open(&session);
         if self.route == AppRoute::Session(session.id.clone())
             && self.active_session_profile == profile
         {
@@ -19319,7 +19473,7 @@ fn render_message() -> &'static str {
             .push_back(NativeWindowLaunchRequest {
                 id,
                 route: AppRoute::Session(session.id.clone()).path(),
-                profile: self.resolved_sidebar_session_profile(session),
+                profile: self.sidebar_session_profile_for_open(session),
                 move_session_panel: None,
             });
         self.status = format!("Opening session in Hermes window {id}");
@@ -21049,6 +21203,10 @@ fn render_message() -> &'static str {
     }
 
     fn submit_prompt(&mut self, session_id: String) {
+        if self.active_session_is_read_only() {
+            self.status = "This transcript is read-only because Hermes could not resolve its session owner. Resolve the owner before sending messages or tools.".into();
+            return;
+        }
         if self.handle_timestamps_command() {
             return;
         }
@@ -21401,6 +21559,13 @@ fn render_message() -> &'static str {
     }
 
     fn submit_message_edit(&mut self, mut edit: MessageEditDraft) {
+        if self.active_session_is_read_only() {
+            self.message_edit = Some(edit);
+            self.status =
+                "This historical transcript is read-only until its session owner is resolved."
+                    .into();
+            return;
+        }
         let owner_matches = self.active_runtime_session_id.as_deref()
             == Some(edit.session_id.as_str())
             && self.active_session_profile == edit.profile
@@ -21831,6 +21996,12 @@ fn render_message() -> &'static str {
     }
 
     fn continue_cut_off_reply(&mut self) {
+        if self.active_session_is_read_only() {
+            self.status =
+                "This historical transcript is read-only until its session owner is resolved."
+                    .into();
+            return;
+        }
         let ready_to_submit = self.gateway_connected
             && self.draft.trim().is_empty()
             && self.composer_attachments.is_empty()
@@ -21951,6 +22122,10 @@ fn render_message() -> &'static str {
         scheduled_reset_at_ms: Option<u64>,
         usage_window_recovery: bool,
     ) {
+        if self.active_session_is_read_only() {
+            self.status = "This transcript is read-only because Hermes could not resolve its session owner. Resolve the owner before retrying a message.".into();
+            return;
+        }
         if !self.draft.trim().is_empty() || !self.composer_attachments.is_empty() {
             self.status =
                 "Send or clear the current draft before retrying the failed message".into();
@@ -22120,6 +22295,10 @@ fn render_message() -> &'static str {
     }
 
     fn retry_uncertain_prompt(&mut self) {
+        if self.active_session_is_read_only() {
+            self.status = "This transcript is read-only because Hermes could not resolve its session owner. Resolve the owner before retrying a message.".into();
+            return;
+        }
         let Some(session_id) = self.active_runtime_session_id.as_deref() else {
             return;
         };
@@ -25075,6 +25254,236 @@ fn render_message() -> &'static str {
             .unwrap_or_else(|| self.workspace.selected_gateway_connection_id())
     }
 
+    fn active_session_is_read_only(&self) -> bool {
+        let AppRoute::Session(session_id) = &self.route else {
+            return false;
+        };
+        let key = self.session_identity_key(session_id, self.active_session_profile.as_deref());
+        self.session_chat_views
+            .get(&key)
+            .is_some_and(|view| view.read_only_transcript)
+    }
+
+    fn session_has_explicit_owner_tag(&self, session_id: &str, profile: Option<&str>) -> bool {
+        if profile.is_some_and(|profile| !profile.trim().is_empty()) {
+            return true;
+        }
+        let active_connection = self.gateway_connection_id.as_deref();
+        self.sessions
+            .iter()
+            .chain(self.archived_sessions.iter())
+            .filter(|session| session.id == session_id)
+            .any(|session| {
+                session.connection_id.as_deref().is_some_and(|connection| {
+                    !connection.trim().is_empty() && Some(connection) == active_connection
+                })
+            })
+    }
+
+    fn cached_profiles_for_current_endpoint(&self) -> Option<Vec<String>> {
+        let endpoint = self.gateway_endpoint.as_ref()?;
+        let profiles = self.installed_profile_roster.as_ref()?;
+        (profiles.connection_id == self.gateway_connection_id.as_deref().unwrap_or_default()
+            && profiles.instance_id == endpoint.instance_id
+            && profiles.authority_epoch == endpoint.authority_epoch)
+            .then(|| profiles.names.clone())
+    }
+
+    fn begin_unknown_session_owner_resolution(&mut self, session_id: &str, force: bool) {
+        if self.route == AppRoute::Session(session_id.to_owned())
+            && self.active_session_profile.is_none()
+        {
+            self.save_active_chat_view();
+        }
+        let key = self.session_identity_key(session_id, None);
+        let mut view = self
+            .session_chat_views
+            .get(&key)
+            .cloned()
+            .unwrap_or_default();
+        if view.owner_resolution_request_id.is_some()
+            || view.stored_transcript_request_id.is_some()
+            || view.read_only_transcript
+        {
+            return;
+        }
+        view.owner_resolution_force = force;
+        view.resume_error = None;
+
+        if let Some(profiles) = self.cached_profiles_for_current_endpoint() {
+            self.cache_session_chat_view(key.clone(), view);
+            self.settle_unknown_session_profiles(&key, session_id, profiles, None);
+            return;
+        }
+
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            let reason = "Hermes session owner is unresolved because the active gateway endpoint identity is unavailable.";
+            view.owner_resolution_error = Some(reason.into());
+            view.resume_error = Some(reason.into());
+            self.cache_session_chat_view(key, view);
+            self.status = reason.into();
+            return;
+        };
+        let request_id = operation_id("session-owner");
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        if self.gateway_discovery.is_none() {
+            let reason =
+                "Hermes session owner is unresolved because the gateway reader is unavailable.";
+            view.owner_resolution_error = Some(reason.into());
+            view.resume_error = Some(reason.into());
+            self.cache_session_chat_view(key, view);
+            self.status = reason.into();
+            return;
+        }
+        view.owner_resolution_request_id = Some(request_id.clone());
+        view.owner_resolution_connection_id = self.gateway_connection_id.clone();
+        view.owner_resolution_instance_id = Some(instance_id.clone());
+        view.owner_resolution_authority_epoch = Some(authority_epoch);
+        view.owner_resolution_error = Some(
+            "Hermes session owner is unresolved while checking the installed profile roster."
+                .into(),
+        );
+        self.cache_session_chat_view(key.clone(), view);
+        let request_result = self
+            .gateway_discovery
+            .as_ref()
+            .expect("gateway reader checked above")
+            .load_profiles(request_id, instance_id, authority_epoch);
+        if let Err(error) = request_result {
+            let reason = format!(
+                "Hermes session owner is unresolved because profile discovery failed: {error}"
+            );
+            self.settle_unknown_session_profiles(&key, session_id, Vec::new(), Some(reason));
+            return;
+        }
+        self.status = "Checking Hermes profiles before opening this historical session…".into();
+    }
+
+    fn settle_unknown_session_profiles(
+        &mut self,
+        key: &str,
+        session_id: &str,
+        profiles: Vec<String>,
+        discovery_error: Option<String>,
+    ) {
+        let Some(mut view) = self.session_chat_views.get(key).cloned() else {
+            return;
+        };
+        view.owner_resolution_request_id = None;
+        view.owner_resolution_connection_id = None;
+        view.owner_resolution_instance_id = None;
+        view.owner_resolution_authority_epoch = None;
+        if self.workspace.gateway_connections().is_empty()
+            && profiles.len() <= 1
+            && profiles
+                .first()
+                .is_none_or(|profile| !profile.trim().is_empty())
+        {
+            let profile = profiles.into_iter().next();
+            let force = view.owner_resolution_force;
+            let connection_id = self.gateway_connection_id.clone();
+            let new_key = self.session_identity_key_for_connection(
+                connection_id.as_deref(),
+                session_id,
+                profile.as_deref(),
+            );
+            view.profile = profile.clone();
+            view.owner_resolution_error = None;
+            view.owner_resolution_force = false;
+            view.owner_resolved_ambient = true;
+            if key != new_key {
+                self.session_chat_views.remove(key);
+            }
+            self.cache_session_chat_view(new_key, view);
+            if self.route == AppRoute::Session(session_id.to_owned())
+                && self.active_session_profile.is_none()
+            {
+                self.active_session_profile = profile.clone();
+                if force {
+                    self.request_explicit_session_resume(session_id, profile);
+                } else {
+                    self.ensure_session_resume(session_id, profile);
+                }
+            }
+            return;
+        }
+
+        let reason = discovery_error.unwrap_or_else(|| {
+            if self.workspace.gateway_connections().is_empty() {
+                format!(
+                    "Hermes session owner is unresolved: profile discovery found {} profiles and no unique owner tag is available.",
+                    profiles.len()
+                )
+            } else {
+                format!(
+                    "Hermes session owner is unresolved because this session has no exact saved-connection tag ({} profile(s) are installed).",
+                    profiles.len()
+                )
+            }
+        });
+        view.owner_resolution_error = Some(reason.clone());
+        self.cache_session_chat_view(key.to_owned(), view);
+        self.start_read_only_stored_transcript(key.to_owned(), session_id, &reason);
+    }
+
+    fn start_read_only_stored_transcript(
+        &mut self,
+        key: String,
+        session_id: &str,
+        owner_error: &str,
+    ) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            if let Some(view) = self.session_chat_views.get_mut(&key) {
+                view.resume_error = Some(owner_error.to_owned());
+                view.owner_resolution_error = Some(owner_error.to_owned());
+            }
+            self.status = owner_error.to_owned();
+            return;
+        };
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            if let Some(view) = self.session_chat_views.get_mut(&key) {
+                view.resume_error = Some(owner_error.to_owned());
+                view.owner_resolution_error = Some(owner_error.to_owned());
+            }
+            self.status = owner_error.to_owned();
+            return;
+        };
+        let request_id = operation_id("stored-transcript");
+        if let Some(view) = self.session_chat_views.get_mut(&key) {
+            view.owner_resolution_request_id = None;
+            view.stored_transcript_request_id = Some(request_id.clone());
+            view.owner_resolution_connection_id = self.gateway_connection_id.clone();
+            view.owner_resolution_instance_id = Some(instance_id.clone());
+            view.owner_resolution_authority_epoch = Some(authority_epoch);
+            view.owner_resolution_error = Some(owner_error.to_owned());
+            view.resume_error = None;
+        } else {
+            return;
+        }
+        if let Err(error) = gateway.load_stored_session_transcript(
+            request_id.clone(),
+            session_id.to_owned(),
+            instance_id,
+            authority_epoch,
+        ) {
+            if let Some(view) = self.session_chat_views.get_mut(&key) {
+                if view.stored_transcript_request_id.as_deref() == Some(&request_id) {
+                    view.stored_transcript_request_id = None;
+                    view.owner_resolution_connection_id = None;
+                    view.owner_resolution_instance_id = None;
+                    view.owner_resolution_authority_epoch = None;
+                    view.resume_error = Some(owner_error.to_owned());
+                }
+            }
+            self.status = format!("Could not load stored session history: {error}. {owner_error}");
+            return;
+        }
+        self.status = "Loading stored Hermes history in read-only mode…".into();
+    }
+
     fn active_session_usage(&self) -> Option<SessionUsageSnapshot> {
         let AppRoute::Session(session_id) = &self.route else {
             return None;
@@ -25109,6 +25518,24 @@ fn render_message() -> &'static str {
                         resume_connection_operation_at_start: previous
                             .and_then(|view| view.resume_connection_operation_at_start.clone()),
                         resume_error: previous.and_then(|view| view.resume_error.clone()),
+                        read_only_transcript: previous
+                            .is_some_and(|view| view.read_only_transcript),
+                        owner_resolution_request_id: previous
+                            .and_then(|view| view.owner_resolution_request_id.clone()),
+                        stored_transcript_request_id: previous
+                            .and_then(|view| view.stored_transcript_request_id.clone()),
+                        owner_resolution_error: previous
+                            .and_then(|view| view.owner_resolution_error.clone()),
+                        owner_resolution_force: previous
+                            .is_some_and(|view| view.owner_resolution_force),
+                        owner_resolution_connection_id: previous
+                            .and_then(|view| view.owner_resolution_connection_id.clone()),
+                        owner_resolution_instance_id: previous
+                            .and_then(|view| view.owner_resolution_instance_id.clone()),
+                        owner_resolution_authority_epoch: previous
+                            .and_then(|view| view.owner_resolution_authority_epoch),
+                        owner_resolved_ambient: previous
+                            .is_some_and(|view| view.owner_resolved_ambient),
                         transcript: self.transcript.clone(),
                         transcript_scroll_position: previous
                             .map_or(TranscriptScrollPosition::Bottom, |view| {
@@ -25138,6 +25565,92 @@ fn render_message() -> &'static str {
                 self.persist_composer_draft(&key, &self.new_chat_draft.clone());
             }
             _ => {}
+        }
+    }
+
+    fn settle_stored_session_transcript(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        connection_id: Option<String>,
+        instance_id: &str,
+        authority_epoch: u64,
+        result: Result<crate::gateway::StoredTranscriptPage, String>,
+    ) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return;
+        };
+        if endpoint.instance_id != instance_id
+            || endpoint.authority_epoch != authority_epoch
+            || connection_id.as_deref() != self.gateway_connection_id.as_deref()
+        {
+            return;
+        }
+        let Some(key) = self.session_chat_views.iter().find_map(|(key, view)| {
+            (view.stored_transcript_request_id.as_deref() == Some(request_id)
+                && view.owner_resolution_connection_id.as_deref() == connection_id.as_deref()
+                && view.owner_resolution_instance_id.as_deref() == Some(instance_id)
+                && view.owner_resolution_authority_epoch == Some(authority_epoch)
+                && session_id_from_owner_identity_key(key) == Some(session_id))
+            .then(|| key.clone())
+        }) else {
+            return;
+        };
+        let Some(mut view) = self.session_chat_views.get(&key).cloned() else {
+            return;
+        };
+        view.stored_transcript_request_id = None;
+        view.owner_resolution_connection_id = None;
+        view.owner_resolution_instance_id = None;
+        view.owner_resolution_authority_epoch = None;
+        match result {
+            Ok(page) if page.session_id == session_id => {
+                view.read_only_transcript = true;
+                view.runtime_session_id = Some(format!("read-only:{session_id}"));
+                view.transcript = page.messages;
+                view.transcript_message_count = view.transcript.len();
+                view.transcript_has_more = page.has_more;
+                view.older_transcript_request = None;
+                view.older_transcript_error = None;
+                view.resume_error = None;
+                view.owner_resolution_request_id = None;
+                self.cache_session_chat_view(key, view.clone());
+                if self.route == AppRoute::Session(session_id.to_owned())
+                    && self.active_session_profile.is_none()
+                {
+                    self.transcript = view.transcript.clone();
+                    self.transcript_message_count = view.transcript_message_count;
+                    self.transcript_has_more = view.transcript_has_more;
+                    self.older_transcript_request = None;
+                    self.older_transcript_error = None;
+                    self.active_runtime_session_id = view.runtime_session_id;
+                    self.draft = view.draft;
+                    self.composer_attachments = view.composer_attachments;
+                    self.status = format!(
+                        "Read-only historical transcript · {} messages",
+                        view.transcript_message_count
+                    );
+                }
+            }
+            Ok(_) => {
+                let owner_error = view
+                    .owner_resolution_error
+                    .clone()
+                    .unwrap_or_else(|| "Hermes session owner is unresolved.".into());
+                view.resume_error = Some(owner_error.clone());
+                self.cache_session_chat_view(key, view);
+                self.status =
+                    format!("Stored transcript did not match this session. {owner_error}");
+            }
+            Err(error) => {
+                let owner_error = view
+                    .owner_resolution_error
+                    .clone()
+                    .unwrap_or_else(|| "Hermes session owner is unresolved.".into());
+                view.resume_error = Some(owner_error.clone());
+                self.cache_session_chat_view(key, view);
+                self.status = format!("Could not load stored history: {error}. {owner_error}");
+            }
         }
     }
 
@@ -25233,6 +25746,18 @@ fn render_message() -> &'static str {
         if !self.gateway_connected {
             return;
         }
+        let ambient_owner_was_resolved = self
+            .session_chat_views
+            .get(&self.session_identity_key(session_id, None))
+            .is_some_and(|view| view.owner_resolved_ambient);
+        if profile.is_none()
+            && self.gateway_endpoint.is_some()
+            && !self.session_has_explicit_owner_tag(session_id, profile.as_deref())
+            && !ambient_owner_was_resolved
+        {
+            self.begin_unknown_session_owner_resolution(session_id, force);
+            return;
+        }
         let key = self.session_identity_key(session_id, profile.as_deref());
         let mut view = self
             .session_chat_views
@@ -25303,6 +25828,33 @@ fn render_message() -> &'static str {
         view.resume_error = None;
         self.cache_session_chat_view(key, view);
         self.request_explicit_session_resume(session_id, profile);
+    }
+
+    fn resume_read_only_session_with_profile(&mut self, session_id: &str, profile: String) {
+        let old_key = self.session_identity_key(session_id, self.active_session_profile.as_deref());
+        let Some(mut view) = self.session_chat_views.get(&old_key).cloned() else {
+            return;
+        };
+        if !view.read_only_transcript || profile.trim().is_empty() {
+            return;
+        }
+        let new_key = self.session_identity_key(session_id, Some(&profile));
+        view.profile = Some(profile.clone());
+        view.resume_error = None;
+        view.resume_request_id = None;
+        view.owner_resolution_error = Some(format!(
+            "Trying an explicit live session resume with profile {profile}; history remains read-only until Hermes confirms the owner."
+        ));
+        self.session_chat_views.remove(&old_key);
+        self.cache_session_chat_view(new_key, view.clone());
+        self.active_session_profile = Some(profile.clone());
+        self.active_runtime_session_id = view.runtime_session_id;
+        self.transcript = view.transcript;
+        self.transcript_message_count = view.transcript_message_count;
+        self.transcript_has_more = view.transcript_has_more;
+        self.draft = view.draft;
+        self.composer_attachments = view.composer_attachments;
+        self.request_explicit_session_resume(session_id, Some(profile));
     }
 
     #[cfg(test)]
@@ -25456,6 +26008,14 @@ fn render_message() -> &'static str {
                 view.older_transcript_error = None;
                 view.runtime_session_id = Some(snapshot.runtime_session_id.clone());
                 view.resume_error = None;
+                view.read_only_transcript = false;
+                view.owner_resolution_request_id = None;
+                view.stored_transcript_request_id = None;
+                view.owner_resolution_error = None;
+                view.owner_resolution_force = false;
+                view.owner_resolution_connection_id = None;
+                view.owner_resolution_instance_id = None;
+                view.owner_resolution_authority_epoch = None;
                 self.cache_session_chat_view(key, view.clone());
                 if self.route == AppRoute::Session(session_id.to_owned())
                     && self.active_session_profile == profile
@@ -25482,16 +26042,25 @@ fn render_message() -> &'static str {
                 }
             }
             Ok(_) => {
-                view.resume_error = Some("Hermes returned a different session owner".into());
+                let error = "Hermes returned a different session owner".to_owned();
+                if view.read_only_transcript {
+                    view.owner_resolution_error = Some(error.clone());
+                } else {
+                    view.resume_error = Some(error.clone());
+                }
                 self.cache_session_chat_view(key, view.clone());
                 if self.route == AppRoute::Session(session_id.to_owned())
                     && self.active_session_profile == profile
                 {
-                    self.status = view.resume_error.unwrap_or_default();
+                    self.status = error;
                 }
             }
             Err(error) => {
-                view.resume_error = Some(error.clone());
+                if view.read_only_transcript {
+                    view.owner_resolution_error = Some(error.clone());
+                } else {
+                    view.resume_error = Some(error.clone());
+                }
                 self.cache_session_chat_view(key, view);
                 if self.route == AppRoute::Session(session_id.to_owned())
                     && self.active_session_profile == profile
@@ -25775,6 +26344,13 @@ fn render_message() -> &'static str {
     }
 
     pub fn execute_registered_action(&mut self, action: RegisteredUiAction) -> Result<(), String> {
+        if self.active_session_is_read_only()
+            && matches!(&action, RegisteredUiAction::StopGeneration)
+        {
+            return Err(
+                "Stopping generation is unavailable for an unresolved read-only transcript.".into(),
+            );
+        }
         match action {
             RegisteredUiAction::OpenNewWindow => {
                 if self.native_window_launch_count() >= 16 {
@@ -33990,6 +34566,11 @@ fn render_message() -> &'static str {
                             .and_then(|gateway| gateway.connection_id().map(str::to_owned));
                         self.gateway_endpoint = Some(connection.endpoint);
                         for view in self.session_chat_views.values_mut() {
+                            view.owner_resolution_request_id = None;
+                            view.stored_transcript_request_id = None;
+                            view.owner_resolution_connection_id = None;
+                            view.owner_resolution_instance_id = None;
+                            view.owner_resolution_authority_epoch = None;
                             if view.resume_error.is_some() {
                                 view.resume_error = None;
                                 view.resume_request_id = None;
@@ -34207,6 +34788,80 @@ fn render_message() -> &'static str {
                     &stored_session_id,
                     profile,
                     connection_id,
+                    result,
+                ),
+                GatewayEvent::ProfilesLoaded {
+                    request_id,
+                    connection_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+                        continue;
+                    };
+                    if endpoint.instance_id != instance_id
+                        || endpoint.authority_epoch != authority_epoch
+                        || connection_id.as_deref() != self.gateway_connection_id.as_deref()
+                    {
+                        continue;
+                    }
+                    let Some((key, session_id)) =
+                        self.session_chat_views.iter().find_map(|(key, view)| {
+                            (view.owner_resolution_request_id.as_deref()
+                                == Some(request_id.as_str())
+                                && view.owner_resolution_connection_id.as_deref()
+                                    == connection_id.as_deref()
+                                && view.owner_resolution_instance_id.as_deref()
+                                    == Some(instance_id.as_str())
+                                && view.owner_resolution_authority_epoch == Some(authority_epoch))
+                            .then(|| {
+                                session_id_from_owner_identity_key(key)
+                                    .map(|session_id| (key.clone(), session_id.to_owned()))
+                            })
+                            .flatten()
+                        })
+                    else {
+                        continue;
+                    };
+                    match result {
+                        Ok(names) => {
+                            self.installed_profile_roster = Some(CachedHermesProfiles {
+                                connection_id: connection_id.clone().unwrap_or_default(),
+                                instance_id: instance_id.clone(),
+                                authority_epoch,
+                                names: names.clone(),
+                            });
+                            self.settle_unknown_session_profiles(
+                                &key,
+                                &session_id,
+                                names,
+                                None,
+                            );
+                        }
+                        Err(error) => self.settle_unknown_session_profiles(
+                            &key,
+                            &session_id,
+                            Vec::new(),
+                            Some(format!(
+                                "Hermes session owner is unresolved because profile discovery failed: {error}"
+                            )),
+                        ),
+                    }
+                }
+                GatewayEvent::StoredTranscriptLoaded {
+                    request_id,
+                    session_id,
+                    connection_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => self.settle_stored_session_transcript(
+                    &request_id,
+                    &session_id,
+                    connection_id,
+                    &instance_id,
+                    authority_epoch,
                     result,
                 ),
                 GatewayEvent::OlderTranscriptLoaded {
@@ -58486,6 +59141,310 @@ mod tests {
             HermesNativeApp::new_for_automation(profile.clone()),
             profile,
         )
+    }
+
+    #[test]
+    fn unresolved_session_uses_read_only_transcript_then_requires_explicit_profile_resume() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, events) =
+            crate::gateway::GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "default".into(),
+            instance_id: "instance-1".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-unresolved".into());
+        app.draft = "Keep this unsent draft".into();
+
+        app.ensure_session_resume("stored-unresolved", None);
+        let profile_request = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("unknown owner requests the installed profile roster")
+        {
+            crate::gateway::TestGatewayCommand::LoadProfiles {
+                request_id,
+                connection_id,
+                instance_id,
+                authority_epoch,
+            } => {
+                assert_eq!(connection_id, None);
+                assert_eq!(instance_id, "instance-1");
+                assert_eq!(authority_epoch, 1);
+                request_id
+            }
+            other => panic!("expected profile discovery, got {other:?}"),
+        };
+        events
+            .send(crate::gateway::GatewayEvent::ProfilesLoaded {
+                request_id: profile_request.clone(),
+                connection_id: None,
+                instance_id: "instance-1".into(),
+                authority_epoch: 2,
+                result: Ok(vec!["wrong-endpoint".into()]),
+            })
+            .expect("queue stale profile response");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            commands.try_recv().is_err(),
+            "stale profile results are ignored"
+        );
+
+        events
+            .send(crate::gateway::GatewayEvent::ProfilesLoaded {
+                request_id: profile_request,
+                connection_id: None,
+                instance_id: "instance-1".into(),
+                authority_epoch: 1,
+                result: Ok(vec!["work".into(), "personal".into()]),
+            })
+            .expect("queue profile response");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        let stored_request = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("ambiguous owner reads stored history by ID")
+        {
+            crate::gateway::TestGatewayCommand::LoadStoredTranscript {
+                request_id,
+                session_id,
+                connection_id,
+                instance_id,
+                authority_epoch,
+            } => {
+                assert_eq!(session_id, "stored-unresolved");
+                assert_eq!(connection_id, None);
+                assert_eq!(instance_id, "instance-1");
+                assert_eq!(authority_epoch, 1);
+                request_id
+            }
+            other => panic!("expected ID-only stored transcript read, got {other:?}"),
+        };
+        events
+            .send(crate::gateway::GatewayEvent::StoredTranscriptLoaded {
+                request_id: stored_request,
+                session_id: "stored-unresolved".into(),
+                connection_id: None,
+                instance_id: "instance-1".into(),
+                authority_epoch: 1,
+                result: Ok(crate::gateway::StoredTranscriptPage {
+                    session_id: "stored-unresolved".into(),
+                    profile: Some("work".into()),
+                    messages: vec![serde_json::json!({
+                        "role":"assistant",
+                        "content":"Saved transcript"
+                    })],
+                    has_more: true,
+                    replace_all: true,
+                }),
+            })
+            .expect("queue stored history response");
+        app.update_gateway_discovery(&egui::Context::default());
+
+        let ownerless_key = app.session_identity_key("stored-unresolved", None);
+        assert!(app.session_chat_views[&ownerless_key].read_only_transcript);
+        assert_eq!(
+            app.session_chat_views[&ownerless_key]
+                .runtime_session_id
+                .as_deref(),
+            Some("read-only:stored-unresolved")
+        );
+        assert_eq!(
+            app.session_chat_views[&ownerless_key].profile, None,
+            "a profile returned as stored-row metadata never becomes routing authority"
+        );
+        assert_eq!(app.transcript[0]["content"], "Saved transcript");
+
+        app.submit_prompt("read-only:stored-unresolved".into());
+        assert!(
+            commands.try_recv().is_err(),
+            "read-only prompt sends are refused"
+        );
+        assert!(app.status.contains("read-only"));
+        assert_eq!(app.draft, "Keep this unsent draft");
+
+        app.resume_read_only_session_with_profile("stored-unresolved", "work".into());
+        let (resume_request, resume_session, resume_profile) = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("explicit profile choice queues a live resume")
+        {
+            crate::gateway::TestGatewayCommand::ResumeSession {
+                request_id,
+                session_id,
+                profile,
+            } => (request_id, session_id, profile),
+            other => panic!("expected explicit session resume, got {other:?}"),
+        };
+        assert_eq!(resume_session, "stored-unresolved");
+        assert_eq!(resume_profile.as_deref(), Some("work"));
+        let profile_key = app.session_identity_key("stored-unresolved", Some("work"));
+        assert!(app.session_chat_views[&profile_key].read_only_transcript);
+        app.settle_session_resume(
+            &resume_request,
+            "stored-unresolved",
+            Some("work".into()),
+            Ok(crate::gateway::SessionTranscript {
+                session_id: "stored-unresolved".into(),
+                profile: Some("work".into()),
+                runtime_session_id: "runtime-live".into(),
+                message_count: 1,
+                messages: vec![serde_json::json!({"role":"assistant","content":"Live"})],
+                reasoning_effort: None,
+                reasoning_effort_wire: None,
+                pending_connection: None,
+            }),
+        );
+        assert!(!app.session_chat_views[&profile_key].read_only_transcript);
+        assert_eq!(
+            app.session_chat_views[&profile_key]
+                .runtime_session_id
+                .as_deref(),
+            Some("runtime-live")
+        );
+        assert_eq!(app.draft, "Keep this unsent draft");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn read_only_prompt_guard_does_not_require_a_live_gateway_writer() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-only".into());
+        app.active_runtime_session_id = Some("read-only:stored-only".into());
+        app.draft = "Do not lose this".into();
+        app.transcript = vec![serde_json::json!({"role":"assistant","content":"Saved"})];
+        let key = app.session_identity_key("stored-only", None);
+        app.session_chat_views.insert(
+            key,
+            SessionChatViewState {
+                runtime_session_id: app.active_runtime_session_id.clone(),
+                read_only_transcript: true,
+                owner_resolution_error: Some("owner unresolved".into()),
+                transcript: app.transcript.clone(),
+                draft: app.draft.clone(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.submit_prompt("read-only:stored-only".into());
+        assert!(app.status.contains("read-only"));
+        assert_eq!(app.draft, "Do not lose this");
+        assert_eq!(app.transcript[0]["content"], "Saved");
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn read_only_history_banner_keeps_composer_editable_and_send_refuses() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-only".into());
+        app.active_runtime_session_id = Some("read-only:stored-only".into());
+        app.gateway_connected = true;
+        app.draft = "Keep editing this draft".into();
+        app.transcript = vec![serde_json::json!({
+            "role":"assistant",
+            "content":"Saved historical content"
+        })];
+        let key = app.session_identity_key("stored-only", None);
+        app.session_chat_views.insert(
+            key,
+            SessionChatViewState {
+                runtime_session_id: app.active_runtime_session_id.clone(),
+                read_only_transcript: true,
+                owner_resolution_error: Some("Hermes could not resolve this owner".into()),
+                transcript: app.transcript.clone(),
+                draft: app.draft.clone(),
+                ..SessionChatViewState::default()
+            },
+        );
+        let app = Rc::new(RefCell::new(app));
+        let draw_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(move |ui| draw_app.borrow_mut().draw(ui));
+
+        harness.run_steps(2);
+        assert!(harness.query_by_label("Message composer").is_some());
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("Read-only history · Hermes could not resolve this session’s owner, so sending and session controls are disabled."))
+                .next()
+                .is_some(),
+            "the read-only restriction is visible in the transcript pane"
+        );
+        harness.get_by_label("Send").click();
+        harness.run();
+        assert!(app.borrow().status.contains("read-only"));
+        assert_eq!(app.borrow().draft, "Keep editing this draft");
+        assert_eq!(
+            app.borrow().transcript[0]["content"],
+            "Saved historical content"
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn ordinary_live_resume_error_does_not_start_read_only_fallback() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, _refresh) =
+            crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some("conn-1".into());
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "instance-1".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("owned-session".into());
+        app.active_session_profile = Some("work".into());
+
+        app.ensure_session_resume("owned-session", Some("work".into()));
+        let request_id = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("known owner queues a live resume")
+        {
+            crate::gateway::TestGatewayCommand::ResumeSession {
+                request_id,
+                session_id,
+                profile,
+            } => {
+                assert_eq!(session_id, "owned-session");
+                assert_eq!(profile.as_deref(), Some("work"));
+                request_id
+            }
+            other => panic!("expected live resume, got {other:?}"),
+        };
+        app.settle_session_resume(
+            &request_id,
+            "owned-session",
+            Some("work".into()),
+            Err("database unavailable".into()),
+        );
+        let key = app.session_identity_key("owned-session", Some("work"));
+        let view = &app.session_chat_views[&key];
+        assert_eq!(view.resume_error.as_deref(), Some("database unavailable"));
+        assert!(!view.read_only_transcript);
+        assert!(view.stored_transcript_request_id.is_none());
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     fn app_test_runtime_description() -> crate::gateway_runtime::RuntimeDescription {

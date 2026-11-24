@@ -247,6 +247,46 @@ pub struct BotProfile {
     pub title: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct ProfilesListResponse {
+    #[serde(default)]
+    profiles: Vec<ProfileListEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+struct ProfileListEntry {
+    name: String,
+}
+
+const MAX_PROFILE_LIST_ENTRIES: usize = 2048;
+const MAX_PROFILE_NAME_BYTES: usize = 128;
+
+fn parse_profile_names(value: serde_json::Value) -> Result<Vec<String>, String> {
+    let rows = value
+        .get("profiles")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "Hermes returned an invalid profile list response".to_owned())?;
+    if rows.len() > MAX_PROFILE_LIST_ENTRIES {
+        return Err("Hermes returned too many profiles".into());
+    }
+    let response: ProfilesListResponse = serde_json::from_value(value)
+        .map_err(|_| "Hermes returned malformed profile list data".to_owned())?;
+    let mut names = BTreeSet::new();
+    for profile in &response.profiles {
+        if !valid_bounded_tree_id(&profile.name)
+            || profile.name.len() > MAX_PROFILE_NAME_BYTES
+            || !names.insert(profile.name.to_ascii_lowercase())
+        {
+            return Err("Hermes returned an invalid or duplicate profile name".into());
+        }
+    }
+    Ok(response
+        .profiles
+        .into_iter()
+        .map(|profile| profile.name)
+        .collect())
+}
+
 fn parse_bot_roster(value: serde_json::Value) -> Result<BotRosterSnapshot, String> {
     let profiles_value = value
         .get("profiles")
@@ -1949,6 +1989,17 @@ pub struct OlderTranscriptPage {
     pub replace_all: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct StoredTranscriptPage {
+    pub session_id: String,
+    /// Profile reported by the stored row, if the endpoint can resolve one.
+    /// This is display metadata only; it is not a routing authority.
+    pub profile: Option<String>,
+    pub messages: Vec<serde_json::Value>,
+    pub has_more: bool,
+    pub replace_all: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct PromptTimelineEntry {
     pub row_id: u64,
@@ -2035,6 +2086,14 @@ pub enum GatewayEvent {
         profile: Option<String>,
         offset: usize,
         result: Result<OlderTranscriptPage, String>,
+    },
+    StoredTranscriptLoaded {
+        request_id: String,
+        session_id: String,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<StoredTranscriptPage, String>,
     },
     PromptTimelineLoaded {
         request_id: String,
@@ -2549,6 +2608,13 @@ pub enum GatewayEvent {
         profile: String,
         result: Result<BotRosterSnapshot, String>,
     },
+    ProfilesLoaded {
+        request_id: String,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<Vec<String>, String>,
+    },
     ProjectDeleted {
         request_id: String,
         project_id: String,
@@ -3014,6 +3080,19 @@ enum GatewayCommand {
 }
 
 enum GatewayHttpCommand {
+    LoadProfiles {
+        request_id: String,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    LoadStoredTranscript {
+        request_id: String,
+        session_id: String,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+    },
     LoadOlderTranscript {
         request_id: String,
         session_id: String,
@@ -3465,6 +3544,19 @@ pub(crate) enum TestGatewayCommand {
         base_url: Option<String>,
         confirm_expensive_model: bool,
     },
+    LoadProfiles {
+        request_id: String,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    LoadStoredTranscript {
+        request_id: String,
+        session_id: String,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+    },
     MutateChatPolicy {
         request_id: String,
         session_id: String,
@@ -3578,6 +3670,15 @@ impl GatewayDiscovery {
                     GatewayCommand::CreateSession { request_id, params } => {
                         Some(TestGatewayCommand::CreateSession { request_id, params })
                     }
+                    GatewayCommand::ResumeSession {
+                        request_id,
+                        session_id,
+                        profile,
+                    } => Some(TestGatewayCommand::ResumeSession {
+                        request_id,
+                        session_id,
+                        profile,
+                    }),
                     GatewayCommand::BranchStoredSession {
                         request_id,
                         session_id,
@@ -3809,6 +3910,30 @@ impl GatewayDiscovery {
                         model,
                         base_url,
                         confirm_expensive_model,
+                    }),
+                    GatewayHttpCommand::LoadProfiles {
+                        request_id,
+                        connection_id,
+                        instance_id,
+                        authority_epoch,
+                    } => Some(TestGatewayCommand::LoadProfiles {
+                        request_id,
+                        connection_id,
+                        instance_id,
+                        authority_epoch,
+                    }),
+                    GatewayHttpCommand::LoadStoredTranscript {
+                        request_id,
+                        session_id,
+                        connection_id,
+                        instance_id,
+                        authority_epoch,
+                    } => Some(TestGatewayCommand::LoadStoredTranscript {
+                        request_id,
+                        session_id,
+                        connection_id,
+                        instance_id,
+                        authority_epoch,
                     }),
                     _ => None,
                 };
@@ -6664,6 +6789,70 @@ impl GatewayDiscovery {
             .send(GatewayCommand::LoadBotRoster {
                 request_id,
                 profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    /// Loads the source's installed Hermes account profiles over its authenticated HTTP API.
+    /// The returned event carries the configured connection and negotiated endpoint identity so
+    /// callers can discard a roster that completes after a reconnect or profile-source change.
+    pub fn load_profiles(
+        &self,
+        request_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        if !valid_bounded_tree_id(&request_id) || request_id.len() > 256 {
+            return Err("Hermes profile list request ID is invalid".into());
+        }
+        if !valid_bounded_tree_id(&instance_id) || instance_id.len() > 256 || authority_epoch == 0 {
+            return Err("Hermes profile list endpoint identity is invalid".into());
+        }
+        if self.connection_id.as_deref().is_some_and(|connection_id| {
+            !valid_bounded_tree_id(connection_id) || connection_id.len() > 256
+        }) {
+            return Err("Hermes profile list connection identity is invalid".into());
+        }
+        self.http_sender
+            .send(GatewayHttpCommand::LoadProfiles {
+                request_id,
+                connection_id: self.connection_id.clone(),
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    /// Reads a stored transcript without a profile query parameter. This path is
+    /// intended for historical rows whose live owner could not be resolved.
+    pub fn load_stored_session_transcript(
+        &self,
+        request_id: String,
+        session_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        if !valid_bounded_tree_id(&request_id) || request_id.len() > 256 {
+            return Err("Hermes stored transcript request ID is invalid".into());
+        }
+        if !valid_bounded_tree_id(&session_id) || session_id.len() > 256 {
+            return Err("Hermes stored transcript session ID is invalid".into());
+        }
+        if !valid_bounded_tree_id(&instance_id) || instance_id.len() > 256 || authority_epoch == 0 {
+            return Err("Hermes stored transcript endpoint identity is invalid".into());
+        }
+        if self.connection_id.as_deref().is_some_and(|connection_id| {
+            !valid_bounded_tree_id(connection_id) || connection_id.len() > 256
+        }) {
+            return Err("Hermes stored transcript connection identity is invalid".into());
+        }
+        self.http_sender
+            .send(GatewayHttpCommand::LoadStoredTranscript {
+                request_id,
+                session_id,
+                connection_id: self.connection_id.clone(),
+                instance_id,
+                authority_epoch,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -12742,6 +12931,44 @@ fn gateway_http_actor(
         // Preserve FIFO and never coalesce a write. Search is already debounced
         // by the UI; each accepted mutation must produce its own receipt.
         let event = match command {
+            GatewayHttpCommand::LoadProfiles {
+                request_id,
+                connection_id,
+                instance_id,
+                authority_epoch,
+            } => GatewayEvent::ProfilesLoaded {
+                request_id,
+                connection_id,
+                instance_id: instance_id.clone(),
+                authority_epoch,
+                result: if endpoint.instance_id != instance_id
+                    || endpoint.authority_epoch != authority_epoch
+                {
+                    Err("Hermes profile list request belongs to a stale endpoint".into())
+                } else {
+                    load_profiles_http(&endpoint)
+                },
+            },
+            GatewayHttpCommand::LoadStoredTranscript {
+                request_id,
+                session_id,
+                connection_id,
+                instance_id,
+                authority_epoch,
+            } => GatewayEvent::StoredTranscriptLoaded {
+                request_id,
+                session_id: session_id.clone(),
+                connection_id,
+                instance_id: instance_id.clone(),
+                authority_epoch,
+                result: if endpoint.instance_id != instance_id
+                    || endpoint.authority_epoch != authority_epoch
+                {
+                    Err("Hermes stored transcript request belongs to a stale endpoint".into())
+                } else {
+                    load_stored_transcript_http(&endpoint, &session_id)
+                },
+            },
             GatewayHttpCommand::LoadOlderTranscript {
                 request_id,
                 session_id,
@@ -14317,6 +14544,108 @@ fn load_active_transcript_http(
     load_older_transcript_http(endpoint, session_id, profile, 0)
 }
 
+fn load_stored_transcript_http(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+) -> Result<StoredTranscriptPage, String> {
+    validate_stored_transcript_scope(session_id)?;
+    let url = format!(
+        "{}/api/sessions/{}/messages?limit={TRANSCRIPT_PAGE_SIZE}&offset=0&order=latest&include_compacted=true",
+        endpoint.api_origin.trim_end_matches('/'),
+        encode_query_component(session_id)
+    );
+    let response: SessionMessagesPageResponse = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json_with_limit(endpoint, &url, GATEWAY_HTTP_RESPONSE_LIMIT)?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err(
+                "Hermes stored transcript requires the verified loopback API origin".into(),
+            );
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        load_stored_transcript_http_with_local_ticket(endpoint, session_id, ticket.as_str())?
+    };
+    decode_stored_transcript_page(response, session_id)
+}
+
+fn load_stored_transcript_http_with_local_ticket(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+    ticket: &str,
+) -> Result<SessionMessagesPageResponse, String> {
+    validate_stored_transcript_scope(session_id)?;
+    if endpoint.remote_auth.is_some() || !is_bare_loopback_origin(&endpoint.api_origin) {
+        return Err(
+            "Hermes local stored transcript requires the verified loopback API origin".into(),
+        );
+    }
+    validate_http_ticket(ticket)?;
+    let url = format!(
+        "{}/api/sessions/{}/messages?limit={TRANSCRIPT_PAGE_SIZE}&offset=0&order=latest&include_compacted=true",
+        endpoint.api_origin.trim_end_matches('/'),
+        encode_query_component(session_id)
+    );
+    request_gateway_json_with_limit(
+        &endpoint.api_origin,
+        ticket,
+        &url,
+        GATEWAY_HTTP_RESPONSE_LIMIT,
+    )
+}
+
+fn validate_stored_transcript_scope(session_id: &str) -> Result<(), String> {
+    if session_id.is_empty() || session_id.len() > 256 || session_id.chars().any(char::is_control) {
+        Err("Hermes stored transcript session ID is invalid".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn decode_stored_transcript_page(
+    page: SessionMessagesPageResponse,
+    session_id: &str,
+) -> Result<StoredTranscriptPage, String> {
+    if page.session_id != session_id {
+        return Err("Hermes stored transcript response belongs to a different session".into());
+    }
+    if page.profile.as_deref().is_some_and(|profile| {
+        profile.is_empty()
+            || profile.len() > MAX_PROFILE_NAME_BYTES
+            || profile.chars().any(char::is_control)
+    }) {
+        return Err("Hermes stored transcript response returned an invalid profile".into());
+    }
+    if let Some(pagination) = page.pagination {
+        if page.messages.len() > TRANSCRIPT_PAGE_SIZE
+            || pagination.limit != TRANSCRIPT_PAGE_SIZE
+            || pagination.offset != 0
+            || pagination.order.as_deref() != Some("latest")
+            || pagination.returned != page.messages.len()
+        {
+            return Err("Hermes stored transcript response failed pagination validation".into());
+        }
+        let has_more = page.messages.len() == TRANSCRIPT_PAGE_SIZE;
+        return Ok(StoredTranscriptPage {
+            session_id: page.session_id,
+            profile: page.profile,
+            messages: page.messages,
+            has_more,
+            replace_all: false,
+        });
+    }
+    if page.messages.len() > 10_000 {
+        return Err("Hermes returned too many legacy stored transcript messages".into());
+    }
+    Ok(StoredTranscriptPage {
+        session_id: page.session_id,
+        profile: page.profile,
+        messages: page.messages,
+        has_more: false,
+        replace_all: true,
+    })
+}
+
 fn load_all_session_messages_http(
     endpoint: &GatewayEndpoint,
     session_id: &str,
@@ -14603,11 +14932,15 @@ fn decode_older_transcript_page(
     if page.session_id != session_id {
         return Err("Hermes transcript response belongs to a different session".into());
     }
-    if page
-        .profile
-        .as_deref()
-        .is_some_and(|returned| Some(returned) != profile)
-    {
+    // With an explicit profile, a conflicting receipt is rejected. An omitted
+    // profile intentionally uses the backend's ID-only historical read route;
+    // a profile echoed by that route is descriptive metadata, not a routing
+    // authority or evidence that a different request was made.
+    if profile.is_some_and(|expected| {
+        page.profile
+            .as_deref()
+            .is_some_and(|returned| returned != expected)
+    }) {
         return Err("Hermes transcript response belongs to a different profile".into());
     }
     let Some(pagination) = page.pagination else {
@@ -16589,6 +16922,43 @@ fn update_messaging_platform_http(
         return Err("Hermes did not confirm the requested messaging platform".into());
     }
     Ok(result)
+}
+
+fn load_profiles_http(endpoint: &GatewayEndpoint) -> Result<Vec<String>, String> {
+    let origin = endpoint.api_origin.trim_end_matches('/');
+    let url = format!("{origin}/api/profiles");
+    let response = if endpoint.remote_auth.is_some() {
+        request_remote_gateway_json_with_limit::<serde_json::Value>(
+            endpoint,
+            &url,
+            GATEWAY_HTTP_RESPONSE_LIMIT,
+        )?
+    } else {
+        if !is_bare_loopback_origin(&endpoint.api_origin) {
+            return Err("Hermes profile list requires the verified loopback API origin".into());
+        }
+        let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
+        validate_http_ticket(&ticket)?;
+        load_profiles_http_with_local_ticket(endpoint, ticket.as_str())?
+    };
+    parse_profile_names(response)
+}
+
+fn load_profiles_http_with_local_ticket(
+    endpoint: &GatewayEndpoint,
+    ticket: &str,
+) -> Result<serde_json::Value, String> {
+    if endpoint.remote_auth.is_some() || !is_bare_loopback_origin(&endpoint.api_origin) {
+        return Err("Hermes local profile list requires the verified loopback API origin".into());
+    }
+    validate_http_ticket(ticket)?;
+    let url = format!("{}/api/profiles", endpoint.api_origin.trim_end_matches('/'));
+    request_gateway_json_with_limit(
+        &endpoint.api_origin,
+        ticket,
+        &url,
+        GATEWAY_HTTP_RESPONSE_LIMIT,
+    )
 }
 
 fn load_capabilities_http(endpoint: &GatewayEndpoint) -> Result<CapabilitiesSnapshot, String> {
@@ -21617,6 +21987,536 @@ mod tests {
     }
 
     #[test]
+    fn profile_list_parser_accepts_names_and_rejects_malformed_or_ambiguous_rows() {
+        assert_eq!(
+            parse_profile_names(json!({"profiles":[
+                {"name":"default","is_default":true,"path":"/home/hermes"},
+                {"name":"research"}
+            ]}))
+            .expect("valid profile list"),
+            vec!["default", "research"]
+        );
+        assert!(parse_profile_names(json!({})).is_err());
+        assert!(parse_profile_names(json!({"profiles":{}})).is_err());
+        assert!(parse_profile_names(json!({"profiles":[{}]})).is_err());
+        assert!(parse_profile_names(json!({"profiles":[{"name":""}]})).is_err());
+        assert!(parse_profile_names(json!({"profiles":[{"name":"bad\nname"}]})).is_err());
+        assert!(
+            parse_profile_names(json!({
+                "profiles":[{"name":"x".repeat(MAX_PROFILE_NAME_BYTES + 1)}]
+            }))
+            .is_err()
+        );
+        assert!(
+            parse_profile_names(json!({"profiles":[
+                {"name":"research"},{"name":"RESEARCH"}
+            ]}))
+            .is_err()
+        );
+        let too_many = (0..=MAX_PROFILE_LIST_ENTRIES)
+            .map(|index| json!({"name":format!("profile-{index}")}))
+            .collect::<Vec<_>>();
+        assert!(parse_profile_names(json!({"profiles":too_many})).is_err());
+    }
+
+    #[test]
+    fn profile_list_request_carries_stable_connection_and_endpoint_identity() {
+        let (discovery, observed, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        let discovery = discovery.with_connection_id("saved-gateway");
+        discovery
+            .load_profiles("profiles-request-1".into(), "endpoint-instance-7".into(), 9)
+            .expect("queue profile list request");
+        assert_eq!(
+            observed
+                .recv_timeout(Duration::from_secs(1))
+                .expect("observed command"),
+            TestGatewayCommand::LoadProfiles {
+                request_id: "profiles-request-1".into(),
+                connection_id: Some("saved-gateway".into()),
+                instance_id: "endpoint-instance-7".into(),
+                authority_epoch: 9,
+            }
+        );
+        assert!(
+            discovery
+                .load_profiles("bad\nrequest".into(), "endpoint-instance-7".into(), 9)
+                .is_err()
+        );
+        assert!(
+            discovery
+                .load_profiles("profiles-request-2".into(), "endpoint-instance-7".into(), 0)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn stored_transcript_request_carries_owner_and_endpoint_identity() {
+        let (discovery, observed, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        let discovery = discovery.with_connection_id("saved-gateway");
+        discovery
+            .load_stored_session_transcript(
+                "stored-transcript-1".into(),
+                "legacy-session-1".into(),
+                "endpoint-instance-7".into(),
+                9,
+            )
+            .expect("queue ID-only stored transcript request");
+        assert_eq!(
+            observed
+                .recv_timeout(Duration::from_secs(1))
+                .expect("observed command"),
+            TestGatewayCommand::LoadStoredTranscript {
+                request_id: "stored-transcript-1".into(),
+                session_id: "legacy-session-1".into(),
+                connection_id: Some("saved-gateway".into()),
+                instance_id: "endpoint-instance-7".into(),
+                authority_epoch: 9,
+            }
+        );
+        assert!(
+            discovery
+                .load_stored_session_transcript(
+                    "bad\nrequest".into(),
+                    "legacy-session-1".into(),
+                    "endpoint-instance-7".into(),
+                    9
+                )
+                .is_err()
+        );
+        assert!(
+            discovery
+                .load_stored_session_transcript(
+                    "stored-transcript-2".into(),
+                    "bad\nsession".into(),
+                    "endpoint-instance-7".into(),
+                    9
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn local_profile_list_read_uses_verified_origin_and_gateway_ticket() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local profile list fixture");
+        let address = listener
+            .local_addr()
+            .expect("local profile list fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener
+                .accept()
+                .expect("accept local profile list request");
+            let request = read_http_fixture_request(&mut stream);
+            let lower = request.to_ascii_lowercase();
+            assert!(request.starts_with("GET /api/profiles HTTP/1.1\r\n"));
+            assert!(lower.contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n"));
+            assert!(!lower.contains("x-hermes-session-token:"));
+            let body = r#"{"profiles":[{"name":"default"},{"name":"work"}]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write local profile list response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "local-profile".into(),
+            instance_id: "local-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        };
+        assert_eq!(
+            parse_profile_names(
+                load_profiles_http_with_local_ticket(&endpoint, "fixture-native-http-ticket")
+                    .expect("authenticated local profile list")
+            )
+            .expect("valid local profile list response"),
+            vec!["default", "work"]
+        );
+        server.join().expect("local profile list fixture exits");
+        assert!(
+            load_profiles_http_with_local_ticket(
+                &GatewayEndpoint {
+                    api_origin: "https://example.com".into(),
+                    ..endpoint
+                },
+                "fixture-native-http-ticket"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn remote_profile_list_read_uses_remote_auth_and_enforces_response_limit() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind remote profile list fixture");
+        let address = listener
+            .local_addr()
+            .expect("remote profile list fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener
+                .accept()
+                .expect("accept remote profile list request");
+            let request = read_http_fixture_request(&mut stream);
+            let lower = request.to_ascii_lowercase();
+            assert!(request.starts_with("GET /hermes/api/profiles HTTP/1.1\r\n"));
+            assert!(lower.contains("x-hermes-session-token: fixture-session-token\r\n"));
+            assert!(!lower.contains("x-hermes-gateway-ticket:"));
+            let body = r#"{"profiles":[{"name":"remote-default"},{"name":"remote-work"}]}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write remote profile list response");
+        });
+        let address_text = address.to_string();
+        let endpoint = GatewayEndpoint {
+            profile_id: "remote-profile".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 3,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address_text}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        assert_eq!(
+            load_profiles_http(&endpoint).expect("authenticated remote profile list"),
+            vec!["remote-default", "remote-work"]
+        );
+        server.join().expect("remote profile list fixture exits");
+
+        let listener =
+            TcpListener::bind("127.0.0.1:0").expect("bind oversized profile list fixture");
+        let address = listener
+            .local_addr()
+            .expect("oversized profile list address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept oversized profile request");
+            let _request = read_http_fixture_request(&mut stream);
+            let body = format!(
+                "{{\"profiles\":[]}}{}",
+                " ".repeat(GATEWAY_HTTP_RESPONSE_LIMIT as usize)
+            );
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write oversized response");
+        });
+        let endpoint = GatewayEndpoint {
+            api_origin: format!("http://{address}/hermes"),
+            ..endpoint
+        };
+        let error = load_profiles_http(&endpoint).expect_err("oversized response rejected");
+        assert!(error.contains("bounded read limit"), "{error}");
+        server.join().expect("oversized profile list fixture exits");
+    }
+
+    #[test]
+    fn stored_transcript_decoder_accepts_profile_metadata_but_validates_page_shape() {
+        let page = decode_stored_transcript_page(
+            serde_json::from_value(json!({
+                "session_id":"legacy-session-1",
+                "profile":"research",
+                "messages":[{"role":"user","content":"history"}],
+                "pagination":{"limit":120,"offset":0,"order":"latest","returned":1}
+            }))
+            .expect("stored transcript response shape"),
+            "legacy-session-1",
+        )
+        .expect("valid stored transcript page");
+        assert_eq!(page.session_id, "legacy-session-1");
+        assert_eq!(page.profile.as_deref(), Some("research"));
+        assert_eq!(page.messages.len(), 1);
+        assert!(!page.has_more);
+        assert!(!page.replace_all);
+
+        let legacy = decode_stored_transcript_page(
+            serde_json::from_value(json!({
+                "session_id":"legacy-session-1",
+                "messages":[{"role":"assistant","content":"full legacy history"}]
+            }))
+            .expect("legacy stored transcript shape"),
+            "legacy-session-1",
+        )
+        .expect("valid legacy full transcript");
+        assert!(legacy.replace_all);
+        assert!(!legacy.has_more);
+        assert!(
+            decode_stored_transcript_page(
+                serde_json::from_value(json!({"session_id":"other","messages":[]})).unwrap(),
+                "legacy-session-1"
+            )
+            .is_err()
+        );
+        assert!(
+            decode_stored_transcript_page(
+                serde_json::from_value(json!({
+                    "session_id":"legacy-session-1","profile":"bad\nprofile","messages":[]
+                }))
+                .unwrap(),
+                "legacy-session-1"
+            )
+            .is_err()
+        );
+        assert!(
+            decode_stored_transcript_page(
+                serde_json::from_value(json!({
+                    "session_id":"legacy-session-1","messages":[{}],
+                    "pagination":{"limit":120,"offset":5,"order":"latest","returned":1}
+                }))
+                .unwrap(),
+                "legacy-session-1"
+            )
+            .is_err()
+        );
+        let too_many = (0..=TRANSCRIPT_PAGE_SIZE)
+            .map(|_| json!({}))
+            .collect::<Vec<_>>();
+        assert!(
+            decode_stored_transcript_page(
+                serde_json::from_value(json!({
+                    "session_id":"legacy-session-1","messages":too_many,
+                    "pagination":{"limit":120,"offset":0,"order":"latest","returned":121}
+                }))
+                .unwrap(),
+                "legacy-session-1"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn local_stored_transcript_read_is_ticket_authenticated_and_id_only() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local transcript fixture");
+        let address = listener.local_addr().expect("local transcript address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept local transcript request");
+            let request = read_http_fixture_request(&mut stream);
+            let lower = request.to_ascii_lowercase();
+            assert!(request.starts_with(
+                "GET /api/sessions/legacy-session-1/messages?limit=120&offset=0&order=latest&include_compacted=true HTTP/1.1\r\n"
+            ));
+            assert!(!lower.contains("profile="));
+            assert!(lower.contains("x-hermes-gateway-ticket: fixture-native-http-ticket\r\n"));
+            assert!(!lower.contains("x-hermes-session-token:"));
+            let body = r#"{"session_id":"legacy-session-1","profile":"research","messages":[{"role":"user","content":"stored"}],"pagination":{"limit":120,"offset":0,"order":"latest","returned":1}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write local transcript response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "local-profile".into(),
+            instance_id: "local-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        };
+        let response = load_stored_transcript_http_with_local_ticket(
+            &endpoint,
+            "legacy-session-1",
+            "fixture-native-http-ticket",
+        )
+        .expect("authenticated local transcript response");
+        let page = decode_stored_transcript_page(response, "legacy-session-1")
+            .expect("valid local stored transcript");
+        assert_eq!(page.profile.as_deref(), Some("research"));
+        assert_eq!(page.messages[0]["content"], "stored");
+        server.join().expect("local transcript fixture exits");
+    }
+
+    #[test]
+    fn remote_stored_transcript_read_uses_remote_auth_and_id_only_query() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind remote transcript fixture");
+        let address = listener.local_addr().expect("remote transcript address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept remote transcript request");
+            let request = read_http_fixture_request(&mut stream);
+            let lower = request.to_ascii_lowercase();
+            assert!(request.starts_with(
+                "GET /hermes/api/sessions/legacy-session-2/messages?limit=120&offset=0&order=latest&include_compacted=true HTTP/1.1\r\n"
+            ));
+            assert!(!lower.contains("profile="));
+            assert!(lower.contains("x-hermes-session-token: fixture-session-token\r\n"));
+            assert!(!lower.contains("x-hermes-gateway-ticket:"));
+            let body = r#"{"session_id":"legacy-session-2","messages":[{"role":"assistant","content":"remote history"}],"pagination":{"limit":120,"offset":0,"order":"latest","returned":1}}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write remote transcript response");
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: "remote-profile".into(),
+            instance_id: "remote-instance".into(),
+            authority_epoch: 3,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        let page = load_stored_transcript_http(&endpoint, "legacy-session-2")
+            .expect("authenticated remote stored transcript");
+        assert_eq!(page.session_id, "legacy-session-2");
+        assert_eq!(page.messages[0]["content"], "remote history");
+        server.join().expect("remote transcript fixture exits");
+    }
+
+    #[test]
+    fn profile_and_stored_transcript_events_preserve_connection_and_endpoint_fences() {
+        use std::io::Write as _;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind profile/transcript fixture");
+        let address = listener
+            .local_addr()
+            .expect("profile/transcript fixture address");
+        let server = thread::spawn(move || {
+            for (expected_path, body) in [
+                (
+                    "/hermes/api/profiles",
+                    r#"{"profiles":[{"name":"default"},{"name":"research"}]}"#,
+                ),
+                (
+                    "/hermes/api/sessions/legacy-session-7/messages?limit=120&offset=0&order=latest&include_compacted=true",
+                    r#"{"session_id":"legacy-session-7","profile":"research","messages":[{"role":"user","content":"history"}],"pagination":{"limit":120,"offset":0,"order":"latest","returned":1}}"#,
+                ),
+            ] {
+                let (mut stream, _) = listener
+                    .accept()
+                    .expect("accept profile/transcript request");
+                let request = read_http_fixture_request(&mut stream);
+                let lower = request.to_ascii_lowercase();
+                assert!(request.starts_with(&format!("GET {expected_path} HTTP/1.1\r\n")));
+                assert!(lower.contains("x-hermes-session-token: fixture-session-token\r\n"));
+                assert!(!lower.contains("x-hermes-gateway-ticket:"));
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .expect("write profile/transcript response");
+            }
+        });
+
+        let endpoint = GatewayEndpoint {
+            profile_id: "remote-profile".into(),
+            instance_id: "endpoint-instance-7".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_http_actor(endpoint, command_rx, event_tx));
+
+        command_tx
+            .send(GatewayHttpCommand::LoadProfiles {
+                request_id: "profiles-r1".into(),
+                connection_id: Some("saved-gateway".into()),
+                instance_id: "endpoint-instance-7".into(),
+                authority_epoch: 9,
+            })
+            .expect("queue profile list");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("profile list event"),
+            GatewayEvent::ProfilesLoaded {
+                request_id,
+                connection_id,
+                instance_id,
+                authority_epoch,
+                result: Ok(names),
+            } if request_id == "profiles-r1"
+                && connection_id.as_deref() == Some("saved-gateway")
+                && instance_id == "endpoint-instance-7"
+                && authority_epoch == 9
+                && names == ["default", "research"]
+        ));
+
+        command_tx
+            .send(GatewayHttpCommand::LoadStoredTranscript {
+                request_id: "stored-r1".into(),
+                session_id: "legacy-session-7".into(),
+                connection_id: Some("saved-gateway".into()),
+                instance_id: "endpoint-instance-7".into(),
+                authority_epoch: 9,
+            })
+            .expect("queue ID-only stored transcript");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("stored transcript event"),
+            GatewayEvent::StoredTranscriptLoaded {
+                request_id,
+                session_id,
+                connection_id,
+                instance_id,
+                authority_epoch,
+                result: Ok(page),
+            } if request_id == "stored-r1"
+                && session_id == "legacy-session-7"
+                && connection_id.as_deref() == Some("saved-gateway")
+                && instance_id == "endpoint-instance-7"
+                && authority_epoch == 9
+                && page.profile.as_deref() == Some("research")
+                && page.messages.len() == 1
+        ));
+
+        command_tx
+            .send(GatewayHttpCommand::LoadProfiles {
+                request_id: "profiles-stale".into(),
+                connection_id: Some("saved-gateway".into()),
+                instance_id: "old-instance".into(),
+                authority_epoch: 8,
+            })
+            .expect("queue stale endpoint request");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(1)).expect("stale identity event"),
+            GatewayEvent::ProfilesLoaded {
+                request_id,
+                result: Err(error),
+                ..
+            } if request_id == "profiles-stale" && error.contains("stale endpoint")
+        ));
+        drop(command_tx);
+        actor.join().expect("HTTP actor exits after sender closes");
+        server.join().expect("profile/transcript fixture exits");
+    }
+
+    #[test]
     fn bot_roster_read_uses_profiles_list_with_explicit_profile_scope() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind profiles.list fixture");
         let address = listener
@@ -26385,6 +27285,36 @@ mod tests {
             120,
         );
         assert!(result.unwrap_err().contains("different profile"));
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn older_transcript_page_keeps_id_only_route_when_backend_reports_profile_metadata() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept transcript read");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(!request.to_ascii_lowercase().contains("profile="));
+            let body = json!({
+                "session_id":"session-42",
+                "profile":"personal",
+                "messages":[{"role":"user","content":"stored history"}],
+                "pagination":{"limit":120,"offset":120,"order":"latest","returned":1}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write ID-only transcript page");
+        });
+        let page = request_older_transcript_page(
+            &format!("http://{address}"),
+            "fixture-transcript-ticket",
+            "session-42",
+            None,
+            120,
+        )
+        .expect("ID-only read accepts server-reported profile metadata");
+        assert_eq!(page.messages[0]["content"], "stored history");
         server.join().expect("fixture server exits");
     }
 
