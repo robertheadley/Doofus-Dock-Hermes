@@ -27946,16 +27946,18 @@ mod tests {
                 Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
                 other => panic!("expected text request, got {other:?}"),
             };
+            assert_eq!(request["jsonrpc"], "2.0");
+            assert_eq!(request["method"], "prompt.submit");
+            assert_eq!(request["params"]["session_id"], "runtime-1");
             let id = request["id"].as_u64().expect("JSON-RPC request id");
+            let refusal = json!({"jsonrpc":"2.0","id":id,"error":{
+                "code":4009,"message":"session busy",
+                "data":{"reason":"session busy"}
+            }});
+            assert_eq!(refusal["jsonrpc"], "2.0");
+            assert_eq!(refusal["id"], id);
             socket
-                .send(Message::Text(
-                    json!({"jsonrpc":"2.0","id":id,"error":{
-                        "code":4009,"message":"session busy",
-                        "data":{"reason":"session busy"}
-                    }})
-                    .to_string()
-                    .into(),
-                ))
+                .send(Message::Text(refusal.to_string().into()))
                 .expect("send busy refusal");
         });
         let (mut socket, _) =
@@ -27987,6 +27989,7 @@ mod tests {
                 Message::Text(text) => serde_json::from_str(&text).expect("parse prompt request"),
                 other => panic!("expected text request, got {other:?}"),
             };
+            assert_eq!(request["jsonrpc"], "2.0");
             assert_eq!(request["method"], "prompt.submit");
             assert_eq!(
                 request["params"],

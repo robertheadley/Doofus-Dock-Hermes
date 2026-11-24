@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0171",
+  "capability_id": "ui-use-hermes-gateway-v1-json-rpc-frames",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "7013eccefbc4eaa3da3a340555152df2e920e4ed",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked Rust workspace suite: 346 library + 3 launcher tests; 19 task continuity tests; all-target cargo check; progress builders; capability package validator; rustfmt and diff check. No authenticated live Gateway or packaged-app runtime.",
+  "scenario": "gateway-rpc-2-0-request-event-and-refusal-frames",
+  "locator": ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#request;.staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#handleFrame;.staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#settleResponse;apps/hermes-native/src/gateway.rs#rpc_with_events_timeout_outcome;apps/hermes-native/src/gateway.rs#server_request_parts;apps/hermes-native/src/gateway.rs#unhandled_server_request_response;apps/hermes-native/src/gateway.rs#rpc_preserves_gateway_busy_code_for_bounded_prompt_recovery;apps/hermes-native/src/gateway.rs#prompt_submit_keeps_the_runtime_session_scope_and_forwards_stream_events",
+  "notes": "Native transport emits JSON-RPC 2.0 requests with request id, method and owner-scoped params; forwards interleaved event notifications and correlates the matching structured refusal while preserving code and reason. Focused local tests pass. Authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open."
+}

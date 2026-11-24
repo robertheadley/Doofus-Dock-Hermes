@@ -5435,3 +5435,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **risks:** Live runtime evidence remains absent for all 176 requirements.
 - **follow_up:** Inspect the pinned JSON-RPC framing contract and existing native transport before implementing PAR-0506.
 
+### Gateway JSON-RPC 2.0 frame evidence — 2026-11-24
+
+- **id:** hermes-par-0506-json-rpc-evidence-20261124
+- **timestamp:** 2026-11-24T17:44:41Z
+- **what:** Added explicit tests for JSON-RPC 2.0 request identity, method/session params, interleaved stream events, and a correlated structured busy refusal. Generated scoped status marks PAR-0506 partial with verified local tests.
+- **why:** Tie native wire behavior to the downloaded Hermes JSON-RPC channel contract.
+- **components:** Native Gateway request/response/event framing and capability evidence EV-0171.
+- **type:** protocol test and evidence
+- **validation:** Focused tests; 346 library + 3 launcher; all-target locked check; 19 task continuity tests; task validator; package validator (PyYAML absent, YAML parsing skipped); progress builders; rustfmt and diff check.
+- **performance:** No runtime behavior change.
+- **risks:** Live Gateway and packaged Windows interoperability are not verified.
+- **follow_up:** Continue to the next recommended gateway protocol task.
+

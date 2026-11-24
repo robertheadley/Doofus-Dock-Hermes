@@ -10088,7 +10088,7 @@ capabilities:
   name: Use hermes-gateway-v1 JSON-RPC frames
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can use hermes-gateway-v1 JSON-RPC frames.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10100,9 +10100,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: gateway-rpc-2-0-request-event-and-refusal-frames
+      description: "Native Gateway tests assert outgoing requests use JSON-RPC 2.0 with an id, method and owner-scoped params; an interleaved event is forwarded; and a matching structured refusal preserves its code and reason. Live Gateway, packaged Windows and source-paired acceptance remain open."
+  evidence:
+  - EV-0171
 - id: ui-correlate-requests-with-unique-ids
   name: Correlate requests with unique IDs
   area: protocol-reliability

@@ -1229,6 +1229,22 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway and packaged Windows connection acceptance", "formal pinned-source acceptance"],
     },
+    "PAR-0506": {
+        "state": "partial",
+        "level": "headless_gateway_json_rpc_2_0_request_event_and_refusal_frames",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#request",
+            ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#handleFrame",
+            ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#settleResponse",
+            "apps/hermes-native/src/gateway.rs#rpc_with_events_timeout_outcome",
+            "apps/hermes-native/src/gateway.rs#server_request_parts",
+            "apps/hermes-native/src/gateway.rs#unhandled_server_request_response",
+            "apps/hermes-native/src/gateway.rs#rpc_preserves_gateway_busy_code_for_bounded_prompt_recovery",
+            "apps/hermes-native/src/gateway.rs#prompt_submit_keeps_the_runtime_session_scope_and_forwards_stream_events",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0171.json#EV-0171",
+        ],
+        "gaps": ["authenticated live Gateway and packaged Windows frame interoperability", "formal pinned-source acceptance"],
+    },
     "PAR-0082": {
         "state": "partial",
         "level": "headless_claude_codex_import_bounded_preview_and_paged_export",
