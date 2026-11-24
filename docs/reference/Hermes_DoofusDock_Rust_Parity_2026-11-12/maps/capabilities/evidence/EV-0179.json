@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0179",
+  "capability_id": "ui-distinguish-read-only-historical-sessions-from-writable-ones",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "3c47928e9ddbf50d1dc1f2760749a3d9dc7d096c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native headless Rust regression suite at the source commit; full locked workspace suite and all-target locked cargo check completed by the implementation owner.",
+  "scenario": "ambiguous-session-owner-opens-bounded-read-only-transcript-and-requires-explicit-profile-resume",
+  "locator": "apps/hermes-native/src/app.rs#unresolved_session_uses_read_only_transcript_then_requires_explicit_profile_resume",
+  "notes": "Headless UI regressions cover the unresolved-owner fallback, read-only mutation guard without a live writer, and the rule that ordinary live-resume errors do not trigger fallback. Gateway regressions cover profile-roster parsing and transport, ID-only stored-transcript requests, response bounds, endpoint/connection fencing, and local-ticket/remote-auth behavior. Historical transcript recovery remains read-only unless the user explicitly selects a matching live profile and resume succeeds. Explicit profile metadata carried in a stored transcript is display data, not routing authority. Limitation: transcript is first 120 messages only; no older-page UI. Authenticated live Gateway, packaged Windows interaction, and formal pinned-source acceptance remain open."
+}

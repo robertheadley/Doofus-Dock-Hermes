@@ -5554,3 +5554,29 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** Composer ID computation uses the existing owner identity and adds no I/O, polling or RPC.
 - **risks:** Live prompt submission routing, packaged Windows acceptance and formal pinned-source pairing remain open.
 - **follow_up:** Verify both profile composers against an authenticated Gateway and packaged Windows runtime before treating concurrent profile sessions as complete.
+
+### Revision 378 — PAR-0088 read-only historical session recovery — 2026-11-24
+
+- **id:** hermes-par0088-readonly-history-20261124
+- **timestamp:** 2026-11-24T21:43:00Z
+- **what:** Recorded partial UCM and progress evidence for bounded, owner-unresolved stored transcript recovery; documented read-only controls and explicit resume boundary.
+- **why:** Preserve historical context safely when a session's writable live owner cannot be established.
+- **components:** EV-0179, fixed capability node, progress generator and generated CSVs, Hermes Native PLAN/README/ARCHITECTURE/BACKLOG.
+- **type:** capability evidence and documentation
+- **validation:** The implementation owner reported the full locked workspace suite and all-target locked check complete; both progress builders and the package validator passed after these edits. The validator skipped YAML parsing because optional PyYAML is unavailable. EV-0179 binds the headless evidence to source SHA `3c47928e9ddbf50d1dc1f2760749a3d9dc7d096c`.
+- **performance:** Documentation-only changes; no runtime performance effect measured.
+- **risks:** Transcript is first 120 messages only; no older-page UI. Authenticated live Gateway, packaged Windows behavior and formal source-paired acceptance remain open.
+- **follow_up:** Implement older-page UI and complete live, packaged, and source-paired verification before promoting from partial.
+
+### Revision 379 — PAR-0088 final validation — 2026-11-24
+
+- **id:** hermes-par0088-final-validation-20261124
+- **timestamp:** 2026-11-24T21:46:37Z
+- **what:** Rebuilt progress outputs, validated durable state, and independently parsed the capability YAML after the package validator skipped its optional YAML phase.
+- **why:** Confirm the recorded partial capability and generated rows are structurally valid before publishing documentation.
+- **components:** PAR-0088 progress CSVs, capability map, task ledger.
+- **type:** validation
+- **validation:** Both progress builders, package validator, task validator, standalone YAML parse of 580 capabilities, unique-row checks, and `git diff --check` pass.
+- **performance:** Validation-only; no runtime performance effect.
+- **risks:** Authenticated live Gateway, packaged Windows behavior, older transcript pagination, and formal source-paired acceptance remain open.
+- **follow_up:** Continue with live Gateway verification and packaged acceptance.

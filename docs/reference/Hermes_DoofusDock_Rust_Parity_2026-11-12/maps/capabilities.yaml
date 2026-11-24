@@ -2162,7 +2162,7 @@ capabilities:
   area: sessions-projects
   claim: In the new native Rust DoofusDock UI, a user can distinguish read-only historical sessions from writable
     ones.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -2174,9 +2174,17 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  evidence:
+  - EV-0179
+  verification:
+    scenarios:
+    - id: ambiguous-owner-id-only-read-only-transcript
+      description: When stored-session ownership is unresolved, fetch the bounded transcript by stored session ID, render it read-only, and prevent prompt or other session mutations.
+    - id: explicit-profile-resume-restores-writable-session
+      description: Require explicit matching live-profile selection and a successful owner-fenced resume before enabling writable session actions.
 - id: ui-preserve-session-ownership-after-reconnection
   name: Preserve session ownership after reconnection
   area: sessions-projects

@@ -505,3 +505,10 @@ Existing native code and headless regressions already cover profile routing, ret
 - [x] Scope each composer widget identity to its owning Gateway, stored session ID and profile; headless interaction coverage types into both composers independently.
 - [x] Reject a pane from a different active Gateway with an actionable switch-connection state while preserving the active chat.
 - [ ] Validate actual Gateway prompt routing and packaged Windows behavior; PAR-0086 remains partial until live and source-paired acceptance.
+
+### PAR-0088 — Read-only historical sessions
+
+- [x] Recover an unresolved-owner transcript by stored session ID and render it read-only; block prompt/session mutations until explicit profile selection and successful live resume.
+- [x] Keep ordinary live-resume errors from silently opening historical fallback; validate headless owner and transport fences.
+- [ ] Add older transcript paging (current display is limited to the first 120 messages).
+- [ ] Verify authenticated live Gateway and packaged Windows behavior; keep PAR-0088 partial pending source-paired acceptance.
