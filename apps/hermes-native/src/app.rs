@@ -3,7 +3,8 @@ use crate::files::{FileBrowserState, FilePreviewContent, FilePreviewStore};
 use crate::fonts::{
     CAPTION_TEXT_SIZE, CHAT_MICRO_TEXT_SIZE, CHAT_TOOL_TEXT_SIZE, MARKDOWN_LIST_INDENT,
     MESSAGE_TEXT_INDENT, MICRO_TEXT_SIZE, TOOL_TEXT_SIZE, TRANSCRIPT_SCAFFOLD_BLOCK_GAP,
-    TRANSCRIPT_TURN_BLOCK_GAP, TRANSCRIPT_TURN_GAP, apply_chat_typography,
+    TRANSCRIPT_TOOL_ROW_GAP, TRANSCRIPT_TURN_BLOCK_GAP, TRANSCRIPT_TURN_GAP,
+    apply_assistant_markdown_line_height, apply_chat_typography, chat_composer_font,
 };
 use crate::gateway::{
     ActiveSessionStatus, ActiveSessionStatusKind, AgentPluginAutoUpdateSettings, AgentPluginInfo,
@@ -8909,26 +8910,10 @@ fn render_message() -> &'static str {
                         if scroll_target == Some(index) {
                             entry.response.scroll_to_me(Some(egui::Align::Center));
                         }
-                        let is_scaffold = transcript_message_is_scaffold(&message);
-                        let previous_is_scaffold = index > 0
-                            && messages
-                                .get(index - 1)
-                                .is_some_and(transcript_message_is_scaffold);
-                        let same_assistant_turn = index > 0
-                            && message.get("role").and_then(serde_json::Value::as_str)
-                                == Some("assistant")
-                            && messages[index - 1]
-                                .get("role")
-                                .and_then(serde_json::Value::as_str)
-                                == Some("assistant");
-                        let gap = if is_scaffold && previous_is_scaffold {
-                            TRANSCRIPT_SCAFFOLD_BLOCK_GAP
-                        } else if same_assistant_turn && (is_scaffold || previous_is_scaffold) {
-                            TRANSCRIPT_TURN_BLOCK_GAP
-                        } else {
-                            TRANSCRIPT_TURN_GAP
-                        };
-                        ui.add_space(gap);
+                        let previous = index
+                            .checked_sub(1)
+                            .and_then(|previous_index| messages.get(previous_index));
+                        ui.add_space(transcript_message_gap(previous, &message));
                     }
                 });
             let max_offset = (transcript_scroll_output.content_size.y
@@ -18319,7 +18304,7 @@ fn render_message() -> &'static str {
                     self.gateway_connected && !waiting_for_new_session,
                     egui::TextEdit::multiline(&mut self.draft)
                         .id(composer_id)
-                        .font(egui::TextStyle::Monospace)
+                        .font(chat_composer_font())
                         .desired_rows(2)
                         .desired_width(composer_width)
                         .hint_text(if self.gateway_connected {
@@ -21435,6 +21420,7 @@ fn render_message() -> &'static str {
                         egui::TextEdit::multiline(&mut edit.text)
                             .desired_rows(5)
                             .desired_width(f32::INFINITY)
+                            .font(chat_composer_font())
                             .interactive(false),
                     )
                     .accessible_name("Prompt to regenerate");
@@ -21483,7 +21469,7 @@ fn render_message() -> &'static str {
                 if let Some(path) = remove_path {
                     edit.attachments.retain(|attachment| attachment.path != path);
                 }
-                let input = ui.add(egui::TextEdit::multiline(&mut edit.text).desired_rows(5).desired_width(f32::INFINITY))
+                let input = ui.add(egui::TextEdit::multiline(&mut edit.text).desired_rows(5).desired_width(f32::INFINITY).font(chat_composer_font()))
                     .accessible_name("Edited message text");
                 let input_rect = input.rect;
                 let (pointer_position, has_hovered_files, dropped_paths) = ui.input(|input| {
@@ -42809,6 +42795,7 @@ fn render_transcript_markdown(
 
     ui.scope(|ui| {
         apply_chat_typography(ui.style_mut());
+        apply_assistant_markdown_line_height(ui.style_mut());
         // The pinned CSS uses an 11.2px paragraph gap. egui_commonmark has no
         // paragraph-specific spacing token, so scope that rhythm to Markdown.
         ui.spacing_mut().item_spacing.y = crate::fonts::TRANSCRIPT_PARAGRAPH_GAP;
@@ -42837,15 +42824,57 @@ fn render_transcript_markdown(
     clicked_preview
 }
 
-fn transcript_message_is_scaffold(message: &serde_json::Value) -> bool {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TranscriptMessageSpacingKind {
+    Conversation,
+    ToolRow,
+    Scaffold,
+}
+
+fn transcript_message_spacing_kind(message: &serde_json::Value) -> TranscriptMessageSpacingKind {
     let kind = message.get("type").and_then(serde_json::Value::as_str);
     let role = message.get("role").and_then(serde_json::Value::as_str);
-    role == Some("tool")
+    if role == Some("tool")
         || message.get("tool_call_id").is_some()
-        || matches!(
-            kind,
-            Some("tool_call" | "tool_result" | "thinking" | "activity" | "status")
-        )
+        || matches!(kind, Some("tool_call" | "tool_result"))
+    {
+        TranscriptMessageSpacingKind::ToolRow
+    } else if matches!(kind, Some("thinking" | "activity" | "status")) {
+        TranscriptMessageSpacingKind::Scaffold
+    } else {
+        TranscriptMessageSpacingKind::Conversation
+    }
+}
+
+fn transcript_message_gap(
+    previous: Option<&serde_json::Value>,
+    current: &serde_json::Value,
+) -> f32 {
+    let Some(previous) = previous else {
+        return TRANSCRIPT_TURN_GAP;
+    };
+    let previous_kind = transcript_message_spacing_kind(previous);
+    let current_kind = transcript_message_spacing_kind(current);
+    if previous_kind == TranscriptMessageSpacingKind::ToolRow
+        && current_kind == TranscriptMessageSpacingKind::ToolRow
+    {
+        return TRANSCRIPT_TOOL_ROW_GAP;
+    }
+    if previous_kind != TranscriptMessageSpacingKind::Conversation
+        && current_kind != TranscriptMessageSpacingKind::Conversation
+        && (previous_kind == TranscriptMessageSpacingKind::Scaffold
+            || current_kind == TranscriptMessageSpacingKind::Scaffold)
+    {
+        return TRANSCRIPT_SCAFFOLD_BLOCK_GAP;
+    }
+    if (previous_kind != TranscriptMessageSpacingKind::Conversation
+        || current_kind != TranscriptMessageSpacingKind::Conversation)
+        && previous.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+        && current.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+    {
+        return TRANSCRIPT_TURN_BLOCK_GAP;
+    }
+    TRANSCRIPT_TURN_GAP
 }
 
 fn composer_file_drop_paths(
@@ -52161,6 +52190,22 @@ mod tests {
         );
         assert!(tooltip.contains(" → "));
         assert!(format_timeline_tooltip(f64::NAN, None).is_empty());
+    }
+
+    #[test]
+    fn transcript_spacing_matches_source_tool_and_scaffold_rhythms() {
+        let prose = json!({"role":"assistant","type":"message"});
+        let tool_a = json!({"role":"assistant","type":"tool_call","tool_call_id":"a"});
+        let tool_b = json!({"role":"assistant","type":"tool_call","tool_call_id":"b"});
+        let thinking = json!({"role":"assistant","type":"thinking"});
+        let activity = json!({"role":"assistant","type":"activity"});
+        let user = json!({"role":"user","type":"message"});
+
+        assert_eq!(transcript_message_gap(Some(&tool_a), &tool_b), 6.0);
+        assert_eq!(transcript_message_gap(Some(&thinking), &activity), 4.0);
+        assert_eq!(transcript_message_gap(Some(&prose), &tool_a), 12.0);
+        assert_eq!(transcript_message_gap(Some(&user), &prose), 6.0);
+        assert_eq!(transcript_message_gap(None, &prose), 6.0);
     }
 
     #[test]

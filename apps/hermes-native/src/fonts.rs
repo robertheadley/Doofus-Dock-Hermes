@@ -20,6 +20,7 @@ pub const CHAT_CAPTION_TEXT_SIZE: f32 = CAPTION_TEXT_SIZE * CHAT_TEXT_SCALE;
 pub const CHAT_MICRO_TEXT_SIZE: f32 = MICRO_TEXT_SIZE * CHAT_TEXT_SCALE;
 pub const CHAT_CONVERSATION_LINE_HEIGHT: f32 = CONVERSATION_LINE_HEIGHT * CHAT_TEXT_SCALE;
 pub const CHAT_CAPTION_LINE_HEIGHT: f32 = CAPTION_LINE_HEIGHT * CHAT_TEXT_SCALE;
+pub const ASSISTANT_MARKDOWN_LINE_HEIGHT: f32 = CHAT_BODY_TEXT_SIZE * 1.5;
 /// Default transcript rhythm from the pinned Desktop CSS, at 100% logical px.
 pub const TRANSCRIPT_TURN_GAP: f32 = 6.0;
 pub const TRANSCRIPT_TURN_BLOCK_GAP: f32 = 12.0;
@@ -29,6 +30,10 @@ pub const TRANSCRIPT_PARAGRAPH_GAP: f32 = 11.2;
 pub const MESSAGE_TEXT_INDENT: f32 = 12.0;
 /// Tailwind Typography default list inset: 1.625em at the scaled chat base.
 pub const MARKDOWN_LIST_INDENT: f32 = CHAT_BODY_TEXT_SIZE * 1.625;
+
+pub fn chat_composer_font() -> FontId {
+    FontId::new(CHAT_BODY_TEXT_SIZE, FontFamily::Monospace)
+}
 
 /// Install the user's chosen typefaces while retaining egui's bundled fallback
 /// fonts for symbols, emoji, and glyphs outside either typeface's coverage.
@@ -119,6 +124,13 @@ pub fn apply_chat_typography(style: &mut egui::Style) {
     style.spacing.item_spacing.y = TRANSCRIPT_TOOL_ROW_GAP;
     style.spacing.extra_text_line_spacing =
         CHAT_CONVERSATION_LINE_HEIGHT - CHAT_BODY_TEXT_SIZE - 3.0;
+}
+
+/// Match the pinned Desktop's assistant Markdown `line-height: 1.5` without
+/// changing transcript labels, app chrome, or composer text metrics.
+pub fn apply_assistant_markdown_line_height(style: &mut egui::Style) {
+    style.spacing.extra_text_line_spacing =
+        ASSISTANT_MARKDOWN_LINE_HEIGHT - CHAT_BODY_TEXT_SIZE - 3.0;
 }
 
 fn font_definitions() -> FontDefinitions {
@@ -295,5 +307,18 @@ mod tests {
         assert_eq!(TRANSCRIPT_TOOL_ROW_GAP, 6.0);
         assert_eq!(TRANSCRIPT_PARAGRAPH_GAP, 11.2);
         assert_eq!(MESSAGE_TEXT_INDENT, 12.0);
+        let composer_font = chat_composer_font();
+        assert!((composer_font.size - 14.3).abs() < 0.001);
+        assert_eq!(composer_font.family, FontFamily::Monospace);
+
+        let mut markdown_style = style.clone();
+        apply_assistant_markdown_line_height(&mut markdown_style);
+        assert!((ASSISTANT_MARKDOWN_LINE_HEIGHT - 21.45).abs() < 0.001);
+        assert!(
+            (CHAT_BODY_TEXT_SIZE + 3.0 + markdown_style.spacing.extra_text_line_spacing
+                - ASSISTANT_MARKDOWN_LINE_HEIGHT)
+                .abs()
+                < 0.001
+        );
     }
 }

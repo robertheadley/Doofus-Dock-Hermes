@@ -3673,3 +3673,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark performed. Transcript reads use a separate worker lane with a tested two-reader concurrency cap; UI spacing adds no frame-loop I/O.
 - **risks:** Opaque cursor reads are currently used for unresolved-owner read-only history; known-owner native paging remains offset-based. Authenticated live Gateway, packaged Windows behavior, and formal pinned-source acceptance remain unverified; PAR-0090 stays partial.
 - **follow_up:** Exercise the cursor flow against the authenticated Gateway and packaged Windows app; assess extending it to known-owner pagination before claiming broader opaque-cursor support.
+
+### Revision 380 — Match composer and Markdown typography to pinned source — 2026-11-24
+
+- **id:** hermes-chat-composer-source-typography-20261124
+- **what:** Applied Hermes Desktop's 110% chat text scale to the main composer and message-edit fields, set assistant Markdown to the source 1.5 line-height, and corrected transcript gap mapping so adjacent tool rows use 6px while scaffold-block pairs use 4px.
+- **why:** The prior typography pass covered transcript text but missed the source's composer scope and assistant Markdown line-height; it also grouped tool rows with the tighter scaffold gap.
+- **components:** Native chat composer and edit dialog, Markdown renderer, transcript rhythm classifier, font/spacing unit tests, README and architecture docs.
+- **type:** visual alignment
+- **validation:** Focused chat font and transcript rhythm tests passed; full locked workspace suite passed (753 library + 15 automation protocol + 3 launcher tests); rustfmt/diff checks passed; headless transcript + typed composer screenshot captured at 1440x900.
+- **performance:** No frame-loop I/O, network calls, or additional allocations beyond per-frame style construction in existing scoped UI rendering.
+- **risks:** Native has no distinct HUD/floating rich-composer surface; session panes reuse the same scaled composer. Live Gateway and packaged Windows visual acceptance remain open.
+- **follow_up:** Compare transcript and composer against the pinned Desktop at matched DPI; preserve HUD-only compact spacing as out of scope until Hermes Native has a HUD context.
