@@ -18056,7 +18056,18 @@ fn render_message() -> &'static str {
         let mut keyboard_insert = None;
         let mut pasted_image = None;
         ui.horizontal(|ui| {
-            let composer_id = ui.make_persistent_id("message-composer");
+            let composer_owner = match &self.route {
+                AppRoute::Session(session_id) => self.session_identity_key_for_connection(
+                    Some(self.active_gateway_connection_id()),
+                    session_id,
+                    self.active_session_profile.as_deref(),
+                ),
+                AppRoute::NewChat => self.new_chat_draft_scope.clone().unwrap_or_else(|| {
+                    self.session_identity_key("__new__", self.active_session_profile.as_deref())
+                }),
+                _ => "unscoped-chat-composer".into(),
+            };
+            let composer_id = ui.make_persistent_id(("message-composer", composer_owner));
             pasted_image = self
                 .gateway_connected
                 .then(|| {
@@ -55985,6 +55996,237 @@ mod tests {
         );
         assert_eq!(app.transcript[0]["content"], "Personal main transcript");
         assert_eq!(app.draft, "Personal main draft");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn two_profile_sessions_render_side_by_side_without_crossing_owner_state() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        app.gateway_connection_id = Some(connection_id.clone());
+        let stored_session_id = "same-stored-session";
+        let work = app
+            .workspace
+            .open_session_pane_for_owner(
+                Some(&connection_id),
+                Some("work"),
+                stored_session_id,
+                "Work session",
+            )
+            .expect("open work profile session");
+        let personal = app
+            .workspace
+            .open_session_pane_for_owner(
+                Some(&connection_id),
+                Some("personal"),
+                stored_session_id,
+                "Personal session",
+            )
+            .expect("open personal profile session with the same stored ID");
+        assert_ne!(work, personal, "profile is part of pane ownership");
+
+        let work_key = app.session_identity_key_for_connection(
+            Some(&connection_id),
+            stored_session_id,
+            Some("work"),
+        );
+        let personal_key = app.session_identity_key_for_connection(
+            Some(&connection_id),
+            stored_session_id,
+            Some("personal"),
+        );
+        app.session_chat_views.insert(
+            work_key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-work".into()),
+                transcript: vec![json!({"role":"assistant","content":"Work-only transcript"})],
+                draft: "Work-only draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.session_chat_views.insert(
+            personal_key.clone(),
+            SessionChatViewState {
+                profile: Some("personal".into()),
+                runtime_session_id: Some("runtime-personal".into()),
+                transcript: vec![json!({"role":"assistant","content":"Personal-only transcript"})],
+                draft: "Personal-only draft".into(),
+                ..SessionChatViewState::default()
+            },
+        );
+
+        let snapshot = app.workspace.dock.snapshot();
+        let work_node = find_panel_node(snapshot.document.root.as_deref(), &work.0)
+            .expect("work session panel node");
+        app.workspace
+            .dock
+            .transact(
+                snapshot.revision,
+                CommandId::from("test-split-profile-session-panes"),
+                [Operation::SplitPanel {
+                    panel: personal.clone(),
+                    target: work_node,
+                    orientation: Orientation::Horizontal,
+                    before: false,
+                    ratio: 0.5,
+                }],
+            )
+            .expect("split the profile sessions into visible columns");
+        app.workspace.save_layout();
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1800.0, 1200.0))
+            .build_ui(|ui| app.draw(ui));
+        for text in ["Work-only transcript", "Personal-only transcript"] {
+            assert!(
+                harness
+                    .query_all_by(|node| node.value().as_deref() == Some(text))
+                    .next()
+                    .is_some(),
+                "the side-by-side profile sessions keep their own content: {text}"
+            );
+        }
+        let rendered_values: Vec<_> = harness
+            .query_all_by(|node| node.value().is_some())
+            .map(|node| node.value())
+            .collect();
+        assert!(
+            rendered_values
+                .iter()
+                .any(|value| value.as_deref() == Some("Work-only draft")),
+            "work profile composer preserves its own draft: {rendered_values:?}"
+        );
+        assert!(
+            rendered_values
+                .iter()
+                .any(|value| value.as_deref() == Some("Personal-only draft")),
+            "personal profile composer preserves its own draft: {rendered_values:?}"
+        );
+        harness
+            .query_all_by(|node| node.value().as_deref() == Some("Work-only draft"))
+            .next()
+            .expect("work profile composer")
+            .click();
+        harness.run();
+        harness
+            .query_all_by(|node| node.value().as_deref() == Some("Work-only draft"))
+            .next()
+            .expect("focused work profile composer")
+            .type_text("work edit");
+        harness.run();
+        harness
+            .query_all_by(|node| node.value().as_deref() == Some("Personal-only draft"))
+            .next()
+            .expect("personal profile composer")
+            .click();
+        harness.run();
+        harness
+            .query_all_by(|node| node.value().as_deref() == Some("Personal-only draft"))
+            .next()
+            .expect("focused personal profile composer")
+            .type_text("personal edit");
+        harness.run();
+        let edited_values: Vec<_> = harness
+            .query_all_by(|node| node.value().is_some())
+            .map(|node| node.value())
+            .collect();
+        assert!(
+            edited_values
+                .iter()
+                .any(|value| value.as_deref().is_some_and(|text| {
+                    text.contains("Work-only draft") && text.contains("work edit")
+                })),
+            "typing into the work composer stays in its profile: {edited_values:?}"
+        );
+        assert!(
+            edited_values
+                .iter()
+                .any(|value| value.as_deref().is_some_and(|text| {
+                    text.contains("Personal-only draft") && text.contains("personal edit")
+                })),
+            "typing into the personal composer stays in its profile: {edited_values:?}"
+        );
+        drop(harness);
+
+        let owners = app.workspace.open_session_pane_owner_identities();
+        assert!(owners.contains(&(
+            Some(connection_id.clone()),
+            stored_session_id.into(),
+            Some("work".into())
+        )));
+        assert!(owners.contains(&(
+            Some(connection_id),
+            stored_session_id.into(),
+            Some("personal".into())
+        )));
+        assert_eq!(
+            app.session_chat_views[&work_key].draft,
+            "Work-only draftwork edit"
+        );
+        assert_eq!(
+            app.session_chat_views[&personal_key].draft,
+            "Personal-only draftpersonal edit"
+        );
+        assert_eq!(
+            app.session_chat_views[&work_key].transcript[0]["content"],
+            "Work-only transcript"
+        );
+        assert_eq!(
+            app.session_chat_views[&personal_key].transcript[0]["content"],
+            "Personal-only transcript"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn session_pane_from_another_gateway_shows_blocked_owner_state_without_mutating_chat() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::Session("active-session".into());
+        app.active_session_profile = Some("personal".into());
+        app.transcript = vec![json!({"role":"assistant","content":"Active transcript"})];
+        app.draft = "Preserve active draft".into();
+        let previous_route = app.route.clone();
+        let foreign = app
+            .workspace
+            .open_session_pane_for_owner(
+                Some("gateway-from-another-endpoint"),
+                Some("work"),
+                "foreign-session",
+                "Foreign Gateway session",
+            )
+            .expect("register a session owned by another Gateway");
+        let descriptor = app
+            .workspace
+            .dock
+            .snapshot()
+            .document
+            .descriptor(&foreign)
+            .expect("foreign session descriptor")
+            .clone();
+
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(720.0, 240.0))
+            .build_ui(|ui| app.session_pane_content(ui, &descriptor));
+        assert!(
+            harness
+                .query_all_by(|node| node.value().as_deref()
+                    == Some("This session belongs to another Hermes connection. Switch to that connection to open it."))
+                .next()
+                .is_some(),
+            "a foreign Gateway session fails closed with an actionable state"
+        );
+        drop(harness);
+        assert_eq!(app.route, previous_route);
+        assert_eq!(app.active_session_profile.as_deref(), Some("personal"));
+        assert_eq!(app.transcript[0]["content"], "Active transcript");
+        assert_eq!(app.draft, "Preserve active draft");
+
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
