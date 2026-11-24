@@ -7679,6 +7679,32 @@ fn replay_gateway_events(
         if reply
             .get("snapshot_required")
             .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        {
+            cursors.remove(&(cursor_profile.clone(), session_id.clone()));
+            let gap = serde_json::json!({
+                "type": "session.replay_gap",
+                "session_id": session_id,
+                "profile": cursor_profile,
+                "payload": {
+                    "replay_epoch": reply.get("replay_epoch").cloned().unwrap_or(serde_json::Value::Null),
+                    "latest_seq": reply.get("latest_seq").cloned().unwrap_or(serde_json::Value::Null),
+                }
+            });
+            if events
+                .send(GatewayEvent::ServerEvent {
+                    event: gap,
+                    connection_id: None,
+                })
+                .is_err()
+            {
+                return;
+            }
+            continue;
+        }
+        if reply
+            .get("snapshot_required")
+            .and_then(serde_json::Value::as_bool)
             != Some(false)
             || reply
                 .get("replay_epoch")
@@ -20398,6 +20424,79 @@ mod tests {
             cursors[&(String::from("profile-b"), String::from("runtime-a"))].last_seen,
             2
         );
+    }
+
+    #[test]
+    fn reconnect_snapshot_required_emits_owner_scoped_replay_gap_and_clears_cursor() {
+        use std::net::TcpListener;
+        use std::sync::mpsc;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind replay-gap fixture");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept replay-gap client");
+            let mut socket = tungstenite::accept(stream).expect("accept replay-gap websocket");
+            let request: serde_json::Value = match socket.read().expect("read replay request") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse replay request"),
+                other => panic!("expected replay request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "session.events.since");
+            assert_eq!(request["params"]["session_id"], "runtime-1");
+            assert_eq!(request["params"]["profile"], "profile-a");
+            socket
+                .send(Message::Text(
+                    serde_json::json!({
+                        "jsonrpc":"2.0",
+                        "id":request["id"],
+                        "result":{
+                            "events":[{"type":"message.delta","session_id":"runtime-1","seq":3,"replay_epoch":"epoch-next","payload":{"text":"must not replay"}}],
+                            "latest_seq":9,
+                            "replay_epoch":"epoch-next",
+                            "snapshot_required":true
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send snapshot-required response");
+        });
+
+        let (mut socket, _) = tungstenite::connect(format!("ws://{address}/api/ws"))
+            .expect("connect replay-gap client");
+        let mut cursors = HashMap::from([(
+            ("profile-a".into(), "runtime-1".into()),
+            GatewayReplayCursor {
+                last_seen: 2,
+                replay_epoch: "epoch-old".into(),
+            },
+        )]);
+        let (events, received) = mpsc::channel();
+        replay_gateway_events(&mut socket, &mut cursors, &events);
+
+        let GatewayEvent::ServerEvent {
+            event,
+            connection_id,
+        } = received
+            .recv_timeout(Duration::from_secs(1))
+            .expect("replay-gap event")
+        else {
+            panic!("expected owner-scoped replay-gap server event");
+        };
+        assert_eq!(event["type"], "session.replay_gap");
+        assert_eq!(event["session_id"], "runtime-1");
+        assert_eq!(event["profile"], "profile-a");
+        assert_eq!(event["payload"]["replay_epoch"], "epoch-next");
+        assert_eq!(event["payload"]["latest_seq"], 9);
+        assert!(connection_id.is_none());
+        assert!(
+            received.try_recv().is_err(),
+            "gap response must not dispatch stale replay rows"
+        );
+        assert!(
+            cursors.is_empty(),
+            "snapshot recovery must not retain the stale cursor"
+        );
+        server.join().expect("replay-gap fixture exits");
     }
 
     #[test]
