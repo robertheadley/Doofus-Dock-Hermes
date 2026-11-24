@@ -32,6 +32,7 @@ class DoofusTaskTests(unittest.TestCase):
         csv_dir = self.root / "apps" / "hermes-native" / "docs" / "status"
         csv_dir.mkdir(parents=True)
         shutil.copy2(REPO / "apps" / "hermes-native" / "docs" / "status" / "IMPLEMENTATION_PROGRESS.csv", csv_dir / "IMPLEMENTATION_PROGRESS.csv")
+        shutil.copy2(REPO / "apps" / "hermes-native" / "docs" / "status" / "CHAT_TOOL_PROGRESS.csv", csv_dir / "CHAT_TOOL_PROGRESS.csv")
         (self.root / "tests").mkdir()
         (self.root / "tests" / "evidence.txt").write_text(SIMULATED_PASS_EVIDENCE + "\n", encoding="utf-8")
         (self.root / "README.md").write_text("isolated simulated repository\n", encoding="utf-8")
@@ -302,17 +303,29 @@ class DoofusTaskTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "committed")
         self.assertEqual(task.load_pair(self.root)[0]["task_ledger_revision"], 2)
 
-    def test_progress_keeps_partial_coverage_separate_from_formal_acceptance_and_eta(self) -> None:
+    def test_progress_reports_only_the_agent_workflow_scope_and_keeps_partial_states(self) -> None:
         report = task.progress_report(self.root)
-        self.assertEqual(report["parity_scope"]["total"], 499)
-        progress_path = self.root / "apps" / "hermes-native" / "docs" / "status" / "IMPLEMENTATION_PROGRESS.csv"
+        self.assertEqual(report["agent_workflow_scope"]["total"], 176)
+        progress_path = self.root / "apps" / "hermes-native" / "docs" / "status" / "CHAT_TOOL_PROGRESS.csv"
         with progress_path.open(newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
-        expected_reviewed = sum(row["implementation_state"] != "unknown" for row in rows)
-        self.assertEqual(report["implementation"]["reviewed"], expected_reviewed)
-        self.assertLess(report["implementation"]["reviewed"], 499)
-        self.assertEqual(report["formal_source_acceptance"], {"pending": 499})
-        self.assertEqual(report["legacy_checklist_measurement"]["completed"], 33)
+        expected_states = {}
+        for row in rows:
+            state = row["implementation_state"]
+            expected_states[state] = expected_states.get(state, 0) + 1
+        self.assertEqual(report["implementation"]["states"], expected_states)
+        self.assertEqual(report["implementation"]["reviewed"], sum(row["implementation_state"] != "unknown" for row in rows))
+        self.assertEqual(report["source_pair_acceptance"], {"pending": 176})
+        self.assertNotIn("completed", report["tasks"])
+        self.assertEqual(
+            report["tasks"]["tested_or_accepted"],
+            sum(report["tasks"]["states"].get(state, 0) for state in ("tested", "verified", "accepted")),
+        )
+        plain = task.render(report, json_output=False)
+        self.assertIn("Agent-workflow scope: 176 requirements", plain)
+        self.assertIn("Task lifecycle (separate from feature state)", plain)
+        self.assertNotIn("499", plain)
+        self.assertNotIn("Parity inventory", plain)
         self.assertIsNone(report["elapsed_execution_seconds"])
         self.assertEqual(report["estimated_remaining_effort"]["status"], "unavailable_insufficient_phase_samples")
         self.assertEqual(report["estimated_remaining_effort"]["confidence"], "unavailable")
@@ -326,17 +339,20 @@ class DoofusTaskTests(unittest.TestCase):
             {"phase": "phase-a", "duration_minutes": 6.0, "size_units": 1.0, "started_at": "2026-11-03T00:00:00Z"},
         ]
         ledger = task.read_json(self.root, self.root / ".doofus" / "task-ledger.json", "task-ledger")
-        ledger["tasks"].append({
-            "task_id": "phase-a-remaining", "parent_task_id": None,
-            "state": "in_progress", "phase": "phase-a", "size_units": None,
-        })
+        matching = next(
+            item for root_task in ledger["tasks"] for item in task.flatten(root_task)
+            if item["task_id"] == "hermes-par-0001"
+        )
+        matching["state"] = "in_progress"
+        matching["phase"] = "phase-a"
+        matching["size_units"] = None
         with mock.patch.object(task, "load_pair", return_value=(handoff, ledger)):
             missing = task.progress_report(self.root)["estimated_remaining_effort"]["phase-a"]
             self.assertEqual(missing["status"], "unavailable_remaining_size_unknown")
             self.assertIsNone(missing["eta_minutes"])
-            self.assertEqual(missing["tasks_missing_size"], ["phase-a-remaining"])
+            self.assertEqual(missing["tasks_missing_size"], ["hermes-par-0001"])
             self.assertEqual(missing["confidence"], "unavailable")
-            ledger["tasks"][-1]["size_units"] = 2.0
+            matching["size_units"] = 2.0
             estimated = task.progress_report(self.root)["estimated_remaining_effort"]["phase-a"]
         self.assertEqual(estimated["status"], "estimated")
         self.assertEqual(estimated["eta_minutes"], 17.8)

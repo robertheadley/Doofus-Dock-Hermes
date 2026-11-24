@@ -10399,9 +10399,12 @@ capabilities:
   verification:
     scenarios:
     - id: session-connection-request-approval-and-sequence-fence
-      description: Bound `connection.request` metadata to its session/tool row, render approval/setup controls, send `connection.respond` through the owning actor, and reject stale/wrong-session updates without exposing secret values. Partial evidence only: pending resume hydration/reissue, authenticated Gateway and packaged Windows/source-paired acceptance remain open.
+      description: "Bound `connection.request` metadata to its session/tool row, render approval/setup controls, send `connection.respond` through the owning actor, hydrate matching `pending_connection` resume snapshots without duplicate rows or sequence rewind, and reissue failed/expired connector or MCP targets on the same open operation. Plugin/skill catalog retries stay out of the connector RPC. Authenticated Gateway and packaged Windows/source-paired acceptance remain open."
+    - id: session-connection-resume-hydration-and-target-reissue
+      description: "Resume hydrates a pending operation into the matching existing tool row; a newer live sequence wins, absent snapshots settle only the operation open at resume start, and failed/expired connector/MCP targets retry through the same open operation. Catalog plugin retry is not routed through the connector RPC. Headless tests pass; live Gateway and packaged Windows/source-paired acceptance remain open."
   evidence:
   - EV-0166
+  - EV-0167
 - id: ui-return-method-not-found-for-unsupported-server-request
   name: Return method-not-found for unsupported server request
   area: protocol-reliability

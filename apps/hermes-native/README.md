@@ -1,6 +1,6 @@
 # Hermes Native Rust
 
-The delivery goal is verified support for chat, tools, skills, MCP integrations, and plugins from pinned Hermes Desktop snapshot `8783054ef6cbafd86f10892241436862c1171a66`, tracked separately in `docs/status/CHAT_TOOL_SCOPE.csv` and `docs/status/CHAT_TOOL_PROGRESS.csv`. Feature parity is required; pixel parity is not. The 499-row matrix remains the full source inventory. Doofus Hermes will be backported after this scope is complete.
+The delivery goal is verified support for the Hermes workflows needed for agentic coding: model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP, and supporting context/attachments from pinned Hermes Desktop snapshot `8783054ef6cbafd86f10892241436862c1171a66`. The 176-row `docs/status/CHAT_TOOL_SCOPE.csv` and generated `CHAT_TOOL_PROGRESS.csv` define the feature target and evidence state. Pixel parity and unrelated Desktop administration are deferred. Doofus Hermes will be backported after this scope is complete.
 
 Independent native Rust/egui implementation of the stock upstream Hermes Desktop GUI. It uses the Hermes Python gateway as the runtime and DoofusDock for canonical workspace layouts, profiles, docking and presentation.
 
@@ -12,7 +12,7 @@ The Sessions sidebar and command palette expose **Import sessions** for pinned C
 
 Pinned `background.complete` results now appear as bounded persistent system notices in their originating transcript. The native UI suppresses empty text and repeated task IDs and fences session/profile ownership; late results still land after Stop. This is local headless evidence, with live Gateway, packaged Windows and source-paired acceptance open.
 
-Session-scoped MCP and connector setup now appears on the originating tool row from pinned `connection.request` and `connection.update` events. The user can inspect each target, open a backend-provided authorization link, approve or skip pending setup, enter required environment values in masked ephemeral fields, or continue without setup. Responses use `connection.respond` with the exact session/profile/Gateway owner; stale sequences are ignored, unknown outcomes lock the action until a newer authoritative update, and environment drafts are zeroized when sent or when the operation settles. Pending-operation hydration from resume snapshots, reissue for failed/expired targets, live Gateway and packaged Windows acceptance remain open.
+Session-scoped MCP and connector setup appears on the originating tool row from pinned `connection.request` and `connection.update` events. The user can inspect each target, open a backend-provided authorization link, approve or skip pending setup, enter required environment values in masked ephemeral fields, or continue without setup. Responses use `connection.respond` with the exact session/profile/Gateway owner; stale sequences are ignored, unknown outcomes lock the action until a newer authoritative update, and environment drafts are zeroized when sent or when the operation settles. Resume hydrates the matching pending operation without duplicating a tool row or rewinding newer updates. Failed/expired connector and MCP targets can be retried on the existing open operation; catalog plugin/skill retries stay out of the connector RPC. Connector-directory actions, authenticated live Gateway and packaged Windows acceptance remain open.
 
 ## Source pins
 
@@ -267,3 +267,5 @@ Usage-window failures can switch the current Hermes session to its first recomme
 PAR-0064 now gives each pinned Hermes Free error a distinct explanation and routes users to the current chat model picker. It preserves backend guidance and only offers retry when the Gateway marks the failure retryable; native Hermes Free sign-in remains an explicit gap.
 
 Session support includes recent and archived lists plus create/resume flows with profile and Gateway owner fencing. These paths have headless protocol/UI evidence; authenticated live Gateway and source-paired acceptance remain open.
+
+Native typography follows the pinned Hermes Desktop’s 13px conversation/body, 11px tool, 12px caption and 18px conversation line-height tokens. Assistant Markdown uses the source’s 12px content gutter; nested list indentation remains independent. The user-selected JetBrains Mono UI face and Fira Code monospace face are retained. Headless transcript review: `artifacts/agent-ui/typography-markdown-20261124.png`.

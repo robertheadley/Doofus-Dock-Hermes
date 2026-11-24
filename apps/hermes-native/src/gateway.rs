@@ -6,6 +6,8 @@ use crate::{
         load_artifacts_for_sessions,
     },
     files::{FilePreviewContent, decode_artifact_image_preview},
+    gateway_attach::{AttachGrant, AttachMode, AttachOutcome, parse_attach_receipt},
+    gateway_runtime::RuntimeDescription,
     native_oauth::{NativeOAuthSession, native_token_needs_refresh, refresh_native_session},
     remote_probe::RemoteAuthMode,
     repo_discovery::{DiscoveredRepo, RepoScanOptions, RepoScanPolicy, scan_git_repos},
@@ -33,8 +35,6 @@ use tungstenite::{ClientRequestBuilder, Message, client::connect_with_config, ht
 use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
-const CANONICAL_PROTOCOL: &str = "hermes-gateway-v1";
-const TICKET_PROTOCOL_PREFIX: &str = "hermes-gateway-ticket.";
 const GATEWAY_HTTP_RESPONSE_LIMIT: u64 = 512 * 1024;
 const PROJECT_TREE_HTTP_RESPONSE_LIMIT: u64 = 8 * 1024 * 1024;
 const ARTIFACT_GATEWAY_RESPONSE_LIMIT: u64 = 64 * 1024 * 1024;
@@ -84,17 +84,6 @@ impl fmt::Debug for RemoteGatewayAuth {
             Self::OAuth { .. } => formatter.write_str("RemoteGatewayAuth::OAuth([REDACTED])"),
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct EnsureReply {
-    state: String,
-    #[serde(default)]
-    reason_code: Option<String>,
-    #[serde(default)]
-    detail: Option<String>,
-    #[serde(default)]
-    endpoint: Option<GatewayEndpoint>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -1906,6 +1895,7 @@ pub struct ArtifactImagePreviewRequest {
 pub struct ConnectedGateway {
     pub endpoint: GatewayEndpoint,
     pub sessions: Vec<SessionSummary>,
+    pub(crate) runtime: RuntimeDescription,
 }
 
 #[derive(Clone, Debug)]
@@ -4841,7 +4831,37 @@ impl GatewayDiscovery {
     }
 
     pub fn start() -> Self {
-        Self::start_with_attach(attach_gateway, true)
+        let mut start_pending = true;
+        let mut recoveries = 0_u8;
+        let mut recovery_window_start = Instant::now();
+        Self::start_with_attach(
+            move || {
+                let result = if start_pending {
+                    // The initial attach is the one explicit ensure/start. Later reconnects
+                    // discover first, then use the source's bounded recovery mode if needed.
+                    start_pending = false;
+                    attach_gateway(AttachMode::Start)
+                } else {
+                    if recovery_window_start.elapsed() >= Duration::from_secs(60) {
+                        recovery_window_start = Instant::now();
+                        recoveries = 0;
+                    }
+                    match attach_gateway(AttachMode::Discover) {
+                        Ok(connected) => Ok(connected),
+                        Err(LocalAttachFailure::Refused(refusal))
+                            if refusal.reason_code.as_deref() != Some("invalid_invocation")
+                                && recoveries < 3 =>
+                        {
+                            recoveries = recoveries.saturating_add(1);
+                            attach_gateway(AttachMode::Recover)
+                        }
+                        Err(error) => Err(error),
+                    }
+                };
+                result.map_err(|error| error.to_string())
+            },
+            true,
+        )
     }
 
     pub(crate) fn start_remote(
@@ -7301,39 +7321,115 @@ fn spawn_gateway_workers(
         .expect("failed to start Hermes artifact-image preview worker");
 }
 
-fn attach_gateway() -> Result<(ConnectedGateway, GatewaySocket), String> {
-    let output = Command::new("hermes")
-        .args(["gateway", "ensure", "--json", "--timeout", "60"])
-        .output()
-        .map_err(|error| format!("Could not start Hermes gateway ensure: {error}"))?;
+#[derive(Debug)]
+enum LocalAttachFailure {
+    Refused(crate::gateway_attach::AttachRefusal),
+    Other(String),
+}
 
-    if output.stdout.len() > 65_536 {
-        return Err("Hermes gateway ensure returned an oversized response".into());
-    }
-
-    let stdout = Zeroizing::new(output.stdout);
-    let reply: EnsureReply = serde_json::from_slice(&stdout).map_err(|error| {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let last = stderr.lines().last().unwrap_or_default();
-        if last.is_empty() {
-            format!("Hermes gateway ensure returned invalid JSON: {error}")
-        } else {
-            format!("Hermes gateway ensure failed: {last}")
+impl fmt::Display for LocalAttachFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Refused(refusal) => formatter.write_str(&refusal.message),
+            Self::Other(error) => formatter.write_str(error),
         }
-    })?;
-
-    if !output.status.success() || reply.state != "ready" {
-        let detail = reply
-            .detail
-            .or(reply.reason_code)
-            .unwrap_or_else(|| format!("gateway state: {}", reply.state));
-        return Err(detail);
     }
+}
 
-    let endpoint = reply
-        .endpoint
-        .ok_or_else(|| "Hermes reported ready without a gateway endpoint".to_owned())?;
-    let mut socket = connect_gateway_endpoint(&endpoint)?;
+impl From<String> for LocalAttachFailure {
+    fn from(error: String) -> Self {
+        Self::Other(error)
+    }
+}
+
+fn run_local_gateway_attach(mode: AttachMode) -> Result<AttachGrant, LocalAttachFailure> {
+    let output = Command::new("hermes")
+        .args(crate::gateway_attach::command_args(mode))
+        .args(["--timeout", "60"])
+        .output()
+        .map_err(|error| {
+            LocalAttachFailure::Other(format!("Could not run `hermes gateway attach`: {error}"))
+        })?;
+    let stdout = Zeroizing::new(output.stdout);
+    let exit_code = output.status.code().unwrap_or(-1);
+    let outcome = parse_attach_receipt(&stdout, exit_code)
+        .map_err(|error| LocalAttachFailure::Other(error.to_string()))?;
+    match outcome {
+        AttachOutcome::Attached(grant) => {
+            if grant
+                .client_code_sha
+                .as_ref()
+                .zip(grant.endpoint.code_sha.as_ref())
+                .is_some_and(|(client, owner)| client != owner)
+            {
+                return Err(LocalAttachFailure::Other(
+                    "Hermes Gateway is running different code from the installed Hermes client; restart the Gateway before connecting.".into(),
+                ));
+            }
+            Ok(grant)
+        }
+        AttachOutcome::Refused(refusal) => Err(LocalAttachFailure::Refused(refusal)),
+    }
+}
+
+fn gateway_endpoint_from_attach_grant(grant: &AttachGrant) -> GatewayEndpoint {
+    GatewayEndpoint {
+        profile_id: grant.endpoint.profile_id.clone(),
+        instance_id: grant.endpoint.instance_id.clone(),
+        authority_epoch: grant.endpoint.authority_epoch,
+        runtime_protocol: grant.endpoint.runtime_protocol,
+        api_origin: grant.endpoint.api_origin.clone(),
+        capabilities: grant.endpoint.capabilities.clone(),
+        control_home: grant.endpoint.control_home.clone(),
+        remote_auth: None,
+    }
+}
+
+fn connect_local_attach_grant(
+    grant: &AttachGrant,
+    expected_endpoint: Option<&GatewayEndpoint>,
+) -> Result<(GatewaySocket, RuntimeDescription), String> {
+    let endpoint = gateway_endpoint_from_attach_grant(grant);
+    if expected_endpoint.is_some_and(|expected| {
+        endpoint.profile_id != expected.profile_id
+            || endpoint.instance_id != expected.instance_id
+            || endpoint.authority_epoch != expected.authority_epoch
+    }) {
+        return Err("Hermes Gateway owner changed while creating an attach grant".into());
+    }
+    let uri: Uri = grant
+        .url
+        .parse()
+        .map_err(|_| "Hermes attach command returned an invalid WebSocket URL".to_owned())?;
+    let protocols = Zeroizing::new(grant.websocket_protocols());
+    let request = ClientRequestBuilder::new(uri)
+        .with_sub_protocol(protocols[0].clone())
+        .with_sub_protocol(protocols[1].clone());
+    // The single-use ticket is bound to this origin and is never sent through redirects.
+    let (mut socket, response) = connect_with_config(request, None, 0).map_err(|error| {
+        websocket_connect_error("Could not connect to the Hermes gateway", error)
+    })?;
+    let negotiated = response
+        .headers()
+        .get("Sec-WebSocket-Protocol")
+        .and_then(|value| value.to_str().ok());
+    if negotiated != Some(grant.protocol.as_str()) {
+        let _ = socket.close(None);
+        return Err("Hermes gateway negotiated an unexpected WebSocket protocol".into());
+    }
+    set_socket_deadlines(&mut socket)?;
+    wait_for_gateway_ready(&mut socket)?;
+    let runtime = negotiate_runtime_description(&mut socket, true, Some(&endpoint))?;
+    Ok((socket, runtime))
+}
+
+fn attach_gateway(
+    mode: AttachMode,
+) -> Result<(ConnectedGateway, GatewaySocket), LocalAttachFailure> {
+    let grant = run_local_gateway_attach(mode)?;
+    let endpoint = gateway_endpoint_from_attach_grant(&grant);
+    let (mut socket, runtime) =
+        connect_local_attach_grant(&grant, Some(&endpoint)).map_err(LocalAttachFailure::Other)?;
     let rows = rpc(
         &mut socket,
         3,
@@ -7352,7 +7448,14 @@ fn attach_gateway() -> Result<(ConnectedGateway, GatewaySocket), String> {
             session.profile = Some(endpoint.profile_id.clone());
         }
     }
-    Ok((ConnectedGateway { endpoint, sessions }, socket))
+    Ok((
+        ConnectedGateway {
+            endpoint,
+            sessions,
+            runtime,
+        },
+        socket,
+    ))
 }
 
 fn client_capabilities_params(desktop_local: bool) -> serde_json::Value {
@@ -7371,65 +7474,43 @@ fn websocket_connect_error(context: &str, error: tungstenite::Error) -> String {
     }
 }
 
-fn connect_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<GatewaySocket, String> {
+fn connect_gateway_endpoint(
+    endpoint: &GatewayEndpoint,
+) -> Result<(GatewaySocket, RuntimeDescription), String> {
     if endpoint.remote_auth.is_some() {
-        return connect_remote_gateway_endpoint(endpoint);
+        let mut socket = connect_remote_gateway_endpoint(endpoint)?;
+        let runtime = negotiate_runtime_description(&mut socket, false, Some(endpoint))?;
+        return Ok((socket, runtime));
     }
     validate_endpoint(endpoint)?;
-    let ticket = mint_windows_ticket(&endpoint, "interactive", Some("host"))?;
-    if ticket.is_empty() || ticket.len() > 2048 || !ticket.bytes().all(is_http_token_byte) {
-        return Err("Hermes returned an invalid one-use gateway ticket".into());
-    }
-    let protocols = Zeroizing::new([
-        CANONICAL_PROTOCOL.to_owned(),
-        format!("{TICKET_PROTOCOL_PREFIX}{}", ticket.as_str()),
-    ]);
-    let url = websocket_url(&endpoint.api_origin)?;
-    let expected_url = websocket_url(&endpoint.api_origin)?;
-    if url != expected_url {
-        return Err("Hermes returned an invalid authenticated gateway target".into());
-    }
+    let grant =
+        run_local_gateway_attach(AttachMode::Discover).map_err(|error| error.to_string())?;
+    connect_local_attach_grant(&grant, Some(endpoint))
+}
 
-    let uri: Uri = url
-        .parse()
-        .map_err(|_| "Hermes returned an invalid WebSocket URI".to_owned())?;
-    let request = ClientRequestBuilder::new(uri)
-        .with_sub_protocol(protocols[0].clone())
-        .with_sub_protocol(protocols[1].clone());
-    // The gateway's canonical wire explicitly limits redirects to none. Its ticket must never be
-    // replayed to a redirected origin.
-    let (mut socket, response) = connect_with_config(request, None, 0).map_err(|error| {
-        websocket_connect_error("Could not connect to the Hermes gateway", error)
-    })?;
-    let negotiated = response
-        .headers()
-        .get("Sec-WebSocket-Protocol")
-        .and_then(|value| value.to_str().ok());
-    if negotiated != Some(CANONICAL_PROTOCOL) {
-        let _ = socket.close(None);
-        return Err("Hermes gateway negotiated an unexpected WebSocket protocol".into());
-    }
-
-    set_socket_deadlines(&mut socket)?;
-    wait_for_gateway_ready(&mut socket)?;
+fn negotiate_runtime_description(
+    socket: &mut GatewaySocket,
+    desktop_local: bool,
+    expected_endpoint: Option<&GatewayEndpoint>,
+) -> Result<RuntimeDescription, String> {
     rpc(
-        &mut socket,
+        socket,
         1,
         "client.capabilities",
-        client_capabilities_params(true),
+        client_capabilities_params(desktop_local),
     )?;
-    let runtime = rpc(&mut socket, 2, "runtime.describe", serde_json::json!({}))?;
-    if runtime.get("instance_id").and_then(|value| value.as_str()) != Some(&endpoint.instance_id)
-        || runtime.get("profile_id").and_then(|value| value.as_str()) != Some(&endpoint.profile_id)
-        || runtime
-            .get("authority_epoch")
-            .and_then(|value| value.as_u64())
-            != Some(endpoint.authority_epoch)
+    let value = rpc(socket, 2, "runtime.describe", serde_json::json!({}))?;
+    let runtime = RuntimeDescription::parse(value)?;
+    if let Some(endpoint) = expected_endpoint
+        && ((!endpoint.instance_id.is_empty() && runtime.instance_id != endpoint.instance_id)
+            || (!endpoint.profile_id.is_empty() && runtime.profile_id != endpoint.profile_id)
+            || (endpoint.authority_epoch != 0
+                && runtime.authority_epoch != endpoint.authority_epoch))
     {
         let _ = socket.close(None);
         return Err("Hermes gateway runtime identity did not match its attach receipt".into());
     }
-    Ok(socket)
+    Ok(runtime)
 }
 
 fn attach_remote_gateway(
@@ -7459,42 +7540,13 @@ fn attach_remote_gateway(
         remote_auth: Some(credential.clone()),
     };
     let mut socket = connect_remote_gateway_endpoint(&endpoint)?;
-    // The web client advertises a browser/remote client. Never claim the local
-    // desktop privilege bit for a remote server.
-    rpc(
-        &mut socket,
-        1,
-        "client.capabilities",
-        client_capabilities_params(false),
-    )?;
-    let runtime = rpc(&mut socket, 2, "runtime.describe", serde_json::json!({}))?;
-    endpoint.profile_id = runtime
-        .get("profile_id")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "Remote Hermes runtime omitted its profile identity".to_owned())?
-        .to_owned();
-    endpoint.instance_id = runtime
-        .get("instance_id")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| "Remote Hermes runtime omitted its instance identity".to_owned())?
-        .to_owned();
-    endpoint.authority_epoch = runtime
-        .get("authority_epoch")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(1);
-    endpoint.capabilities = runtime
-        .get("capabilities")
-        .and_then(serde_json::Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(serde_json::Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
+    // A remote client never claims the local desktop privilege bit. Strictly negotiate the
+    // owner and capability contract on this exact socket before exposing it as connected.
+    let runtime = negotiate_runtime_description(&mut socket, false, None)?;
+    endpoint.profile_id = runtime.profile_id.clone();
+    endpoint.instance_id = runtime.instance_id.clone();
+    endpoint.authority_epoch = runtime.authority_epoch;
+    endpoint.capabilities = runtime.capabilities.clone();
     endpoint.remote_auth = Some(credential.clone());
     let rows = rpc(
         &mut socket,
@@ -7513,7 +7565,14 @@ fn attach_remote_gateway(
             session.profile = Some(endpoint.profile_id.clone());
         }
     }
-    Ok((ConnectedGateway { endpoint, sessions }, socket))
+    Ok((
+        ConnectedGateway {
+            endpoint,
+            sessions,
+            runtime,
+        },
+        socket,
+    ))
 }
 
 fn connect_remote_gateway_endpoint(endpoint: &GatewayEndpoint) -> Result<GatewaySocket, String> {
@@ -7630,7 +7689,9 @@ fn agent_plugin_update_all_actor(
     commands: Receiver<AgentPluginUpdateAllCommand>,
     events: mpsc::Sender<GatewayEvent>,
 ) {
-    agent_plugin_update_all_worker(commands, events, || connect_gateway_endpoint(&endpoint));
+    agent_plugin_update_all_worker(commands, events, || {
+        connect_gateway_endpoint(&endpoint).map(|(socket, _)| socket)
+    });
 }
 
 fn agent_plugin_update_all_worker<C>(
@@ -10785,7 +10846,7 @@ fn compress_session_on_independent_socket(
     {
         return Err(fail("Hermes compression owner is invalid".into(), false));
     }
-    let mut socket = connect_gateway_endpoint(endpoint).map_err(|error| {
+    let (mut socket, _) = connect_gateway_endpoint(endpoint).map_err(|error| {
         fail(
             format!("Could not open a compression connection: {error}"),
             false,
@@ -18822,18 +18883,6 @@ fn wait_for_gateway_ready(
     }
 }
 
-fn websocket_url(origin: &str) -> Result<String, String> {
-    let (scheme, authority) = origin
-        .split_once("://")
-        .ok_or_else(|| "Hermes returned an invalid gateway origin".to_owned())?;
-    let websocket_scheme = match scheme {
-        "http" => "ws",
-        "https" => "wss",
-        _ => return Err("Hermes returned an unsupported gateway scheme".into()),
-    };
-    Ok(format!("{websocket_scheme}://{authority}/api/ws"))
-}
-
 fn is_http_token_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
 }
@@ -19243,6 +19292,17 @@ mod tests {
                             remote_auth: None,
                         },
                         sessions: vec![],
+                        runtime: RuntimeDescription::parse(serde_json::json!({
+                            "instance_id": "instance-a",
+                            "profile_id": "profile-a",
+                            "authority_epoch": 1,
+                            "capabilities": ["session-authority-v1"],
+                            "session_create": {
+                                "sources": ["gui"],
+                                "parameters": ["request_id", "source", "model", "provider", "reasoning"]
+                            }
+                        }))
+                        .expect("test runtime descriptor"),
                     },
                     socket,
                 ))

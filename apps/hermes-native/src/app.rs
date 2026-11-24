@@ -1,5 +1,6 @@
 use crate::artifacts::{ArtifactFilter, ArtifactIndexSnapshot, ArtifactKind, ArtifactRecord};
 use crate::files::{FileBrowserState, FilePreviewContent, FilePreviewStore};
+use crate::fonts::{CAPTION_TEXT_SIZE, MESSAGE_TEXT_INDENT, MICRO_TEXT_SIZE, TOOL_TEXT_SIZE};
 use crate::gateway::{
     ActiveSessionStatus, ActiveSessionStatusKind, AgentPluginAutoUpdateSettings, AgentPluginInfo,
     AgentPluginInspection, AgentPluginScanFinding, AgentPluginSettingField,
@@ -2033,6 +2034,7 @@ pub struct HermesNativeApp {
     gateway_connection_id: Option<String>,
     gateway_event_deduplicator: GatewayEventDeduplicator,
     gateway_endpoint: Option<GatewayEndpoint>,
+    gateway_runtime: Option<crate::gateway_runtime::RuntimeDescription>,
     sessions: Vec<SessionSummary>,
     project_session_colors: BTreeMap<(String, String), Option<String>>,
     project_session_color_requests: BTreeMap<String, String>,
@@ -4545,6 +4547,7 @@ fn render_message() -> &'static str {
             gateway_connection_id,
             gateway_event_deduplicator: GatewayEventDeduplicator::default(),
             gateway_endpoint: None,
+            gateway_runtime: None,
             sessions: Vec::new(),
             project_session_colors: BTreeMap::new(),
             project_session_color_requests: BTreeMap::new(),
@@ -4980,12 +4983,12 @@ fn render_message() -> &'static str {
                 ui.horizontal_centered(|ui| {
                     ui.label(RichText::new("Hermes").size(17.0).strong().color(TEXT));
                     ui.add_space(16.0);
-                    ui.label(RichText::new(&self.status).size(12.0).color(MUTED));
+                    ui.label(RichText::new(&self.status).size(CAPTION_TEXT_SIZE).color(MUTED));
                     if let Some(usage) = self.active_session_usage() {
                         let label = usage.status_label();
                         if !label.is_empty() {
                             ui.separator();
-                            ui.label(RichText::new(label).size(12.0).color(MUTED))
+                            ui.label(RichText::new(label).size(CAPTION_TEXT_SIZE).color(MUTED))
                                 .on_hover_text(
                                     "Latest usage reported for this Hermes session; the reading is cached while disconnected",
                                 );
@@ -6286,7 +6289,7 @@ fn render_message() -> &'static str {
                     if let Some(error) = self.project_list_errors.get(profile) {
                         ui.label(
                             RichText::new(format!("Project list refresh issue: {error}"))
-                                .size(10.0)
+                                .size(MICRO_TEXT_SIZE)
                                 .color(MUTED),
                         );
                         retry_project_list = ui.button("Retry project list").clicked();
@@ -6295,21 +6298,21 @@ fn render_message() -> &'static str {
                         if let Some(error) = &self.auto_project_dismissal_sync_error {
                             ui.label(
                                 RichText::new(format!("Project visibility sync issue: {error}"))
-                                    .size(10.0)
+                                    .size(MICRO_TEXT_SIZE)
                                     .color(MUTED),
                             );
                         }
                         if let Some(error) = self.project_tree_errors.get(profile) {
                             ui.label(
                                 RichText::new(format!("Project tree refresh issue: {error}"))
-                                    .size(10.0)
+                                    .size(MICRO_TEXT_SIZE)
                                     .color(MUTED),
                             );
                         }
                         if let Some(error) = self.project_delete_errors.get(profile) {
                             ui.label(
                                 RichText::new(format!("Project deletion failed: {error}"))
-                                    .size(10.0)
+                                    .size(MICRO_TEXT_SIZE)
                                     .color(MUTED),
                             );
                         }
@@ -6359,19 +6362,19 @@ fn render_message() -> &'static str {
                                         Some((profile.to_owned(), project.id.clone()));
                                 }
                                 if let Some(path) = &project.path {
-                                    ui.label(RichText::new(path).size(10.0).color(MUTED));
+                                    ui.label(RichText::new(path).size(MICRO_TEXT_SIZE).color(MUTED));
                                 }
                                 if self.project_sessions_refresh.is_some() {
                                     ui.label(
                                         RichText::new("Loading project sessions…")
-                                            .size(10.0)
+                                            .size(MICRO_TEXT_SIZE)
                                             .color(MUTED),
                                     );
                                 }
                                 if let Some(error) = &self.project_sessions_error {
                                     ui.label(
                                         RichText::new(format!("Project sessions unavailable: {error}"))
-                                            .size(10.0)
+                                            .size(MICRO_TEXT_SIZE)
                                             .color(MUTED),
                                     );
                                     if ui.button("Retry").clicked() {
@@ -6397,7 +6400,7 @@ fn render_message() -> &'static str {
                                                     if let Some(path) = &group.path {
                                                         ui.label(
                                                             RichText::new(path)
-                                                                .size(10.0)
+                                                                .size(MICRO_TEXT_SIZE)
                                                                 .color(MUTED),
                                                         );
                                                     }
@@ -6498,10 +6501,10 @@ fn render_message() -> &'static str {
                                     }
                                 }
                                 if self.project_preview_refreshes.values().any(|pending| pending.key == preview_key) {
-                                    ui.label(RichText::new("Loading project sessions…").size(10.0).color(MUTED));
+                                    ui.label(RichText::new("Loading project sessions…").size(MICRO_TEXT_SIZE).color(MUTED));
                                 }
                                 if let Some(error) = self.project_preview_errors.get(&preview_key) {
-                                    ui.label(RichText::new(format!("Project sessions unavailable: {error}")).size(10.0).color(MUTED));
+                                    ui.label(RichText::new(format!("Project sessions unavailable: {error}")).size(MICRO_TEXT_SIZE).color(MUTED));
                                     if !profile.eq_ignore_ascii_case("all")
                                         && ui.button("Retry project sessions").clicked()
                                     {
@@ -6509,7 +6512,7 @@ fn render_message() -> &'static str {
                                     }
                                 }
                                 if let Some(path) = &project.path {
-                                    ui.label(RichText::new(path).size(10.0).color(MUTED));
+                                    ui.label(RichText::new(path).size(MICRO_TEXT_SIZE).color(MUTED));
                                 }
                                 if let Some(expansion) = expansion {
                                     let rows = merge_project_preview_sessions(
@@ -6576,7 +6579,7 @@ fn render_message() -> &'static str {
                                         |ui| {
                                             if let Some(path) = &repo.path {
                                                 ui.label(
-                                                    RichText::new(path).size(10.0).color(MUTED),
+                                                    RichText::new(path).size(MICRO_TEXT_SIZE).color(MUTED),
                                                 );
                                             }
                                             for group in &repo.groups {
@@ -6589,7 +6592,7 @@ fn render_message() -> &'static str {
                                                     if let Some(path) = &group.path {
                                                         ui.label(
                                                             RichText::new(path)
-                                                                .size(10.0)
+                                                                .size(MICRO_TEXT_SIZE)
                                                                 .color(MUTED),
                                                         );
                                                     }
@@ -6624,7 +6627,7 @@ fn render_message() -> &'static str {
                             });
                         }
                         if visible_project_count == 0 {
-                            ui.label(RichText::new("No projects").size(11.0).color(MUTED));
+                            ui.label(RichText::new("No projects").size(TOOL_TEXT_SIZE).color(MUTED));
                         }
                         }
                     });
@@ -6664,13 +6667,13 @@ fn render_message() -> &'static str {
                         if let Some(error) = self.project_tree_errors.get(profile) {
                             ui.label(
                                 RichText::new(format!("Project tree unavailable: {error}"))
-                                    .size(11.0)
+                                    .size(TOOL_TEXT_SIZE)
                                     .color(MUTED),
                             );
                         } else {
                             ui.label(
                                 RichText::new("Loading project tree…")
-                                    .size(11.0)
+                                    .size(TOOL_TEXT_SIZE)
                                     .color(MUTED),
                             );
                         }
@@ -6712,7 +6715,7 @@ fn render_message() -> &'static str {
         );
         let pinned_count = pinned_sessions.len();
         if pinned_count > 0 {
-            ui.label(RichText::new("Pinned").size(12.0).color(MUTED));
+            ui.label(RichText::new("Pinned").size(CAPTION_TEXT_SIZE).color(MUTED));
         }
         let date_grouping_enabled = !self.show_archived_sessions && query.is_empty();
         let mut recent_groups = if date_grouping_enabled {
@@ -6773,7 +6776,7 @@ fn render_message() -> &'static str {
         if self.archived_sessions_loading && self.show_archived_sessions {
             ui.label(
                 RichText::new("Loading archived sessions…")
-                    .size(11.0)
+                    .size(TOOL_TEXT_SIZE)
                     .color(MUTED),
             );
         }
@@ -6783,14 +6786,14 @@ fn render_message() -> &'static str {
                     "Archived sessions unavailable: {}",
                     self.archived_sessions_error.as_deref().unwrap_or_default()
                 ))
-                .size(11.0)
+                .size(TOOL_TEXT_SIZE)
                 .color(MUTED),
             );
         }
         if self.session_search_pending && !self.show_archived_sessions {
             ui.label(
                 RichText::new("Searching all sessions…")
-                    .size(11.0)
+                    .size(TOOL_TEXT_SIZE)
                     .color(MUTED),
             );
         }
@@ -6801,14 +6804,14 @@ fn render_message() -> &'static str {
         {
             ui.label(
                 RichText::new(format!("Full-history search unavailable: {error}"))
-                    .size(11.0)
+                    .size(TOOL_TEXT_SIZE)
                     .color(MUTED),
             );
         }
         if let Some(error) = &self.session_list_error {
             ui.label(
                 RichText::new(format!("Session recency refresh unavailable: {error}"))
-                    .size(11.0)
+                    .size(TOOL_TEXT_SIZE)
                     .color(MUTED),
             );
         }
@@ -6819,7 +6822,7 @@ fn render_message() -> &'static str {
         {
             ui.label(
                 RichText::new(format!("Cross-window session updates unavailable: {error}"))
-                    .size(11.0)
+                    .size(TOOL_TEXT_SIZE)
                     .color(MUTED),
             );
         }
@@ -6854,13 +6857,17 @@ fn render_message() -> &'static str {
             if !pinned_row && !recent_heading_shown {
                 if pinned_count > 0 {
                     ui.add_space(8.0);
-                    ui.label(RichText::new("Recent sessions").size(12.0).color(MUTED));
+                    ui.label(
+                        RichText::new("Recent sessions")
+                            .size(CAPTION_TEXT_SIZE)
+                            .color(MUTED),
+                    );
                 }
                 recent_heading_shown = true;
             }
             if !pinned_row && let Some(label) = date_group_label {
                 ui.add_space(8.0);
-                ui.label(RichText::new(label).size(11.0).color(MUTED));
+                ui.label(RichText::new(label).size(TOOL_TEXT_SIZE).color(MUTED));
             }
             let title = if session.title.trim().is_empty() {
                 session.id.clone()
@@ -6952,7 +6959,11 @@ fn render_message() -> &'static str {
                         self.status = "Reordering pinned sessions · release to move".into();
                     }
                     pinned_drag_stopped |= handle.drag_stopped();
-                    ui.label(RichText::new("●").size(10.0).color(session_color));
+                    ui.label(
+                        RichText::new("●")
+                            .size(MICRO_TEXT_SIZE)
+                            .color(session_color),
+                    );
                     row_response = Some(
                         ui.selectable_label(selected, RichText::new(&visible_title).color(TEXT)),
                     );
@@ -6985,14 +6996,22 @@ fn render_message() -> &'static str {
                             "Reordering recent sessions within this date group · release to move"
                                 .into();
                     }
-                    ui.label(RichText::new("●").size(10.0).color(session_color));
+                    ui.label(
+                        RichText::new("●")
+                            .size(MICRO_TEXT_SIZE)
+                            .color(session_color),
+                    );
                     row_response = Some(
                         ui.selectable_label(selected, RichText::new(&visible_title).color(TEXT)),
                     );
                 });
             } else {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("●").size(10.0).color(session_color));
+                    ui.label(
+                        RichText::new("●")
+                            .size(MICRO_TEXT_SIZE)
+                            .color(session_color),
+                    );
                     row_response = Some(
                         ui.selectable_label(selected, RichText::new(&visible_title).color(TEXT)),
                     );
@@ -7244,7 +7263,11 @@ fn render_message() -> &'static str {
             };
             menu.response.accessible_name(menu_name);
             if !session.preview.is_empty() {
-                ui.label(RichText::new(&session.preview).size(11.0).color(MUTED));
+                ui.label(
+                    RichText::new(&session.preview)
+                        .size(TOOL_TEXT_SIZE)
+                        .color(MUTED),
+                );
             }
             ui.label(
                 RichText::new(format!(
@@ -7267,7 +7290,7 @@ fn render_message() -> &'static str {
                         String::new()
                     }
                 ))
-                .size(10.0)
+                .size(MICRO_TEXT_SIZE)
                 .color(MUTED),
             );
             ui.add_space(4.0);
@@ -7467,7 +7490,7 @@ fn render_message() -> &'static str {
             .and_then(|view| view.resume_error.clone());
         if let Some(error) = resume_error {
             ui.label(RichText::new("Couldn't open this session").color(Color32::LIGHT_RED));
-            ui.label(RichText::new(error).size(12.0).color(MUTED));
+            ui.label(RichText::new(error).size(CAPTION_TEXT_SIZE).color(MUTED));
             if ui
                 .add_enabled(self.gateway_connected, egui::Button::new("Retry"))
                 .accessible_name(format!("Retry opening session {session_id}"))
@@ -7498,7 +7521,11 @@ fn render_message() -> &'static str {
                     self.load_older_transcript(session_id.to_owned());
                 }
                 if let Some(error) = &self.older_transcript_error {
-                    ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+                    ui.label(
+                        RichText::new(error)
+                            .size(CAPTION_TEXT_SIZE)
+                            .color(Color32::LIGHT_RED),
+                    );
                 }
             } else if self.active_runtime_session_id.is_some() {
                 self.route_unavailable(ui, "This session has no messages yet.");
@@ -7527,7 +7554,11 @@ fn render_message() -> &'static str {
                 }
             }
             if let Some(error) = &self.older_transcript_error {
-                ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+                ui.label(
+                    RichText::new(error)
+                        .size(CAPTION_TEXT_SIZE)
+                        .color(Color32::LIGHT_RED),
+                );
             }
             let messages = self.transcript.clone();
             let timeline_owner_key =
@@ -8422,7 +8453,7 @@ fn render_message() -> &'static str {
                                                         egui::Label::new(
                                                             RichText::new(payload)
                                                                 .monospace()
-                                                                .size(11.0),
+                                                                .size(TOOL_TEXT_SIZE),
                                                         )
                                                         .wrap(),
                                                     );
@@ -8544,7 +8575,7 @@ fn render_message() -> &'static str {
                                             |ui| {
                                                 ui.label(
                                                     RichText::new(stamp)
-                                                        .size(10.0)
+                                                        .size(MICRO_TEXT_SIZE)
                                                         .color(MUTED)
                                                         .monospace(),
                                                 )
@@ -9607,7 +9638,7 @@ fn render_message() -> &'static str {
                     } else {
                         format!("{answered} of {} answered", prompt.questions.len())
                     })
-                    .size(11.0)
+                    .size(TOOL_TEXT_SIZE)
                     .color(MUTED),
                 );
                 for question in &prompt.questions {
@@ -9625,7 +9656,7 @@ fn render_message() -> &'static str {
                                 } else {
                                     "Pick one"
                                 })
-                                .size(10.0)
+                                .size(MICRO_TEXT_SIZE)
                                 .color(MUTED),
                             );
                         }
@@ -13044,13 +13075,17 @@ fn render_message() -> &'static str {
         ui.add_space(12.0);
         if self.capabilities_tab == CapabilitiesTab::Connectors {
             if self.connectors_pending && self.connectors.is_none() {
-                ui.label(RichText::new("Loading connectors…").size(12.0).color(MUTED));
+                ui.label(
+                    RichText::new("Loading connectors…")
+                        .size(CAPTION_TEXT_SIZE)
+                        .color(MUTED),
+                );
                 return;
             }
             if let Some(error) = &self.connectors_error {
                 ui.label(
                     RichText::new(format!("Connectors could not be loaded: {error}"))
-                        .size(12.0)
+                        .size(CAPTION_TEXT_SIZE)
                         .color(MUTED),
                 );
                 if self.connectors.is_none() {
@@ -13061,7 +13096,7 @@ fn render_message() -> &'static str {
         if self.capabilities_tab != CapabilitiesTab::Connectors && self.capabilities_pending {
             ui.label(
                 RichText::new("Loading capabilities…")
-                    .size(12.0)
+                    .size(CAPTION_TEXT_SIZE)
                     .color(MUTED),
             );
             return;
@@ -13071,7 +13106,7 @@ fn render_message() -> &'static str {
         {
             ui.label(
                 RichText::new(format!("Capabilities could not be loaded: {error}"))
-                    .size(12.0)
+                    .size(CAPTION_TEXT_SIZE)
                     .color(MUTED),
             );
             return;
@@ -13121,7 +13156,10 @@ fn render_message() -> &'static str {
                             .show(ui, |ui| {
                                 for line in update.lines.iter().rev().take(12).rev() {
                                     ui.label(
-                                        RichText::new(line).monospace().size(10.0).color(MUTED),
+                                        RichText::new(line)
+                                            .monospace()
+                                            .size(MICRO_TEXT_SIZE)
+                                            .color(MUTED),
                                     );
                                 }
                             });
@@ -13162,10 +13200,18 @@ fn render_message() -> &'static str {
                                 });
                             });
                             if !skill.category.is_empty() {
-                                ui.label(RichText::new(&skill.category).size(11.0).color(ACCENT));
+                                ui.label(
+                                    RichText::new(&skill.category)
+                                        .size(TOOL_TEXT_SIZE)
+                                        .color(ACCENT),
+                                );
                             }
                             if !skill.description.is_empty() {
-                                ui.label(RichText::new(&skill.description).size(12.0).color(MUTED));
+                                ui.label(
+                                    RichText::new(&skill.description)
+                                        .size(CAPTION_TEXT_SIZE)
+                                        .color(MUTED),
+                                );
                             }
                             if ui
                                 .add_enabled(self.gateway_connected, egui::Button::new("Details"))
@@ -13198,7 +13244,9 @@ fn render_message() -> &'static str {
                                 .unwrap_or_else(|error| self.capabilities_error = Some(error));
                             }
                             if update_pending {
-                                ui.label(RichText::new("Saving…").size(11.0).color(MUTED));
+                                ui.label(
+                                    RichText::new("Saving…").size(TOOL_TEXT_SIZE).color(MUTED),
+                                );
                             }
                         });
                         ui.add_space(6.0);
@@ -13235,7 +13283,9 @@ fn render_message() -> &'static str {
                             .show(ui, |ui| {
                                 ui.add(
                                     egui::Label::new(
-                                        RichText::new(&content.content).monospace().size(11.0),
+                                        RichText::new(&content.content)
+                                            .monospace()
+                                            .size(TOOL_TEXT_SIZE),
                                     )
                                     .wrap(),
                                 );
@@ -13378,18 +13428,22 @@ fn render_message() -> &'static str {
                                     .unwrap_or_else(|error| self.capabilities_error = Some(error));
                                 }
                                 if update_pending {
-                                    ui.label(RichText::new("Saving…").size(11.0).color(MUTED));
+                                    ui.label(
+                                        RichText::new("Saving…").size(TOOL_TEXT_SIZE).color(MUTED),
+                                    );
                                 }
                             });
                             if !toolset.description.is_empty() {
                                 ui.label(
-                                    RichText::new(&toolset.description).size(12.0).color(MUTED),
+                                    RichText::new(&toolset.description)
+                                        .size(CAPTION_TEXT_SIZE)
+                                        .color(MUTED),
                                 );
                             }
                             if !toolset.tools.is_empty() {
                                 ui.label(
                                     RichText::new(toolset.tools.join(" · "))
-                                        .size(11.0)
+                                        .size(TOOL_TEXT_SIZE)
                                         .color(ACCENT),
                                 );
                             }
@@ -13474,7 +13528,7 @@ fn render_message() -> &'static str {
                             .unwrap_or_else(|error| self.status = error);
                         }
                         if self.pending_agent_plugin_auto_update.is_some() {
-                            ui.label(RichText::new("Saving…").size(10.0).color(MUTED));
+                            ui.label(RichText::new("Saving…").size(MICRO_TEXT_SIZE).color(MUTED));
                         }
                     });
                 }
@@ -13513,7 +13567,7 @@ fn render_message() -> &'static str {
                 if self.agent_plugins_pending && self.agent_plugins.is_none() {
                     ui.label(
                         RichText::new("Loading installed plugins…")
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     );
                 } else if let Some(error) = self.agent_plugins_error.clone() {
@@ -13522,7 +13576,7 @@ fn render_message() -> &'static str {
                             RichText::new(format!(
                                 "Installed plugins could not be loaded: {error}"
                             ))
-                            .size(11.0)
+                            .size(TOOL_TEXT_SIZE)
                             .color(MUTED),
                         );
                         if self.gateway_connected
@@ -13537,7 +13591,7 @@ fn render_message() -> &'static str {
                     if self.agent_plugins_pending {
                         ui.label(
                             RichText::new("Refreshing installed plugins…")
-                                .size(10.0)
+                                .size(MICRO_TEXT_SIZE)
                                 .color(MUTED),
                         );
                     }
@@ -13563,7 +13617,7 @@ fn render_message() -> &'static str {
                             } else {
                                 "No installed plugins match this search"
                             })
-                            .size(11.0)
+                            .size(TOOL_TEXT_SIZE)
                             .color(MUTED),
                         );
                     }
@@ -13621,7 +13675,11 @@ fn render_message() -> &'static str {
                                         .unwrap_or_else(|error| self.status = error);
                                     }
                                     if pending {
-                                        ui.label(RichText::new("Saving…").size(10.0).color(MUTED));
+                                        ui.label(
+                                            RichText::new("Saving…")
+                                                .size(MICRO_TEXT_SIZE)
+                                                .color(MUTED),
+                                        );
                                     }
                                     if plugin.update_available == Some(true) {
                                         let update = ui
@@ -13658,7 +13716,9 @@ fn render_message() -> &'static str {
                                     }
                                     if update_pending {
                                         ui.label(
-                                            RichText::new("Updating…").size(10.0).color(MUTED),
+                                            RichText::new("Updating…")
+                                                .size(MICRO_TEXT_SIZE)
+                                                .color(MUTED),
                                         );
                                     }
                                     if matches!(plugin.source.as_str(), "user" | "git") {
@@ -13694,7 +13754,7 @@ fn render_message() -> &'static str {
                                         {
                                             ui.label(
                                                 RichText::new("Uninstalling…")
-                                                    .size(10.0)
+                                                    .size(MICRO_TEXT_SIZE)
                                                     .color(MUTED),
                                             );
                                         }
@@ -13707,7 +13767,7 @@ fn render_message() -> &'static str {
                                         "{} · {} · {}",
                                         plugin.status, plugin.source, plugin.version
                                     ))
-                                    .size(10.0)
+                                    .size(MICRO_TEXT_SIZE)
                                     .color(ACCENT),
                                 );
                                 if plugin.update_available == Some(true) {
@@ -13720,21 +13780,23 @@ fn render_message() -> &'static str {
                                                 .or(plugin.update_target.as_deref())
                                                 .unwrap_or("new version")
                                         ))
-                                        .size(10.0)
+                                        .size(MICRO_TEXT_SIZE)
                                         .color(ACCENT),
                                     );
                                 }
                                 if !plugin.key.is_empty() {
                                     ui.label(
                                         RichText::new(format!("Key · {}", plugin.key))
-                                            .size(10.0)
+                                            .size(MICRO_TEXT_SIZE)
                                             .color(MUTED),
                                     );
                                 }
                             });
                             if !plugin.description.is_empty() {
                                 ui.label(
-                                    RichText::new(&plugin.description).size(11.0).color(MUTED),
+                                    RichText::new(&plugin.description)
+                                        .size(TOOL_TEXT_SIZE)
+                                        .color(MUTED),
                                 );
                             }
                             for server in &plugin.servers {
@@ -13743,14 +13805,14 @@ fn render_message() -> &'static str {
                                 } else {
                                     format!("{} · {}", server.name, server.sentence)
                                 };
-                                ui.label(RichText::new(detail).size(10.0).color(MUTED));
+                                ui.label(RichText::new(detail).size(MICRO_TEXT_SIZE).color(MUTED));
                             }
                         });
                     }
                 } else if !self.gateway_connected {
                     ui.label(
                         RichText::new("Connect to Hermes to view installed agent plugins.")
-                            .size(11.0)
+                            .size(TOOL_TEXT_SIZE)
                             .color(MUTED),
                     );
                 }
@@ -13780,7 +13842,7 @@ fn render_message() -> &'static str {
                 if self.plugin_catalog_pending && self.plugin_catalog.is_none() {
                     ui.label(
                         RichText::new("Loading plugin catalog…")
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     );
                     return;
@@ -13788,7 +13850,7 @@ fn render_message() -> &'static str {
                 if let Some(error) = &self.plugin_catalog_error {
                     ui.label(
                         RichText::new(format!("Plugin catalog could not be loaded: {error}"))
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     );
                     if self.plugin_catalog.is_none() {
@@ -13800,7 +13862,11 @@ fn render_message() -> &'static str {
                     return;
                 };
                 if self.plugin_catalog_pending {
-                    ui.label(RichText::new("Refreshing catalog…").size(11.0).color(MUTED));
+                    ui.label(
+                        RichText::new("Refreshing catalog…")
+                            .size(TOOL_TEXT_SIZE)
+                            .color(MUTED),
+                    );
                 }
                 let installed = self
                     .agent_plugins
@@ -13849,7 +13915,11 @@ fn render_message() -> &'static str {
                     + self.plugin_catalog_facets.tags.len()
                     + usize::from(self.plugin_catalog_facets.updates_only);
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Browse by").size(10.0).color(MUTED));
+                    ui.label(
+                        RichText::new("Browse by")
+                            .size(MICRO_TEXT_SIZE)
+                            .color(MUTED),
+                    );
                     filters_changed |= ui
                         .selectable_value(
                             &mut self.plugin_catalog_facet_group,
@@ -13943,7 +14013,7 @@ fn render_message() -> &'static str {
                         }
                     }
                     ui.menu_button(format!("Filters · {active_filter_count}"), |ui| {
-                        ui.label(RichText::new("Sort by").size(10.0).color(MUTED));
+                        ui.label(RichText::new("Sort by").size(MICRO_TEXT_SIZE).color(MUTED));
                         let sort_options = [
                             (
                                 PluginCatalogSort::Stars,
@@ -13978,7 +14048,7 @@ fn render_message() -> &'static str {
                             .changed();
                         if !tags.is_empty() {
                             ui.separator();
-                            ui.label(RichText::new("Tags").size(10.0).color(MUTED));
+                            ui.label(RichText::new("Tags").size(MICRO_TEXT_SIZE).color(MUTED));
                             let mut visible_tags =
                                 tags.iter().take(16).cloned().collect::<Vec<_>>();
                             for selected_tag in &self.plugin_catalog_facets.tags {
@@ -14108,17 +14178,19 @@ fn render_message() -> &'static str {
                                             if !entry.category_label.is_empty() {
                                                 list_ui.label(
                                                     RichText::new(&entry.category_label)
-                                                        .size(10.0)
+                                                        .size(MICRO_TEXT_SIZE)
                                                         .color(ACCENT),
                                                 );
                                             }
                                             list_ui.label(
-                                                RichText::new(&entry.tier).size(10.0).color(MUTED),
+                                                RichText::new(&entry.tier)
+                                                    .size(MICRO_TEXT_SIZE)
+                                                    .color(MUTED),
                                             );
                                             if entry.installed_key.is_some() {
                                                 list_ui.label(
                                                     RichText::new("Installed")
-                                                        .size(10.0)
+                                                        .size(MICRO_TEXT_SIZE)
                                                         .color(ACCENT),
                                                 );
                                             }
@@ -14126,7 +14198,7 @@ fn render_message() -> &'static str {
                                         if !entry.description.is_empty() {
                                             list_ui.label(
                                                 RichText::new(&entry.description)
-                                                    .size(11.0)
+                                                    .size(TOOL_TEXT_SIZE)
                                                     .color(MUTED),
                                             );
                                         }
@@ -14260,7 +14332,7 @@ fn render_message() -> &'static str {
                                     if !entry.author.is_empty() {
                                         detail_ui.label(
                                             RichText::new(format!("Maintainer · {}", entry.author))
-                                                .size(11.0)
+                                                .size(TOOL_TEXT_SIZE)
                                                 .color(MUTED),
                                         );
                                     }
@@ -14287,7 +14359,7 @@ fn render_message() -> &'static str {
                                                     )
                                                 }
                                             ))
-                                            .size(10.0)
+                                            .size(MICRO_TEXT_SIZE)
                                             .color(MUTED),
                                         );
                                     }
@@ -14303,7 +14375,7 @@ fn render_message() -> &'static str {
                                                     "{label} · {}",
                                                     values.join(" · ")
                                                 ))
-                                                .size(10.0)
+                                                .size(MICRO_TEXT_SIZE)
                                                 .color(MUTED),
                                             );
                                         }
@@ -14351,14 +14423,14 @@ fn render_message() -> &'static str {
                 if self.connectors_pending {
                     ui.label(
                         RichText::new("Refreshing connectors…")
-                            .size(11.0)
+                            .size(TOOL_TEXT_SIZE)
                             .color(MUTED),
                     );
                 }
                 if !snapshot.available {
                     ui.label(
                         RichText::new("Hosted connectors are unavailable for this profile.")
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     );
                 }
@@ -14466,7 +14538,7 @@ fn render_message() -> &'static str {
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new(format!("{hidden_matches} matches in other groups"))
-                                    .size(10.0)
+                                    .size(MICRO_TEXT_SIZE)
                                     .color(MUTED),
                             );
                             if ui.small_button("Show all matches").clicked() {
@@ -14508,7 +14580,7 @@ fn render_message() -> &'static str {
                                     RichText::new(
                                         "These connectors are turned off for this profile.",
                                     )
-                                    .size(11.0)
+                                    .size(TOOL_TEXT_SIZE)
                                     .color(MUTED),
                                 );
                             }
@@ -14527,12 +14599,16 @@ fn render_message() -> &'static str {
                                     ui.label(RichText::new(&row.category).color(MUTED));
                                 }
                             });
-                            ui.label(RichText::new(&row.description).size(12.0).color(MUTED));
+                            ui.label(
+                                RichText::new(&row.description)
+                                    .size(CAPTION_TEXT_SIZE)
+                                    .color(MUTED),
+                            );
                             if let Some(item) = state
                                 && let Some(reason) = item.status_reason.as_deref()
                                 && !reason.trim().is_empty()
                             {
-                                ui.label(RichText::new(reason).size(11.0).color(MUTED));
+                                ui.label(RichText::new(reason).size(TOOL_TEXT_SIZE).color(MUTED));
                             }
                             for account in accounts {
                                 let name = account
@@ -14542,7 +14618,7 @@ fn render_message() -> &'static str {
                                     .unwrap_or(&account.label);
                                 ui.label(
                                     RichText::new(format!("Account · {name} · {}", account.status))
-                                        .size(11.0)
+                                        .size(TOOL_TEXT_SIZE)
                                         .color(MUTED),
                                 );
                             }
@@ -14698,14 +14774,14 @@ fn render_message() -> &'static str {
                 if self.mcp_servers_pending && self.mcp_servers.is_none() {
                     ui.label(
                         RichText::new("Loading MCP servers…")
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     );
                 }
                 if let Some(error) = &self.mcp_servers_error {
                     ui.label(
                         RichText::new(format!("MCP servers could not be loaded: {error}"))
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     );
                 }
@@ -14807,7 +14883,7 @@ fn render_message() -> &'static str {
                                     }
                                 });
                                 if let Some(url) = server.url.as_deref() {
-                                    ui.label(RichText::new(url).size(11.0).color(MUTED));
+                                    ui.label(RichText::new(url).size(TOOL_TEXT_SIZE).color(MUTED));
                                 }
                                 if let Some(command) = server.command.as_deref() {
                                     ui.label(
@@ -14820,24 +14896,26 @@ fn render_message() -> &'static str {
                                                 format!(" {}", server.args.join(" "))
                                             }
                                         ))
-                                        .size(11.0)
+                                        .size(TOOL_TEXT_SIZE)
                                         .color(MUTED),
                                     );
                                 }
                                 if let Some(tools) = &server.tools {
                                     ui.label(
                                         RichText::new(format!("{} tools", tools.len()))
-                                            .size(11.0)
+                                            .size(TOOL_TEXT_SIZE)
                                             .color(MUTED),
                                     );
                                 }
                                 if update_pending {
-                                    ui.label(RichText::new("Saving…").size(11.0).color(MUTED));
+                                    ui.label(
+                                        RichText::new("Saving…").size(TOOL_TEXT_SIZE).color(MUTED),
+                                    );
                                 }
                                 if test_pending {
                                     ui.label(
                                         RichText::new("Testing connection…")
-                                            .size(11.0)
+                                            .size(TOOL_TEXT_SIZE)
                                             .color(MUTED),
                                     );
                                 } else if let Some(result) =
@@ -14849,7 +14927,7 @@ fn render_message() -> &'static str {
                                                 "Connection succeeded · {} tools",
                                                 result.tools.len()
                                             ))
-                                            .size(11.0)
+                                            .size(TOOL_TEXT_SIZE)
                                             .color(ACCENT),
                                         );
                                         for tool in result.tools.iter().take(50) {
@@ -14863,7 +14941,7 @@ fn render_message() -> &'static str {
                                                         format!(" · {}", tool.description)
                                                     }
                                                 ))
-                                                .size(10.0)
+                                                .size(MICRO_TEXT_SIZE)
                                                 .color(MUTED),
                                             );
                                         }
@@ -14873,7 +14951,7 @@ fn render_message() -> &'static str {
                                                     "{} more tools",
                                                     result.tools.len() - 50
                                                 ))
-                                                .size(10.0)
+                                                .size(MICRO_TEXT_SIZE)
                                                 .color(MUTED),
                                             );
                                         }
@@ -14884,7 +14962,7 @@ fn render_message() -> &'static str {
                                                     result.prompts.unwrap_or(0),
                                                     result.resources.unwrap_or(0)
                                                 ))
-                                                .size(10.0)
+                                                .size(MICRO_TEXT_SIZE)
                                                 .color(MUTED),
                                             );
                                         }
@@ -14894,7 +14972,7 @@ fn render_message() -> &'static str {
                                                 "Connection failed · {}",
                                                 result.error.as_deref().unwrap_or("Unknown error")
                                             ))
-                                            .size(11.0)
+                                            .size(TOOL_TEXT_SIZE)
                                             .color(MUTED),
                                         );
                                     }
@@ -14969,7 +15047,7 @@ fn render_message() -> &'static str {
                 if self.mcp_catalog_pending && self.mcp_catalog.is_none() {
                     ui.label(
                         RichText::new("Loading MCP catalog…")
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     )
                     .accessible_name("MCP catalog loading");
@@ -14977,7 +15055,7 @@ fn render_message() -> &'static str {
                 if let Some(error) = &self.mcp_catalog_error {
                     ui.label(
                         RichText::new(format!("MCP catalog could not be loaded: {error}"))
-                            .size(12.0)
+                            .size(CAPTION_TEXT_SIZE)
                             .color(MUTED),
                     )
                     .accessible_name("MCP catalog error");
@@ -15034,7 +15112,9 @@ fn render_message() -> &'static str {
                                 });
                                 if !entry.description.is_empty() {
                                     ui.label(
-                                        RichText::new(&entry.description).size(11.0).color(MUTED),
+                                        RichText::new(&entry.description)
+                                            .size(TOOL_TEXT_SIZE)
+                                            .color(MUTED),
                                     );
                                 }
                                 if !entry.requires.is_empty() {
@@ -15043,7 +15123,7 @@ fn render_message() -> &'static str {
                                             "Requires environment keys: {}",
                                             entry.requires.join(", ")
                                         ))
-                                        .size(10.0)
+                                        .size(MICRO_TEXT_SIZE)
                                         .color(MUTED),
                                     );
                                 }
@@ -15321,7 +15401,11 @@ fn render_message() -> &'static str {
                 ui.spinner();
             }
             if let Some(error) = &self.skill_catalog_error {
-                ui.label(RichText::new(error).size(11.0).color(Color32::LIGHT_RED));
+                ui.label(
+                    RichText::new(error)
+                        .size(TOOL_TEXT_SIZE)
+                        .color(Color32::LIGHT_RED),
+                );
             }
         });
         let mut categories = BTreeMap::<String, (String, usize)>::new();
@@ -15341,7 +15425,7 @@ fn render_message() -> &'static str {
         });
         let mut filters_changed = false;
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Category").size(10.0).color(MUTED));
+            ui.label(RichText::new("Category").size(MICRO_TEXT_SIZE).color(MUTED));
             if ui
                 .selectable_label(self.skill_catalog_categories.is_empty(), "All")
                 .accessible_name("Skill hub category: All")
@@ -15457,18 +15541,18 @@ fn render_message() -> &'static str {
                                 list_ui.horizontal_wrapped(|list_ui| {
                                     list_ui.label(
                                         RichText::new(&entry.category_label)
-                                            .size(10.0)
+                                            .size(MICRO_TEXT_SIZE)
                                             .color(ACCENT),
                                     );
                                     if !entry.source.is_empty() {
                                         list_ui.label(
-                                            RichText::new(&entry.source).size(10.0).color(MUTED),
+                                            RichText::new(&entry.source).size(MICRO_TEXT_SIZE).color(MUTED),
                                         );
                                     }
                                 });
                                 if !entry.description.is_empty() {
                                     list_ui.label(
-                                        RichText::new(&entry.description).size(11.0).color(MUTED),
+                                        RichText::new(&entry.description).size(TOOL_TEXT_SIZE).color(MUTED),
                                     );
                                 }
                                 list_ui.separator();
@@ -15561,16 +15645,16 @@ fn render_message() -> &'static str {
                                 detail_ui.horizontal_wrapped(|detail_ui| {
                                     detail_ui.label(
                                         RichText::new(&entry.category_label)
-                                            .size(11.0)
+                                            .size(TOOL_TEXT_SIZE)
                                             .color(ACCENT),
                                     );
                                     detail_ui.label(
-                                        RichText::new(&entry.source).size(11.0).color(MUTED),
+                                        RichText::new(&entry.source).size(TOOL_TEXT_SIZE).color(MUTED),
                                     );
                                     if !entry.author.is_empty() {
                                         detail_ui.label(
                                             RichText::new(format!("by {}", entry.author))
-                                                .size(11.0)
+                                                .size(TOOL_TEXT_SIZE)
                                                 .color(MUTED),
                                         );
                                     }
@@ -15745,7 +15829,7 @@ fn render_message() -> &'static str {
                                                     }
                                                     detail_ui.label(
                                                         RichText::new("Hermes did not install this skill. Review the scan, then use Install skill to retry; the security policy remains enforced.")
-                                                            .size(11.0)
+                                                            .size(TOOL_TEXT_SIZE)
                                                             .color(MUTED),
                                                     );
                                                 });
@@ -15764,7 +15848,7 @@ fn render_message() -> &'static str {
                                                             index + 1
                                                         ))
                                                         .monospace()
-                                                        .size(11.0)
+                                                        .size(TOOL_TEXT_SIZE)
                                                         .color(MUTED),
                                                     );
                                                 }
@@ -16282,6 +16366,7 @@ fn render_message() -> &'static str {
                     self.reset_messaging_state();
                                     self.gateway_connected = false;
                                     self.gateway_endpoint = None;
+                                    self.gateway_runtime = None;
                                     self.session_list_refresh_pending = None;
                                     self.session_list_refresh_again = false;
                                     self.session_profiles_truncated.clear();
@@ -16381,7 +16466,7 @@ fn render_message() -> &'static str {
                 ui.label(RichText::new(error).color(Color32::LIGHT_RED));
             }
             ui.add_space(21.0);
-            ui.label(RichText::new("The install location is determined by Hermes Desktop.").size(12.0).color(Color32::from_rgb(105, 109, 118)));
+            ui.label(RichText::new("The install location is determined by Hermes Desktop.").size(CAPTION_TEXT_SIZE).color(Color32::from_rgb(105, 109, 118)));
         });
     }
 
@@ -17462,15 +17547,13 @@ fn render_message() -> &'static str {
                 } else {
                     attachment.name.clone()
                 };
-                ui.label(
-                    RichText::new(label)
-                        .size(11.0)
-                        .color(if attachment.error.is_some() {
-                            Color32::LIGHT_RED
-                        } else {
-                            MUTED
-                        }),
-                );
+                ui.label(RichText::new(label).size(TOOL_TEXT_SIZE).color(
+                    if attachment.error.is_some() {
+                        Color32::LIGHT_RED
+                    } else {
+                        MUTED
+                    },
+                ));
                 if attachment.request_id.is_none() && ui.small_button("Remove").clicked() {
                     remove_attachment_path = Some(attachment.path.clone());
                 }
@@ -17493,7 +17576,7 @@ fn render_message() -> &'static str {
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     RichText::new("Interrupted image drafts")
-                        .size(11.0)
+                        .size(TOOL_TEXT_SIZE)
                         .color(MUTED),
                 );
                 let occupied =
@@ -17520,7 +17603,11 @@ fn render_message() -> &'static str {
                 }
             });
             if let Some(error) = &self.prepared_image_draft_store_error {
-                ui.label(RichText::new(error).size(11.0).color(Color32::LIGHT_RED));
+                ui.label(
+                    RichText::new(error)
+                        .size(TOOL_TEXT_SIZE)
+                        .color(Color32::LIGHT_RED),
+                );
             }
         }
         if session_id.is_some() {
@@ -17717,7 +17804,7 @@ fn render_message() -> &'static str {
             if mutation_pending {
                 ui.label(
                     RichText::new("Updating session settings…")
-                        .size(11.0)
+                        .size(TOOL_TEXT_SIZE)
                         .color(MUTED),
                 );
             }
@@ -17880,7 +17967,7 @@ fn render_message() -> &'static str {
                         self.pending_message_edits.contains_key(&pending.submission_id)
                     });
                     if uncertain_edit {
-                        ui.label(RichText::new("Edit admission is unknown. Refresh and verify session history before continuing; it will not be resent automatically.").size(11.0).color(Color32::YELLOW));
+                        ui.label(RichText::new("Edit admission is unknown. Refresh and verify session history before continuing; it will not be resent automatically.").size(TOOL_TEXT_SIZE).color(Color32::YELLOW));
                     } else if ui
                         .add_enabled(
                             self.gateway_connected,
@@ -17971,7 +18058,11 @@ fn render_message() -> &'static str {
             self.status = "Some dropped files did not provide a readable path or payload. Use Attach file instead.".into();
         }
         if waiting_for_this_session || waiting_for_new_session {
-            ui.label(RichText::new("Waiting for Hermes…").size(11.0).color(MUTED));
+            ui.label(
+                RichText::new("Waiting for Hermes…")
+                    .size(TOOL_TEXT_SIZE)
+                    .color(MUTED),
+            );
         }
         self.request_slash_completion_if_due(ui.ctx());
         if !self.slash_completion_dismissed && self.slash_completion_query.is_some() {
@@ -17980,14 +18071,14 @@ fn render_message() -> &'static str {
                     ui.spinner();
                     ui.label(
                         RichText::new("Loading slash suggestions…")
-                            .size(11.0)
+                            .size(TOOL_TEXT_SIZE)
                             .color(MUTED),
                     );
                 });
             } else if let Some(error) = &self.slash_completion_error {
                 ui.label(
                     RichText::new(format!("Slash suggestions unavailable: {error}"))
-                        .size(11.0)
+                        .size(TOOL_TEXT_SIZE)
                         .color(Color32::LIGHT_RED),
                 );
             } else if !self.slash_completion_items.is_empty() {
@@ -17999,7 +18090,7 @@ fn render_message() -> &'static str {
                     for (index, item) in items.iter().take(24).enumerate() {
                         if item.group != previous_group {
                             previous_group.clone_from(&item.group);
-                            ui.label(RichText::new(&item.group).size(10.0).color(MUTED));
+                            ui.label(RichText::new(&item.group).size(MICRO_TEXT_SIZE).color(MUTED));
                         }
                         let button_text = if item.meta.trim().is_empty() {
                             item.display.clone()
@@ -18024,7 +18115,7 @@ fn render_message() -> &'static str {
                         RichText::new(
                             "Use ↑ and ↓ to choose a suggestion, then Enter or Tab to insert; nothing is sent.",
                         )
-                        .size(10.0)
+                        .size(MICRO_TEXT_SIZE)
                         .color(MUTED),
                     );
                 });
@@ -18840,19 +18931,20 @@ fn render_message() -> &'static str {
             .filter(|selection| {
                 selection.profile == profile && selection.connection_id == connection_id
             });
-        let mut params = serde_json::json!({
-            "cols": 96,
-            "source": "desktop",
-            "profile": profile,
-            "request_id": request_id
-        });
-        if let Some(selection) = model_selection {
-            params["model"] = serde_json::json!(selection.model);
-            params["provider"] = serde_json::json!(selection.provider);
-        }
-        if let Some(selection) = reasoning_selection {
-            params["reasoning_effort"] = serde_json::json!(selection.effort);
-        }
+        let Some(runtime) = self.gateway_runtime.as_ref() else {
+            self.status = "Hermes runtime capabilities are not ready; wait for Gateway negotiation before creating a session.".into();
+            return;
+        };
+        let model = model_selection
+            .map(|selection| (selection.model.as_str(), selection.provider.as_str()));
+        let reasoning = reasoning_selection.map(|selection| selection.effort.as_str());
+        let params = match runtime.desktop_session_create_params(&request_id, model, reasoning) {
+            Ok(params) => params,
+            Err(error) => {
+                self.status = error;
+                return;
+            }
+        };
         if let Err(error) = gateway.create_session(request_id.clone(), params) {
             self.status = error;
             return;
@@ -20845,7 +20937,7 @@ fn render_message() -> &'static str {
                         ui.label("This sent message has no durable row ID. Hermes history will be checked before sending; an unambiguous match will be edited, otherwise the changed text will be submitted as a new message without truncation.");
                     } else {
                         ui.label("Editing this message resubmits it and removes the later conversation from Hermes history.");
-                        ui.label(RichText::new("Old attachment parts are removed with the original turn. Add replacement files here if needed.").size(11.0).color(MUTED));
+                        ui.label(RichText::new("Old attachment parts are removed with the original turn. Add replacement files here if needed.").size(TOOL_TEXT_SIZE).color(MUTED));
                     }
                 let attach = ui.add_enabled(self.gateway_connected, egui::Button::new("Attach file"))
                     .accessible_name("Attach a new image or file to the edited message");
@@ -20874,7 +20966,7 @@ fn render_message() -> &'static str {
                         } else {
                             format!("{} · included", attachment.name)
                         };
-                        ui.label(RichText::new(label).size(11.0).color(if attachment.error.is_some() { Color32::LIGHT_RED } else { MUTED }));
+                        ui.label(RichText::new(label).size(TOOL_TEXT_SIZE).color(if attachment.error.is_some() { Color32::LIGHT_RED } else { MUTED }));
                         if attachment.request_id.is_none() && ui.small_button("Remove").clicked() {
                             remove_path = Some(attachment.path.clone());
                         }
@@ -26574,7 +26666,7 @@ fn render_message() -> &'static str {
                         let required = if field.required { " · required" } else { "" };
                         ui.label(RichText::new(format!("{}{required}", field.label)).strong());
                         if !field.description.is_empty() {
-                            ui.label(RichText::new(&field.description).size(11.0).color(MUTED));
+                            ui.label(RichText::new(&field.description).size(TOOL_TEXT_SIZE).color(MUTED));
                         }
                         match field.field_type.as_str() {
                             "boolean" => {
@@ -26622,7 +26714,7 @@ fn render_message() -> &'static str {
                             }
                             "secret" => {
                                 let env_name = field.env.as_deref().unwrap_or("environment variable");
-                                ui.label(RichText::new(if field.has_value { format!("{env_name} is set · enter a replacement to change it") } else { format!("Set {env_name}") }).size(11.0).color(MUTED));
+                                ui.label(RichText::new(if field.has_value { format!("{env_name} is set · enter a replacement to change it") } else { format!("Set {env_name}") }).size(TOOL_TEXT_SIZE).color(MUTED));
                                 if let Some(value) = dialog.secrets.get_mut(&field.key) {
                                     ui.add_enabled(!busy, egui::TextEdit::singleline(&mut **value).password(true).hint_text("Secret value (never displayed again)")).accessible_name(format!("Plugin setting {}", field.key));
                                 }
@@ -26846,7 +26938,7 @@ fn render_message() -> &'static str {
                         ui.label(format!("The catalog pin changed to {sha} and requests new capabilities."));
                         ui.label("Hermes has not applied the update. Review each change before accepting.");
                         for line in delta_lines.iter().take(20) {
-                            ui.label(RichText::new(line).size(11.0).color(MUTED));
+                            ui.label(RichText::new(line).size(TOOL_TEXT_SIZE).color(MUTED));
                         }
                         if delta_lines.len() > 20 {
                             ui.label(format!("{} more changes omitted", delta_lines.len() - 20));
@@ -29212,7 +29304,7 @@ fn render_message() -> &'static str {
                 RichText::new(
                     "An empty root list scans no directories; Hermes home is never inferred here.",
                 )
-                .size(11.0)
+                .size(TOOL_TEXT_SIZE)
                 .color(MUTED),
             );
         });
@@ -29442,7 +29534,7 @@ fn render_message() -> &'static str {
                         RichText::new(
                             "No catalog models are available; enter a configured model ID.",
                         )
-                        .size(11.0)
+                        .size(TOOL_TEXT_SIZE)
                         .color(MUTED),
                     );
                 }
@@ -29520,7 +29612,7 @@ fn render_message() -> &'static str {
                     "Saving {} · {} for profile {}…",
                     pending.model, pending.provider, pending.profile
                 ))
-                .size(11.0)
+                .size(TOOL_TEXT_SIZE)
                 .color(MUTED),
             );
         }
@@ -32209,7 +32301,7 @@ fn render_message() -> &'static str {
 
     fn empty_panel(&self, ui: &mut egui::Ui, message: &str) {
         ui.add_space(8.0);
-        ui.label(RichText::new(message).size(12.0).color(MUTED));
+        ui.label(RichText::new(message).size(CAPTION_TEXT_SIZE).color(MUTED));
     }
 
     fn session_pane_content(&mut self, ui: &mut Ui, descriptor: &doofusdock_core::PanelDescriptor) {
@@ -33076,7 +33168,7 @@ fn render_message() -> &'static str {
                                     ui.add_space(5.0);
                                     ui.label(
                                         RichText::new(entry.group.to_uppercase())
-                                            .size(10.0)
+                                            .size(MICRO_TEXT_SIZE)
                                             .strong()
                                             .color(ACCENT),
                                     );
@@ -33085,7 +33177,9 @@ fn render_message() -> &'static str {
                                 let response = ui
                                     .selectable_label(
                                         index == self.command_palette_selected_index,
-                                        RichText::new(&entry.label).size(12.0).color(TEXT),
+                                        RichText::new(&entry.label)
+                                            .size(CAPTION_TEXT_SIZE)
+                                            .color(TEXT),
                                     )
                                     .accessible_name(entry.label.clone());
                                 if response.hovered() {
@@ -33301,6 +33395,7 @@ fn render_message() -> &'static str {
                         self.messaging_gateway_restart = None;
                         self.first_run_setup_visible = false;
                         self.gateway_connected = true;
+                        self.gateway_runtime = Some(connection.runtime);
                         self.repo_scan_config_error = None;
                         self.status =
                             format!("Gateway connected · {} sessions", connection.sessions.len());
@@ -33377,6 +33472,7 @@ fn render_message() -> &'static str {
                         self.messaging_gateway_restart = None;
                         self.first_run_setup_visible = true;
                         self.gateway_connected = false;
+                        self.gateway_runtime = None;
                         self.status = format!("Backend unavailable: {reason}");
                     }
                 }
@@ -38603,6 +38699,7 @@ fn render_message() -> &'static str {
                         .as_ref()
                         .map(|endpoint| endpoint.profile_id.clone());
                     self.gateway_connected = false;
+                    self.gateway_runtime = None;
                     if self.keep_going_on_credits_mutation.take().is_some() {
                         let note = "Credits setting outcome is unknown after Gateway disconnect; the failed prompt was not retried";
                         self.chat_policy_error = Some(note.into());
@@ -40666,7 +40763,11 @@ fn render_prompt_history_index(
             ui.label("Loading the selected conversation window…");
         }
         if let Some(error) = &state.error {
-            ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+            ui.label(
+                RichText::new(error)
+                    .size(CAPTION_TEXT_SIZE)
+                    .color(Color32::LIGHT_RED),
+            );
             if ui
                 .button("Retry prompt history")
                 .accessible_name("Retry loading session prompt markers")
@@ -40676,7 +40777,11 @@ fn render_prompt_history_index(
             }
         }
         if let Some(error) = &state.window_error {
-            ui.label(RichText::new(error).size(12.0).color(Color32::LIGHT_RED));
+            ui.label(
+                RichText::new(error)
+                    .size(CAPTION_TEXT_SIZE)
+                    .color(Color32::LIGHT_RED),
+            );
         }
         if state.total.is_some() && state.request.is_none() {
             if ui
@@ -40983,9 +41088,19 @@ fn render_transcript_markdown(
         cache.add_link_hook(destination.clone());
     }
 
-    CommonMarkViewer::new()
-        .enable_scroll_to_heading(true)
-        .show(ui, cache, markdown);
+    let normal_markdown_indent = ui.spacing().indent;
+    ui.scope(|ui| {
+        ui.spacing_mut().indent = MESSAGE_TEXT_INDENT;
+        let indent_id = ui.next_auto_id();
+        ui.indent(indent_id, |ui| {
+            // The source's 12px assistant gutter applies to the message root;
+            // nested markdown lists retain the usual list indentation.
+            ui.spacing_mut().indent = normal_markdown_indent;
+            CommonMarkViewer::new()
+                .enable_scroll_to_heading(true)
+                .show(ui, cache, markdown);
+        });
+    });
 
     let mut clicked_preview = None;
     for destination in link_destinations {
@@ -55254,6 +55369,7 @@ mod tests {
             control_home: None,
             remote_auth: None,
         });
+        app.gateway_runtime = Some(app_test_runtime_description());
         app.gateway_connected = true;
         app.route = AppRoute::NewChat;
         app.draft = "hello Hermes".into();
@@ -55284,11 +55400,11 @@ mod tests {
         else {
             panic!("expected session.create command");
         };
-        assert_eq!(params["profile"], "research");
-        assert_eq!(params["source"], "desktop");
+        assert!(params.get("profile").is_none());
+        assert_eq!(params["source"], "gui");
         assert_eq!(params["model"], "gpt-test-model");
         assert_eq!(params["provider"], "openai");
-        assert_eq!(params["reasoning_effort"], "high");
+        assert_eq!(params["reasoning"], "high");
         events
             .send(GatewayEvent::SessionCreated(Ok(CreatedSession {
                 request_id,
@@ -55378,6 +55494,7 @@ mod tests {
             control_home: None,
             remote_auth: None,
         });
+        app.gateway_runtime = Some(app_test_runtime_description());
         let connection_id = app.active_gateway_connection_id().to_owned();
         app.new_chat_model_selection = Some(OwnedNewChatModelSelection {
             profile: "personal".into(),
@@ -55398,10 +55515,11 @@ mod tests {
         else {
             panic!("expected session.create command");
         };
-        assert_eq!(params["profile"], "research");
+        assert!(params.get("profile").is_none());
+        assert_eq!(params["source"], "gui");
         assert!(params.get("model").is_none());
         assert!(params.get("provider").is_none());
-        assert!(params.get("reasoning_effort").is_none());
+        assert!(params.get("reasoning").is_none());
 
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
@@ -57311,6 +57429,20 @@ mod tests {
             HermesNativeApp::new_for_automation(profile.clone()),
             profile,
         )
+    }
+
+    fn app_test_runtime_description() -> crate::gateway_runtime::RuntimeDescription {
+        crate::gateway_runtime::RuntimeDescription::parse(serde_json::json!({
+            "instance_id": "gateway-research",
+            "profile_id": "research",
+            "authority_epoch": 1,
+            "capabilities": ["clarify-batch-v1", "session-authority-v1"],
+            "session_create": {
+                "sources": ["gui"],
+                "parameters": ["request_id", "source", "model", "provider", "reasoning"]
+            }
+        }))
+        .expect("valid test runtime descriptor")
     }
 
     #[test]

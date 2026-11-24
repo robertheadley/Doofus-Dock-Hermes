@@ -5328,6 +5328,21 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **risks:** None; record payloads were preserved exactly.
 - **follow_up:** Keep future append operations line-delimited and validate after writing.
 
+
+### PAR-0518 — Session-scoped MCP and connector setup — 2026-11-23
+
+- **id:** implement-par0518-session-connection-ops-20261123
+- **timestamp:** 2026-11-23T22:35:13Z
+- **what:** Added typed bounded `connection.request`/`connection.update` handling, transcript tool-row setup controls, masked ephemeral environment inputs, owner-scoped `connection.respond`, and stale-sequence/unknown-outcome guards. Committed as `b12436a06fba22f1e2550d1bf27f6b3ab9c490bd`; EV-0166 records partial evidence.
+- **why:** PAR-0518 is a required first-version agent workflow for setting up MCP/connector-backed tools.
+- **components:** Hermes Native Gateway actor, connection-operation reducer, transcript UI, capability maps and progress ledgers.
+- **type:** feature and evidence
+- **validation:** 695 library + 15 automation protocol + 3 launcher tests; locked workspace all-target check; rustfmt/diff/task-state checks; package validation (565 target/UI/test rows, 15 source receipts, 150 implementation receipts). EV-0166 scenario passes; map-wide legacy issues remain.
+- **performance:** No benchmarked performance change.
+- **risks:** Pending resume hydration and failed/expired target reissue remain open. Authenticated live Gateway, installed Windows and source-paired acceptance are not verified. UCM-wide legacy state still has 178 errors and 9 unrelated reconciliation items.
+- **follow_up:** Implement pending-operation resume hydration and retry/reissue, then validate with an authenticated Hermes Gateway and packaged Windows app.
+
+
 ### Hermes DoofusDock dependency refresh — 2026-11-24T15:34:23Z
 
 - **id:** hermes-dock-pin-refresh-20261124
@@ -5340,3 +5355,43 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No performance claim; no benchmark change.
 - **risks:** Historical screenshots and dated artifacts retain their original source hashes. No authenticated live Gateway or installed UI validation was performed.
 - **follow_up:** Refresh only when explicitly requested; compare source APIs and revalidate both Hermes manifests.
+
+
+### PAR-0518 session resume and retry — 2026-11-24
+
+- **id:** implement-par0518-session-resume-retry-20261124
+- **timestamp:** 2026-11-24T16:22:35Z
+- **what:** Added session.resume pending-connection hydration, duplicate-row prevention, live-sequence protection, safe retry for failed/expired connector and MCP targets on the existing open operation, and a catalog plugin retry guard. Source commit `f8c5abb91d61d56f5c6a109dd2343f8069c1a59c` is bound to EV-0167; PAR-0518 remains partial.
+- **why:** Complete the resume and retry portion of Hermes agent connection setup while preserving the pinned Gateway owner and operation contract.
+- **components:** Hermes Native resume reducer, transcript setup card, Gateway actor, PAR-0518 capability evidence, progress ledgers, headless screenshots.
+- **type:** feature and evidence
+- **validation:** 699 library + 15 automation protocol + 3 launcher tests; locked workspace all-target check; rustfmt/diff; 19 continuity tests; UCM package/YAML validation; three distinct headless app views captured for sessions, plugins and connectors.
+- **performance:** No benchmarked performance change.
+- **risks:** No authenticated live Gateway or installed Windows runtime was exercised. Connector-directory actions and packaged/source-paired acceptance remain open.
+- **follow_up:** Continue with the remaining P0 Gateway attach/capability contracts, then delegated/background task workflows.
+
+### Agent-workflow progress reporting — 2026-11-24
+
+- **id:** align-agent-progress-report-to-approved-scope-20261124
+- **timestamp:** 2026-11-24T16:22:35Z
+- **what:** Updated the durable progress report to read the 176-row agent-workflow ledger, preserve partial and unknown states, report runtime/source-pair acceptance separately, and label tested task lifecycle separately from feature state. Preserved the historical task tree and validators.
+- **why:** Keep ongoing progress and ETA reporting aligned with the user's primary agentic-coding goal.
+- **components:** `doofus_task.py`, continuity tests, plan, generated scoped progress.
+- **type:** reporting and validation
+- **validation:** 19/19 continuity tests; plain/JSON progress output scope assertions; persisted task state valid at revision 948.
+- **performance:** No runtime performance change.
+- **risks:** Calendar ETA remains unavailable until enough size-normalized phase samples exist.
+- **follow_up:** Keep all future status reports on the approved agent-workflow scope and record measured effort as tasks complete.
+
+### Hermes source-aligned typography — 2026-11-24
+
+- **id:** hermes-native-source-typography-20261124
+- **timestamp:** 2026-11-24T17:05:27Z
+- **what:** Centralized Hermes-sized body, tool, caption and micro text tokens; retained the user's JetBrains Mono UI and Fira Code code faces; set 18px body line rhythm; applied the pinned source's 12px inset to transcript Markdown only; moved existing 10/11/12px labels to shared tokens.
+- **why:** Make the native interface follow the pinned Hermes font sizes and text inset while preserving the user's typeface choice and list nesting behavior.
+- **components:** Hermes Native typography, transcript Markdown, settings/session/skill/plugin labels, headless capture.
+- **type:** UI typography alignment
+- **validation:** 713 library + 15 automation protocol + 3 launcher tests; locked workspace all-target check; rustfmt and `git diff --check`; headless markdown and long-session screenshots at 1920x1080.
+- **performance:** No benchmarked performance change.
+- **risks:** The global typeface choice intentionally remains JetBrains Mono for UI per user preference, while pinned Hermes defaults to a system UI sans face. Authenticated Gateway and packaged Windows acceptance remain separate.
+- **follow_up:** Review narrow-viewport toolbar density after the user evaluates the typography screenshot.

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0166",
+  "capability_id": "ui-answer-gateway-mcp-setup-request-when-supported",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-23",
+  "commit": "b12436a06fba22f1e2550d1bf27f6b3ab9c490bd",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 695 library + 15 protocol + 3 launcher tests; locked workspace all-target check; rustfmt, diff check, persisted task validation. No authenticated live Gateway or installed-app acceptance.",
+  "scenario": "session-connection-request-approval-and-sequence-fence",
+  "locator": ".staging/hermes-pinned-878305/tui_gateway/contracts/connectors_operation.py#class ConnectionRequestPayload;.staging/hermes-pinned-878305/tui_gateway/contracts/connectors_operation.py#class ConnectionUpdatePayload;apps/hermes-native/src/connection_operation.rs#pub fn parse_request;apps/hermes-native/src/connection_operation.rs#pub fn apply_update;apps/hermes-native/src/app.rs#connection_operation_transcript_applies_new_owner_scoped_snapshots_only;apps/hermes-native/src/app.rs#connection_operation_card_renders_setup_controls_and_masks_secret_fields;apps/hermes-native/src/gateway.rs#session_connection_response_uses_owner_scoped_rpc_and_does_not_echo_credentials",
+  "notes": "Native Hermes now consumes session-owned connection.request/update events, attaches the operation to the originating tool call, displays authorization/setup/approval controls, and sends connection.respond through the session/profile-scoped Gateway actor. Strictly stale sequence and wrong-session snapshots are rejected. Secret environment values are masked and stored in zeroizing transient drafts; they are not retained in transcript projections or response receipts/debug output. Partial evidence: pending-operation resume hydration, failed/expired target reissue, authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open."
+}

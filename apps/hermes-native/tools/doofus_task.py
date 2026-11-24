@@ -564,24 +564,29 @@ def status_report(root: Path) -> dict[str, Any]:
 
 def progress_report(root: Path) -> dict[str, Any]:
     handoff, ledger = load_pair(root)
-    csv_path = root / "apps" / "hermes-native" / "docs" / "status" / "IMPLEMENTATION_PROGRESS.csv"
+    csv_path = root / "apps" / "hermes-native" / "docs" / "status" / "CHAT_TOOL_PROGRESS.csv"
     with csv_path.open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.DictReader(stream))
-    if len(rows) != 499 or len({row.get("test_id") for row in rows}) != 499:
-        raise TaskError(f"expected 499 unique fixed-scope progress rows, found {len(rows)}")
+    if len(rows) != 176 or len({row.get("test_id") for row in rows}) != 176:
+        raise TaskError(f"expected 176 unique agent-workflow progress rows, found {len(rows)}")
     implementation: dict[str, int] = {}
     acceptance: dict[str, int] = {}
-    visual: dict[str, int] = {}
     live: dict[str, int] = {}
     headless_evidence = 0
     for row in rows:
         implementation[row["implementation_state"]] = implementation.get(row["implementation_state"], 0) + 1
         acceptance[row["source_pair_state"]] = acceptance.get(row["source_pair_state"], 0) + 1
-        visual[row["visual_pair_state"]] = visual.get(row["visual_pair_state"], 0) + 1
         live[row["live_runtime_state"]] = live.get(row["live_runtime_state"], 0) + 1
         if row["evidence_level"] not in {"", "not_reviewed", "none"}:
             headless_evidence += 1
-    tasks = [task for root_task in ledger["tasks"] for task in flatten(root_task)]
+
+    scoped_task_ids = {f"hermes-{row['test_id'].lower()}" for row in rows}
+    all_tasks = [task for root_task in ledger["tasks"] for task in flatten(root_task)]
+    tasks_by_id = {task["task_id"]: task for task in all_tasks}
+    missing_tasks = sorted(scoped_task_ids - tasks_by_id.keys())
+    if missing_tasks:
+        raise TaskError(f"task ledger is missing agent-workflow rows: {missing_tasks[:8]}")
+    tasks = [tasks_by_id[task_id] for task_id in sorted(scoped_task_ids)]
     task_states: dict[str, int] = {}
     for task in tasks:
         task_states[task["state"]] = task_states.get(task["state"], 0) + 1
@@ -599,7 +604,11 @@ def progress_report(root: Path) -> dict[str, Any]:
         remaining_tasks = [
             item for item in tasks
             if (item.get("phase") or item.get("inputs", {}).get("phase")) == sample_phase
-            and item["state"] not in {"tested", "verified", "accepted"}
+            and not (
+                item.get("progress", {}).get("implementation_state") in {"implemented", "verified"}
+                and item.get("progress", {}).get("live_runtime_state") == "verified"
+                and item.get("progress", {}).get("source_pair_state") == "accepted"
+            )
         ]
         base = {
             "eta_minutes": None,
@@ -634,12 +643,11 @@ def progress_report(root: Path) -> dict[str, Any]:
     meaningful_at = meaningful[-1]["timestamp"] if meaningful else handoff["created_at"]
     return {
         "schema_version": 1, "generated_at": utc_now(), "project_id": handoff["project_id"], "state_revision": handoff["revision"],
-        "pinned_source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66", "parity_scope": {"total": 499, "excluded_research": 66},
-        "tasks": {"total": len(tasks), "states": task_states, "completed": sum(task_states.get(state, 0) for state in ("tested", "verified", "accepted")), "active": task_states.get("in_progress", 0), "blocked": task_states.get("blocked", 0)},
-        "implementation": {"states": implementation, "reviewed": 499 - implementation.get("unknown", 0), "review_coverage_percent": round((499 - implementation.get("unknown", 0)) * 100 / 499, 1)},
+        "pinned_source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66", "agent_workflow_scope": {"name": "chat_and_tool_functionality", "total": 176},
+        "tasks": {"total": len(tasks), "states": task_states, "tested_or_accepted": sum(task_states.get(state, 0) for state in ("tested", "verified", "accepted")), "active": task_states.get("in_progress", 0), "blocked": task_states.get("blocked", 0)},
+        "implementation": {"states": implementation, "reviewed": 176 - implementation.get("unknown", 0), "review_coverage_percent": round((176 - implementation.get("unknown", 0)) * 100 / 176, 1)},
         "automated_evidence": {"requirements_with_mapped_test_or_headless_evidence": headless_evidence, "test_runs_recorded": len(tests), "test_run_outcomes": test_outcomes, "latest_test_run": tests[-1] if tests else None},
-        "live_runtime": live, "visual_source_pair": visual, "formal_source_acceptance": acceptance,
-        "legacy_checklist_measurement": handoff["legacy_checklist_measurement"],
+        "live_runtime": live, "source_pair_acceptance": acceptance,
         "critical_path": {"status": "not_mapped_from_authoritative_dependency_data", "tasks": []},
         "elapsed_execution_seconds": None, "protocol_elapsed_seconds": max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(handoff["created_at"].replace("Z", "+00:00"))).total_seconds())), "elapsed_status": "project-wide task start time was not recorded; protocol age is reported separately",
         "estimated_remaining_effort": eta_by_phase or {
@@ -1065,13 +1073,13 @@ def render(report: dict[str, Any], json_output: bool) -> str:
         ])
     counts = report["implementation"]["states"]
     return "\n".join([
-        f"Hermes Native progress · pinned {report['pinned_source_snapshot']}",
-        f"Parity inventory: {report['parity_scope']['total']} in scope; {report['parity_scope']['excluded_research']} excluded",
+        f"Hermes Native agent-workflow progress · pinned {report['pinned_source_snapshot']}",
+        f"Agent-workflow scope: {report['agent_workflow_scope']['total']} requirements",
         f"Implementation: {counts.get('implemented', 0)} implemented · {counts.get('partial', 0)} partial · {counts.get('not_implemented', 0)} absent by review · {counts.get('unknown', 0)} not reviewed",
-        f"Evidence coverage: {report['implementation']['reviewed']}/{report['parity_scope']['total']} requirements reviewed ({report['implementation']['review_coverage_percent']}% coverage; not a completion percentage)",
-        f"Headless/test evidence mapped: {report['automated_evidence']['requirements_with_mapped_test_or_headless_evidence']}/{report['parity_scope']['total']} · test runs recorded: {report['automated_evidence']['test_runs_recorded']}",
-        f"Live runtime states: {report['live_runtime']}", f"Visual source pairs: {report['visual_source_pair']}", f"Formal source acceptance: {report['formal_source_acceptance']}",
-        f"Legacy checklist: {report['legacy_checklist_measurement']['completed']}/{report['legacy_checklist_measurement']['total']} (user-provided, provenance unlocated; separate metric)",
+        f"Task lifecycle (separate from feature state): {report['tasks']['tested_or_accepted']} tested/accepted · {report['tasks']['active']} active · {report['tasks']['blocked']} blocked",
+        f"Evidence mapping: {report['implementation']['reviewed']}/{report['agent_workflow_scope']['total']} reviewed rows ({report['implementation']['review_coverage_percent']}% evidence coverage, not completion)",
+        f"Headless/test evidence mapped: {report['automated_evidence']['requirements_with_mapped_test_or_headless_evidence']}/{report['agent_workflow_scope']['total']} · test runs recorded: {report['automated_evidence']['test_runs_recorded']}",
+        f"Live runtime states: {report['live_runtime']}", f"Source-pair acceptance states: {report['source_pair_acceptance']}",
         f"Critical path: {report['critical_path']['status']}", f"ETA: {report['estimated_remaining_effort']}", f"Elapsed time: {report['elapsed_status']}",
         f"Owner: {report['owner']}", f"Last meaningful progress: {report['last_meaningful_progress_at']}", f"Next: {report['recommended_next_action']}",
     ])

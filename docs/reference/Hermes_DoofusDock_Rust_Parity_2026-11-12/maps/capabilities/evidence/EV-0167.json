@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0167",
+  "capability_id": "ui-answer-gateway-mcp-setup-request-when-supported",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "f8c5abb91d61d56f5c6a109dd2343f8069c1a59c",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 699 library + 15 protocol + 3 launcher tests; cargo check --locked --workspace --all-targets; rustfmt; package validation with PyYAML; task continuity tests; headless offline screenshots for populated sessions, plugins and connectors. No live Hermes Gateway or installed-app runtime.",
+  "scenario": "session-connection-resume-hydration-and-target-reissue",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/app/session/hooks/use-session-actions/restore-pending-connection.ts#restorePendingConnection;apps/hermes-native/src/app.rs#session_resume_success_updates_only_the_matching_pending_request;apps/hermes-native/src/app.rs#connection_operation_card_retries_only_an_open_failed_target;apps/hermes-native/src/app.rs#connection_operation_card_hides_connector_retry_for_catalog_plugin_target;apps/hermes-native/src/app.rs#clear_observed_connection_retry;apps/hermes-native/src/gateway.rs#session_connection_retry_uses_existing_operation_and_owner_scoped_rpc",
+  "notes": "Native session resume now hydrates the existing pending operation row and fences it against newer live updates. Retry uses the existing owner-scoped open operation and confirms the target re-entered initiated state. The app hides connector retry on catalog plugin rows. Evidence is headless/local only; authenticated Gateway behavior, packaged Windows behavior and source-paired acceptance remain open."
+}

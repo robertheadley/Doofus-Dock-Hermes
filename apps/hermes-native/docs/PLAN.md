@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 371 (implementation in progress).
+- **Working revision:** 372 (implementation in progress).
 - **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87` (fetched `main` on 2026-11-24; exact commit pinned until explicitly refreshed).
@@ -2292,3 +2292,10 @@ Validation: locked workspace suite passes (696 library + 15 protocol + 3 launche
 PAR-0518 now reads `pending_connection` from `session.resume`, merges the pending operation into the matching existing tool row by tool-call ID, preserves a newer live sequence, and settles only the same operation that was open when resume began if the authoritative snapshot omits it. A retry sends one failed or expired connector/MCP target through `connectors.connect` with `reconnect: true`, scoped to the existing runtime session and profile. The receipt must identify the same still-open operation and show the target as initiated. Unknown outcomes remain locked until a newer authoritative event or resume snapshot. The UI does not route catalog plugin/skill rows through the connector retry RPC.
 
 Validation: the full locked suite passes 699 library + 15 automation protocol + 3 launcher tests; workspace all-target check, rustfmt, package validation, and task-continuity tests pass. PAR-0518 remains partial pending connector-directory actions, authenticated live Gateway behavior, and packaged Windows/source-paired acceptance.
+
+
+### Revision 372 — Align persistent progress reporting with agent-workflow scope — 2026-11-24
+
+The `doofus_task.py progress` report now reads the explicit 176-row chat/tool feature ledger. It reports implemented, partial, absent, and unknown states, mapped evidence, live-runtime state, source-pair acceptance, task lifecycle, and ETA availability separately. Tested task counts are labeled as lifecycle counts and cannot be mistaken for feature completion. The historical task tree and task-state validation remain preserved.
+
+Validation: continuity suite passes 19/19; JSON and plain-text progress outputs show the 176-row scope and partial states; persisted task state validates at revision 948. ETA remains unavailable because the plan has too few size-normalized throughput samples.

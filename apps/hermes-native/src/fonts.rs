@@ -1,6 +1,16 @@
 use egui::{FontData, FontDefinitions, FontFamily, FontId, TextStyle};
 use std::sync::Arc;
 
+/// Pinned Hermes desktop typography tokens in logical pixels (CSS px at 100%).
+/// Keep JetBrains Mono for the UI as requested, and Fira Code for code surfaces.
+pub const BODY_TEXT_SIZE: f32 = 13.0;
+pub const TOOL_TEXT_SIZE: f32 = 11.0;
+pub const CAPTION_TEXT_SIZE: f32 = 12.0;
+pub const MICRO_TEXT_SIZE: f32 = 10.0;
+pub const CONVERSATION_LINE_HEIGHT: f32 = 18.0;
+pub const CAPTION_LINE_HEIGHT: f32 = 16.0;
+pub const MESSAGE_TEXT_INDENT: f32 = 12.0;
+
 /// Install the user's chosen typefaces while retaining egui's bundled fallback
 /// fonts for symbols, emoji, and glyphs outside either typeface's coverage.
 pub fn install(ctx: &egui::Context) {
@@ -11,13 +21,47 @@ pub fn install(ctx: &egui::Context) {
 
     for theme in [egui::Theme::Light, egui::Theme::Dark] {
         let mut style = (*ctx.style_of(theme)).clone();
-        for text_style in [TextStyle::Heading, TextStyle::Button] {
-            if let Some(font) = style.text_styles.get_mut(&text_style) {
-                *font = FontId::new(font.size, FontFamily::Name("jetbrains_mono_medium".into()));
-            }
-        }
+        apply_source_typography(&mut style);
         ctx.set_style_of(theme, style);
     }
+}
+
+fn apply_source_typography(style: &mut egui::Style) {
+    let ui_face = FontFamily::Proportional;
+    let ui_medium = FontFamily::Name("jetbrains_mono_medium".into());
+    let code_face = FontFamily::Monospace;
+
+    style.text_styles.insert(
+        TextStyle::Small,
+        FontId::new(CAPTION_TEXT_SIZE, ui_face.clone()),
+    );
+    style.text_styles.insert(
+        TextStyle::Body,
+        FontId::new(BODY_TEXT_SIZE, ui_face.clone()),
+    );
+    style.text_styles.insert(
+        TextStyle::Button,
+        FontId::new(BODY_TEXT_SIZE, ui_face.clone()),
+    );
+    style
+        .text_styles
+        .insert(TextStyle::Monospace, FontId::new(BODY_TEXT_SIZE, code_face));
+    style.text_styles.insert(
+        TextStyle::Name("hermes_tool".into()),
+        FontId::new(TOOL_TEXT_SIZE, FontFamily::Monospace),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("hermes_caption".into()),
+        FontId::new(CAPTION_TEXT_SIZE, ui_face.clone()),
+    );
+    style
+        .text_styles
+        .insert(TextStyle::Heading, FontId::new(18.0, ui_medium));
+
+    // The source desktop's body rhythm is 18px at 13px text. egui's font
+    // metrics account for the glyphs; the extra line spacing adds the remaining
+    // two pixels between baselines without scaling the entire application.
+    style.spacing.extra_text_line_spacing = CONVERSATION_LINE_HEIGHT - BODY_TEXT_SIZE - 3.0;
 }
 
 fn font_definitions() -> FontDefinitions {
@@ -101,6 +145,26 @@ mod tests {
         install(&ctx);
         assert_eq!(ctx.missing_glyph_policy(), egui::MissingGlyphPolicy::Tofu);
         let style = ctx.style_of(egui::Theme::Dark);
+        assert_eq!(style.text_styles[&TextStyle::Small].size, CAPTION_TEXT_SIZE);
+        assert_eq!(style.text_styles[&TextStyle::Body].size, BODY_TEXT_SIZE);
+        assert_eq!(style.text_styles[&TextStyle::Button].size, BODY_TEXT_SIZE);
+        assert_eq!(
+            style.text_styles[&TextStyle::Monospace].size,
+            BODY_TEXT_SIZE
+        );
+        assert_eq!(
+            style.text_styles[&TextStyle::Name("hermes_tool".into())].size,
+            TOOL_TEXT_SIZE
+        );
+        assert_eq!(
+            style.text_styles[&TextStyle::Name("hermes_caption".into())].size,
+            CAPTION_TEXT_SIZE
+        );
+        assert_eq!(style.spacing.indent, egui::Style::default().spacing.indent);
+        assert_eq!(
+            style.spacing.extra_text_line_spacing,
+            CONVERSATION_LINE_HEIGHT - BODY_TEXT_SIZE - 3.0
+        );
         assert!(matches!(
             style.text_styles[&TextStyle::Heading].family,
             FontFamily::Name(ref name) if name.as_ref() == "jetbrains_mono_medium"
