@@ -10012,7 +10012,7 @@ capabilities:
   name: Discover Hermes gateway with official attach command
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can discover Hermes gateway with official attach command.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10024,14 +10024,20 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: hermes-gateway-attach-start-discover-and-refusal-contract
+      description: "Native Gateway discovery now calls the pinned `hermes gateway attach --json` contract for first start, discovery and bounded recovery; validates the attach grant, endpoint identity, loopback URL, selected protocol, ticket, exit status and refusal shape. Unit and integration contract tests pass. Injected-process offline/denied behavior, authenticated live attach, packaged Windows and source-paired acceptance remain open."
+  evidence:
+  - EV-0168
 - id: ui-negotiate-runtime-describe-capability-set
   name: Negotiate runtime.describe capability set
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can negotiate runtime.describe capability set.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10043,9 +10049,15 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: verified
+  verification:
+    scenarios:
+    - id: runtime-describe-strict-capability-and-session-create-negotiation
+      description: "Native connection readiness requires a valid `runtime.describe`; identity, positive authority epoch, capabilities, session-create sources/parameters and optional skin are strictly parsed. Desktop session.create sends only negotiated fields and fails closed when policy/choices are not supported. Reconnect descriptor-change lifecycle tests, authenticated live Gateway, packaged Windows and source-paired acceptance remain open."
+  evidence:
+  - EV-0169
 - id: ui-obtain-one-use-websocket-ticket-per-connection
   name: Obtain one-use WebSocket ticket per connection
   area: protocol-reliability
@@ -10064,13 +10076,13 @@ capabilities:
   dimensions:
     backend: partial
     ui: partial
-    tests: partial
+    tests: verified
   verification:
     scenarios:
-    - id: oauth-connection-probe-mints-ticket-before-websocket
-      description: "Native OAuth connection probing mints an endpoint-scoped one-use ticket before WebSocket connection, matching the pinned programmatic integration requirement. A direct native actor reconnect fixture proving fresh tickets on each reconnect, live Gateway and packaged Windows acceptance remain open."
+    - id: gateway-actor-reconnect-mints-a-fresh-one-use-ticket-per-socket
+      description: "A deterministic native actor fixture accepts two Gateway WebSocket connections through the production local attach-grant connector, observes a distinct one-use ticket in each offered subprotocol, checks the selected gateway-v1 protocol and absence of Origin, and verifies reconnect replays read events without resubmitting the unknown prompt. Authenticated live Gateway, packaged Windows and source-paired acceptance remain open."
   evidence:
-  - EV-0164
+  - EV-0170
 
 - id: ui-use-hermes-gateway-v1-json-rpc-frames
   name: Use hermes-gateway-v1 JSON-RPC frames

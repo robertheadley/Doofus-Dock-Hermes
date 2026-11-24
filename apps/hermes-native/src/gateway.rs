@@ -19100,6 +19100,97 @@ fn is_bare_loopback_origin(origin: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn accept_ticketed_fixture(
+        stream: std::net::TcpStream,
+        offered_protocols: mpsc::Sender<(Vec<String>, bool)>,
+    ) -> tungstenite::WebSocket<std::net::TcpStream> {
+        let socket = tungstenite::accept_hdr(
+            stream,
+            move |request: &tungstenite::handshake::server::Request,
+                  mut response: tungstenite::handshake::server::Response| {
+                let protocols = request
+                    .headers()
+                    .get(tungstenite::http::header::SEC_WEBSOCKET_PROTOCOL)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(str::trim)
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>();
+                let origin_present = request
+                    .headers()
+                    .contains_key(tungstenite::http::header::ORIGIN);
+                offered_protocols
+                    .send((protocols, origin_present))
+                    .expect("record attach subprotocols");
+                response.headers_mut().insert(
+                    tungstenite::http::header::SEC_WEBSOCKET_PROTOCOL,
+                    tungstenite::http::HeaderValue::from_static("hermes-gateway-v1"),
+                );
+                Ok(response)
+            },
+        )
+        .expect("accept ticketed fixture websocket");
+        socket
+    }
+
+    fn complete_ticketed_fixture_handshake(
+        socket: &mut tungstenite::WebSocket<std::net::TcpStream>,
+    ) {
+        socket
+            .send(Message::Text(
+                serde_json::json!({
+                    "jsonrpc":"2.0",
+                    "method":"event",
+                    "params":{"type":"gateway.ready"}
+                })
+                .to_string()
+                .into(),
+            ))
+            .expect("send gateway.ready");
+        for (method, result) in [
+            ("client.capabilities", serde_json::json!({})),
+            (
+                "runtime.describe",
+                serde_json::json!({
+                    "instance_id":"instance-a",
+                    "profile_id":"profile-a",
+                    "authority_epoch":1,
+                    "capabilities":["session-authority-v1"],
+                    "session_create":{
+                        "sources":["gui"],
+                        "parameters":["request_id","source"]
+                    }
+                }),
+            ),
+        ] {
+            let request = loop {
+                match socket.read() {
+                    Ok(Message::Text(text)) => {
+                        let request: serde_json::Value =
+                            serde_json::from_str(&text).expect("handshake request JSON");
+                        if request.get("method").and_then(serde_json::Value::as_str) == Some(method)
+                        {
+                            break request;
+                        }
+                    }
+                    other => panic!("expected {method} request, got {other:?}"),
+                }
+            };
+            socket
+                .send(Message::Text(
+                    serde_json::json!({
+                        "jsonrpc":"2.0",
+                        "id":request["id"],
+                        "result":result
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("reply to attach handshake request");
+        }
+    }
+
     #[test]
     fn reconnect_backoff_matches_pinned_full_jitter_ladder_and_stable_reset() {
         assert_eq!(gateway_reconnect_ceiling_ms(0), 300);
@@ -19179,12 +19270,14 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind reconnect fixture");
         let address = listener.local_addr().expect("fixture address");
         let (request_sender, request_receiver) = mpsc::channel();
+        let (protocol_sender, protocol_receiver) = mpsc::channel();
         let server = thread::spawn(move || {
             let (stream, _) = listener.accept().expect("first gateway connection");
             stream
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .expect("first read timeout");
-            let mut socket = tungstenite::accept(stream).expect("first websocket");
+            let mut socket = accept_ticketed_fixture(stream, protocol_sender.clone());
+            complete_ticketed_fixture_handshake(&mut socket);
             socket.send(Message::Text(serde_json::json!({"jsonrpc":"2.0","method":"event","params":{"type":"message.delta","session_id":"runtime-1","profile":"profile-a","seq":2,"replay_epoch":"epoch-1","payload":{"text":"before outage"}}}).to_string().into())).expect("send first event");
             let first_prompt = loop {
                 match socket.read() {
@@ -19217,7 +19310,8 @@ mod tests {
             stream
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .expect("reconnect read timeout");
-            let mut socket = tungstenite::accept(stream).expect("reconnected websocket");
+            let mut socket = accept_ticketed_fixture(stream, protocol_sender);
+            complete_ticketed_fixture_handshake(&mut socket);
             let replay = loop {
                 match socket.read() {
                     Ok(Message::Text(text)) => {
@@ -19269,40 +19363,35 @@ mod tests {
         let discovery = GatewayDiscovery::start_with_attach(
             move || {
                 let attempt = attach_attempts.fetch_add(1, Ordering::SeqCst);
-                if attempt == 0 {
-                    return Err("temporary fixture network failure".into());
-                }
-                let uri: Uri = format!("ws://{address}/api/ws")
-                    .parse()
-                    .expect("fixture websocket URL");
-                let request = ClientRequestBuilder::new(uri);
-                let (mut socket, _) =
-                    connect_with_config(request, None, 0).map_err(|error| error.to_string())?;
-                set_socket_deadlines(&mut socket)?;
+                let ticket = format!("fixture-ticket-{}", attempt + 1);
+                let grant = AttachGrant {
+                    endpoint: crate::gateway_attach::AttachEndpoint {
+                        profile_id: "profile-a".into(),
+                        instance_id: "instance-a".into(),
+                        authority_epoch: 1,
+                        runtime_protocol: 1,
+                        api_origin: api_origin.clone(),
+                        capabilities: vec![],
+                        control_home: None,
+                        code_sha: None,
+                        supervisor: "none".into(),
+                    },
+                    url: format!("ws://{address}/api/ws"),
+                    protocol: "hermes-gateway-v1".into(),
+                    ticket: Zeroizing::new(ticket.clone()),
+                    client_code_sha: None,
+                    start_context: crate::gateway_attach::StartContext {
+                        windows_service_session: false,
+                    },
+                };
+                assert!(!format!("{grant:?}").contains(&ticket));
+                let endpoint = gateway_endpoint_from_attach_grant(&grant);
+                let (socket, runtime) = connect_local_attach_grant(&grant, Some(&endpoint))?;
                 Ok((
                     ConnectedGateway {
-                        endpoint: GatewayEndpoint {
-                            profile_id: "profile-a".into(),
-                            instance_id: "instance-a".into(),
-                            authority_epoch: 1,
-                            runtime_protocol: 1,
-                            api_origin: api_origin.clone(),
-                            capabilities: vec![],
-                            control_home: None,
-                            remote_auth: None,
-                        },
+                        endpoint,
                         sessions: vec![],
-                        runtime: RuntimeDescription::parse(serde_json::json!({
-                            "instance_id": "instance-a",
-                            "profile_id": "profile-a",
-                            "authority_epoch": 1,
-                            "capabilities": ["session-authority-v1"],
-                            "session_create": {
-                                "sources": ["gui"],
-                                "parameters": ["request_id", "source", "model", "provider", "reasoning"]
-                            }
-                        }))
-                        .expect("test runtime descriptor"),
+                        runtime,
                     },
                     socket,
                 ))
@@ -19314,7 +19403,11 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(2);
         let mut initial_status = false;
         while Instant::now() < deadline && !initial_status {
-            initial_status = discovery.poll().is_some_and(|status| status.is_ok());
+            if let Some(status) = discovery.poll() {
+                let connected = status.expect("initial Gateway attach succeeds");
+                assert!(!format!("{connected:?}").contains("fixture-ticket-1"));
+                initial_status = true;
+            }
             if !initial_status {
                 thread::sleep(Duration::from_millis(5));
             }
@@ -19381,6 +19474,46 @@ mod tests {
             "replay must preserve order and reject wrong-session rows"
         );
 
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut reconnected_status = false;
+        while Instant::now() < deadline && !reconnected_status {
+            if let Some(status) = discovery.poll() {
+                if let Ok(connected) = status {
+                    assert!(!format!("{connected:?}").contains("fixture-ticket-2"));
+                    reconnected_status = true;
+                }
+            }
+            if !reconnected_status {
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+        assert!(
+            reconnected_status,
+            "reconnected Gateway status should arrive"
+        );
+
+        let (initial_protocols, initial_origin) = protocol_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("initial attach subprotocols");
+        let (reconnect_protocols, reconnect_origin) = protocol_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("reconnect attach subprotocols");
+        assert_eq!(
+            initial_protocols,
+            [
+                "hermes-gateway-v1",
+                "hermes-gateway-ticket.fixture-ticket-1"
+            ]
+        );
+        assert_eq!(
+            reconnect_protocols,
+            [
+                "hermes-gateway-v1",
+                "hermes-gateway-ticket.fixture-ticket-2"
+            ]
+        );
+        assert!(!initial_origin && !reconnect_origin);
+
         let first = request_receiver
             .recv_timeout(Duration::from_secs(1))
             .expect("first prompt request");
@@ -19396,8 +19529,8 @@ mod tests {
         );
         assert_eq!(
             attempts.load(Ordering::SeqCst),
-            3,
-            "one transient attach failure plus two sockets"
+            2,
+            "initial and reconnect attach should each mint one ticket"
         );
         discovery.shutdown();
         server.join().expect("fixture server exits");

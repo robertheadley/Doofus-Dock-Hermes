@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0170",
+  "capability_id": "ui-obtain-one-use-websocket-ticket-per-connection",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "aaf5273c76cbf353b24e33336757f8a7242368d3",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Focused locked Rust test passed; full cargo test --locked --workspace: 346 library + 3 launcher tests. No authenticated live Gateway or packaged-app runtime.",
+  "scenario": "gateway-actor-reconnect-mints-a-fresh-one-use-ticket-per-socket",
+  "locator": ".staging/hermes-pinned-878305/website/docs/developer-guide/gateway-internals.md#hermes-gateway-attach;.staging/hermes-pinned-878305/website/docs/developer-guide/programmatic-integration.md#ticket;.staging/hermes-pinned-878305/apps/desktop/src/api/canonical-protocol.ts#hermes-gateway-ticket;apps/hermes-native/src/gateway.rs#accept_ticketed_fixture;apps/hermes-native/src/gateway.rs#connect_local_attach_grant;apps/hermes-native/src/gateway.rs#reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
+  "notes": "The deterministic two-socket actor fixture uses the production local attach-grant connector on initial attach and reconnect. It observes a distinct single-use ticket in each offered WebSocket subprotocol, verifies gateway-v1 is selected and Origin is absent, and confirms reconnect only replays read events without resubmitting an outcome-unknown prompt. Focused local test passes. Authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open."
+}

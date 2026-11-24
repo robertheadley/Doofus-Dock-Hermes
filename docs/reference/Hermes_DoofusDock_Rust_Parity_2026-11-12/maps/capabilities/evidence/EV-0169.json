@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0169",
+  "capability_id": "ui-negotiate-runtime-describe-capability-set",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "5f64c07be1f9822fd0c78de2e38392ba2da7d90b",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 713 library + 15 protocol + 3 launcher tests; locked workspace all-target check; rustfmt, diff check and task-continuity suite. No authenticated live Gateway or packaged-app runtime.",
+  "scenario": "runtime-describe-strict-capability-and-session-create-negotiation",
+  "locator": ".staging/hermes-pinned-878305/tui_gateway/contracts/canonical.py#RuntimeDescribeResult;.staging/hermes-pinned-878305/tui_gateway/contracts/canonical.py#SessionCreateDescriptor;.staging/hermes-pinned-878305/apps/shared/src/node/gateway-client.ts#describeRuntime;apps/hermes-native/src/gateway_runtime.rs#parse;apps/hermes-native/src/gateway_runtime.rs#desktop_session_create_params;apps/hermes-native/src/gateway_runtime.rs#parses_required_contract_and_ignores_future_fields;apps/hermes-native/src/gateway_runtime.rs#desktop_session_create_uses_only_negotiated_fields_and_gui_policy;apps/hermes-native/src/gateway_runtime.rs#desktop_session_create_fails_closed_when_policy_or_selected_options_are_not_advertised;apps/hermes-native/src/gateway_runtime.rs#rejects_missing_required_runtime_contract_fields;apps/hermes-native/src/gateway_runtime.rs#rejects_invalid_identity_epoch_and_skin_shapes;apps/hermes-native/src/gateway_runtime.rs#rejects_malformed_or_oversized_negotiated_lists;apps/hermes-native/src/gateway_runtime.rs#rejects_duplicate_capabilities_sources_and_parameters;apps/hermes-native/src/gateway.rs#negotiate_runtime_description;apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id",
+  "notes": "Native connection readiness requires the pinned runtime.describe identity, positive authority epoch, capability set and session-create source/parameter contract. Creation only emits negotiated fields and uses the advertised gui policy. Local strict-contract and fail-closed tests pass. Partial evidence: changed-descriptor reconnect lifecycle is not explicitly tested; authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open."
+}

@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0168",
+  "capability_id": "ui-discover-hermes-gateway-with-official-attach-command",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "5f64c07be1f9822fd0c78de2e38392ba2da7d90b",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native full locked agent-automation suite: 713 library + 15 protocol + 3 launcher tests; locked workspace all-target check; rustfmt, diff check and task-continuity suite. No authenticated live Gateway or packaged-app runtime.",
+  "scenario": "hermes-gateway-attach-start-discover-and-refusal-contract",
+  "locator": ".staging/hermes-pinned-878305/website/docs/developer-guide/gateway-internals.md#hermes-gateway-attach;.staging/hermes-pinned-878305/apps/shared/src/node/gateway-client.ts#GatewayConnection;apps/hermes-native/src/gateway_attach.rs#command_args;apps/hermes-native/src/gateway_attach.rs#parse_attach_receipt;apps/hermes-native/src/gateway_attach.rs#command_arguments_cover_start_discover_and_recover;apps/hermes-native/src/gateway_attach.rs#parses_a_pinned_ready_attach_receipt;apps/hermes-native/src/gateway_attach.rs#parses_a_normal_refusal_and_checks_exit_code;apps/hermes-native/src/gateway_attach.rs#rejects_malformed_oversized_and_multi_document_replies;apps/hermes-native/src/gateway_attach.rs#rejects_identity_mismatch_ticket_mismatch_credentials_and_unknown_fields;apps/hermes-native/src/gateway_attach.rs#rejects_non_attachable_identity_and_untrusted_urls;apps/hermes-native/src/gateway.rs#run_local_gateway_attach;apps/hermes-native/src/gateway.rs#connect_local_attach_grant;apps/hermes-native/src/gateway.rs#attach_gateway",
+  "notes": "Native attach now uses the pinned CLI Start/Discover/Recover flow and strictly validates ready/refusal receipts, owner identity, loopback URL and ticketed WebSocket protocol. Local parser and integration contract tests pass. Partial evidence only: no injected CLI process test proves offline/denied/stale UI behavior; authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open."
+}

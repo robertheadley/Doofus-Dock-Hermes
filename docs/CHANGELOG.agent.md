@@ -5395,3 +5395,17 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No benchmarked performance change.
 - **risks:** The global typeface choice intentionally remains JetBrains Mono for UI per user preference, while pinned Hermes defaults to a system UI sans face. Authenticated Gateway and packaged Windows acceptance remain separate.
 - **follow_up:** Review narrow-viewport toolbar density after the user evaluates the typography screenshot.
+
+### Gateway reconnect ticket evidence — 2026-11-24
+
+- **id:** hermes-par-0505-ticketed-reconnect-20261124
+- **timestamp:** 2026-11-24T17:33:31Z
+- **what:** Extended the two-socket native Gateway actor fixture to use the production attach-grant connector on both initial attach and reconnect; asserted distinct single-use ticket subprotocols, selected `hermes-gateway-v1`, no `Origin` header, secret redaction and replay without prompt resubmission.
+- **why:** Validate the pinned one-use ticket requirement through the actual native reconnect path.
+- **components:** Gateway attach tests, generated agent-workflow progress, capability evidence EV-0170.
+- **type:** test and evidence
+- **validation:** Focused test; 346 library + 3 launcher tests; locked all-target check; 19 task continuity tests; task and package validators; progress generators; rustfmt and diff check. Package YAML parsing was skipped because PyYAML is unavailable.
+- **performance:** No runtime behavior or performance change.
+- **risks:** Authenticated live Gateway, packaged Windows and formal pinned-source acceptance remain open; feature state remains partial.
+- **follow_up:** Continue with the recommended next P0 gateway task after this validated reconnect contract.
+
