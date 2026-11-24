@@ -17542,23 +17542,32 @@ fn render_message() -> &'static str {
                 attach.on_hover_text("Open a Hermes session before attaching files");
             }
             for attachment in &self.composer_attachments {
-                let label = if attachment.request_id.is_some() {
-                    format!("{} · attaching…", attachment.name)
-                } else if let Some(error) = attachment.error.as_deref() {
-                    format!("{} · failed: {error}", attachment.name)
-                } else {
-                    attachment.name.clone()
-                };
-                ui.label(RichText::new(label).size(TOOL_TEXT_SIZE).color(
-                    if attachment.error.is_some() {
-                        Color32::LIGHT_RED
+                ui.horizontal(|ui| {
+                    if attachment.is_image {
+                        self.file_previews.show_image_thumbnail(
+                            ui,
+                            std::path::Path::new(&attachment.path),
+                            egui::vec2(32.0, 32.0),
+                        );
+                    }
+                    let label = if attachment.request_id.is_some() {
+                        format!("{} · attaching…", attachment.name)
+                    } else if let Some(error) = attachment.error.as_deref() {
+                        format!("{} · failed: {error}", attachment.name)
                     } else {
-                        MUTED
-                    },
-                ));
-                if attachment.request_id.is_none() && ui.small_button("Remove").clicked() {
-                    remove_attachment_path = Some(attachment.path.clone());
-                }
+                        attachment.name.clone()
+                    };
+                    ui.label(RichText::new(label).size(TOOL_TEXT_SIZE).color(
+                        if attachment.error.is_some() {
+                            Color32::LIGHT_RED
+                        } else {
+                            MUTED
+                        },
+                    ));
+                    if attachment.request_id.is_none() && ui.small_button("Remove").clicked() {
+                        remove_attachment_path = Some(attachment.path.clone());
+                    }
+                });
             }
             if let Some(path) = remove_attachment_path {
                 if let Err(error) = crate::clipboard_image::remove_staged(
@@ -46477,6 +46486,52 @@ mod tests {
             compose_prompt_with_attachments(&[attachment], "runtime-image", ""),
             Ok("What do you see in this image?".into())
         );
+    }
+
+    #[test]
+    fn composer_renders_a_named_image_thumbnail_for_attached_images() {
+        let (mut app, profile_dir) = isolated_app();
+        let image_path = profile_dir.join("preview.png");
+        image::RgbaImage::from_pixel(16, 12, image::Rgba([27, 108, 194, 255]))
+            .save(&image_path)
+            .expect("write composer preview image");
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.composer_attachments.push(ComposerAttachment {
+            path: image_path.to_string_lossy().into_owned(),
+            source_path: image_path.to_string_lossy().into_owned(),
+            name: "preview.png".into(),
+            is_image: true,
+            mime: "image/png".into(),
+            attached_session_id: Some("runtime-session".into()),
+            ref_text: Some("@image:preview.png".into()),
+            request_id: None,
+            error: None,
+        });
+
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 620.0))
+            .build_ui(move |ui| frame_app.borrow_mut().composer(ui));
+        let mut preview_rendered = false;
+        for _ in 0..40 {
+            harness.run();
+            if harness
+                .query_by_label("Image preview: preview.png")
+                .is_some()
+            {
+                preview_rendered = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(preview_rendered, "the attached image preview is accessible");
+        assert!(harness.query_by_label("preview.png").is_some());
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

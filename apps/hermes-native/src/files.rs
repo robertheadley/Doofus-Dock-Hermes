@@ -539,8 +539,13 @@ impl FilePreviewStore {
             .min(max_size.y / *height as f32)
             .min(1.0);
         let size = egui::vec2(*width as f32 * scale, *height as f32 * scale);
+        let filename = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("image");
         ui.centered_and_justified(|ui| {
-            ui.add(egui::Image::new(&*texture).fit_to_exact_size(size));
+            ui.add(egui::Image::new(&*texture).fit_to_exact_size(size))
+                .accessible_name(format!("Image preview: {filename}"));
         });
         true
     }
@@ -2037,6 +2042,34 @@ mod tests {
             }
         ));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn image_thumbnail_renders_a_bounded_cached_texture() {
+        let path = PathBuf::from("composer-preview.png");
+        let mut store = FilePreviewStore::default();
+        store.contents.insert(
+            (path.clone(), 0),
+            Ok(FilePreviewContent {
+                kind: FilePreviewKind::Image {
+                    width: 2,
+                    height: 1,
+                    rgba: vec![255, 0, 0, 255, 0, 0, 255, 255],
+                },
+            }),
+        );
+        let mut rendered = false;
+        let _harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(100.0, 100.0))
+            .build_ui(|ui| {
+                rendered = store.show_image_thumbnail(ui, &path, egui::vec2(32.0, 32.0));
+            });
+        drop(_harness);
+        assert!(
+            rendered,
+            "the composer preview helper should paint a loaded image"
+        );
+        assert_eq!(store.images.len(), 1, "the texture is cached for this path");
     }
 
     #[test]
