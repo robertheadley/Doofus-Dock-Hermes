@@ -462,6 +462,54 @@ enum ConnectorsSegment {
     Off,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SessionGatewayContext {
+    profile: String,
+    gateway: String,
+    state: &'static str,
+}
+
+/// Build a read-only session ownership summary from the session and the
+/// currently attached Gateway contract. A retained session profile may differ
+/// from the live Gateway after a profile switch; surface that mismatch instead
+/// of implying the transcript belongs to the newly connected profile.
+fn session_gateway_context(
+    session_profile: Option<&str>,
+    gateway_label: Option<&str>,
+    connected: bool,
+    endpoint_profile: Option<&str>,
+    runtime_profile: Option<&str>,
+) -> SessionGatewayContext {
+    let profile = session_profile
+        .or(endpoint_profile)
+        .or(runtime_profile)
+        .unwrap_or("Unknown profile")
+        .to_owned();
+    let gateway = gateway_label.unwrap_or("Unknown Gateway").to_owned();
+
+    let identity_matches = endpoint_profile.is_some_and(|endpoint| {
+        runtime_profile.is_none_or(|runtime| runtime == endpoint)
+            && session_profile.is_none_or(|session| session == endpoint)
+    });
+    let state = if !connected {
+        "Offline"
+    } else if endpoint_profile.is_none() {
+        "Gateway identity unavailable"
+    } else if !identity_matches {
+        "Identity mismatch"
+    } else if runtime_profile.is_none() {
+        "Negotiating"
+    } else {
+        "Connected"
+    };
+
+    SessionGatewayContext {
+        profile,
+        gateway,
+        state,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum PluginCatalogFacetGroup {
     #[default]
@@ -5251,6 +5299,52 @@ fn render_message() -> &'static str {
                 });
             },
         );
+    }
+
+    fn session_gateway_indicator(&self, ui: &mut Ui) {
+        if !matches!(self.route, AppRoute::Session(_)) {
+            return;
+        }
+
+        let connection = self
+            .gateway_connection_id
+            .as_deref()
+            .and_then(|connection_id| {
+                self.workspace
+                    .gateway_connections()
+                    .iter()
+                    .find(|connection| connection.connection_id == connection_id)
+            });
+        let context = session_gateway_context(
+            self.active_session_profile.as_deref(),
+            connection.map(|connection| connection.display_label.as_str()),
+            self.gateway_connected,
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str()),
+            self.gateway_runtime
+                .as_ref()
+                .map(|runtime| runtime.profile_id.as_str()),
+        );
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            ui.label(
+                RichText::new(format!(
+                    "Profile {} · {} · {}",
+                    context.profile, context.gateway, context.state
+                ))
+                .size(CAPTION_TEXT_SIZE)
+                .color(MUTED),
+            )
+            .accessible_name(format!(
+                "Session context: profile {}; Gateway {}; state {}",
+                context.profile, context.gateway, context.state
+            ))
+            .on_hover_text(format!(
+                "Owning session profile: {}\nGateway connection: {}\nConnection state: {}",
+                context.profile, context.gateway, context.state
+            ));
+        });
     }
 
     fn pane_controls(&mut self, ui: &mut Ui) {
@@ -43445,6 +43539,100 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    fn session_gateway_context_names_owner_connection_and_live_state() {
+        let context = session_gateway_context(
+            Some("work"),
+            Some("Hermes · hermes.example.test"),
+            true,
+            Some("work"),
+            Some("work"),
+        );
+
+        assert_eq!(
+            context,
+            SessionGatewayContext {
+                profile: "work".into(),
+                gateway: "Hermes · hermes.example.test".into(),
+                state: "Connected",
+            }
+        );
+    }
+
+    #[test]
+    fn session_gateway_context_distinguishes_offline_and_unnegotiated() {
+        let offline =
+            session_gateway_context(Some("work"), Some("Local Hermes"), false, None, None);
+        let negotiating =
+            session_gateway_context(Some("work"), Some("Local Hermes"), true, Some("work"), None);
+
+        assert_eq!(offline.state, "Offline");
+        assert_eq!(negotiating.state, "Negotiating");
+    }
+
+    #[test]
+    fn session_gateway_context_surfaces_session_or_runtime_identity_mismatch() {
+        let session_mismatch = session_gateway_context(
+            Some("work"),
+            Some("Local Hermes"),
+            true,
+            Some("default"),
+            Some("default"),
+        );
+        let runtime_mismatch = session_gateway_context(
+            Some("work"),
+            Some("Local Hermes"),
+            true,
+            Some("work"),
+            Some("default"),
+        );
+
+        assert_eq!(session_mismatch.state, "Identity mismatch");
+        assert_eq!(runtime_mismatch.state, "Identity mismatch");
+    }
+
+    #[test]
+    fn session_gateway_header_exposes_profile_connection_and_state_accessibly() {
+        let (mut app, directory) = isolated_app();
+        app.load_session_cwd_fixture_for_automation();
+        assert!(app.status.contains("no Gateway request"));
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 900.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+
+        harness.run_steps(2);
+
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.value().as_deref()
+                        == Some("Profile fixture-profile · Local Hermes · Negotiating")
+                })
+                .next()
+                .is_some(),
+            "profile and Gateway context must be rendered in the session header"
+        );
+        let app_state = app.borrow();
+        assert_eq!(
+            app_state.active_session_profile.as_deref(),
+            Some("fixture-profile")
+        );
+        assert!(app_state.gateway_discovery.is_none());
+        assert_eq!(
+            app_state
+                .gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str()),
+            Some("fixture-profile")
+        );
+        drop(app_state);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(directory).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn connection_operation_transcript_applies_new_owner_scoped_snapshots_only() {
         let request = serde_json::json!({
             "op_id":"op-a",
@@ -67078,6 +67266,7 @@ impl HermesNativeApp {
 
         ui.painter().rect_filled(ui.max_rect(), 0.0, BG);
         self.toolbar(ui);
+        self.session_gateway_indicator(ui);
         self.pane_controls(ui);
         let content_rect = ui.available_rect_before_wrap();
         let mut content = ui.new_child(
