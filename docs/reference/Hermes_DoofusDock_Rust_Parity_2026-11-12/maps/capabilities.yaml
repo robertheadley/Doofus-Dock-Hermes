@@ -1504,6 +1504,7 @@ capabilities:
   - EV-0126
   - EV-0125
   - EV-0174
+  - EV-0175
 - id: ui-restore-interrupted-image-draft-without-sending
   name: Restore interrupted image draft without sending
   area: chat-transcript

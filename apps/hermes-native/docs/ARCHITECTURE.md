@@ -110,7 +110,9 @@ The Files panel displays the active project folder name and exposes its full roo
 
 ## Typography
 
-JetBrains Mono is the primary application UI typeface; its Medium face is used for heading and button text styles. Fira Code is the egui monospace family and is explicitly used by the Hermes message composer. Both are bundled from official tagged releases with their OFL 1.1 license texts and archive hashes in `assets/fonts/README.md`. The original egui fonts remain fallbacks for uncovered glyphs.
+The native UI follows the pinned Hermes Desktop font stack: use the platform proportional UI face for chrome and prose (Segoe UI first on Windows), and JetBrains Mono first for monospace content. Fira Code remains the requested secondary monospace face. Windows Segoe UI is loaded from the OS Fonts directory at runtime and is not redistributed; egui's bundled proportional face remains the fallback when it is unavailable or on other platforms. JetBrains Mono and Fira Code are bundled from official tagged releases with their OFL 1.1 license texts and archive hashes in `assets/fonts/README.md`.
+
+At the default 100% scale, text tokens are 13px body/conversation, 11px tool, and 12px caption; the source conversation and caption rhythms are 18px and 16px. Transcript content has a 12px leading gutter and Markdown lists use the source's 1.625em inset (21.125px at the 13px base). The source constants and selected font families are covered by the `fonts` module unit test.
 
 ## Transcript Markdown
 

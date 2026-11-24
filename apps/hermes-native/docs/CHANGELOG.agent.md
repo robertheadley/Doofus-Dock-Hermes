@@ -3626,3 +3626,26 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime performance impact.
 - **risks:** Live Gateway and packaged Windows behavior remain open.
 - **follow_up:** Continue PAR-0082 live/source-paired acceptance.
+
+### Revision 368 — Exercise clipboard image paste through the composer — 2026-11-24
+
+- **id:** hermes-par0062-clipboard-image-integration-2026-11-24
+- **what:** Added a headless UI integration regression that pastes an image into the focused composer and verifies the profile/session-scoped Gateway attachment command and staged PNG.
+- **why:** Clipboard image handling existed in helpers and app code, but evidence did not exercise the complete user-facing composer path.
+- **components:** Composer UI, clipboard image staging, Gateway attachment dispatch, UCM evidence and progress records.
+- **type:** test
+- **validation:** Focused integration regression passed; full locked workspace suite passed (716 library, 15 automation protocol, 3 launcher); all-target locked cargo check, rustfmt, diff, 19 task-continuity checks and capability package validation passed.
+- **performance:** Test-only change; no runtime performance impact.
+- **risks:** Real Windows clipboard delivery, authenticated Gateway upload outcomes and packaged-app behavior remain unverified; PAR-0062 stays partial.
+- **follow_up:** Exercise paste, picker and drag/drop against the installed Windows app and authenticated Hermes Gateway.
+### Revision 369 — Match native UI typography to pinned Hermes — 2026-11-24
+
+- **id:** hermes-source-typography-20261124
+- **what:** Switched proportional UI text to the pinned Hermes platform font stack (Segoe UI first on Windows), made JetBrains Mono the first monospace face, retained Fira Code as the secondary monospace face, and aligned heading family, sizes, line rhythms and transcript indent documentation with the source CSS.
+- **why:** The native app used JetBrains Mono for the entire interface, while pinned Hermes uses a platform UI face for chrome/prose and JetBrains Mono for monospace surfaces.
+- **components:** egui font definitions, source typography tokens, transcript/list indentation, architecture/setup documentation.
+- **type:** visual alignment
+- **validation:** Focused font contract passed with `agent-automation`: 1/1. `cargo fmt --all --check` passed after formatting. Headless transcript screenshot captured for visual inspection.
+- **performance:** Windows system UI font is read once while building font definitions; no frame-loop filesystem reads were added.
+- **risks:** Windows UI font loading is headless-tested only; other platforms use egui's bundled proportional fallback. Live Hermes Gateway behavior is unaffected.
+- **follow_up:** Compare the captured native transcript with the pinned Hermes surface at matched DPI and continue PAR-0084.

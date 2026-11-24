@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0175",
+  "capability_id": "ui-attach-image-or-file-to-prompt",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "6c3f7b26576f14864dda989e6502ac9506faafe1",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked Rust workspace with agent-automation; egui_kittest UI harness and captured test Gateway command. No live Hermes Gateway or installed app was used.",
+  "scenario": "composer-clipboard-image-paste",
+  "locator": ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/index.tsx#handlePaste;apps/hermes-native/src/app.rs#pasting_an_image_into_the_focused_composer_requests_a_scoped_gateway_attachment;apps/hermes-native/src/clipboard_image.rs#stage_png;apps/hermes-native/src/clipboard_image.rs#take_focused_image_event",
+  "notes": "An egui PasteImage event sent while the message composer owns focus is consumed by the real composer path, atomically staged as a PNG, and emitted as a Gateway attachment command scoped to the active connection, profile, stored session, and runtime session. The test verifies the staged image bytes are a readable 2x2 PNG. This does not verify physical Windows clipboard delivery, authenticated Gateway upload outcomes, or packaged-app behavior."
+}
