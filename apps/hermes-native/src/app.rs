@@ -1133,6 +1133,7 @@ struct SessionChatViewState {
     backend_cwd: Option<String>,
     terminal_backend: Option<String>,
     resume_request_id: Option<String>,
+    resume_connection_operation_at_start: Option<(String, u64)>,
     resume_error: Option<String>,
     transcript: Vec<serde_json::Value>,
     transcript_scroll_position: TranscriptScrollPosition,
@@ -7636,6 +7637,7 @@ fn render_message() -> &'static str {
             let mut compress_context_session: Option<(String, String, Option<String>)> = None;
             let mut open_recovery_url = None;
             let mut connection_responses: Vec<(usize, String, serde_json::Value)> = Vec::new();
+            let mut connection_retries: Vec<(usize, String, String)> = Vec::new();
             let active_profile = self.active_session_profile.clone();
             let active_connection_id = self.active_gateway_connection_id().to_owned();
             let tool_images = messages
@@ -7762,6 +7764,10 @@ fn render_message() -> &'static str {
                                         .get("action")
                                         .and_then(serde_json::Value::as_str)
                                         .unwrap_or("connect");
+                                    let retry_supported = connection_target_retry_supported(
+                                        message.get("name").and_then(serde_json::Value::as_str),
+                                        target.get("kind").and_then(serde_json::Value::as_str),
+                                    );
                                     let details = target
                                         .get("instructions")
                                         .or_else(|| target.get("detail"))
@@ -7795,6 +7801,43 @@ fn render_message() -> &'static str {
                                             if ui.button("Open authorization page").clicked() {
                                                 open_recovery_url = Some(url.to_owned());
                                             }
+                                        }
+                                        if retry_supported && matches!(state, "failed" | "expired") {
+                                            let retry_state = message
+                                                .get("connection_retry_state")
+                                                .and_then(serde_json::Value::as_str)
+                                                .unwrap_or_default();
+                                            let retry_in_flight = matches!(
+                                                retry_state,
+                                                "awaiting_gateway" | "outcome_unknown"
+                                            );
+                                            ui.horizontal(|ui| {
+                                                if ui
+                                                    .add_enabled(
+                                                        can_respond && !retry_in_flight,
+                                                        egui::Button::new("Try again"),
+                                                    )
+                                                    .accessible_name(format!(
+                                                        "Retry Hermes setup for {name}"
+                                                    ))
+                                                    .clicked()
+                                                {
+                                                    connection_retries.push((
+                                                        index,
+                                                        op_id.to_owned(),
+                                                        name.clone(),
+                                                    ));
+                                                }
+                                                if retry_state == "awaiting_gateway" {
+                                                    ui.label("Retrying…");
+                                                } else if retry_state == "outcome_unknown" {
+                                                    ui.label(
+                                                        "Retry outcome unknown; waiting for Hermes status.",
+                                                    );
+                                                } else if retry_state == "failed" {
+                                                    ui.label("Hermes refused the retry.");
+                                                }
+                                            });
                                         }
                                         let mut env_values = serde_json::Map::new();
                                         for field in &env_fields {
@@ -8587,6 +8630,47 @@ fn render_message() -> &'static str {
                 self.connection_env_drafts.retain(|key, _| {
                     !key.starts_with(&connection_env_draft_prefix(&runtime_session_id, &op_id))
                 });
+                if let Err(error) = response {
+                    self.status = error;
+                }
+            }
+            for (row_index, op_id, target_name) in connection_retries {
+                let Some(runtime_session_id) = self.active_runtime_session_id.clone() else {
+                    continue;
+                };
+                let Some(gateway) = self.gateway_discovery.as_ref() else {
+                    self.status = "Hermes Gateway is not connected.".into();
+                    continue;
+                };
+                let request_id = connection_response_request_id();
+                let response = gateway.reissue_connection_target(
+                    request_id.clone(),
+                    runtime_session_id,
+                    op_id.clone(),
+                    target_name.clone(),
+                    active_profile.clone(),
+                );
+                if let Some(row) = self.transcript.get_mut(row_index).filter(|row| {
+                    row.pointer("/connection_operation/op_id")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(op_id.as_str())
+                        && row
+                            .pointer("/connection_operation/settled")
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(false)
+                }) {
+                    let seq_at_start = row
+                        .pointer("/connection_operation/seq")
+                        .cloned()
+                        .unwrap_or(serde_json::json!(0));
+                    row["connection_retry_request_id"] = serde_json::Value::String(request_id);
+                    row["connection_retry_state"] = serde_json::json!(if response.is_ok() {
+                        "awaiting_gateway"
+                    } else {
+                        "failed"
+                    });
+                    row["connection_retry_seq_at_start"] = seq_at_start;
+                }
                 if let Err(error) = response {
                     self.status = error;
                 }
@@ -24677,6 +24761,8 @@ fn render_message() -> &'static str {
                         backend_cwd: previous.and_then(|view| view.backend_cwd.clone()),
                         terminal_backend: previous.and_then(|view| view.terminal_backend.clone()),
                         resume_request_id: previous.and_then(|view| view.resume_request_id.clone()),
+                        resume_connection_operation_at_start: previous
+                            .and_then(|view| view.resume_connection_operation_at_start.clone()),
                         resume_error: previous.and_then(|view| view.resume_error.clone()),
                         transcript: self.transcript.clone(),
                         transcript_scroll_position: previous
@@ -24825,6 +24911,15 @@ fn render_message() -> &'static str {
             // transcript, runtime binding, or draft while the RPC is pending.
             view.resume_error = None;
         }
+        let transcript_at_start = if self.route == AppRoute::Session(session_id.to_owned())
+            && self.active_session_profile == profile
+        {
+            &self.transcript
+        } else {
+            &view.transcript
+        };
+        view.resume_connection_operation_at_start =
+            pending_connection_operation_identity(transcript_at_start);
         let request_id = operation_id("resume");
         match self
             .gateway_discovery
@@ -24836,6 +24931,7 @@ fn render_message() -> &'static str {
             Ok(()) => view.resume_request_id = Some(request_id),
             Err(error) => {
                 view.resume_request_id = None;
+                view.resume_connection_operation_at_start = None;
                 view.resume_error = Some(error.clone());
                 if self.route == AppRoute::Session(session_id.to_owned())
                     && self.active_session_profile == profile
@@ -24858,6 +24954,7 @@ fn render_message() -> &'static str {
                 ..SessionChatViewState::default()
             });
         view.resume_request_id = None;
+        view.resume_connection_operation_at_start = None;
         view.resume_error = None;
         self.cache_session_chat_view(key, view);
         self.request_explicit_session_resume(session_id, profile);
@@ -24897,12 +24994,54 @@ fn render_message() -> &'static str {
             return;
         }
         view.resume_request_id = None;
+        let pending_connection_at_start = view.resume_connection_operation_at_start.take();
         match result {
             Ok(snapshot) if snapshot.session_id == session_id && snapshot.profile == profile => {
                 let reasoning_effort = snapshot.reasoning_effort.clone();
                 let reasoning_effort_wire = snapshot.reasoning_effort_wire.clone();
                 view.profile = snapshot.profile.clone();
-                view.transcript = snapshot.messages;
+                let existing_transcript = if self.route == AppRoute::Session(session_id.to_owned())
+                    && self.active_session_profile == profile
+                {
+                    &self.transcript
+                } else {
+                    &view.transcript
+                };
+                let mut transcript = snapshot.messages;
+                merge_connection_operation_rows(
+                    &mut transcript,
+                    existing_transcript,
+                    &snapshot.runtime_session_id,
+                );
+                let cleared_operation = if let Some(pending) = snapshot.pending_connection.as_ref()
+                {
+                    apply_connection_operation_event(
+                        &mut transcript,
+                        &snapshot.runtime_session_id,
+                        "connection.request",
+                        pending,
+                    );
+                    if let Some(op_id) = pending.get("op_id").and_then(serde_json::Value::as_str) {
+                        clear_observed_connection_retry(&mut transcript, op_id);
+                    }
+                    None
+                } else {
+                    pending_connection_at_start
+                        .as_ref()
+                        .and_then(|(op_id, seq)| {
+                            clear_absent_connection_operation(&mut transcript, op_id, *seq)
+                                .then(|| op_id.clone())
+                        })
+                };
+                if let Some(op_id) = cleared_operation {
+                    self.connection_env_drafts.retain(|key, _| {
+                        !key.starts_with(&connection_env_draft_prefix(
+                            &snapshot.runtime_session_id,
+                            &op_id,
+                        ))
+                    });
+                }
+                view.transcript = transcript;
                 view.transcript_message_count = snapshot.message_count.max(view.transcript.len());
                 view.transcript_has_more = view.transcript.len() < view.transcript_message_count;
                 view.older_transcript_request = None;
@@ -33178,6 +33317,7 @@ fn render_message() -> &'static str {
                             if view.resume_error.is_some() {
                                 view.resume_error = None;
                                 view.resume_request_id = None;
+                                view.resume_connection_operation_at_start = None;
                             }
                         }
                         if self.route == AppRoute::NewChat {
@@ -33967,6 +34107,76 @@ fn render_message() -> &'static str {
                                     Err(_) => {
                                         row["connection_response_state"] =
                                             serde_json::json!("failed");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                GatewayEvent::ConnectionTargetReissued {
+                    request_id,
+                    session_id,
+                    op_id,
+                    target_name: _,
+                    profile,
+                    result,
+                    outcome_unknown,
+                    connection_id,
+                } => {
+                    let owner_matches = connection_id.as_deref()
+                        == self.gateway_connection_id.as_deref()
+                        && self.active_runtime_session_id.as_deref() == Some(&session_id)
+                        && profile.as_deref() == self.active_session_profile.as_deref();
+                    let request_is_current = owner_matches
+                        && self.transcript.iter().any(|row| {
+                            row.pointer("/connection_operation/op_id")
+                                .and_then(serde_json::Value::as_str)
+                                == Some(op_id.as_str())
+                                && row
+                                    .get("connection_retry_request_id")
+                                    .and_then(serde_json::Value::as_str)
+                                    == Some(request_id.as_str())
+                        });
+                    if request_is_current {
+                        match result {
+                            Ok(snapshot) => {
+                                apply_connection_operation_event(
+                                    &mut self.transcript,
+                                    &session_id,
+                                    "connection.update",
+                                    &snapshot,
+                                );
+                                if let Some(row) = self.transcript.iter_mut().rev().find(|row| {
+                                    row.pointer("/connection_operation/op_id")
+                                        .and_then(serde_json::Value::as_str)
+                                        == Some(op_id.as_str())
+                                }) {
+                                    if let Some(object) = row.as_object_mut() {
+                                        object.remove("connection_retry_request_id");
+                                        object.remove("connection_retry_state");
+                                        object.remove("connection_retry_seq_at_start");
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                if let Some(row) = self.transcript.iter_mut().rev().find(|row| {
+                                    row.pointer("/connection_operation/op_id")
+                                        .and_then(serde_json::Value::as_str)
+                                        == Some(op_id.as_str())
+                                        && row
+                                            .get("connection_retry_request_id")
+                                            .and_then(serde_json::Value::as_str)
+                                            == Some(request_id.as_str())
+                                }) {
+                                    if outcome_unknown {
+                                        row["connection_retry_state"] =
+                                            serde_json::json!("outcome_unknown");
+                                    } else {
+                                        row["connection_retry_state"] = serde_json::json!("failed");
+                                        if let Some(object) = row.as_object_mut() {
+                                            object.remove("connection_retry_request_id");
+                                            object.remove("connection_retry_seq_at_start");
+                                        }
                                     }
                                 }
                             }
@@ -38443,6 +38653,7 @@ fn render_message() -> &'static str {
                     }
                     for view in self.session_chat_views.values_mut() {
                         view.resume_request_id = None;
+                        view.resume_connection_operation_at_start = None;
                     }
                     self.archived_sessions_request_id = None;
                     self.archived_sessions_loading = false;
@@ -38789,6 +39000,169 @@ fn append_background_completion_notice(
     transcript.push(row);
 }
 
+fn pending_connection_operation_identity(
+    transcript: &[serde_json::Value],
+) -> Option<(String, u64)> {
+    transcript.iter().rev().find_map(|row| {
+        let operation = row.get("connection_operation")?;
+        if operation
+            .get("settled")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        {
+            return None;
+        }
+        Some((
+            operation
+                .get("op_id")
+                .and_then(serde_json::Value::as_str)?
+                .to_owned(),
+            operation.get("seq").and_then(serde_json::Value::as_u64)?,
+        ))
+    })
+}
+
+fn merge_connection_operation_rows(
+    transcript: &mut Vec<serde_json::Value>,
+    current: &[serde_json::Value],
+    runtime_session_id: &str,
+) {
+    for current_row in current {
+        let Some(operation) = current_row.get("connection_operation") else {
+            continue;
+        };
+        if operation
+            .get("session_id")
+            .and_then(serde_json::Value::as_str)
+            != Some(runtime_session_id)
+        {
+            continue;
+        }
+        let Some(op_id) = operation.get("op_id").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let snapshot_row = transcript.iter_mut().rev().find(|row| {
+            let Some(snapshot_operation) = row.get("connection_operation") else {
+                return false;
+            };
+            let same_operation = snapshot_operation
+                .get("op_id")
+                .and_then(serde_json::Value::as_str)
+                == Some(op_id);
+            let same_session = snapshot_operation
+                .get("session_id")
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|session_id| session_id == runtime_session_id);
+            same_operation && same_session
+        });
+        if let Some(snapshot_row) = snapshot_row {
+            let current_seq = operation
+                .get("seq")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default();
+            let snapshot_seq = snapshot_row
+                .pointer("/connection_operation/seq")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default();
+            if current_seq > snapshot_seq {
+                snapshot_row["connection_operation"] = operation.clone();
+                for key in ["connection_response_state", "status"] {
+                    if let Some(value) = current_row.get(key) {
+                        snapshot_row[key] = value.clone();
+                    }
+                }
+            }
+            continue;
+        }
+
+        let tool_call_id = current_row
+            .get("tool_call_id")
+            .and_then(serde_json::Value::as_str);
+        let unclaimed_tool_row = tool_call_id.and_then(|tool_call_id| {
+            transcript.iter_mut().rev().find(|row| {
+                row.get("tool_call_id").and_then(serde_json::Value::as_str) == Some(tool_call_id)
+                    && row.get("connection_operation").is_none()
+            })
+        });
+        if let Some(snapshot_row) = unclaimed_tool_row {
+            snapshot_row["connection_operation"] = operation.clone();
+            for key in ["connection_response_state", "status"] {
+                if let Some(value) = current_row.get(key) {
+                    snapshot_row[key] = value.clone();
+                }
+            }
+        } else {
+            transcript.push(current_row.clone());
+        }
+    }
+}
+
+fn clear_absent_connection_operation(
+    transcript: &mut [serde_json::Value],
+    op_id: &str,
+    seq_at_resume_start: u64,
+) -> bool {
+    let Some(row) = transcript.iter_mut().rev().find(|row| {
+        row.get("connection_operation")
+            .and_then(|operation| operation.get("op_id"))
+            .and_then(serde_json::Value::as_str)
+            == Some(op_id)
+    }) else {
+        return false;
+    };
+    let operation = &mut row["connection_operation"];
+    let current_seq = operation
+        .get("seq")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default();
+    if operation
+        .get("settled")
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
+        || current_seq > seq_at_resume_start
+    {
+        return false;
+    }
+    operation["settled"] = serde_json::json!(true);
+    row["status"] = serde_json::json!("complete");
+    row["connection_response_state"] = serde_json::json!("settled");
+    if let Some(object) = row.as_object_mut() {
+        object.remove("connection_retry_request_id");
+        object.remove("connection_retry_state");
+        object.remove("connection_retry_seq_at_start");
+    }
+    true
+}
+
+fn clear_observed_connection_retry(transcript: &mut [serde_json::Value], op_id: &str) -> bool {
+    let Some(row) = transcript.iter_mut().rev().find(|row| {
+        row.pointer("/connection_operation/op_id")
+            .and_then(serde_json::Value::as_str)
+            == Some(op_id)
+    }) else {
+        return false;
+    };
+    let start_seq = row
+        .get("connection_retry_seq_at_start")
+        .and_then(serde_json::Value::as_u64);
+    let current_seq = row
+        .pointer("/connection_operation/seq")
+        .and_then(serde_json::Value::as_u64);
+    if !matches!((start_seq, current_seq), (Some(start), Some(current)) if current > start) {
+        return false;
+    }
+    if let Some(object) = row.as_object_mut() {
+        object.remove("connection_retry_request_id");
+        object.remove("connection_retry_state");
+        object.remove("connection_retry_seq_at_start");
+    }
+    true
+}
+
+fn connection_target_retry_supported(tool_name: Option<&str>, target_kind: Option<&str>) -> bool {
+    tool_name == Some("manage_connections") && matches!(target_kind, Some("connector" | "mcp"))
+}
+
 fn connection_env_draft_prefix(runtime_session_id: &str, op_id: &str) -> String {
     format!("{runtime_session_id}\0{op_id}\0")
 }
@@ -38840,13 +39214,16 @@ fn apply_connection_operation_event(
                 return;
             };
             if let Some(row) = transcript.iter_mut().rev().find(|row| {
-                row.get("tool_call_id").and_then(serde_json::Value::as_str)
-                    == Some(tool_call_id.as_str())
-                    || row
-                        .get("connection_operation")
-                        .and_then(|operation| operation.get("op_id"))
-                        .and_then(serde_json::Value::as_str)
-                        == Some(op_id.as_str())
+                let same_operation = row
+                    .get("connection_operation")
+                    .and_then(|operation| operation.get("op_id"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some(op_id.as_str());
+                let unclaimed_tool_row =
+                    row.get("tool_call_id").and_then(serde_json::Value::as_str)
+                        == Some(tool_call_id.as_str())
+                        && row.get("connection_operation").is_none();
+                same_operation || unclaimed_tool_row
             }) {
                 let previous_seq = row
                     .pointer("/connection_operation/seq")
@@ -38919,6 +39296,16 @@ fn apply_connection_operation_event(
                     // A newer owner-fenced snapshot is authoritative after an
                     // uncertain response and is the only event that unlocks it.
                     row["connection_response_state"] = serde_json::json!("ready");
+                }
+                let retry_seq_at_start = row
+                    .get("connection_retry_seq_at_start")
+                    .and_then(serde_json::Value::as_u64);
+                if retry_seq_at_start.is_some_and(|start| seq > start) {
+                    if let Some(object) = row.as_object_mut() {
+                        object.remove("connection_retry_request_id");
+                        object.remove("connection_retry_state");
+                        object.remove("connection_retry_seq_at_start");
+                    }
                 }
             } else {
                 // A resumed transcript can receive a full update before its
@@ -42563,9 +42950,11 @@ mod tests {
             "connection_response_state":"ready"
         })];
         app.transcript_message_count = app.transcript.len();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1280.0, 1000.0))
-            .build_ui(|ui| app.draw(ui));
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
         harness.run();
         assert!(harness.query_by_label("Hermes setup request").is_some());
         assert!(
@@ -42599,6 +42988,193 @@ mod tests {
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(directory).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn connection_operation_card_retries_only_an_open_failed_target() {
+        let (mut app, directory) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-a".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.transcript = vec![serde_json::json!({
+            "type":"tool_call",
+            "tool_call_id":"tool-a",
+            "name":"manage_connections",
+            "status":"running",
+            "connection_operation":{
+                "session_id":"runtime-a",
+                "op_id":"op-a",
+                "seq":3,
+                "deadline_at":1900000000.0,
+                "settled":false,
+                "targets":[{
+                    "name":"Linear",
+                    "kind":"connector",
+                    "action":"authorize",
+                    "state":"failed"
+                }]
+            },
+            "connection_response_state":"ready"
+        })];
+        app.transcript_message_count = app.transcript.len();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 1000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.run();
+        harness
+            .get_by_label("Retry Hermes setup for Linear")
+            .click();
+        harness.run();
+        let command = commands
+            .recv_timeout(Duration::from_secs(1))
+            .expect("failed target retry reaches the Gateway actor");
+        assert!(matches!(
+            command,
+            TestGatewayCommand::ReissueConnectionTarget {
+                session_id,
+                op_id,
+                target_name,
+                profile,
+                ..
+            } if session_id == "runtime-a"
+                && op_id == "op-a"
+                && target_name == "Linear"
+                && profile == Some("work".into())
+        ));
+        assert_eq!(
+            app.borrow().transcript[0]["connection_retry_state"],
+            "awaiting_gateway"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(directory).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn connection_operation_card_hides_connector_retry_for_catalog_plugin_target() {
+        let (mut app, directory) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.gateway_connected = true;
+        app.active_runtime_session_id = Some("runtime-a".into());
+        app.active_session_profile = Some("work".into());
+        app.transcript = vec![serde_json::json!({
+            "type":"tool_call",
+            "tool_call_id":"tool-catalog",
+            "name":"manage_catalog",
+            "status":"running",
+            "connection_operation":{
+                "session_id":"runtime-a",
+                "op_id":"op-catalog",
+                "seq":3,
+                "deadline_at":1900000000.0,
+                "settled":false,
+                "targets":[{
+                    "name":"Research Companion",
+                    "kind":"plugin",
+                    "action":"install",
+                    "state":"failed"
+                }]
+            },
+            "connection_response_state":"ready"
+        })];
+        app.transcript_message_count = app.transcript.len();
+        let app = Rc::new(RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 1000.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Retry Hermes setup for Research Companion")
+                .is_none(),
+            "catalog plugin retries must use the catalog flow, not connectors.connect"
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(directory).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn connection_operation_resume_snapshot_restores_without_rewinding_live_events() {
+        let pending_request = serde_json::json!({
+            "op_id":"op-resume",
+            "seq":1,
+            "deadline_at":1900000000.0,
+            "timeout_seconds":120.0,
+            "tool_call_id":"tool-resume",
+            "targets":[{
+                "name":"Linear","kind":"mcp","action":"install","state":"pending",
+                "required_env":[{"name":"LINEAR_TOKEN","required":true,"secret":true}]
+            }]
+        });
+        let live_update = serde_json::json!({
+            "op_id":"op-resume",
+            "seq":2,
+            "deadline_at":1900000000.0,
+            "settled":false,
+            "owner":{"type":"session","session_id":"runtime-resume"},
+            "targets":[{
+                "name":"Linear","kind":"mcp","action":"install","state":"initiated",
+                "connect_url":"https://linear.example/oauth","required_env":[]
+            }]
+        });
+        let mut live_transcript = Vec::new();
+        apply_connection_operation_event(
+            &mut live_transcript,
+            "runtime-resume",
+            "connection.request",
+            &pending_request,
+        );
+        apply_connection_operation_event(
+            &mut live_transcript,
+            "runtime-resume",
+            "connection.update",
+            &live_update,
+        );
+        assert_eq!(
+            pending_connection_operation_identity(&live_transcript),
+            Some(("op-resume".into(), 2))
+        );
+
+        let mut resume_transcript = vec![serde_json::json!({
+            "type":"tool_call",
+            "tool_call_id":"tool-resume",
+            "name":"manage_connections",
+            "status":"running"
+        })];
+        merge_connection_operation_rows(&mut resume_transcript, &live_transcript, "runtime-resume");
+        apply_connection_operation_event(
+            &mut resume_transcript,
+            "runtime-resume",
+            "connection.request",
+            &pending_request,
+        );
+        assert_eq!(resume_transcript.len(), 1);
+        assert_eq!(resume_transcript[0]["connection_operation"]["seq"], 2);
+        assert_eq!(
+            resume_transcript[0]["connection_operation"]["targets"][0]["state"],
+            "initiated"
+        );
+
+        assert!(
+            !clear_absent_connection_operation(&mut resume_transcript, "op-resume", 1),
+            "a live update newer than the resume request remains authoritative"
+        );
+        assert!(clear_absent_connection_operation(
+            &mut resume_transcript,
+            "op-resume",
+            2
+        ));
+        assert_eq!(
+            resume_transcript[0]["connection_operation"]["settled"],
+            true
+        );
     }
 
     #[test]
@@ -54282,6 +54858,7 @@ mod tests {
             messages: vec![json!({"role":"assistant","content":"gateway-a refreshed"})],
             reasoning_effort: Some("high".into()),
             reasoning_effort_wire: None,
+            pending_connection: None,
         };
 
         app.settle_session_resume_for_owner(
@@ -54316,12 +54893,32 @@ mod tests {
         let (mut app, profile_dir) = isolated_app();
         app.route = AppRoute::Session("resume-session".into());
         app.active_session_profile = Some("work".into());
+        app.active_runtime_session_id = Some("runtime-resumed".into());
+        app.transcript = vec![json!({
+            "type":"tool_call",
+            "tool_call_id":"tool-resume",
+            "name":"manage_connections",
+            "status":"running",
+            "connection_operation":{
+                "session_id":"runtime-resumed",
+                "op_id":"op-resume",
+                "seq":2,
+                "deadline_at":1900000000.0,
+                "settled":false,
+                "targets":[{
+                    "name":"Linear","kind":"mcp","action":"install","state":"initiated",
+                    "connect_url":"https://linear.example/authorize"
+                }]
+            },
+            "connection_response_state":"ready"
+        })];
         let key = session_identity_key("resume-session", Some("work"));
         app.session_chat_views.insert(
             key.clone(),
             SessionChatViewState {
                 profile: Some("work".into()),
                 resume_request_id: Some("resume-request-1".into()),
+                resume_connection_operation_at_start: Some(("op-resume".into(), 2)),
                 draft: "preserve the draft".into(),
                 ..SessionChatViewState::default()
             },
@@ -54335,10 +54932,29 @@ mod tests {
                 session_id: "resume-session".into(),
                 profile: Some("work".into()),
                 runtime_session_id: "runtime-resumed".into(),
-                message_count: 1,
-                messages: vec![json!({"role":"assistant","content":"Resumed"})],
+                message_count: 2,
+                messages: vec![
+                    json!({"role":"assistant","content":"Resumed"}),
+                    json!({
+                        "type":"tool_call",
+                        "tool_call_id":"tool-resume",
+                        "name":"manage_connections",
+                        "status":"running"
+                    }),
+                ],
                 reasoning_effort: None,
                 reasoning_effort_wire: None,
+                pending_connection: Some(json!({
+                    "op_id":"op-resume",
+                    "seq":1,
+                    "deadline_at":1900000000.0,
+                    "timeout_seconds":120.0,
+                    "tool_call_id":"tool-resume",
+                    "targets":[{
+                        "name":"Linear","kind":"mcp","action":"install","state":"pending",
+                        "required_env":[{"name":"LINEAR_TOKEN","required":true,"secret":true}]
+                    }]
+                })),
             }),
         );
 
@@ -54348,6 +54964,18 @@ mod tests {
         );
         assert_eq!(app.session_chat_views[&key].draft, "preserve the draft");
         assert_eq!(app.transcript[0]["content"], "Resumed");
+        assert_eq!(
+            app.transcript.len(),
+            2,
+            "resume must not duplicate the tool row"
+        );
+        assert_eq!(app.transcript[1]["tool_call_id"], "tool-resume");
+        assert_eq!(app.transcript[1]["connection_operation"]["seq"], 2);
+        assert_eq!(
+            app.transcript[1]["connection_operation"]["targets"][0]["state"],
+            "initiated"
+        );
+        assert_eq!(app.transcript[1]["connection_response_state"], "ready");
         assert_eq!(
             app.active_runtime_session_id.as_deref(),
             Some("runtime-resumed")
@@ -56159,6 +56787,7 @@ mod tests {
                 ],
                 reasoning_effort: Some("minimal".into()),
                 reasoning_effort_wire: None,
+                pending_connection: None,
             }),
         );
         assert_eq!(

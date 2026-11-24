@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 369 (implementation in progress).
+- **Working revision:** 371 (implementation in progress).
 - **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87` (fetched `main` on 2026-11-24; exact commit pinned until explicitly refreshed).
@@ -2277,9 +2277,18 @@ PAR-0518 is now mapped partial. The pinned `connection.request` event is parsed 
 
 Validation: full locked automation-feature suite passes 695 library + 15 protocol + 3 launcher tests; locked workspace all-target check, rustfmt, diff check and persisted task validation pass. Generated ledgers now map 104/176 scoped requirements (1 implemented, 102 partial, 1 not implemented, 72 unknown) and 138/499 broad rows (6 implemented, 131 partial, 1 not implemented, 361 unknown). All 176 scoped rows still lack live-runtime and source-paired acceptance. No live Hermes Gateway or installed Hermes app was used.
 
+Source commit `b12436a06fba22f1e2550d1bf27f6b3ab9c490bd` is bound to EV-0166. PAR-0518 remains partial: its declared scenario passes with no EV-0166-specific findings, but pending-operation resume hydration, failed/expired target reissue, authenticated live Gateway, packaged Windows and source-paired acceptance remain open. The package validator passes 565 target/UI/test rows, 15 source receipts, and 150 implementation receipts. The UCM checker still reports 178 repository-wide historical schema errors and 9 unrelated reconciliation items; these were already present before EV-0166.
+
 
 ### Revision 370 — Refresh DoofusDock dependency snapshot — 2026-11-24
 
 Pinned Hermes and preserved rev1 dependency declarations and lockfiles to `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87`. Refreshed the three vendored crates from fetched source, retaining the Hermes-specific GroupRail restore projection in presentation. The pin remains fixed until explicitly requested. Historical runtime captures keep their original hashes.
 
 Validation: locked workspace suite passes (696 library + 15 protocol + 3 launcher tests); `cargo check --locked --workspace --all-targets`, `cargo build --locked -p hermes-native`, and rev1 locked check pass. Package validator, rustfmt and diff checks pass. No live Gateway or installed app validation claimed.
+
+
+### Revision 371 — Resume and retry session-scoped connection setup — 2026-11-24
+
+PAR-0518 now reads `pending_connection` from `session.resume`, merges the pending operation into the matching existing tool row by tool-call ID, preserves a newer live sequence, and settles only the same operation that was open when resume began if the authoritative snapshot omits it. A retry sends one failed or expired connector/MCP target through `connectors.connect` with `reconnect: true`, scoped to the existing runtime session and profile. The receipt must identify the same still-open operation and show the target as initiated. Unknown outcomes remain locked until a newer authoritative event or resume snapshot. The UI does not route catalog plugin/skill rows through the connector retry RPC.
+
+Validation: the full locked suite passes 699 library + 15 automation protocol + 3 launcher tests; workspace all-target check, rustfmt, package validation, and task-continuity tests pass. PAR-0518 remains partial pending connector-directory actions, authenticated live Gateway behavior, and packaged Windows/source-paired acceptance.

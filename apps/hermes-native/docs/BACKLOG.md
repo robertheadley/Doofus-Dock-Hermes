@@ -489,5 +489,5 @@ Existing native code and headless regressions already cover profile routing, ret
 ### PAR-0518 — Session-scoped MCP and connector setup operations
 
 - [x] Parse bounded `connection.request` and full `connection.update` snapshots; attach setup state to the originating tool row, ignore stale sequences, render pending approval/skip/authorization/setup-input controls, and send the pinned `connection.respond` RPC through the owning Gateway actor. Secret fields are masked, retained only in zeroizing memory drafts, and excluded from transcript and receipt/debug projections. Local parser, reducer, actor, and headless UI tests pass.
-- [ ] Hydrate pending connection operations from session resume/replay snapshots; support retry/reissue for failed or expired targets and the connector-directory actions.
-- [ ] Validate the full setup flow against an authenticated Hermes Gateway and packaged Windows app; PAR-0518 remains partial pending live and source-paired acceptance.
+- [x] Hydrate pending connection operations from session resume snapshots into the matching tool row without duplication or sequence rewind; safely reissue one failed/expired connector or MCP target on its existing open operation, and clear unknown retry state only after a newer authoritative snapshot. Headless tests pass.
+- [ ] Complete connector-directory actions and validate the full setup flow against an authenticated Hermes Gateway and packaged Windows app; PAR-0518 remains partial pending live and source-paired acceptance.
