@@ -5422,3 +5422,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **risks:** Source-paired/live acceptance remains open as recorded in EV-0170.
 - **follow_up:** Continue to the next agent-workflow P0 after publishing.
 
+### PAR-0505 publication and next task — 2026-11-24
+
+- **id:** publish-ticketed-gateway-main-20261124
+- **timestamp:** 2026-11-24T17:38:11Z
+- **what:** Published the validated ticketed reconnect fixture and evidence to `main`; recorded PAR-0505 as tested and selected PAR-0506 for pinned-source Gateway JSON-RPC framing review.
+- **why:** Continue the prioritized agent workflow while keeping the canonical repo current.
+- **components:** main branch publication and Doofus task handoff.
+- **type:** publication and task progress
+- **validation:** Fetched `origin/main`; local and remote refs matched at `b06c26cdc871148f3b7f5a95aeadef30582fc87f`.
+- **performance:** No runtime change.
+- **risks:** Live runtime evidence remains absent for all 176 requirements.
+- **follow_up:** Inspect the pinned JSON-RPC framing contract and existing native transport before implementing PAR-0506.
+
