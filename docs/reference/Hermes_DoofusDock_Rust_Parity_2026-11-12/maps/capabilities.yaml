@@ -10113,7 +10113,7 @@ capabilities:
   name: Correlate requests with unique IDs
   area: protocol-reliability
   claim: In the new native Rust DoofusDock UI, a user can correlate requests with unique IDs.
-  status: not_implemented
+  status: partial
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -10125,9 +10125,16 @@ capabilities:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
   dimensions:
-    backend: unknown
-    ui: not_implemented
-    tests: not_implemented
+    backend: partial
+    ui: partial
+    tests: partial
+  verification:
+    scenarios:
+    - id: gateway-request-id-correlation-and-serial-actor
+      description: "Fixture proves sequential unique request IDs, stale ID rejection, and that a queued second request is not sent before the first settles; concurrent multiplexing remains unsupported."
+  evidence:
+  - type: test_result
+    locator: ../../../../docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0172.json
 - id: ui-implement-bounded-retry-with-backoff
   name: Implement bounded retry with backoff
   area: protocol-reliability

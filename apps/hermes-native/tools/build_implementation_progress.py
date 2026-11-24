@@ -1245,6 +1245,19 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["authenticated live Gateway and packaged Windows frame interoperability", "formal pinned-source acceptance"],
     },
+    "PAR-0507": {
+        "state": "partial",
+        "level": "headless_gateway_request_id_sequence_stale_reply_and_serial_actor_behavior",
+        "refs": [
+            ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#request",
+            ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#settleResponse",
+            "apps/hermes-native/src/gateway.rs#gateway_actor_with_replay",
+            "apps/hermes-native/src/gateway.rs#rpc_with_events_timeout_outcome",
+            "apps/hermes-native/src/gateway.rs#project_list_read_uses_pinned_rpc_and_explicit_profile_scope",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0172.json#EV-0172",
+        ],
+        "gaps": ["the actor supports only one synchronous in-flight RPC and does not multiplex concurrent calls like the pinned request channel", "authenticated live Gateway and packaged Windows acceptance", "formal pinned-source acceptance"],
+    },
     "PAR-0082": {
         "state": "partial",
         "level": "headless_claude_codex_import_bounded_preview_and_paged_export",

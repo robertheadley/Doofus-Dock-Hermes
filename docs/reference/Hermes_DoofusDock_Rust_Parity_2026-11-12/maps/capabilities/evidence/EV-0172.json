@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0172",
+  "capability_id": "ui-correlate-requests-with-unique-ids",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-24",
+  "commit": "78d84a7cbf4d1e6f2a7c61d54ae95b68cc8a039e",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked Rust workspace with agent-automation feature: 713 library + 15 automation protocol + 3 launcher tests passed; cargo check all workspace targets passed; rustfmt, diff and 19 task continuity tests passed. No authenticated live Gateway or packaged Windows runtime.",
+  "scenario": "gateway-request-id-correlation-and-serial-actor",
+  "locator": ".staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#request;.staging/hermes-pinned-878305/apps/shared/src/json-rpc-channel.ts#settleResponse;apps/hermes-native/src/gateway.rs#gateway_actor_with_replay;apps/hermes-native/src/gateway.rs#rpc_with_events_timeout_outcome;apps/hermes-native/src/gateway.rs#project_list_rpc_ids_are_unique_and_stale_response_ids_are_ignored",
+  "notes": "Fixture asserts the first numeric ID is 5 and the next is 6, verifies the queued second RPC is not written while the first is pending (the current actor is serial), injects a delayed response for ID 5, and confirms it cannot settle request 6. Concurrent in-flight multiplexing remains a known gap versus the pinned pending Map. Authenticated live Gateway, packaged Windows and formal source-paired acceptance remain open."
+}

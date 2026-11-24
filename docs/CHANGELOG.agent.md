@@ -5475,3 +5475,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No runtime or layout-operation cost change beyond the corrected list inset.
 - **risks:** UI font family intentionally differs from pinned default system sans because the user previously selected JetBrains Mono and Fira Code; live Gateway and source-paired visual acceptance remain open.
 - **follow_up:** Continue the active Gateway request-ID task after this typography correction.
+
+### PAR-0507 request ID correlation — 2026-11-24
+
+- **id:** hermes-par-0507-request-id-correlation-20261124
+- **timestamp:** 2026-11-24T18:12:00Z
+- **what:** Extended the Gateway fixture to assert numeric request IDs 5 then 6, ignore a delayed response carrying stale ID 5 while ID 6 is pending, and verify the current actor does not send a queued second RPC before the first settles. Capability status is partial and records the no-multiplexing gap.
+- **why:** Prove correlation behavior against the pinned Hermes request channel without implying support for concurrent pending calls.
+- **components:** Gateway JSON-RPC actor test; PAR-0507 implementation progress; EV-0172; Hermes task continuity.
+- **type:** Protocol regression and evidence
+- **validation:** `cargo test --locked --workspace --features agent-automation` (713 library, 15 automation protocol, 3 launcher); all-target locked check; focused test; 19/19 task continuity tests; task state validation; progress builders; capability package structural validation; rustfmt and diff checks. YAML parse skipped because PyYAML is not installed.
+- **performance:** No runtime behavior changed.
+- **risks:** Gateway actor serializes requests; concurrent JSON-RPC pending-map multiplexing, live Gateway and packaged Windows acceptance remain open.
+- **follow_up:** Continue with the next dependency-ready agent workflow requirement.
