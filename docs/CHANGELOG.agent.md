@@ -5461,3 +5461,17 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **risks:** Live Gateway and packaged Windows remain unverified.
 - **follow_up:** Test concurrent calls and out-of-order / unknown response ID handling against the pinned channel contract.
 
+
+
+### Pinned Hermes typography and Markdown indentation — 2026-11-24
+
+- **id:** hermes-native-typography-list-indent-20261124
+- **timestamp:** 2026-11-24T18:00:03Z
+- **what:** Matched assistant Markdown's outer 12px gutter and inner list indentation to the pinned Hermes/Tailwind prose rule (1.625em, 21.125px at the 13px chat base). Preserved JetBrains Mono for UI and Fira Code for code per the user's selected font pairing.
+- **why:** The existing implementation matched the message gutter and text-size tokens but retained egui's default Markdown list indent.
+- **components:** Native typography tokens; transcript Markdown renderer; README and architecture status.
+- **type:** Source-alignment correction
+- **validation:** Focused typography token test passed; `markdown_fixture_renders_table_and_code_copy_action_accessibly` passed with `agent-automation`; rustfmt check passed; `git diff --check` passed. The no-feature fixture invocation selected zero tests and was rerun with the required feature.
+- **performance:** No runtime or layout-operation cost change beyond the corrected list inset.
+- **risks:** UI font family intentionally differs from pinned default system sans because the user previously selected JetBrains Mono and Fira Code; live Gateway and source-paired visual acceptance remain open.
+- **follow_up:** Continue the active Gateway request-ID task after this typography correction.

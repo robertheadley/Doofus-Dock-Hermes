@@ -10,6 +10,8 @@ pub const MICRO_TEXT_SIZE: f32 = 10.0;
 pub const CONVERSATION_LINE_HEIGHT: f32 = 18.0;
 pub const CAPTION_LINE_HEIGHT: f32 = 16.0;
 pub const MESSAGE_TEXT_INDENT: f32 = 12.0;
+/// Tailwind Typography default list inset: 1.625em at the 13px chat base.
+pub const MARKDOWN_LIST_INDENT: f32 = BODY_TEXT_SIZE * 1.625;
 
 /// Install the user's chosen typefaces while retaining egui's bundled fallback
 /// fonts for symbols, emoji, and glyphs outside either typeface's coverage.
@@ -161,6 +163,8 @@ mod tests {
             CAPTION_TEXT_SIZE
         );
         assert_eq!(style.spacing.indent, egui::Style::default().spacing.indent);
+        assert_eq!(MARKDOWN_LIST_INDENT, BODY_TEXT_SIZE * 1.625);
+        assert_eq!(MARKDOWN_LIST_INDENT, 21.125);
         assert_eq!(
             style.spacing.extra_text_line_spacing,
             CONVERSATION_LINE_HEIGHT - BODY_TEXT_SIZE - 3.0

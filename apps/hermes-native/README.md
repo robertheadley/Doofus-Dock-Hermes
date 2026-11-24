@@ -268,4 +268,4 @@ PAR-0064 now gives each pinned Hermes Free error a distinct explanation and rout
 
 Session support includes recent and archived lists plus create/resume flows with profile and Gateway owner fencing. These paths have headless protocol/UI evidence; authenticated live Gateway and source-paired acceptance remain open.
 
-Native typography follows the pinned Hermes Desktop’s 13px conversation/body, 11px tool, 12px caption and 18px conversation line-height tokens. Assistant Markdown uses the source’s 12px content gutter; nested list indentation remains independent. The user-selected JetBrains Mono UI face and Fira Code monospace face are retained. Headless transcript review: `artifacts/agent-ui/typography-markdown-20261124.png`.
+Native typography follows the pinned Hermes Desktop’s 13px conversation/body, 11px tool, 12px caption and 18px conversation line-height tokens. Assistant Markdown uses the source’s 12px content gutter and Tailwind Typography’s 1.625em list inset (21.125px at the 13px base). The user-selected JetBrains Mono UI face and Fira Code monospace face are retained. Headless transcript review: `artifacts/agent-ui/typography-markdown-20261124.png`.

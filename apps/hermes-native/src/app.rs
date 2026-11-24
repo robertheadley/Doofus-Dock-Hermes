@@ -1,6 +1,8 @@
 use crate::artifacts::{ArtifactFilter, ArtifactIndexSnapshot, ArtifactKind, ArtifactRecord};
 use crate::files::{FileBrowserState, FilePreviewContent, FilePreviewStore};
-use crate::fonts::{CAPTION_TEXT_SIZE, MESSAGE_TEXT_INDENT, MICRO_TEXT_SIZE, TOOL_TEXT_SIZE};
+use crate::fonts::{
+    CAPTION_TEXT_SIZE, MARKDOWN_LIST_INDENT, MESSAGE_TEXT_INDENT, MICRO_TEXT_SIZE, TOOL_TEXT_SIZE,
+};
 use crate::gateway::{
     ActiveSessionStatus, ActiveSessionStatusKind, AgentPluginAutoUpdateSettings, AgentPluginInfo,
     AgentPluginInspection, AgentPluginScanFinding, AgentPluginSettingField,
@@ -41088,14 +41090,13 @@ fn render_transcript_markdown(
         cache.add_link_hook(destination.clone());
     }
 
-    let normal_markdown_indent = ui.spacing().indent;
     ui.scope(|ui| {
         ui.spacing_mut().indent = MESSAGE_TEXT_INDENT;
         let indent_id = ui.next_auto_id();
         ui.indent(indent_id, |ui| {
-            // The source's 12px assistant gutter applies to the message root;
-            // nested markdown lists retain the usual list indentation.
-            ui.spacing_mut().indent = normal_markdown_indent;
+            // Match Tailwind Typography's 1.625em list inset at the source's
+            // 13px conversation size, while keeping its 12px message gutter.
+            ui.spacing_mut().indent = MARKDOWN_LIST_INDENT;
             CommonMarkViewer::new()
                 .enable_scroll_to_heading(true)
                 .show(ui, cache, markdown);
