@@ -5448,3 +5448,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **risks:** Live Gateway and packaged Windows interoperability are not verified.
 - **follow_up:** Continue to the next recommended gateway protocol task.
 
+### PAR-0506 publication and request-ID follow-up — 2026-11-24
+
+- **id:** publish-gateway-json-rpc-main-20261124
+- **timestamp:** 2026-11-24T17:46:31Z
+- **what:** Published JSON-RPC frame assertions and evidence; checkpointed PAR-0506 as tested and selected PAR-0507.
+- **why:** Keep the repository current and move to the next gateway transport requirement.
+- **components:** Main branch and persistent Hermes task state.
+- **type:** publication and task progress
+- **validation:** Fetch confirmed local and remote main both at `554a96226c6bb462c197711813da1067c55a84c4`.
+- **performance:** No runtime change.
+- **risks:** Live Gateway and packaged Windows remain unverified.
+- **follow_up:** Test concurrent calls and out-of-order / unknown response ID handling against the pinned channel contract.
+
