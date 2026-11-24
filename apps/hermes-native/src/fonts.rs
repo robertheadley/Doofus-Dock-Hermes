@@ -12,9 +12,23 @@ pub const CAPTION_TEXT_SIZE: f32 = 12.0;
 pub const MICRO_TEXT_SIZE: f32 = 10.0;
 pub const CONVERSATION_LINE_HEIGHT: f32 = 18.0;
 pub const CAPTION_LINE_HEIGHT: f32 = 16.0;
+/// Pinned Hermes Desktop chat text scale (independent of window zoom).
+pub const CHAT_TEXT_SCALE: f32 = 1.10;
+pub const CHAT_BODY_TEXT_SIZE: f32 = BODY_TEXT_SIZE * CHAT_TEXT_SCALE;
+pub const CHAT_TOOL_TEXT_SIZE: f32 = TOOL_TEXT_SIZE * CHAT_TEXT_SCALE;
+pub const CHAT_CAPTION_TEXT_SIZE: f32 = CAPTION_TEXT_SIZE * CHAT_TEXT_SCALE;
+pub const CHAT_MICRO_TEXT_SIZE: f32 = MICRO_TEXT_SIZE * CHAT_TEXT_SCALE;
+pub const CHAT_CONVERSATION_LINE_HEIGHT: f32 = CONVERSATION_LINE_HEIGHT * CHAT_TEXT_SCALE;
+pub const CHAT_CAPTION_LINE_HEIGHT: f32 = CAPTION_LINE_HEIGHT * CHAT_TEXT_SCALE;
+/// Default transcript rhythm from the pinned Desktop CSS, at 100% logical px.
+pub const TRANSCRIPT_TURN_GAP: f32 = 6.0;
+pub const TRANSCRIPT_TURN_BLOCK_GAP: f32 = 12.0;
+pub const TRANSCRIPT_SCAFFOLD_BLOCK_GAP: f32 = 4.0;
+pub const TRANSCRIPT_TOOL_ROW_GAP: f32 = 6.0;
+pub const TRANSCRIPT_PARAGRAPH_GAP: f32 = 11.2;
 pub const MESSAGE_TEXT_INDENT: f32 = 12.0;
-/// Tailwind Typography default list inset: 1.625em at the 13px chat base.
-pub const MARKDOWN_LIST_INDENT: f32 = BODY_TEXT_SIZE * 1.625;
+/// Tailwind Typography default list inset: 1.625em at the scaled chat base.
+pub const MARKDOWN_LIST_INDENT: f32 = CHAT_BODY_TEXT_SIZE * 1.625;
 
 /// Install the user's chosen typefaces while retaining egui's bundled fallback
 /// fonts for symbols, emoji, and glyphs outside either typeface's coverage.
@@ -67,6 +81,44 @@ fn apply_source_typography(style: &mut egui::Style) {
     // metrics account for the glyphs; the extra line spacing adds the remaining
     // two pixels between baselines without scaling the entire application.
     style.spacing.extra_text_line_spacing = CONVERSATION_LINE_HEIGHT - BODY_TEXT_SIZE - 3.0;
+}
+
+/// Apply pinned chat-only scale and transcript rhythm without changing window
+/// zoom or the font metrics used by the rest of the application.
+pub fn apply_chat_typography(style: &mut egui::Style) {
+    let ui_face = FontFamily::Proportional;
+    let code_face = FontFamily::Monospace;
+    style.text_styles.insert(
+        TextStyle::Small,
+        FontId::new(CHAT_CAPTION_TEXT_SIZE, ui_face.clone()),
+    );
+    style.text_styles.insert(
+        TextStyle::Body,
+        FontId::new(CHAT_BODY_TEXT_SIZE, ui_face.clone()),
+    );
+    style.text_styles.insert(
+        TextStyle::Button,
+        FontId::new(CHAT_BODY_TEXT_SIZE, ui_face.clone()),
+    );
+    style.text_styles.insert(
+        TextStyle::Monospace,
+        FontId::new(CHAT_BODY_TEXT_SIZE, code_face),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("hermes_tool".into()),
+        FontId::new(CHAT_TOOL_TEXT_SIZE, FontFamily::Monospace),
+    );
+    style.text_styles.insert(
+        TextStyle::Name("hermes_caption".into()),
+        FontId::new(CHAT_CAPTION_TEXT_SIZE, ui_face.clone()),
+    );
+    style.text_styles.insert(
+        TextStyle::Heading,
+        FontId::new(18.0 * CHAT_TEXT_SCALE, ui_face),
+    );
+    style.spacing.item_spacing.y = TRANSCRIPT_TOOL_ROW_GAP;
+    style.spacing.extra_text_line_spacing =
+        CHAT_CONVERSATION_LINE_HEIGHT - CHAT_BODY_TEXT_SIZE - 3.0;
 }
 
 fn font_definitions() -> FontDefinitions {
@@ -175,11 +227,16 @@ mod tests {
             style.text_styles[&TextStyle::Name("hermes_caption".into())].size,
             CAPTION_TEXT_SIZE
         );
-        // Source CSS: --message-text-indent: .75rem at 16px root; list inset
-        // follows Tailwind Typography's 1.625em.
+        // Source CSS: 12px fixed message gutter; Markdown lists are 1.625em
+        // at the source's default 110% chat scale.
         assert_eq!(MESSAGE_TEXT_INDENT, 12.0);
-        assert_eq!(MARKDOWN_LIST_INDENT, BODY_TEXT_SIZE * 1.625);
-        assert_eq!(MARKDOWN_LIST_INDENT, 21.125);
+        assert_eq!(MARKDOWN_LIST_INDENT, CHAT_BODY_TEXT_SIZE * 1.625);
+        assert!((CHAT_TEXT_SCALE - 1.10).abs() < 0.001);
+        assert!((CHAT_BODY_TEXT_SIZE - 14.3).abs() < 0.001);
+        assert!((CHAT_TOOL_TEXT_SIZE - 12.1).abs() < 0.001);
+        assert!((CHAT_CAPTION_TEXT_SIZE - 13.2).abs() < 0.001);
+        assert!((CHAT_MICRO_TEXT_SIZE - 11.0).abs() < 0.001);
+        assert!((MARKDOWN_LIST_INDENT - 23.2375).abs() < 0.001);
         assert_eq!(CONVERSATION_LINE_HEIGHT, 18.0);
         assert_eq!(CAPTION_LINE_HEIGHT, 16.0);
         assert_eq!(style.spacing.indent, egui::Style::default().spacing.indent);
@@ -220,5 +277,23 @@ mod tests {
             assert!(fonts.font_data.contains_key("windows_indic"));
             assert!(fonts.font_data.contains_key("windows_multiscript"));
         }
+    }
+
+    #[test]
+    fn chat_scale_and_transcript_rhythm_match_pinned_desktop_defaults() {
+        let mut style = egui::Style::default();
+        apply_chat_typography(&mut style);
+        assert!((style.text_styles[&TextStyle::Body].size - 14.3).abs() < 0.001);
+        assert!((style.text_styles[&TextStyle::Small].size - 13.2).abs() < 0.001);
+        assert!(
+            (style.text_styles[&TextStyle::Name("hermes_tool".into())].size - 12.1).abs() < 0.001
+        );
+        assert_eq!(style.spacing.item_spacing.y, TRANSCRIPT_TOOL_ROW_GAP);
+        assert_eq!(TRANSCRIPT_TURN_GAP, 6.0);
+        assert_eq!(TRANSCRIPT_TURN_BLOCK_GAP, 12.0);
+        assert_eq!(TRANSCRIPT_SCAFFOLD_BLOCK_GAP, 4.0);
+        assert_eq!(TRANSCRIPT_TOOL_ROW_GAP, 6.0);
+        assert_eq!(TRANSCRIPT_PARAGRAPH_GAP, 11.2);
+        assert_eq!(MESSAGE_TEXT_INDENT, 12.0);
     }
 }

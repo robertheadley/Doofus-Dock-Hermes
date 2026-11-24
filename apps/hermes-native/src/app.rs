@@ -1,7 +1,9 @@
 use crate::artifacts::{ArtifactFilter, ArtifactIndexSnapshot, ArtifactKind, ArtifactRecord};
 use crate::files::{FileBrowserState, FilePreviewContent, FilePreviewStore};
 use crate::fonts::{
-    CAPTION_TEXT_SIZE, MARKDOWN_LIST_INDENT, MESSAGE_TEXT_INDENT, MICRO_TEXT_SIZE, TOOL_TEXT_SIZE,
+    CAPTION_TEXT_SIZE, CHAT_MICRO_TEXT_SIZE, CHAT_TOOL_TEXT_SIZE, MARKDOWN_LIST_INDENT,
+    MESSAGE_TEXT_INDENT, MICRO_TEXT_SIZE, TOOL_TEXT_SIZE, TRANSCRIPT_SCAFFOLD_BLOCK_GAP,
+    TRANSCRIPT_TURN_BLOCK_GAP, TRANSCRIPT_TURN_GAP, apply_chat_typography,
 };
 use crate::gateway::{
     ActiveSessionStatus, ActiveSessionStatusKind, AgentPluginAutoUpdateSettings, AgentPluginInfo,
@@ -1196,6 +1198,10 @@ struct SessionChatViewState {
     owner_resolution_instance_id: Option<String>,
     owner_resolution_authority_epoch: Option<u64>,
     owner_resolved_ambient: bool,
+    session_transcript_cursor: Option<String>,
+    session_transcript_cursor_ready: bool,
+    session_transcript_initial_failed: bool,
+    session_transcript_page_request: Option<PendingSessionTranscriptPage>,
     transcript: Vec<serde_json::Value>,
     transcript_scroll_position: TranscriptScrollPosition,
     active_prompt_message_index: Option<usize>,
@@ -1209,6 +1215,18 @@ struct SessionChatViewState {
     composer_attachments: Vec<ComposerAttachment>,
     active_prepared_image_draft_id: Option<String>,
     restored_prepared_image_draft_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingSessionTranscriptPage {
+    request_id: String,
+    session_id: String,
+    profile: Option<String>,
+    connection_id: Option<String>,
+    instance_id: String,
+    authority_epoch: u64,
+    order: crate::gateway::TranscriptOrder,
+    cursor: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -7700,6 +7718,10 @@ fn render_message() -> &'static str {
             .session_chat_views
             .get(&owner_key)
             .is_some_and(|view| view.read_only_transcript);
+        let cursor_page_pending = self
+            .session_chat_views
+            .get(&owner_key)
+            .is_some_and(|view| view.session_transcript_page_request.is_some());
         let read_only_owner_error = self
             .session_chat_views
             .get(&owner_key)
@@ -7753,16 +7775,35 @@ fn render_message() -> &'static str {
                 .accessible_name(format!("Retry opening session {session_id}"))
                 .clicked()
             {
-                self.retry_session_resume(session_id, self.active_session_profile.clone());
+                let owner_key =
+                    self.session_identity_key(session_id, self.active_session_profile.as_deref());
+                let retry_stored_history =
+                    self.session_chat_views.get(&owner_key).is_some_and(|view| {
+                        view.read_only_transcript && view.session_transcript_initial_failed
+                    });
+                if retry_stored_history {
+                    let owner_error = self
+                        .session_chat_views
+                        .get(&owner_key)
+                        .and_then(|view| view.owner_resolution_error.clone());
+                    self.load_read_only_cursor_transcript_page(
+                        owner_key,
+                        session_id,
+                        None,
+                        owner_error.as_deref(),
+                    );
+                } else {
+                    self.retry_session_resume(session_id, self.active_session_profile.clone());
+                }
             }
         } else if self.transcript.is_empty() {
             if !self.gateway_connected {
                 self.route_unavailable(ui, "Connect to Hermes to open this session.");
-            } else if self.transcript_has_more && !read_only_session {
-                let loading = self.older_transcript_request.is_some();
+            } else if self.transcript_has_more {
+                let loading = self.older_transcript_request.is_some() || cursor_page_pending;
                 let load_older = ui
                     .add_enabled(
-                        !loading,
+                        self.gateway_connected && !loading,
                         egui::Button::new(if loading {
                             "Loading earlier messages…"
                         } else {
@@ -7790,8 +7831,8 @@ fn render_message() -> &'static str {
                 self.route_unavailable(ui, &format!("Loading session {session_id}…"));
             }
         } else {
-            if self.transcript_has_more && !read_only_session {
-                let loading = self.older_transcript_request.is_some();
+            if self.transcript_has_more {
+                let loading = self.older_transcript_request.is_some() || cursor_page_pending;
                 let load_older = ui
                     .add_enabled(
                         self.gateway_connected && !loading,
@@ -7978,6 +8019,7 @@ fn render_message() -> &'static str {
             let transcript_scroll_output = transcript_scroll
                 .max_height((ui.available_height() - 76.0).max(120.0))
                 .show(ui, |ui| {
+                    apply_chat_typography(ui.style_mut());
                     ui.set_max_width(ui.available_width().min(860.0));
                     for (index, message) in messages.iter().cloned().enumerate() {
                         let (speaker, body) = transcript_message(&message);
@@ -8721,7 +8763,7 @@ fn render_message() -> &'static str {
                                                         egui::Label::new(
                                                             RichText::new(payload)
                                                                 .monospace()
-                                                                .size(TOOL_TEXT_SIZE),
+                                                                .size(CHAT_TOOL_TEXT_SIZE),
                                                         )
                                                         .wrap(),
                                                     );
@@ -8843,7 +8885,7 @@ fn render_message() -> &'static str {
                                             |ui| {
                                                 ui.label(
                                                     RichText::new(stamp)
-                                                        .size(MICRO_TEXT_SIZE)
+                                                        .size(CHAT_MICRO_TEXT_SIZE)
                                                         .color(MUTED)
                                                         .monospace(),
                                                 )
@@ -8867,7 +8909,26 @@ fn render_message() -> &'static str {
                         if scroll_target == Some(index) {
                             entry.response.scroll_to_me(Some(egui::Align::Center));
                         }
-                        ui.add_space(8.0);
+                        let is_scaffold = transcript_message_is_scaffold(&message);
+                        let previous_is_scaffold = index > 0
+                            && messages
+                                .get(index - 1)
+                                .is_some_and(transcript_message_is_scaffold);
+                        let same_assistant_turn = index > 0
+                            && message.get("role").and_then(serde_json::Value::as_str)
+                                == Some("assistant")
+                            && messages[index - 1]
+                                .get("role")
+                                .and_then(serde_json::Value::as_str)
+                                == Some("assistant");
+                        let gap = if is_scaffold && previous_is_scaffold {
+                            TRANSCRIPT_SCAFFOLD_BLOCK_GAP
+                        } else if same_assistant_turn && (is_scaffold || previous_is_scaffold) {
+                            TRANSCRIPT_TURN_BLOCK_GAP
+                        } else {
+                            TRANSCRIPT_TURN_GAP
+                        };
+                        ui.add_space(gap);
                     }
                 });
             let max_offset = (transcript_scroll_output.content_size.y
@@ -18520,13 +18581,45 @@ fn render_message() -> &'static str {
     }
 
     fn load_older_transcript(&mut self, session_id: String) {
-        if self.active_session_is_read_only() {
-            self.status = "Only the stored read-only transcript page is available until this session owner is resolved.".into();
+        if !self.transcript_has_more || self.route != AppRoute::Session(session_id.clone()) {
+            return;
+        }
+        let read_only = self.active_session_is_read_only();
+        let profile = self.active_session_profile.clone();
+        let owner_key = self.session_identity_key(&session_id, profile.as_deref());
+        if read_only
+            && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                endpoint
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability == "session-transcript-v1")
+            })
+        {
+            let page_state = self
+                .session_chat_views
+                .get(&owner_key)
+                .filter(|view| {
+                    view.read_only_transcript && view.session_transcript_page_request.is_none()
+                })
+                .map(|view| {
+                    (
+                        view.session_transcript_cursor_ready,
+                        view.session_transcript_cursor.clone(),
+                    )
+                });
+            if let Some((cursor_ready, cursor)) = page_state
+                && (!cursor_ready || cursor.is_some())
+            {
+                self.load_read_only_cursor_transcript_page(owner_key, &session_id, cursor, None);
+            }
             return;
         }
         if self.older_transcript_request.is_some()
-            || !self.transcript_has_more
-            || self.route != AppRoute::Session(session_id.clone())
+            || (read_only
+                && self
+                    .session_chat_views
+                    .get(&owner_key)
+                    .is_some_and(|view| view.session_transcript_page_request.is_some()))
         {
             return;
         }
@@ -18535,13 +18628,14 @@ fn render_message() -> &'static str {
             return;
         };
         let request_id = operation_id("transcript-older");
-        let profile = self.active_session_profile.clone();
-        let owner_key = self.session_identity_key(&session_id, profile.as_deref());
-        let around_window = self
-            .prompt_timelines
-            .get(&owner_key)
-            .and_then(|state| state.window)
-            .filter(|window| window.has_older);
+        let around_window = (!read_only)
+            .then(|| {
+                self.prompt_timelines
+                    .get(&owner_key)
+                    .and_then(|state| state.window)
+                    .filter(|window| window.has_older)
+            })
+            .flatten();
         if around_window.is_some() {
             if self
                 .prompt_timelines
@@ -18598,18 +18692,25 @@ fn render_message() -> &'static str {
                 Some("The current history window has no durable prompt anchor".into());
             return;
         }
-        let offset = self
-            .prompt_timelines
-            .get(&owner_key)
-            .and_then(|state| state.window)
-            .filter(|window| window.has_older)
-            .map_or(self.transcript.len(), |window| {
-                window.total.saturating_sub(window.offset)
-            });
+        let offset = if read_only {
+            self.transcript.len()
+        } else {
+            self.prompt_timelines
+                .get(&owner_key)
+                .and_then(|state| state.window)
+                .filter(|window| window.has_older)
+                .map_or(self.transcript.len(), |window| {
+                    window.total.saturating_sub(window.offset)
+                })
+        };
+        // A selected profile is only a candidate until Hermes confirms it.
+        // Preserve the historical transcript's ID-only scope while the
+        // explicit resume remains unresolved.
+        let request_profile = if read_only { None } else { profile };
         if let Err(error) = gateway.load_older_transcript(
             request_id.clone(),
             session_id.clone(),
-            profile.clone(),
+            request_profile.clone(),
             offset,
         ) {
             self.older_transcript_error = Some(error.clone());
@@ -18617,7 +18718,7 @@ fn render_message() -> &'static str {
             return;
         }
         self.older_transcript_error = None;
-        self.older_transcript_request = Some((request_id, session_id, profile, offset));
+        self.older_transcript_request = Some((request_id, session_id, request_profile, offset));
         self.save_active_chat_view();
     }
 
@@ -25443,6 +25544,14 @@ fn render_message() -> &'static str {
         };
         let instance_id = endpoint.instance_id.clone();
         let authority_epoch = endpoint.authority_epoch;
+        let supports_cursor_transcript = endpoint
+            .capabilities
+            .iter()
+            .any(|capability| capability == "session-transcript-v1");
+        if supports_cursor_transcript {
+            self.load_read_only_cursor_transcript_page(key, session_id, None, Some(owner_error));
+            return;
+        }
         let Some(gateway) = self.gateway_discovery.as_ref() else {
             if let Some(view) = self.session_chat_views.get_mut(&key) {
                 view.resume_error = Some(owner_error.to_owned());
@@ -25482,6 +25591,120 @@ fn render_message() -> &'static str {
             return;
         }
         self.status = "Loading stored Hermes history in read-only mode…".into();
+    }
+
+    fn load_read_only_cursor_transcript_page(
+        &mut self,
+        key: String,
+        session_id: &str,
+        cursor: Option<String>,
+        owner_error: Option<&str>,
+    ) {
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            self.older_transcript_error = Some("Hermes gateway endpoint is unavailable".into());
+            return;
+        };
+        if !endpoint
+            .capabilities
+            .iter()
+            .any(|capability| capability == "session-transcript-v1")
+        {
+            self.older_transcript_error =
+                Some("Hermes does not advertise cursor-based session transcript reads".into());
+            return;
+        }
+        let instance_id = endpoint.instance_id.clone();
+        let authority_epoch = endpoint.authority_epoch;
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.older_transcript_error = Some("Hermes gateway is unavailable".into());
+            return;
+        };
+        let connection_id = gateway.connection_id().map(str::to_owned);
+        let request_id = operation_id("session-transcript-page");
+        let initial_page = cursor.is_none();
+        let pending = PendingSessionTranscriptPage {
+            request_id: request_id.clone(),
+            session_id: session_id.to_owned(),
+            profile: None,
+            connection_id: connection_id.clone(),
+            instance_id: instance_id.clone(),
+            authority_epoch,
+            order: crate::gateway::TranscriptOrder::Latest,
+            cursor: cursor.clone(),
+        };
+        let Some(view) = self.session_chat_views.get_mut(&key) else {
+            return;
+        };
+        if (!initial_page && !view.read_only_transcript)
+            || view.session_transcript_page_request.is_some()
+        {
+            return;
+        }
+        if initial_page {
+            view.read_only_transcript = true;
+            view.runtime_session_id = Some(format!("read-only:{session_id}"));
+            view.session_transcript_initial_failed = false;
+        }
+        view.session_transcript_page_request = Some(pending);
+        view.older_transcript_error = None;
+        if initial_page {
+            view.stored_transcript_request_id = Some(request_id.clone());
+            view.owner_resolution_connection_id = connection_id.clone();
+            view.owner_resolution_instance_id = Some(instance_id.clone());
+            view.owner_resolution_authority_epoch = Some(authority_epoch);
+            view.session_transcript_cursor = None;
+            view.session_transcript_cursor_ready = false;
+            if let Some(owner_error) = owner_error {
+                view.owner_resolution_error = Some(owner_error.to_owned());
+                view.resume_error = None;
+            }
+        }
+        let result = gateway.load_session_transcript_page(
+            request_id.clone(),
+            session_id.to_owned(),
+            None,
+            120,
+            crate::gateway::TranscriptOrder::Latest,
+            cursor,
+            true,
+            instance_id,
+            authority_epoch,
+        );
+        if let Err(error) = result {
+            if let Some(view) = self.session_chat_views.get_mut(&key)
+                && view
+                    .session_transcript_page_request
+                    .as_ref()
+                    .is_some_and(|pending| pending.request_id == request_id)
+            {
+                view.session_transcript_page_request = None;
+                if view.stored_transcript_request_id.as_deref() == Some(&request_id) {
+                    view.stored_transcript_request_id = None;
+                    view.owner_resolution_connection_id = None;
+                    view.owner_resolution_instance_id = None;
+                    view.owner_resolution_authority_epoch = None;
+                    view.resume_error = owner_error
+                        .map(str::to_owned)
+                        .or_else(|| Some(error.clone()));
+                    view.session_transcript_cursor_ready = true;
+                    view.session_transcript_initial_failed = true;
+                } else {
+                    view.older_transcript_error = Some(error.clone());
+                }
+            }
+            if self.route == AppRoute::Session(session_id.to_owned())
+                && self.active_session_profile.is_none()
+            {
+                self.older_transcript_error = Some(error.clone());
+            }
+            self.status = format!("Could not load earlier messages: {error}");
+            return;
+        }
+        self.status = if initial_page {
+            "Loading stored Hermes history in read-only mode…".into()
+        } else {
+            "Loading earlier messages…".into()
+        };
     }
 
     fn active_session_usage(&self) -> Option<SessionUsageSnapshot> {
@@ -25536,6 +25759,14 @@ fn render_message() -> &'static str {
                             .and_then(|view| view.owner_resolution_authority_epoch),
                         owner_resolved_ambient: previous
                             .is_some_and(|view| view.owner_resolved_ambient),
+                        session_transcript_cursor: previous
+                            .and_then(|view| view.session_transcript_cursor.clone()),
+                        session_transcript_cursor_ready: previous
+                            .is_some_and(|view| view.session_transcript_cursor_ready),
+                        session_transcript_initial_failed: previous
+                            .is_some_and(|view| view.session_transcript_initial_failed),
+                        session_transcript_page_request: previous
+                            .and_then(|view| view.session_transcript_page_request.clone()),
                         transcript: self.transcript.clone(),
                         transcript_scroll_position: previous
                             .map_or(TranscriptScrollPosition::Bottom, |view| {
@@ -25651,6 +25882,146 @@ fn render_message() -> &'static str {
                 self.cache_session_chat_view(key, view);
                 self.status = format!("Could not load stored history: {error}. {owner_error}");
             }
+        }
+    }
+
+    fn settle_session_transcript_page(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        instance_id: &str,
+        authority_epoch: u64,
+        order: crate::gateway::TranscriptOrder,
+        result: Result<crate::gateway::SessionTranscriptPage, String>,
+    ) {
+        self.save_active_chat_view();
+        let Some(key) = self.session_chat_views.iter().find_map(|(key, view)| {
+            view.session_transcript_page_request
+                .as_ref()
+                .is_some_and(|pending| pending.request_id == request_id)
+                .then(|| key.clone())
+        }) else {
+            return;
+        };
+        let Some(view) = self.session_chat_views.get(&key).cloned() else {
+            return;
+        };
+        let Some(pending) = view.session_transcript_page_request.as_ref() else {
+            return;
+        };
+        let endpoint_matches = self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+            endpoint.instance_id == instance_id
+                && endpoint.authority_epoch == authority_epoch
+                && connection_id.as_deref() == self.gateway_connection_id.as_deref()
+        });
+        let cursor_matches = view.session_transcript_cursor == pending.cursor;
+        if !view.read_only_transcript
+            || pending.request_id != request_id
+            || pending.session_id != session_id
+            || pending.profile != profile
+            || pending.connection_id != connection_id
+            || pending.instance_id != instance_id
+            || pending.authority_epoch != authority_epoch
+            || pending.order != order
+            || !cursor_matches
+            || !endpoint_matches
+            || (pending.cursor.is_none()
+                && view.stored_transcript_request_id.as_deref() != Some(request_id))
+        {
+            return;
+        }
+        let initial_page = pending.cursor.is_none();
+        let cursor_used = pending.cursor.clone();
+        let Some(view) = self.session_chat_views.get_mut(&key) else {
+            return;
+        };
+        view.session_transcript_page_request = None;
+        if initial_page {
+            view.stored_transcript_request_id = None;
+            view.owner_resolution_connection_id = None;
+            view.owner_resolution_instance_id = None;
+            view.owner_resolution_authority_epoch = None;
+        }
+        match result {
+            Ok(page) if page.session_id == session_id => {
+                let replace = initial_page || page.reset;
+                if initial_page {
+                    view.session_transcript_initial_failed = false;
+                }
+                if replace {
+                    view.transcript = page.rows;
+                    view.transcript_message_count = view.transcript.len();
+                    if page.reset && !initial_page {
+                        view.transcript_scroll_position = TranscriptScrollPosition::Bottom;
+                    }
+                } else {
+                    view.transcript = merge_cursor_older_transcript_page(
+                        page.rows,
+                        std::mem::take(&mut view.transcript),
+                    );
+                    view.transcript_message_count =
+                        view.transcript_message_count.max(view.transcript.len());
+                }
+                view.session_transcript_cursor = page
+                    .next_cursor
+                    .filter(|next| Some(next) != cursor_used.as_ref());
+                view.session_transcript_cursor_ready = true;
+                view.transcript_has_more = view.session_transcript_cursor.is_some();
+                view.older_transcript_request = None;
+                view.older_transcript_error = None;
+                view.resume_error = None;
+                self.status = if replace {
+                    format!(
+                        "Read-only historical transcript · {} messages",
+                        view.transcript.len()
+                    )
+                } else {
+                    format!(
+                        "Loaded earlier messages · {} visible",
+                        view.transcript.len()
+                    )
+                };
+            }
+            Ok(_) => {
+                view.session_transcript_cursor = None;
+                view.session_transcript_cursor_ready = true;
+                view.transcript_has_more = false;
+                let error = "Hermes transcript page did not match this session".to_owned();
+                if initial_page {
+                    view.session_transcript_initial_failed = true;
+                    view.resume_error = view.owner_resolution_error.clone().or(Some(error.clone()));
+                } else {
+                    view.older_transcript_error = Some(error.clone());
+                }
+                self.status = error;
+            }
+            Err(error) => {
+                if initial_page {
+                    view.session_transcript_cursor_ready = true;
+                    view.session_transcript_initial_failed = true;
+                    view.resume_error = view.owner_resolution_error.clone().or(Some(error.clone()));
+                } else {
+                    view.older_transcript_error = Some(error.clone());
+                }
+                self.status = if initial_page {
+                    format!("Could not load stored session history: {error}")
+                } else {
+                    format!("Could not load earlier messages: {error}")
+                };
+            }
+        }
+        if self.route == AppRoute::Session(session_id.to_owned())
+            && self.session_identity_key(session_id, self.active_session_profile.as_deref()) == key
+            && let Some(view) = self.session_chat_views.get(&key)
+        {
+            self.transcript = view.transcript.clone();
+            self.transcript_message_count = view.transcript_message_count;
+            self.transcript_has_more = view.transcript_has_more;
+            self.older_transcript_request = view.older_transcript_request.clone();
+            self.older_transcript_error = view.older_transcript_error.clone();
+            self.draft = view.draft.clone();
         }
     }
 
@@ -25842,6 +26213,7 @@ fn render_message() -> &'static str {
         view.profile = Some(profile.clone());
         view.resume_error = None;
         view.resume_request_id = None;
+        view.session_transcript_initial_failed = false;
         view.owner_resolution_error = Some(format!(
             "Trying an explicit live session resume with profile {profile}; history remains read-only until Hermes confirms the owner."
         ));
@@ -26006,6 +26378,10 @@ fn render_message() -> &'static str {
                 view.transcript_has_more = view.transcript.len() < view.transcript_message_count;
                 view.older_transcript_request = None;
                 view.older_transcript_error = None;
+                view.session_transcript_cursor = None;
+                view.session_transcript_cursor_ready = false;
+                view.session_transcript_initial_failed = false;
+                view.session_transcript_page_request = None;
                 view.runtime_session_id = Some(snapshot.runtime_session_id.clone());
                 view.resume_error = None;
                 view.read_only_transcript = false;
@@ -34568,6 +34944,9 @@ fn render_message() -> &'static str {
                         for view in self.session_chat_views.values_mut() {
                             view.owner_resolution_request_id = None;
                             view.stored_transcript_request_id = None;
+                            view.session_transcript_page_request = None;
+                            view.session_transcript_cursor = None;
+                            view.session_transcript_cursor_ready = false;
                             view.owner_resolution_connection_id = None;
                             view.owner_resolution_instance_id = None;
                             view.owner_resolution_authority_epoch = None;
@@ -34864,6 +35243,25 @@ fn render_message() -> &'static str {
                     authority_epoch,
                     result,
                 ),
+                GatewayEvent::SessionTranscriptPageLoaded {
+                    request_id,
+                    session_id,
+                    profile,
+                    connection_id,
+                    instance_id,
+                    authority_epoch,
+                    order,
+                    result,
+                } => self.settle_session_transcript_page(
+                    &request_id,
+                    &session_id,
+                    profile,
+                    connection_id,
+                    &instance_id,
+                    authority_epoch,
+                    order,
+                    result,
+                ),
                 GatewayEvent::OlderTranscriptLoaded {
                     request_id,
                     session_id,
@@ -34873,6 +35271,42 @@ fn render_message() -> &'static str {
                 } => {
                     self.save_active_chat_view();
                     let key = self.session_identity_key(&session_id, profile.as_deref());
+                    let key = if self
+                        .session_chat_views
+                        .get(&key)
+                        .is_some_and(|view| view.older_transcript_request.is_some())
+                    {
+                        key
+                    } else if profile.is_none() {
+                        self.session_chat_views
+                            .iter()
+                            .find_map(|(candidate_key, view)| {
+                                let matches = view.read_only_transcript
+                                    && view.older_transcript_request.as_ref().is_some_and(
+                                        |(
+                                            pending_id,
+                                            pending_session,
+                                            pending_profile,
+                                            pending_offset,
+                                        )| {
+                                            pending_id == &request_id
+                                                && pending_session == &session_id
+                                                && pending_profile == &profile
+                                                && pending_offset == &offset
+                                        },
+                                    );
+                                matches.then(|| candidate_key.clone())
+                            })
+                            .unwrap_or(key)
+                    } else {
+                        key
+                    };
+                    let applies_to_active_route = self.route
+                        == AppRoute::Session(session_id.clone())
+                        && self.session_identity_key(
+                            &session_id,
+                            self.active_session_profile.as_deref(),
+                        ) == key;
                     let Some(view) = self.session_chat_views.get_mut(&key) else {
                         continue;
                     };
@@ -34917,9 +35351,7 @@ fn render_message() -> &'static str {
                                 self.status = format!("Could not load earlier messages: {error}");
                             }
                         }
-                        if self.route == AppRoute::Session(session_id.clone())
-                            && self.active_session_profile == profile
-                        {
+                        if applies_to_active_route {
                             self.transcript = view.transcript.clone();
                             self.transcript_message_count = view.transcript_message_count;
                             self.transcript_has_more = view.transcript_has_more;
@@ -40223,6 +40655,42 @@ fn merge_older_transcript_page(
     merged
 }
 
+fn merge_cursor_older_transcript_page(
+    older: Vec<serde_json::Value>,
+    current: Vec<serde_json::Value>,
+) -> Vec<serde_json::Value> {
+    let mut merged = Vec::with_capacity(older.len() + current.len());
+    let mut row_positions = std::collections::HashMap::new();
+    for row in older.into_iter().chain(current) {
+        let row_id = row
+            .get("row_id")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|row_id| *row_id > 0);
+        if let Some(row_id) = row_id {
+            if let Some(index) = row_positions.get(&row_id).copied() {
+                if cursor_transcript_row_quality(&row)
+                    > cursor_transcript_row_quality(&merged[index])
+                {
+                    merged[index] = row;
+                }
+            } else {
+                row_positions.insert(row_id, merged.len());
+                merged.push(row);
+            }
+        } else if !merged.contains(&row) {
+            merged.push(row);
+        }
+    }
+    merged
+}
+
+fn cursor_transcript_row_quality(row: &serde_json::Value) -> (bool, usize) {
+    let explicitly_truncated = ["truncated", "content_truncated", "is_truncated"]
+        .into_iter()
+        .any(|field| row.get(field).and_then(serde_json::Value::as_bool) == Some(true));
+    (!explicitly_truncated, row.to_string().len())
+}
+
 fn merge_refreshed_transcript_tail(
     refreshed: Vec<serde_json::Value>,
     current: Vec<serde_json::Value>,
@@ -42340,11 +42808,15 @@ fn render_transcript_markdown(
     }
 
     ui.scope(|ui| {
+        apply_chat_typography(ui.style_mut());
+        // The pinned CSS uses an 11.2px paragraph gap. egui_commonmark has no
+        // paragraph-specific spacing token, so scope that rhythm to Markdown.
+        ui.spacing_mut().item_spacing.y = crate::fonts::TRANSCRIPT_PARAGRAPH_GAP;
         ui.spacing_mut().indent = MESSAGE_TEXT_INDENT;
         let indent_id = ui.next_auto_id();
         ui.indent(indent_id, |ui| {
             // Match Tailwind Typography's 1.625em list inset at the source's
-            // 13px conversation size, while keeping its 12px message gutter.
+            // Scaled conversation size, while keeping the source's fixed 12px gutter.
             ui.spacing_mut().indent = MARKDOWN_LIST_INDENT;
             CommonMarkViewer::new()
                 .enable_scroll_to_heading(true)
@@ -42363,6 +42835,17 @@ fn render_transcript_markdown(
         }
     }
     clicked_preview
+}
+
+fn transcript_message_is_scaffold(message: &serde_json::Value) -> bool {
+    let kind = message.get("type").and_then(serde_json::Value::as_str);
+    let role = message.get("role").and_then(serde_json::Value::as_str);
+    role == Some("tool")
+        || message.get("tool_call_id").is_some()
+        || matches!(
+            kind,
+            Some("tool_call" | "tool_result" | "thinking" | "activity" | "status")
+        )
 }
 
 fn composer_file_drop_paths(
@@ -59143,6 +59626,80 @@ mod tests {
         )
     }
 
+    fn start_cursor_read_only_session() -> (
+        HermesNativeApp,
+        std::path::PathBuf,
+        std::sync::mpsc::Receiver<crate::gateway::TestGatewayCommand>,
+        std::sync::mpsc::Sender<crate::gateway::GatewayEvent>,
+        String,
+    ) {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, events) =
+            crate::gateway::GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "default".into(),
+            instance_id: "cursor-instance".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: vec!["session-transcript-v1".into()],
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("stored-cursor-session".into());
+        app.draft = "unsent cursor-session draft".into();
+        app.ensure_session_resume("stored-cursor-session", None);
+        let profile_request = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("unresolved owner requests profile roster")
+        {
+            crate::gateway::TestGatewayCommand::LoadProfiles { request_id, .. } => request_id,
+            other => panic!("expected profile discovery, got {other:?}"),
+        };
+        events
+            .send(crate::gateway::GatewayEvent::ProfilesLoaded {
+                request_id: profile_request,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                result: Ok(vec!["work".into(), "personal".into()]),
+            })
+            .expect("queue ambiguous profile roster");
+        app.update_gateway_discovery(&egui::Context::default());
+        let page_request = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("unresolved owner requests first cursor page")
+        {
+            crate::gateway::TestGatewayCommand::LoadSessionTranscriptPage {
+                request_id,
+                session_id,
+                profile,
+                limit,
+                order,
+                cursor,
+                inline_images,
+                connection_id,
+                instance_id,
+                authority_epoch,
+            } => {
+                assert_eq!(session_id, "stored-cursor-session");
+                assert_eq!(profile, None, "unknown owner uses an ID-only read");
+                assert_eq!(limit, 120);
+                assert_eq!(order, crate::gateway::TranscriptOrder::Latest);
+                assert_eq!(cursor, None);
+                assert!(inline_images);
+                assert_eq!(connection_id, None);
+                assert_eq!(instance_id, "cursor-instance");
+                assert_eq!(authority_epoch, 7);
+                request_id
+            }
+            other => panic!("expected cursor transcript page request, got {other:?}"),
+        };
+        (app, profile_dir, commands, events, page_request)
+    }
+
     #[test]
     fn unresolved_session_uses_read_only_transcript_then_requires_explicit_profile_resume() {
         let (mut app, profile_dir) = isolated_app();
@@ -59442,6 +59999,513 @@ mod tests {
         assert_eq!(view.resume_error.as_deref(), Some("database unavailable"));
         assert!(!view.read_only_transcript);
         assert!(view.stored_transcript_request_id.is_none());
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn failed_explicit_resume_keeps_older_history_id_only_and_applies_page_to_candidate_view() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, commands, events) =
+            crate::gateway::GatewayDiscovery::for_test_session_create_and_submit();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_connected = true;
+        app.gateway_endpoint = Some(crate::gateway::GatewayEndpoint {
+            profile_id: "default".into(),
+            instance_id: "legacy-instance".into(),
+            authority_epoch: 3,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.route = AppRoute::Session("candidate-session".into());
+        app.active_runtime_session_id = Some("read-only:candidate-session".into());
+        app.transcript = vec![serde_json::json!({
+            "row_id": 20,
+            "role": "assistant",
+            "content": "recent stored message"
+        })];
+        app.transcript_message_count = 2;
+        app.transcript_has_more = true;
+        let ownerless_key = app.session_identity_key("candidate-session", None);
+        app.session_chat_views.insert(
+            ownerless_key,
+            SessionChatViewState {
+                runtime_session_id: app.active_runtime_session_id.clone(),
+                read_only_transcript: true,
+                transcript: app.transcript.clone(),
+                transcript_message_count: 2,
+                transcript_has_more: true,
+                ..SessionChatViewState::default()
+            },
+        );
+
+        app.resume_read_only_session_with_profile("candidate-session", "work".into());
+        let resume_request = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("explicit profile selection requests live resume")
+        {
+            crate::gateway::TestGatewayCommand::ResumeSession {
+                request_id,
+                session_id,
+                profile,
+            } => {
+                assert_eq!(session_id, "candidate-session");
+                assert_eq!(profile.as_deref(), Some("work"));
+                request_id
+            }
+            other => panic!("expected explicit resume, got {other:?}"),
+        };
+        app.settle_session_resume(
+            &resume_request,
+            "candidate-session",
+            Some("work".into()),
+            Err("live resume failed".into()),
+        );
+        let candidate_key = app.session_identity_key("candidate-session", Some("work"));
+        assert!(app.session_chat_views[&candidate_key].read_only_transcript);
+        assert_eq!(app.active_session_profile.as_deref(), Some("work"));
+
+        app.load_older_transcript("candidate-session".into());
+        let (page_request, page_profile, page_offset) = app
+            .older_transcript_request
+            .as_ref()
+            .map(|(request_id, session_id, profile, offset)| {
+                assert_eq!(session_id, "candidate-session");
+                (request_id.clone(), profile.clone(), *offset)
+            })
+            .expect("legacy endpoint queues older history page");
+        assert_eq!(page_profile, None, "unresolved owner uses ID-only history");
+        assert_eq!(page_offset, 1);
+        assert_eq!(
+            app.session_chat_views[&candidate_key]
+                .older_transcript_request
+                .as_ref()
+                .map(|(_, _, profile, _)| profile.clone()),
+            Some(None),
+            "pending correlation records the ID-only request identity"
+        );
+
+        events
+            .send(crate::gateway::GatewayEvent::OlderTranscriptLoaded {
+                request_id: page_request,
+                session_id: "candidate-session".into(),
+                profile: None,
+                offset: page_offset,
+                result: Ok(crate::gateway::OlderTranscriptPage {
+                    messages: vec![serde_json::json!({
+                        "row_id": 10,
+                        "role": "user",
+                        "content": "earlier stored message"
+                    })],
+                    has_more: false,
+                    replace_all: false,
+                }),
+            })
+            .expect("queue ID-only older page response");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0]["row_id"], 10);
+        assert_eq!(app.transcript[1]["row_id"], 20);
+        assert!(!app.transcript_has_more);
+        assert!(app.session_chat_views[&candidate_key].read_only_transcript);
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn read_only_cursor_history_uses_id_only_pages_and_merges_duplicate_boundaries() {
+        let (mut app, profile_dir, commands, events, first_request) =
+            start_cursor_read_only_session();
+        let key = app.session_identity_key("stored-cursor-session", None);
+        assert!(app.session_chat_views[&key].read_only_transcript);
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: first_request,
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Ok(crate::gateway::SessionTranscriptPage {
+                    session_id: "stored-cursor-session".into(),
+                    rows: vec![
+                        serde_json::json!({"row_id":101,"role":"user","content":"latest prompt"}),
+                        serde_json::json!({"row_id":102,"role":"assistant","content":"latest answer"}),
+                    ],
+                    next_cursor: Some("opaque:cursor/older-1".into()),
+                    reset: false,
+                }),
+            })
+            .expect("queue latest page");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0]["row_id"], 101);
+        assert!(app.transcript_has_more);
+        assert_eq!(app.draft, "unsent cursor-session draft");
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(|ui| app.draw(ui));
+        harness.run_steps(2);
+        let earlier = harness
+            .query_by_label("Show earlier messages")
+            .expect("read-only cursor history exposes an earlier-page control");
+        assert!(
+            !earlier.accesskit_node().is_disabled(),
+            "earlier-page action is enabled while an opaque cursor is available"
+        );
+        drop(harness);
+
+        let scroll_anchor = TranscriptScrollPosition::Offset {
+            from_bottom: 180.0,
+            max_offset: 640.0,
+        };
+        app.draft = "draft edited while browsing history".into();
+        app.session_chat_views
+            .get_mut(&key)
+            .expect("read-only transcript view")
+            .transcript_scroll_position = scroll_anchor;
+        app.load_older_transcript("stored-cursor-session".into());
+        let older_request = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("earlier page uses opaque cursor")
+        {
+            crate::gateway::TestGatewayCommand::LoadSessionTranscriptPage {
+                request_id,
+                session_id,
+                profile,
+                order,
+                cursor,
+                ..
+            } => {
+                assert_eq!(session_id, "stored-cursor-session");
+                assert_eq!(
+                    profile, None,
+                    "cursor reads remain ID-only while owner is unresolved"
+                );
+                assert_eq!(order, crate::gateway::TranscriptOrder::Latest);
+                assert_eq!(cursor.as_deref(), Some("opaque:cursor/older-1"));
+                request_id
+            }
+            other => panic!("expected older cursor page, got {other:?}"),
+        };
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: older_request,
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Ok(crate::gateway::SessionTranscriptPage {
+                    session_id: "stored-cursor-session".into(),
+                    rows: vec![
+                        serde_json::json!({"row_id":99,"role":"user","content":"older prompt"}),
+                        serde_json::json!({"row_id":101,"role":"user","content":"truncated boundary","truncated":true}),
+                    ],
+                    next_cursor: Some("opaque:cursor/older-2".into()),
+                    reset: false,
+                }),
+            })
+            .expect("queue overlapping older page");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.transcript
+                .iter()
+                .filter(|row| row.get("row_id").and_then(serde_json::Value::as_u64) == Some(101))
+                .count(),
+            1,
+            "overlapping page boundary is merged without duplicating the row"
+        );
+        assert_eq!(app.transcript.len(), 3);
+        assert_eq!(app.transcript[0]["row_id"], 99);
+        assert_eq!(app.transcript[1]["content"], "latest prompt");
+        assert_eq!(app.draft, "draft edited while browsing history");
+        let view = &app.session_chat_views[&key];
+        assert!(view.read_only_transcript);
+        assert_eq!(view.transcript_scroll_position, scroll_anchor);
+        assert_eq!(
+            view.session_transcript_cursor.as_deref(),
+            Some("opaque:cursor/older-2")
+        );
+        app.submit_prompt("read-only:stored-cursor-session".into());
+        assert!(app.status.contains("read-only"));
+        assert_eq!(app.draft, "draft edited while browsing history");
+        assert!(
+            commands.try_recv().is_err(),
+            "paging never submits a prompt"
+        );
+
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn failed_initial_cursor_page_is_terminal_until_explicit_retry() {
+        let (mut app, profile_dir, commands, events, first_request) =
+            start_cursor_read_only_session();
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: first_request,
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Err("temporary history read failure".into()),
+            })
+            .expect("queue failed initial transcript page");
+        app.update_gateway_discovery(&egui::Context::default());
+        let key = app.session_identity_key("stored-cursor-session", None);
+        let view = &app.session_chat_views[&key];
+        assert!(view.session_transcript_cursor_ready);
+        assert!(view.session_transcript_initial_failed);
+        assert!(view.session_transcript_page_request.is_none());
+
+        // Even if the UI offers more history, the failed first read is not
+        // eligible for another page request until the operator retries.
+        app.transcript_has_more = true;
+        app.load_older_transcript("stored-cursor-session".into());
+        assert!(commands.try_recv().is_err());
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(|ui| app.draw(ui));
+        harness.run_steps(2);
+        let retry = harness
+            .query_by_label("Retry opening session stored-cursor-session")
+            .expect("failed initial history exposes an explicit retry");
+        assert!(!retry.accesskit_node().is_disabled());
+        retry.click();
+        harness.run_steps(2);
+        match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("retry queues a new ID-only first page")
+        {
+            crate::gateway::TestGatewayCommand::LoadSessionTranscriptPage {
+                session_id,
+                profile,
+                cursor,
+                order,
+                ..
+            } => {
+                assert_eq!(session_id, "stored-cursor-session");
+                assert_eq!(profile, None);
+                assert_eq!(cursor, None);
+                assert_eq!(order, crate::gateway::TranscriptOrder::Latest);
+            }
+            other => panic!("expected cursor retry, got {other:?}"),
+        }
+        assert!(
+            commands.try_recv().is_err(),
+            "a failed initial page queues exactly one request after explicit retry"
+        );
+
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn read_only_cursor_reset_replaces_rows_and_exhaustion_hides_earlier_action() {
+        let (mut app, profile_dir, _commands, events, first_request) =
+            start_cursor_read_only_session();
+        let key = app.session_identity_key("stored-cursor-session", None);
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: first_request,
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Ok(crate::gateway::SessionTranscriptPage {
+                    session_id: "stored-cursor-session".into(),
+                    rows: vec![
+                        serde_json::json!({"row_id":9,"role":"assistant","content":"old tail"}),
+                    ],
+                    next_cursor: Some("opaque:cursor/old".into()),
+                    reset: false,
+                }),
+            })
+            .expect("queue first page");
+        app.update_gateway_discovery(&egui::Context::default());
+        app.session_chat_views
+            .get_mut(&key)
+            .expect("read-only view")
+            .transcript_scroll_position = TranscriptScrollPosition::Offset {
+            from_bottom: 120.0,
+            max_offset: 500.0,
+        };
+        app.load_older_transcript("stored-cursor-session".into());
+        let reset_request = match _commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("older cursor request is sent")
+        {
+            crate::gateway::TestGatewayCommand::LoadSessionTranscriptPage {
+                request_id, ..
+            } => request_id,
+            other => panic!("expected older cursor page, got {other:?}"),
+        };
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: reset_request,
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Ok(crate::gateway::SessionTranscriptPage {
+                    session_id: "stored-cursor-session".into(),
+                    rows: vec![
+                        serde_json::json!({"row_id":30,"role":"user","content":"reset prompt"}),
+                        serde_json::json!({"row_id":31,"role":"assistant","content":"reset answer"}),
+                    ],
+                    next_cursor: None,
+                    reset: true,
+                }),
+            })
+            .expect("queue cursor reset page");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), 2);
+        assert_eq!(app.transcript[0]["row_id"], 30);
+        assert_eq!(app.transcript[1]["row_id"], 31);
+        assert_eq!(
+            app.transcript_message_count, 2,
+            "reset clears stale total count"
+        );
+        assert!(
+            !app.transcript_has_more,
+            "missing next cursor exhausts history"
+        );
+        let view = &app.session_chat_views[&key];
+        assert_eq!(view.session_transcript_cursor, None);
+        assert!(view.session_transcript_cursor_ready);
+        assert_eq!(
+            view.transcript_scroll_position,
+            TranscriptScrollPosition::Bottom
+        );
+        assert!(view.read_only_transcript);
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1100.0, 760.0))
+            .build_ui(|ui| app.draw(ui));
+        harness.run_steps(2);
+        assert!(harness.query_by_label("Show earlier messages").is_none());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn stale_read_only_cursor_pages_are_rejected_by_endpoint_and_cursor_identity() {
+        let (mut app, profile_dir, commands, events, first_request) =
+            start_cursor_read_only_session();
+        let key = app.session_identity_key("stored-cursor-session", None);
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: first_request,
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Ok(crate::gateway::SessionTranscriptPage {
+                    session_id: "stored-cursor-session".into(),
+                    rows: vec![
+                        serde_json::json!({"row_id":20,"role":"assistant","content":"current"}),
+                    ],
+                    next_cursor: Some("opaque:cursor/current".into()),
+                    reset: false,
+                }),
+            })
+            .expect("queue first page");
+        app.update_gateway_discovery(&egui::Context::default());
+        app.load_older_transcript("stored-cursor-session".into());
+        let older_request = match commands
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("older cursor request is sent")
+        {
+            crate::gateway::TestGatewayCommand::LoadSessionTranscriptPage {
+                request_id, ..
+            } => request_id,
+            other => panic!("expected older cursor page, got {other:?}"),
+        };
+        app.gateway_endpoint
+            .as_mut()
+            .expect("active Gateway endpoint")
+            .authority_epoch = 8;
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: older_request.clone(),
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Ok(crate::gateway::SessionTranscriptPage {
+                    session_id: "stored-cursor-session".into(),
+                    rows: vec![
+                        serde_json::json!({"row_id":10,"role":"user","content":"stale endpoint"}),
+                    ],
+                    next_cursor: None,
+                    reset: false,
+                }),
+            })
+            .expect("queue stale endpoint response");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(app.transcript[0]["row_id"], 20);
+
+        app.gateway_endpoint
+            .as_mut()
+            .expect("active Gateway endpoint")
+            .authority_epoch = 7;
+        app.session_chat_views
+            .get_mut(&key)
+            .expect("cursor owner view")
+            .session_transcript_cursor = Some("opaque:cursor/rotated".into());
+        events
+            .send(crate::gateway::GatewayEvent::SessionTranscriptPageLoaded {
+                request_id: older_request.clone(),
+                session_id: "stored-cursor-session".into(),
+                profile: None,
+                connection_id: None,
+                instance_id: "cursor-instance".into(),
+                authority_epoch: 7,
+                order: crate::gateway::TranscriptOrder::Latest,
+                result: Ok(crate::gateway::SessionTranscriptPage {
+                    session_id: "stored-cursor-session".into(),
+                    rows: vec![
+                        serde_json::json!({"row_id":10,"role":"user","content":"stale cursor"}),
+                    ],
+                    next_cursor: None,
+                    reset: false,
+                }),
+            })
+            .expect("queue stale cursor response");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert_eq!(app.transcript.len(), 1);
+        assert_eq!(app.transcript[0]["row_id"], 20);
+        assert_eq!(
+            app.session_chat_views[&key]
+                .session_transcript_page_request
+                .as_ref()
+                .map(|pending| pending.request_id.as_str()),
+            Some(older_request.as_str()),
+            "stale responses do not settle the request owned by the current cursor"
+        );
 
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");

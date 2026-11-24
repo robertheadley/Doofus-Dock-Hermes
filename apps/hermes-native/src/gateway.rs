@@ -25,7 +25,7 @@ use std::{
     process::Stdio,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         mpsc::{self, Receiver, TryRecvError},
     },
     thread,
@@ -36,6 +36,10 @@ use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
 const GATEWAY_HTTP_RESPONSE_LIMIT: u64 = 512 * 1024;
+const SESSION_TRANSCRIPT_PAGE_BYTES_LIMIT: usize = 2 * 1024 * 1024;
+const SESSION_TRANSCRIPT_CURSOR_BYTES_LIMIT: usize = 1024;
+const SESSION_TRANSCRIPT_TOOL_RESULT_OVERFLOW: usize = 64;
+const MAX_SESSION_TRANSCRIPT_READERS: usize = 2;
 const PROJECT_TREE_HTTP_RESPONSE_LIMIT: u64 = 8 * 1024 * 1024;
 const ARTIFACT_GATEWAY_RESPONSE_LIMIT: u64 = 64 * 1024 * 1024;
 const ARTIFACT_IMAGE_RESPONSE_LIMIT: u64 = 24 * 1024 * 1024;
@@ -2000,6 +2004,29 @@ pub struct StoredTranscriptPage {
     pub replace_all: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TranscriptOrder {
+    Oldest,
+    Latest,
+}
+
+impl TranscriptOrder {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Oldest => "oldest",
+            Self::Latest => "latest",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SessionTranscriptPage {
+    pub session_id: String,
+    pub rows: Vec<serde_json::Value>,
+    pub next_cursor: Option<String>,
+    pub reset: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct PromptTimelineEntry {
     pub row_id: u64,
@@ -2094,6 +2121,16 @@ pub enum GatewayEvent {
         instance_id: String,
         authority_epoch: u64,
         result: Result<StoredTranscriptPage, String>,
+    },
+    SessionTranscriptPageLoaded {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+        order: TranscriptOrder,
+        result: Result<SessionTranscriptPage, String>,
     },
     PromptTimelineLoaded {
         request_id: String,
@@ -3093,6 +3130,18 @@ enum GatewayHttpCommand {
         instance_id: String,
         authority_epoch: u64,
     },
+    LoadSessionTranscriptPage {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        limit: usize,
+        order: TranscriptOrder,
+        cursor: Option<String>,
+        inline_images: bool,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+    },
     LoadOlderTranscript {
         request_id: String,
         session_id: String,
@@ -3442,6 +3491,25 @@ struct ProjectTreeHttpCommand {
     preview_limit: usize,
 }
 
+struct SessionTranscriptReaderPermit(Arc<AtomicUsize>);
+
+impl SessionTranscriptReaderPermit {
+    fn try_acquire(in_flight: &Arc<AtomicUsize>) -> Option<Self> {
+        in_flight
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current < MAX_SESSION_TRANSCRIPT_READERS).then_some(current + 1)
+            })
+            .ok()
+            .map(|_| Self(in_flight.clone()))
+    }
+}
+
+impl Drop for SessionTranscriptReaderPermit {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 type GatewaySocket = tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>;
 
 pub struct GatewayDiscovery {
@@ -3470,6 +3538,24 @@ pub(crate) enum TestGatewayCommand {
         request_id: String,
         session_id: String,
         profile: Option<String>,
+    },
+    LoadSessionTranscriptPage {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        limit: usize,
+        order: TranscriptOrder,
+        cursor: Option<String>,
+        inline_images: bool,
+        connection_id: Option<String>,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    LoadOlderTranscript {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        offset: usize,
     },
     SetSessionCwd {
         request_id: String,
@@ -3934,6 +4020,40 @@ impl GatewayDiscovery {
                         connection_id,
                         instance_id,
                         authority_epoch,
+                    }),
+                    GatewayHttpCommand::LoadSessionTranscriptPage {
+                        request_id,
+                        session_id,
+                        profile,
+                        limit,
+                        order,
+                        cursor,
+                        inline_images,
+                        connection_id,
+                        instance_id,
+                        authority_epoch,
+                    } => Some(TestGatewayCommand::LoadSessionTranscriptPage {
+                        request_id,
+                        session_id,
+                        profile,
+                        limit,
+                        order,
+                        cursor,
+                        inline_images,
+                        connection_id,
+                        instance_id,
+                        authority_epoch,
+                    }),
+                    GatewayHttpCommand::LoadOlderTranscript {
+                        request_id,
+                        session_id,
+                        profile,
+                        offset,
+                    } => Some(TestGatewayCommand::LoadOlderTranscript {
+                        request_id,
+                        session_id,
+                        profile,
+                        offset,
                     }),
                     _ => None,
                 };
@@ -6850,6 +6970,66 @@ impl GatewayDiscovery {
             .send(GatewayHttpCommand::LoadStoredTranscript {
                 request_id,
                 session_id,
+                connection_id: self.connection_id.clone(),
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    /// Reads one pinned Gateway `session.transcript` page without resuming the agent.
+    /// Opaque cursors are forwarded unchanged and must be reused only with the same session/order.
+    pub fn load_session_transcript_page(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        limit: usize,
+        order: TranscriptOrder,
+        cursor: Option<String>,
+        inline_images: bool,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        if !valid_bounded_tree_id(&request_id) || request_id.len() > 256 {
+            return Err("Hermes session transcript request ID is invalid".into());
+        }
+        if !valid_bounded_tree_id(&session_id) || session_id.len() > 256 {
+            return Err("Hermes session transcript session ID is invalid".into());
+        }
+        if profile.as_ref().is_some_and(|value| {
+            !valid_bounded_tree_id(value) || value.len() > MAX_PROFILE_NAME_BYTES
+        }) {
+            return Err("Hermes session transcript profile is invalid".into());
+        }
+        if !(1..=500).contains(&limit) {
+            return Err("Hermes session transcript limit is outside the supported range".into());
+        }
+        if cursor
+            .as_ref()
+            .is_some_and(|value| value.len() > SESSION_TRANSCRIPT_CURSOR_BYTES_LIMIT)
+        {
+            return Err("Hermes session transcript cursor exceeds 1024 bytes".into());
+        }
+        if !valid_bounded_tree_id(&instance_id) || instance_id.len() > 256 || authority_epoch == 0 {
+            return Err("Hermes session transcript endpoint identity is invalid".into());
+        }
+        if self
+            .connection_id
+            .as_deref()
+            .is_some_and(|value| !valid_bounded_tree_id(value) || value.len() > 256)
+        {
+            return Err("Hermes session transcript connection identity is invalid".into());
+        }
+        self.http_sender
+            .send(GatewayHttpCommand::LoadSessionTranscriptPage {
+                request_id,
+                session_id,
+                profile,
+                limit,
+                order,
+                cursor,
+                inline_images,
                 connection_id: self.connection_id.clone(),
                 instance_id,
                 authority_epoch,
@@ -11470,6 +11650,118 @@ fn resume_session(
     })
 }
 
+fn read_session_transcript_page_on_separate_socket(
+    endpoint: &GatewayEndpoint,
+    session_id: &str,
+    profile: Option<&str>,
+    limit: usize,
+    order: TranscriptOrder,
+    cursor: Option<&str>,
+    inline_images: bool,
+    expected_instance_id: &str,
+    expected_authority_epoch: u64,
+) -> Result<SessionTranscriptPage, String> {
+    if endpoint.instance_id != expected_instance_id
+        || endpoint.authority_epoch != expected_authority_epoch
+    {
+        return Err("Hermes session.transcript request belongs to a stale endpoint".into());
+    }
+    if !endpoint
+        .capabilities
+        .iter()
+        .any(|capability| capability == "session-transcript-v1")
+    {
+        return Err("Hermes gateway does not advertise session-transcript-v1".into());
+    }
+    let (mut socket, runtime) = connect_gateway_endpoint(endpoint)?;
+    if runtime.instance_id != expected_instance_id
+        || runtime.authority_epoch != expected_authority_epoch
+    {
+        let _ = socket.close(None);
+        return Err("Hermes session.transcript connected to a stale endpoint".into());
+    }
+    if !runtime
+        .capabilities
+        .iter()
+        .any(|capability| capability == "session-transcript-v1")
+    {
+        let _ = socket.close(None);
+        return Err("Hermes gateway does not advertise session-transcript-v1".into());
+    }
+    let mut negotiated_endpoint = endpoint.clone();
+    negotiated_endpoint.capabilities = runtime.capabilities;
+    load_session_transcript_page_on_socket(
+        &mut socket,
+        5,
+        Some(&negotiated_endpoint),
+        session_id,
+        profile,
+        limit,
+        order,
+        cursor,
+        inline_images,
+        expected_instance_id,
+        expected_authority_epoch,
+    )
+}
+
+fn load_session_transcript_page_on_socket(
+    socket: &mut GatewaySocket,
+    next_request_id: u64,
+    endpoint: Option<&GatewayEndpoint>,
+    session_id: &str,
+    profile: Option<&str>,
+    limit: usize,
+    order: TranscriptOrder,
+    cursor: Option<&str>,
+    inline_images: bool,
+    expected_instance_id: &str,
+    expected_authority_epoch: u64,
+) -> Result<SessionTranscriptPage, String> {
+    if !(1..=500).contains(&limit) {
+        return Err("Hermes session transcript limit is outside the supported range".into());
+    }
+    if cursor.is_some_and(|value| value.len() > SESSION_TRANSCRIPT_CURSOR_BYTES_LIMIT) {
+        return Err("Hermes session transcript cursor exceeds 1024 bytes".into());
+    }
+    let endpoint = endpoint.ok_or_else(|| {
+        "Hermes session.transcript requires negotiated endpoint capabilities".to_owned()
+    })?;
+    if endpoint.instance_id != expected_instance_id
+        || endpoint.authority_epoch != expected_authority_epoch
+    {
+        return Err("Hermes session.transcript request targets a stale gateway endpoint".into());
+    }
+    if !endpoint
+        .capabilities
+        .iter()
+        .any(|capability| capability == "session-transcript-v1")
+    {
+        return Err("Hermes gateway does not advertise session-transcript-v1".into());
+    }
+    let mut params = serde_json::json!({
+        "session_id": session_id,
+        "limit": limit,
+        "order": order.as_str(),
+        "inline_images": inline_images,
+    });
+    if let Some(cursor) = cursor {
+        params["cursor"] = serde_json::Value::String(cursor.to_owned());
+    }
+    let params = session_profile_params(params, profile)?;
+    let value = rpc_with_events_timeout_outcome_bounded(
+        socket,
+        next_request_id,
+        "session.transcript",
+        params,
+        Duration::from_secs(60),
+        None,
+        Some(SESSION_TRANSCRIPT_PAGE_BYTES_LIMIT + 16 * 1024),
+    )
+    .map_err(RpcOutcomeError::message)?;
+    decode_session_transcript_page(value, session_id, limit, order)
+}
+
 fn session_interrupt_rpc(
     socket: &mut GatewaySocket,
     next_request_id: &mut u64,
@@ -12705,7 +12997,86 @@ fn gateway_http_actor(
     commands: Receiver<GatewayHttpCommand>,
     events: mpsc::Sender<GatewayEvent>,
 ) {
+    let transcript_readers_in_flight = Arc::new(AtomicUsize::new(0));
     while let Ok(command) = commands.recv() {
+        if let GatewayHttpCommand::LoadSessionTranscriptPage {
+            request_id,
+            session_id,
+            profile,
+            limit,
+            order,
+            cursor,
+            inline_images,
+            connection_id,
+            instance_id,
+            authority_epoch,
+        } = command
+        {
+            let endpoint = endpoint.clone();
+            let worker_events = events.clone();
+            let failed_events = events.clone();
+            let failed_request_id = request_id.clone();
+            let failed_session_id = session_id.clone();
+            let failed_profile = profile.clone();
+            let failed_connection_id = connection_id.clone();
+            let failed_instance_id = instance_id.clone();
+            let Some(reader_permit) =
+                SessionTranscriptReaderPermit::try_acquire(&transcript_readers_in_flight)
+            else {
+                let _ = failed_events.send(GatewayEvent::SessionTranscriptPageLoaded {
+                    request_id: failed_request_id,
+                    session_id: failed_session_id,
+                    profile: failed_profile,
+                    connection_id: failed_connection_id,
+                    instance_id: failed_instance_id,
+                    authority_epoch,
+                    order,
+                    result: Err(
+                        "Hermes transcript reader is busy (maximum 2 concurrent reads)".into(),
+                    ),
+                });
+                continue;
+            };
+            let worker = thread::Builder::new()
+                .name("hermes-session-transcript-reader".into())
+                .spawn(move || {
+                    let _reader_permit = reader_permit;
+                    let result = read_session_transcript_page_on_separate_socket(
+                        &endpoint,
+                        &session_id,
+                        profile.as_deref(),
+                        limit,
+                        order,
+                        cursor.as_deref(),
+                        inline_images,
+                        &instance_id,
+                        authority_epoch,
+                    );
+                    let _ = worker_events.send(GatewayEvent::SessionTranscriptPageLoaded {
+                        request_id,
+                        session_id,
+                        profile,
+                        connection_id,
+                        instance_id,
+                        authority_epoch,
+                        order,
+                        result,
+                    });
+                });
+            if worker.is_err() {
+                let _ = failed_events.send(GatewayEvent::SessionTranscriptPageLoaded {
+                    request_id: failed_request_id,
+                    session_id: failed_session_id,
+                    profile: failed_profile,
+                    connection_id: failed_connection_id,
+                    instance_id: failed_instance_id,
+                    authority_epoch,
+                    order,
+                    result: Err("Could not start the Hermes transcript reader worker".into()),
+                });
+            }
+            continue;
+        }
         if let GatewayHttpCommand::TestMcpServer { request_id, name } = command {
             let endpoint = endpoint.clone();
             let events = events.clone();
@@ -12931,6 +13302,25 @@ fn gateway_http_actor(
         // Preserve FIFO and never coalesce a write. Search is already debounced
         // by the UI; each accepted mutation must produce its own receipt.
         let event = match command {
+            GatewayHttpCommand::LoadSessionTranscriptPage {
+                request_id,
+                session_id,
+                profile,
+                order,
+                connection_id,
+                instance_id,
+                authority_epoch,
+                ..
+            } => GatewayEvent::SessionTranscriptPageLoaded {
+                request_id,
+                session_id,
+                profile,
+                connection_id,
+                instance_id,
+                authority_epoch,
+                order,
+                result: Err("Hermes session transcript reader dispatch was not started".into()),
+            },
             GatewayHttpCommand::LoadProfiles {
                 request_id,
                 connection_id,
@@ -14643,6 +15033,107 @@ fn decode_stored_transcript_page(
         messages: page.messages,
         has_more: false,
         replace_all: true,
+    })
+}
+
+fn decode_session_transcript_page(
+    value: serde_json::Value,
+    session_id: &str,
+    requested_limit: usize,
+    order: TranscriptOrder,
+) -> Result<SessionTranscriptPage, String> {
+    let encoded_len = serde_json::to_vec(&value)
+        .map_err(|_| "Hermes session.transcript response could not be bounded".to_owned())?
+        .len();
+    if encoded_len > SESSION_TRANSCRIPT_PAGE_BYTES_LIMIT {
+        return Err("Hermes session.transcript page exceeded the 2 MiB response limit".into());
+    }
+    let response_session_id = value
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "Hermes session.transcript omitted its session ID".to_owned())?;
+    if response_session_id != session_id {
+        return Err("Hermes session.transcript response belongs to a different session".into());
+    }
+    let rows = value
+        .get("rows")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "Hermes session.transcript omitted its rows".to_owned())?;
+    let maximum_rows = requested_limit.saturating_add(SESSION_TRANSCRIPT_TOOL_RESULT_OVERFLOW);
+    if rows.len() > maximum_rows || rows.len() > 564 {
+        return Err("Hermes session.transcript returned too many rows".into());
+    }
+    for row in rows {
+        let Some(object) = row.as_object() else {
+            return Err("Hermes session.transcript returned a non-object row".into());
+        };
+        let Some(row_id) = object.get("row_id").and_then(serde_json::Value::as_u64) else {
+            return Err("Hermes session.transcript returned a row without a valid ID".into());
+        };
+        if row_id == 0 {
+            return Err("Hermes session.transcript returned an invalid row ID".into());
+        }
+        let row_kind = object
+            .get("row_kind")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "Hermes session.transcript returned a row without a kind".to_owned())?;
+        if !matches!(row_kind, "message" | "compaction") {
+            return Err("Hermes session.transcript returned an unsupported row kind".into());
+        }
+        let role = object
+            .get("role")
+            .and_then(serde_json::Value::as_str)
+            .filter(|role| {
+                !role.is_empty() && role.len() <= 64 && !role.chars().any(char::is_control)
+            });
+        if role.is_none() || (row_kind == "compaction" && role != Some("system")) {
+            return Err("Hermes session.transcript returned an invalid row role".into());
+        }
+        if object
+            .get("truncated")
+            .is_some_and(|value| !value.is_boolean())
+        {
+            return Err("Hermes session.transcript returned an invalid truncation flag".into());
+        }
+        if object
+            .get("compacted_messages")
+            .is_some_and(|value| !value.is_null() && value.as_u64().is_none())
+        {
+            return Err("Hermes session.transcript returned an invalid compaction count".into());
+        }
+        if object.get("timestamp").is_some_and(|value| {
+            value
+                .as_f64()
+                .is_none_or(|timestamp| !timestamp.is_finite() || timestamp < 0.0)
+        }) {
+            return Err("Hermes session.transcript returned an invalid row timestamp".into());
+        }
+    }
+    let next_cursor = match value.get("next_cursor") {
+        Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(cursor))
+            if cursor.len() <= SESSION_TRANSCRIPT_CURSOR_BYTES_LIMIT =>
+        {
+            Some(cursor.clone())
+        }
+        Some(serde_json::Value::String(_)) => {
+            return Err("Hermes session.transcript cursor exceeds 1024 bytes".into());
+        }
+        Some(_) => return Err("Hermes session.transcript returned an invalid cursor".into()),
+        None => return Err("Hermes session.transcript omitted its next cursor".into()),
+    };
+    let reset = value
+        .get("reset")
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| "Hermes session.transcript omitted its reset state".to_owned())?;
+    if order == TranscriptOrder::Oldest && next_cursor.is_none() {
+        return Err("Hermes oldest-order session transcript omitted its polling cursor".into());
+    }
+    Ok(SessionTranscriptPage {
+        session_id: session_id.to_owned(),
+        rows: rows.clone(),
+        next_cursor,
+        reset,
     })
 }
 
@@ -19460,6 +19951,18 @@ fn rpc_with_events_timeout_outcome(
     timeout: Duration,
     events: Option<&mpsc::Sender<GatewayEvent>>,
 ) -> Result<serde_json::Value, RpcOutcomeError> {
+    rpc_with_events_timeout_outcome_bounded(socket, id, method, params, timeout, events, None)
+}
+
+fn rpc_with_events_timeout_outcome_bounded(
+    socket: &mut tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+    id: u64,
+    method: &str,
+    params: serde_json::Value,
+    timeout: Duration,
+    events: Option<&mpsc::Sender<GatewayEvent>>,
+    max_frame_bytes: Option<usize>,
+) -> Result<serde_json::Value, RpcOutcomeError> {
     let deadline = Instant::now() + timeout;
     let request =
         serde_json::json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
@@ -19501,6 +20004,11 @@ fn rpc_with_events_timeout_outcome(
             }
             continue;
         };
+        if max_frame_bytes.is_some_and(|limit| text.len() > limit) {
+            return Err(RpcOutcomeError::Rejected(format!(
+                "Hermes {method} response exceeded its bounded frame limit"
+            )));
+        }
         let frame: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
             RpcOutcomeError::Unknown("Hermes gateway sent invalid JSON-RPC data".to_owned())
         })?;
@@ -22093,6 +22601,430 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    #[test]
+    fn older_transcript_test_observer_preserves_unowned_profile_scope() {
+        let (discovery, observed, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        discovery
+            .load_older_transcript(
+                "older-page-request-1".into(),
+                "legacy-session-1".into(),
+                None,
+                120,
+            )
+            .expect("queue read-only older transcript page");
+        assert_eq!(
+            observed
+                .recv_timeout(Duration::from_secs(1))
+                .expect("observed older transcript command"),
+            TestGatewayCommand::LoadOlderTranscript {
+                request_id: "older-page-request-1".into(),
+                session_id: "legacy-session-1".into(),
+                profile: None,
+                offset: 120,
+            }
+        );
+    }
+
+    #[test]
+    fn session_transcript_request_preserves_cursor_and_endpoint_identity() {
+        let (discovery, observed, _events) = GatewayDiscovery::for_test_session_create_and_submit();
+        let discovery = discovery.with_connection_id("saved-gateway");
+        let cursor = "  opaque/+cursor==  ".to_owned();
+        discovery
+            .load_session_transcript_page(
+                "transcript-request-1".into(),
+                "session-1".into(),
+                Some("work".into()),
+                45,
+                TranscriptOrder::Latest,
+                Some(cursor.clone()),
+                false,
+                "endpoint-instance-7".into(),
+                9,
+            )
+            .expect("queue transcript page request");
+        assert_eq!(
+            observed
+                .recv_timeout(Duration::from_secs(1))
+                .expect("observed transcript command"),
+            TestGatewayCommand::LoadSessionTranscriptPage {
+                request_id: "transcript-request-1".into(),
+                session_id: "session-1".into(),
+                profile: Some("work".into()),
+                limit: 45,
+                order: TranscriptOrder::Latest,
+                cursor: Some(cursor),
+                inline_images: false,
+                connection_id: Some("saved-gateway".into()),
+                instance_id: "endpoint-instance-7".into(),
+                authority_epoch: 9,
+            }
+        );
+        assert!(
+            discovery
+                .load_session_transcript_page(
+                    "transcript-request-2".into(),
+                    "session-1".into(),
+                    None,
+                    501,
+                    TranscriptOrder::Latest,
+                    None,
+                    false,
+                    "endpoint-instance-7".into(),
+                    9,
+                )
+                .is_err()
+        );
+        assert!(
+            discovery
+                .load_session_transcript_page(
+                    "transcript-request-3".into(),
+                    "session-1".into(),
+                    None,
+                    45,
+                    TranscriptOrder::Latest,
+                    Some("x".repeat(SESSION_TRANSCRIPT_CURSOR_BYTES_LIMIT + 1)),
+                    false,
+                    "endpoint-instance-7".into(),
+                    9,
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn session_transcript_page_parser_bounds_rows_bytes_ids_kinds_and_cursor() {
+        let valid = decode_session_transcript_page(
+            json!({
+                "session_id":"session-1",
+                "rows":[
+                    {"row_kind":"message","row_id":7,"role":"user","content":"hi"},
+                    {"row_kind":"compaction","row_id":8,"role":"system","text":"summary","compacted_messages":3}
+                ],
+                "next_cursor":"opaque+/=cursor",
+                "reset":false
+            }),
+            "session-1",
+            2,
+            TranscriptOrder::Latest,
+        )
+        .expect("valid session transcript page");
+        assert_eq!(valid.rows.len(), 2);
+        assert_eq!(valid.next_cursor.as_deref(), Some("opaque+/=cursor"));
+        assert!(!valid.reset);
+        assert!(
+            decode_session_transcript_page(
+                json!({"session_id":"session-1","rows":[],"next_cursor":null,"reset":false}),
+                "session-1",
+                100,
+                TranscriptOrder::Oldest,
+            )
+            .is_err()
+        );
+
+        let overflow = (0..=SESSION_TRANSCRIPT_TOOL_RESULT_OVERFLOW + 1)
+            .map(|id| json!({"row_kind":"message","row_id":id + 1,"role":"user"}))
+            .collect::<Vec<_>>();
+        assert!(
+            decode_session_transcript_page(
+                json!({"session_id":"session-1","rows":overflow,"next_cursor":null,"reset":true}),
+                "session-1",
+                1,
+                TranscriptOrder::Latest,
+            )
+            .is_err()
+        );
+        assert!(
+            decode_session_transcript_page(
+                json!({"session_id":"other","rows":[],"next_cursor":null,"reset":true}),
+                "session-1",
+                100,
+                TranscriptOrder::Latest,
+            )
+            .is_err()
+        );
+        assert!(decode_session_transcript_page(
+            json!({"session_id":"session-1","rows":[{"row_kind":"message","row_id":0,"role":"user"}],"next_cursor":null,"reset":true}),
+            "session-1",
+            100,
+            TranscriptOrder::Latest,
+        )
+        .is_err());
+        assert!(decode_session_transcript_page(
+            json!({"session_id":"session-1","rows":[{"row_kind":"unknown","row_id":1,"role":"user"}],"next_cursor":null,"reset":true}),
+            "session-1",
+            100,
+            TranscriptOrder::Latest,
+        )
+        .is_err());
+        assert!(decode_session_transcript_page(
+            json!({"session_id":"session-1","rows":[],"next_cursor":"x".repeat(SESSION_TRANSCRIPT_CURSOR_BYTES_LIMIT + 1),"reset":true}),
+            "session-1",
+            100,
+            TranscriptOrder::Latest,
+        )
+        .is_err());
+        assert!(decode_session_transcript_page(
+            json!({"session_id":"session-1","rows":[{"row_kind":"message","row_id":1,"role":"user","text":"x".repeat(SESSION_TRANSCRIPT_PAGE_BYTES_LIMIT)}],"next_cursor":null,"reset":true}),
+            "session-1",
+            100,
+            TranscriptOrder::Latest,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn session_transcript_requires_advertised_capability_and_caps_reader_workers() {
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "instance-7".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: "invalid://not-used".into(),
+            capabilities: vec![],
+            control_home: None,
+            remote_auth: None,
+        };
+        let error = read_session_transcript_page_on_separate_socket(
+            &endpoint,
+            "session-1",
+            Some("work"),
+            20,
+            TranscriptOrder::Latest,
+            None,
+            false,
+            "instance-7",
+            9,
+        )
+        .expect_err("unsupported capability is rejected before opening a reader socket");
+        assert!(error.contains("session-transcript-v1"));
+
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let first =
+            SessionTranscriptReaderPermit::try_acquire(&in_flight).expect("first reader slot");
+        let second =
+            SessionTranscriptReaderPermit::try_acquire(&in_flight).expect("second reader slot");
+        assert!(SessionTranscriptReaderPermit::try_acquire(&in_flight).is_none());
+        drop(first);
+        assert!(SessionTranscriptReaderPermit::try_acquire(&in_flight).is_some());
+        drop(second);
+    }
+
+    #[test]
+    fn session_transcript_read_does_not_block_primary_prompt_dispatch() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind transcript gateway fixture");
+        let address = listener.local_addr().expect("transcript gateway address");
+        let cursor = "  opaque/+cursor==  ".to_owned();
+        let server_cursor = cursor.clone();
+        let (reader_started_tx, reader_started_rx) = mpsc::channel();
+        let (test_completed_tx, test_completed_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let (primary_stream, _) = listener.accept().expect("accept primary gateway");
+            let mut primary =
+                tungstenite::accept(primary_stream).expect("accept primary WebSocket");
+            let (reader_stream, _) = listener.accept().expect("accept transcript reader");
+            let mut reader = tungstenite::accept(reader_stream).expect("accept reader WebSocket");
+            let read_request = |socket: &mut tungstenite::WebSocket<TcpStream>| match socket
+                .read()
+                .expect("read gateway RPC")
+            {
+                Message::Text(text) => {
+                    serde_json::from_str::<serde_json::Value>(&text).expect("parse gateway RPC")
+                }
+                other => panic!("expected gateway RPC text, got {other:?}"),
+            };
+            let reply = |socket: &mut tungstenite::WebSocket<TcpStream>, id, result| {
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":result})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send gateway RPC result");
+            };
+
+            let client_caps = read_request(&mut reader);
+            assert_eq!(client_caps["method"], "client.capabilities");
+            reply(
+                &mut reader,
+                client_caps["id"].as_u64().expect("client capabilities id"),
+                json!({}),
+            );
+            let runtime_describe = read_request(&mut reader);
+            assert_eq!(runtime_describe["method"], "runtime.describe");
+            reply(
+                &mut reader,
+                runtime_describe["id"]
+                    .as_u64()
+                    .expect("runtime describe id"),
+                json!({
+                    "instance_id":"instance-7",
+                    "profile_id":"work",
+                    "authority_epoch":9,
+                    "capabilities":["session-transcript-v1"],
+                    "session_create":{"sources":[],"parameters":[]}
+                }),
+            );
+            let transcript = read_request(&mut reader);
+            assert_eq!(transcript["method"], "session.transcript");
+            assert_eq!(transcript["params"]["cursor"], server_cursor);
+            assert_eq!(transcript["params"]["order"], "latest");
+            reader
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "method":"event",
+                        "params":{"type":"reader-only.notice","session_id":"session-1"}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send reader-lane-only event");
+            reader_started_tx
+                .send(())
+                .expect("signal transcript request started");
+
+            let prompt = read_request(&mut primary);
+            assert_eq!(prompt["method"], "prompt.submit");
+            let prompt_id = prompt["id"].as_u64().expect("prompt request id");
+            reply(
+                &mut primary,
+                prompt_id,
+                json!({"ref":{"session_id":"runtime-1"},"admission_id":"admit-1","status":"started"}),
+            );
+            let transcript_id = transcript["id"].as_u64().expect("transcript request id");
+            reply(
+                &mut reader,
+                transcript_id,
+                json!({
+                    "session_id":"session-1",
+                    "rows":[{"row_kind":"message","row_id":42,"role":"assistant","content":"reply"}],
+                    "next_cursor":null,"reset":true
+                }),
+            );
+            test_completed_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("test validates transcript before closing primary socket");
+            let _ = primary.close(None);
+            let _ = reader.close(None);
+        });
+        let (mut primary_socket, _) = tungstenite::connect(format!("ws://{address}/api/ws"))
+            .expect("connect primary gateway client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = primary_socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure primary actor read timeout");
+        }
+        let endpoint = GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "instance-7".into(),
+            authority_epoch: 9,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}/hermes"),
+            capabilities: vec!["session-transcript-v1".into()],
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let primary_events = event_tx.clone();
+        let primary_actor = thread::spawn(move || {
+            gateway_actor_with_replay(
+                &mut primary_socket,
+                &command_rx,
+                primary_events,
+                "work",
+                None,
+                &mut HashMap::new(),
+            )
+        });
+        let (reader_command_tx, reader_command_rx) = mpsc::channel();
+        let reader_events = event_tx;
+        let reader_endpoint = endpoint.clone();
+        let reader_actor = thread::spawn(move || {
+            gateway_http_actor(reader_endpoint, reader_command_rx, reader_events)
+        });
+        reader_command_tx
+            .send(GatewayHttpCommand::LoadSessionTranscriptPage {
+                request_id: "transcript-request-1".into(),
+                session_id: "session-1".into(),
+                profile: Some("work".into()),
+                limit: 20,
+                order: TranscriptOrder::Latest,
+                cursor: Some(cursor),
+                inline_images: false,
+                connection_id: Some("saved-gateway".into()),
+                instance_id: "instance-7".into(),
+                authority_epoch: 9,
+            })
+            .expect("queue separate transcript reader work");
+        reader_started_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("transcript request is in flight");
+        command_tx
+            .send(GatewayCommand::SubmitPrompt {
+                session_id: "runtime-1".into(),
+                profile: Some("work".into()),
+                submission_id: "prompt-1".into(),
+                text: "still responsive".into(),
+                attachments: vec![],
+            })
+            .expect("queue primary prompt while transcript read is pending");
+        let prompt_event = event_rx
+            .recv_timeout(Duration::from_millis(500))
+            .expect("primary prompt completes before transcript response");
+        assert!(matches!(
+            prompt_event,
+            GatewayEvent::PromptSubmitted {
+                session_id,
+                submission_id,
+                result: Ok(PromptSubmitReceipt::Admitted { admission_id, .. }),
+            } if session_id == "runtime-1"
+                && submission_id == "prompt-1"
+                && admission_id == "admit-1"
+        ));
+        let transcript_event = event_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("transcript page event after prompt");
+        match transcript_event {
+            GatewayEvent::SessionTranscriptPageLoaded {
+                request_id,
+                session_id,
+                profile,
+                connection_id,
+                instance_id,
+                authority_epoch,
+                order: TranscriptOrder::Latest,
+                result:
+                    Ok(SessionTranscriptPage {
+                        next_cursor: None,
+                        reset: true,
+                        rows,
+                        ..
+                    }),
+            } if request_id == "transcript-request-1"
+                && session_id == "session-1"
+                && profile.as_deref() == Some("work")
+                && connection_id.as_deref() == Some("saved-gateway")
+                && instance_id == "instance-7"
+                && authority_epoch == 9
+                && rows.len() == 1 => {}
+            other => panic!("unexpected transcript event: {other:?}"),
+        }
+        test_completed_tx
+            .send(())
+            .expect("release transcript fixture after assertions");
+        drop(reader_command_tx);
+        drop(command_tx);
+        reader_actor.join().expect("transcript reader actor exits");
+        primary_actor
+            .join()
+            .expect("primary gateway actor exits after fixture close");
+        server.join().expect("transcript fixture exits");
     }
 
     #[test]
