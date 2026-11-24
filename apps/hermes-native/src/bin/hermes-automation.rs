@@ -93,6 +93,7 @@ fn run() -> Result<(), String> {
     let mut transcript_find_fixture = false;
     let mut transcript_timestamps_fixture = false;
     let mut session_pane_fixture = false;
+    let mut session_cwd_fixture = false;
     let mut recent_session_switcher_fixture = false;
     let mut recent_session_reorder_fixture = false;
     let mut command_center_sessions_fixture = false;
@@ -131,6 +132,7 @@ fn run() -> Result<(), String> {
             "--transcript-find-fixture" => transcript_find_fixture = true,
             "--transcript-timestamps-fixture" => transcript_timestamps_fixture = true,
             "--session-pane-fixture" => session_pane_fixture = true,
+            "--session-cwd-fixture" => session_cwd_fixture = true,
             "--recent-session-switcher-fixture" => recent_session_switcher_fixture = true,
             "--recent-session-reorder-fixture" => recent_session_reorder_fixture = true,
             "--command-center-sessions-fixture" => command_center_sessions_fixture = true,
@@ -183,6 +185,7 @@ fn run() -> Result<(), String> {
         transcript_find_fixture,
         transcript_timestamps_fixture,
         session_pane_fixture,
+        session_cwd_fixture,
         recent_session_switcher_fixture,
         recent_session_reorder_fixture,
         command_center_sessions_fixture,
@@ -227,6 +230,8 @@ fn run() -> Result<(), String> {
             .load_transcript_timestamps_fixture_for_automation();
     } else if session_pane_fixture {
         app.borrow_mut().load_session_pane_fixture_for_automation();
+    } else if session_cwd_fixture {
+        app.borrow_mut().load_session_cwd_fixture_for_automation();
     } else if recent_session_switcher_fixture {
         app.borrow_mut()
             .load_recent_session_switcher_fixture_for_automation();
@@ -419,6 +424,10 @@ fn run() -> Result<(), String> {
                 );
             }
             Action::Screenshot(path) => {
+                // Let egui popup/window animations and deferred layout settle so
+                // screenshots show the same visible state as the last inspected frame.
+                harness.step();
+                harness.step();
                 let image = harness
                     .render()
                     .map_err(|error| format!("render screenshot: {error}"))?;
@@ -455,7 +464,7 @@ fn describe_node(node: egui_kittest::Node<'_>) -> Value {
 
 fn print_help() {
     println!("Hermes Native background UI agent runner
-Usage: hermes-automation [--native-window] [--viewport WIDTHxHEIGHT] [--markdown-fixture | --first-run-setup-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --recent-session-switcher-fixture | --recent-session-reorder-fixture | --command-center-sessions-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --artifacts-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT | --type-role ROLE ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
+Usage: hermes-automation [--native-window] [--viewport WIDTHxHEIGHT] [--markdown-fixture | --first-run-setup-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --session-cwd-fixture | --recent-session-switcher-fixture | --recent-session-reorder-fixture | --command-center-sessions-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --artifacts-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT | --type-role ROLE ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
 Accessible actions use egui's AccessKit UI tree and normal widget input handling.
 --native-window opens the actual app off-screen and inactive on Windows, with a temporary profile and gateway disabled. Add --stdio for generation-checked egui input and renderer screenshot requests; inspect controls through Windows UI Automation.");

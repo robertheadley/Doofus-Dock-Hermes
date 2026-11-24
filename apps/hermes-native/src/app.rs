@@ -1134,6 +1134,7 @@ struct SessionChatViewState {
     profile: Option<String>,
     runtime_session_id: Option<String>,
     backend_cwd: Option<String>,
+    backend_branch: Option<String>,
     terminal_backend: Option<String>,
     resume_request_id: Option<String>,
     resume_connection_operation_at_start: Option<(String, u64)>,
@@ -1151,6 +1152,27 @@ struct SessionChatViewState {
     composer_attachments: Vec<ComposerAttachment>,
     active_prepared_image_draft_id: Option<String>,
     restored_prepared_image_draft_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SessionCwdDialog {
+    stored_session_id: String,
+    runtime_session_id: String,
+    profile: Option<String>,
+    connection_id: String,
+    owner_key: String,
+    cwd: String,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingSessionCwdChange {
+    request_id: String,
+    stored_session_id: String,
+    runtime_session_id: String,
+    profile: Option<String>,
+    connection_id: String,
+    owner_key: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -2378,6 +2400,8 @@ pub struct HermesNativeApp {
     first_run_oauth_error: Option<String>,
     session_chat_views: BTreeMap<String, SessionChatViewState>,
     session_chat_view_order: VecDeque<String>,
+    session_cwd_dialog: Option<SessionCwdDialog>,
+    pending_session_cwd_change: Option<PendingSessionCwdChange>,
     prompt_timelines: BTreeMap<String, PromptTimelineState>,
     new_chat_draft: String,
     new_chat_draft_scope: Option<String>,
@@ -3690,6 +3714,75 @@ fn render_message() -> &'static str {
     }
 
     #[cfg(feature = "agent-automation")]
+    pub fn load_session_cwd_fixture_for_automation(&mut self) {
+        let session_id = "cwd-demo-session";
+        let profile = "fixture-profile";
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        let owner_key = self.session_identity_key_for_connection(
+            Some(&connection_id),
+            session_id,
+            Some(profile),
+        );
+        let cwd = "D:/AI/AIProjects/hermes-agent";
+        self.route = AppRoute::Session(session_id.into());
+        self.active_session_profile = Some(profile.into());
+        self.active_runtime_session_id = Some("runtime-cwd-demo-session".into());
+        self.gateway_connected = true;
+        self.gateway_connection_id = Some(connection_id.clone());
+        self.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: profile.into(),
+            instance_id: "fixture-gateway".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:32148".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        self.sessions.push(SessionSummary {
+            connection_id: Some(connection_id.clone()),
+            cwd: Some(cwd.into()),
+            id: session_id.into(),
+            lineage_root_id: None,
+            profile: Some(profile.into()),
+            title: "Agent workspace context".into(),
+            preview: "Review the repository and prepare a safe patch.".into(),
+            message_count: 5,
+            source: "fixture".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: true,
+            unread: false,
+            archived: false,
+        });
+        let demo_transcript = vec![
+            json!({"role":"user","content":"Inspect the project structure and suggest a focused implementation."}),
+            json!({"role":"assistant","content":"I’ll inspect the Rust workspace and identify the UI and Gateway boundaries."}),
+            json!({"role":"assistant","tool_calls":[{"id":"call_tree","function":{"name":"shell","arguments":"{\"command\":\"Get-ChildItem\"}"}}]}),
+            json!({"role":"tool","content":"apps/  ·  docs/  ·  Cargo.toml  ·  README.md","tool_call_id":"call_tree"}),
+            json!({"role":"assistant","content":"The active project is on **feature/agent-shell**. The session can move to another workspace while idle; Hermes will confirm the resulting directory and branch."}),
+        ];
+        self.transcript = demo_transcript.clone();
+        self.transcript_message_count = demo_transcript.len();
+        self.session_chat_views.insert(
+            owner_key.clone(),
+            SessionChatViewState {
+                profile: Some(profile.into()),
+                runtime_session_id: Some("runtime-cwd-demo-session".into()),
+                backend_cwd: Some(cwd.into()),
+                backend_branch: Some("feature/agent-shell".into()),
+                terminal_backend: Some("local".into()),
+                transcript: demo_transcript,
+                transcript_message_count: 5,
+                ..SessionChatViewState::default()
+            },
+        );
+        self.status =
+            "Session working-directory fixture · synthetic offline data · no Gateway request"
+                .into();
+    }
+
+    #[cfg(feature = "agent-automation")]
     pub fn load_files_preview_fixture_for_automation(
         &mut self,
         root: &std::path::Path,
@@ -4890,6 +4983,8 @@ fn render_message() -> &'static str {
             first_run_oauth_error: None,
             session_chat_views: BTreeMap::new(),
             session_chat_view_order: VecDeque::new(),
+            session_cwd_dialog: None,
+            pending_session_cwd_change: None,
             prompt_timelines: BTreeMap::new(),
             new_chat_draft: String::new(),
             new_chat_draft_scope: None,
@@ -17503,10 +17598,48 @@ fn render_message() -> &'static str {
         });
         let can_submit =
             self.gateway_connected && !waiting_for_this_session && !waiting_for_new_session;
+        let session_directory = session_id.as_deref().and_then(|runtime| {
+            let key = self.session_identity_key(runtime, self.active_session_profile.as_deref());
+            self.session_chat_views
+                .get(&key)
+                .map(|view| (view.backend_cwd.clone(), view.backend_branch.clone()))
+        });
+        let can_change_directory = session_id.as_deref().is_some_and(|runtime| {
+            self.gateway_connected
+                && self.pending_session_cwd_change.is_none()
+                && !self.session_runtime_is_busy(
+                    runtime,
+                    self.session_identity_key_for_current_route()
+                        .as_deref()
+                        .and_then(session_id_from_owner_identity_key)
+                        .unwrap_or_default(),
+                    self.active_session_profile.as_deref(),
+                    self.active_gateway_connection_id(),
+                )
+        });
         let composer_width = (ui.available_width() - 72.0).max(160.0);
         ui.separator();
         ui.horizontal_wrapped(|ui| {
             let mut remove_attachment_path = None;
+            let directory_label = session_directory
+                .as_ref()
+                .and_then(|(cwd, _)| cwd.as_deref())
+                .map(|cwd| format!("Directory · {cwd}"))
+                .unwrap_or_else(|| "Working directory".into());
+            if let Some((_, Some(branch))) = session_directory.as_ref() {
+                ui.label(
+                    RichText::new(format!("Branch · {branch}"))
+                        .size(CAPTION_TEXT_SIZE)
+                        .color(MUTED),
+                );
+            }
+            let directory = ui
+                .add_enabled(can_change_directory, egui::Button::new("Change directory"))
+                .accessible_name("Change Hermes session working directory");
+            if directory.clicked() {
+                self.open_session_cwd_dialog();
+            }
+            directory.on_hover_text(directory_label);
             let attach = ui
                 .add_enabled(self.gateway_connected, egui::Button::new("Attach file"))
                 .accessible_name("Attach an image or file to this prompt");
@@ -24298,6 +24431,9 @@ fn render_message() -> &'static str {
             if let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str()) {
                 view.backend_cwd = Some(cwd.to_owned());
             }
+            if let Some(branch) = payload.get("branch").and_then(|value| value.as_str()) {
+                view.backend_branch = Some(branch.to_owned());
+            }
             if let Some(terminal_backend) = payload
                 .get("terminal_backend")
                 .and_then(|value| value.as_str())
@@ -24862,6 +24998,7 @@ fn render_message() -> &'static str {
                         runtime_session_id: self.active_runtime_session_id.clone(),
                         usage: previous.and_then(|view| view.usage.clone()),
                         backend_cwd: previous.and_then(|view| view.backend_cwd.clone()),
+                        backend_branch: previous.and_then(|view| view.backend_branch.clone()),
                         terminal_backend: previous.and_then(|view| view.terminal_backend.clone()),
                         resume_request_id: previous.and_then(|view| view.resume_request_id.clone()),
                         resume_connection_operation_at_start: previous
@@ -25078,6 +25215,69 @@ fn render_message() -> &'static str {
             self.gateway_connection_id.clone(),
             result,
         );
+    }
+
+    fn settle_session_cwd_change(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        stored_session_id: &str,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        result: Result<crate::gateway::SessionCwdSetResult, String>,
+    ) {
+        let Some(pending) = self.pending_session_cwd_change.clone() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.runtime_session_id != session_id
+            || pending.stored_session_id != stored_session_id
+            || pending.profile != profile
+            || pending.connection_id != connection_id.as_deref().unwrap_or_default()
+        {
+            return;
+        }
+        self.pending_session_cwd_change = None;
+        match result {
+            Ok(result) if self.gateway_connection_id.as_deref() == connection_id.as_deref() => {
+                if let Some(view) = self.session_chat_views.get_mut(&pending.owner_key) {
+                    if view.runtime_session_id.as_deref() == Some(session_id)
+                        && view.profile == profile
+                    {
+                        view.backend_cwd.clone_from(&result.cwd);
+                        view.backend_branch.clone_from(&result.branch);
+                    }
+                }
+                for summary in &mut self.sessions {
+                    if summary.id == stored_session_id
+                        && summary.profile == profile
+                        && summary
+                            .connection_id
+                            .as_deref()
+                            .is_none_or(|owner| owner == pending.connection_id)
+                    {
+                        summary.cwd.clone_from(&result.cwd);
+                    }
+                }
+                self.session_cwd_dialog = None;
+                self.status = format!(
+                    "Hermes confirmed working directory: {}",
+                    result.cwd.as_deref().unwrap_or_default()
+                );
+            }
+            Ok(_) => {}
+            Err(error) => {
+                if let Some(dialog) = self.session_cwd_dialog.as_mut() {
+                    if dialog.connection_id == pending.connection_id
+                        && dialog.stored_session_id == pending.stored_session_id
+                        && dialog.profile == pending.profile
+                    {
+                        dialog.error = Some(error.clone());
+                    }
+                }
+                self.status = error;
+            }
+        }
     }
 
     fn settle_session_resume_for_owner(
@@ -32310,6 +32510,271 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn open_session_cwd_dialog(&mut self) {
+        let (Some(runtime_session_id), Some(stored_session_id), Some(connection_id)) = (
+            self.active_runtime_session_id.clone(),
+            self.session_identity_key_for_current_route()
+                .and_then(|key| session_id_from_owner_identity_key(&key).map(str::to_owned)),
+            self.gateway_connection_id.clone(),
+        ) else {
+            self.status = "Open a connected Hermes session before changing its directory".into();
+            return;
+        };
+        if !self.gateway_connected {
+            self.status = "Connect to Hermes before changing the session directory".into();
+            return;
+        }
+        let profile = self.active_session_profile.clone();
+        let owner_key = self.session_identity_key_for_connection(
+            Some(&connection_id),
+            &stored_session_id,
+            profile.as_deref(),
+        );
+        if self.session_runtime_is_busy(
+            &runtime_session_id,
+            &stored_session_id,
+            profile.as_deref(),
+            &connection_id,
+        ) {
+            self.status =
+                "Wait for this Hermes session to become idle before changing its directory".into();
+            return;
+        }
+        let cwd = self
+            .session_chat_views
+            .get(&owner_key)
+            .and_then(|view| view.backend_cwd.clone())
+            .or_else(|| {
+                self.sessions
+                    .iter()
+                    .find(|session| {
+                        session.id == stored_session_id
+                            && session.profile == profile
+                            && session
+                                .connection_id
+                                .as_deref()
+                                .is_none_or(|owner| owner == connection_id)
+                    })
+                    .and_then(|session| session.cwd.clone())
+            })
+            .unwrap_or_default();
+        self.session_cwd_dialog = Some(SessionCwdDialog {
+            stored_session_id,
+            runtime_session_id,
+            profile,
+            connection_id,
+            owner_key,
+            cwd,
+            error: None,
+        });
+    }
+
+    fn session_runtime_is_busy(
+        &self,
+        runtime: &str,
+        stored: &str,
+        profile: Option<&str>,
+        connection: &str,
+    ) -> bool {
+        use crate::gateway::ActiveSessionStatusKind;
+        let runtime_key =
+            self.session_identity_key_for_connection(Some(connection), runtime, profile);
+        let profile_key = profile.unwrap_or_default().to_owned();
+        self.active_session_statuses
+            .get(&(profile_key, stored.to_owned()))
+            .is_some_and(|status| {
+                status.runtime_session_id == runtime
+                    && status.status != ActiveSessionStatusKind::Idle
+            })
+            || self.pending_submissions.contains_key(&runtime_key)
+            || self
+                .pending_interrupt
+                .as_ref()
+                .is_some_and(|(_, id)| id == runtime)
+            || self.approval_prompts.values().any(|p| {
+                p.session_id == runtime
+                    && p.profile.as_deref() == profile
+                    && p.connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection)
+            })
+            || self.sudo_prompts.values().any(|p| {
+                p.session_id == runtime
+                    && p.profile.as_deref() == profile
+                    && p.connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection)
+            })
+            || self.vault_unlock_prompts.values().any(|p| {
+                p.session_id == runtime
+                    && p.profile.as_deref() == profile
+                    && p.connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection)
+            })
+            || self.vault_agent_prompts.values().any(|p| {
+                p.session_id == runtime
+                    && p.profile.as_deref() == profile
+                    && p.connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection)
+            })
+            || self.clarify_prompts.values().any(|p| {
+                p.session_id == runtime
+                    && p.profile.as_deref() == profile
+                    && p.connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection)
+            })
+            || self.batch_clarify_prompts.values().any(|p| {
+                p.session_id == runtime
+                    && p.profile.as_deref() == profile
+                    && p.connection_id
+                        .as_deref()
+                        .is_none_or(|owner| owner == connection)
+            })
+    }
+
+    fn submit_session_cwd_change(&mut self) {
+        let Some(mut dialog) = self.session_cwd_dialog.clone() else {
+            return;
+        };
+        if self.pending_session_cwd_change.is_some() {
+            return;
+        }
+        if self.active_gateway_connection_id() != dialog.connection_id
+            || self.active_session_profile != dialog.profile
+            || self.route != AppRoute::Session(dialog.stored_session_id.clone())
+            || self.active_runtime_session_id.as_deref() != Some(dialog.runtime_session_id.as_str())
+        {
+            dialog.error =
+                Some("The active session changed. Reopen this dialog before saving.".into());
+            self.session_cwd_dialog = Some(dialog);
+            return;
+        }
+        if self.session_runtime_is_busy(
+            &dialog.runtime_session_id,
+            &dialog.stored_session_id,
+            dialog.profile.as_deref(),
+            &dialog.connection_id,
+        ) {
+            dialog.error =
+                Some("Hermes sessions must be idle before changing their directory".into());
+            self.session_cwd_dialog = Some(dialog);
+            return;
+        }
+        let request_id = operation_id("session-cwd");
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            dialog.error = Some("Hermes gateway is unavailable".into());
+            self.session_cwd_dialog = Some(dialog);
+            return;
+        };
+        match gateway.set_session_cwd(
+            request_id.clone(),
+            dialog.runtime_session_id.clone(),
+            dialog.stored_session_id.clone(),
+            dialog.profile.clone(),
+            Some(dialog.connection_id.clone()),
+            dialog.cwd.clone(),
+        ) {
+            Ok(()) => {
+                self.pending_session_cwd_change = Some(PendingSessionCwdChange {
+                    request_id,
+                    stored_session_id: dialog.stored_session_id,
+                    runtime_session_id: dialog.runtime_session_id,
+                    profile: dialog.profile,
+                    connection_id: dialog.connection_id,
+                    owner_key: dialog.owner_key,
+                });
+                if let Some(dialog) = self.session_cwd_dialog.as_mut() {
+                    dialog.error = None;
+                }
+                self.status = "Waiting for Hermes to confirm the session directory".into();
+            }
+            Err(error) => {
+                dialog.error = Some(error);
+                self.session_cwd_dialog = Some(dialog);
+            }
+        }
+    }
+
+    fn show_session_cwd_dialog(&mut self, ctx: &egui::Context) {
+        let Some(mut dialog) = self.session_cwd_dialog.clone() else {
+            return;
+        };
+        let pending = self.pending_session_cwd_change.as_ref().is_some_and(|p| {
+            p.connection_id == dialog.connection_id
+                && p.stored_session_id == dialog.stored_session_id
+                && p.profile == dialog.profile
+        });
+        let local_gateway = self
+            .gateway_endpoint
+            .as_ref()
+            .is_some_and(GatewayEndpoint::uses_local_loopback_gateway);
+        let mut save = false;
+        let mut cancel = false;
+        egui::Window::new("Change session directory")
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label(format!("Session {}", dialog.stored_session_id));
+                ui.add_enabled_ui(!pending, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Working directory");
+                        ui.text_edit_singleline(&mut dialog.cwd)
+                            .accessible_name("Hermes session working directory");
+                        #[cfg(windows)]
+                        if local_gateway && ui.button("Browse…").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .set_title("Choose Hermes session directory")
+                                .pick_folder()
+                            {
+                                dialog.cwd = path.to_string_lossy().into_owned();
+                            }
+                        }
+                    });
+                    if !local_gateway {
+                        ui.label(
+                            RichText::new("Enter a path on the remote Hermes host.")
+                                .size(CAPTION_TEXT_SIZE)
+                                .color(MUTED),
+                        );
+                    }
+                });
+                if pending {
+                    ui.label("Waiting for Hermes confirmation…");
+                }
+                if let Some(error) = dialog.error.as_deref() {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+                ui.horizontal(|ui| {
+                    save = ui
+                        .add_enabled(
+                            !pending && !dialog.cwd.trim().is_empty(),
+                            egui::Button::new("Change directory"),
+                        )
+                        .clicked();
+                    cancel = ui
+                        .add_enabled(!pending, egui::Button::new("Cancel"))
+                        .clicked();
+                });
+            });
+        if let Some(current) = self.session_cwd_dialog.as_mut() {
+            if current.connection_id == dialog.connection_id
+                && current.stored_session_id == dialog.stored_session_id
+                && current.profile == dialog.profile
+            {
+                current.cwd = dialog.cwd;
+                current.error = dialog.error;
+            }
+        }
+        if save {
+            self.submit_session_cwd_change();
+        } else if cancel {
+            self.session_cwd_dialog = None;
+        }
+    }
+
     fn empty_panel(&self, ui: &mut egui::Ui, message: &str) {
         ui.add_space(8.0);
         ui.label(RichText::new(message).size(CAPTION_TEXT_SIZE).color(MUTED));
@@ -33620,6 +34085,21 @@ fn render_message() -> &'static str {
                 } => self.settle_session_resume_for_owner(
                     &request_id,
                     &session_id,
+                    profile,
+                    connection_id,
+                    result,
+                ),
+                GatewayEvent::SessionCwdSet {
+                    request_id,
+                    session_id,
+                    stored_session_id,
+                    profile,
+                    connection_id,
+                    result,
+                } => self.settle_session_cwd_change(
+                    &request_id,
+                    &session_id,
+                    &stored_session_id,
                     profile,
                     connection_id,
                     result,
@@ -57692,6 +58172,173 @@ mod tests {
     }
 
     #[test]
+    fn session_cwd_confirmation_updates_only_the_requesting_session_owner() {
+        let (mut app, profile_dir) = isolated_app();
+        let connection_id = "conn-a";
+        app.gateway_connection_id = Some(connection_id.into());
+        app.route = AppRoute::Session("stored-1".into());
+        app.active_runtime_session_id = Some("runtime-1".into());
+        app.active_session_profile = Some("work".into());
+        let owner_key =
+            app.session_identity_key_for_connection(Some(connection_id), "stored-1", Some("work"));
+        app.session_chat_views.insert(
+            owner_key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-1".into()),
+                backend_cwd: Some("D:/old".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        let other_key =
+            app.session_identity_key_for_connection(Some("conn-b"), "stored-1", Some("work"));
+        app.session_chat_views.insert(
+            other_key.clone(),
+            SessionChatViewState {
+                profile: Some("work".into()),
+                runtime_session_id: Some("runtime-1".into()),
+                backend_cwd: Some("E:/other".into()),
+                ..SessionChatViewState::default()
+            },
+        );
+        app.sessions = vec![
+            SessionSummary {
+                id: "stored-1".into(),
+                connection_id: Some("conn-a".into()),
+                cwd: Some("D:/old".into()),
+                lineage_root_id: None,
+                profile: Some("work".into()),
+                title: String::new(),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            },
+            SessionSummary {
+                id: "stored-1".into(),
+                connection_id: Some("conn-b".into()),
+                cwd: Some("E:/other".into()),
+                lineage_root_id: None,
+                profile: Some("work".into()),
+                title: String::new(),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            },
+        ];
+        app.pending_session_cwd_change = Some(PendingSessionCwdChange {
+            request_id: "cwd-request-1".into(),
+            stored_session_id: "stored-1".into(),
+            runtime_session_id: "runtime-1".into(),
+            profile: Some("work".into()),
+            connection_id: connection_id.into(),
+            owner_key: owner_key.clone(),
+        });
+        app.session_cwd_dialog = Some(SessionCwdDialog {
+            stored_session_id: "stored-1".into(),
+            runtime_session_id: "runtime-1".into(),
+            profile: Some("work".into()),
+            connection_id: connection_id.into(),
+            owner_key: owner_key.clone(),
+            cwd: "D:/new".into(),
+            error: None,
+        });
+        let confirmed = crate::gateway::SessionCwdSetResult {
+            cwd: Some("D:/new".into()),
+            branch: Some("feature/test".into()),
+        };
+        app.settle_session_cwd_change(
+            "cwd-request-1",
+            "runtime-1",
+            "stored-1",
+            Some("work".into()),
+            Some("conn-b".into()),
+            Ok(confirmed.clone()),
+        );
+        assert!(
+            app.pending_session_cwd_change.is_some(),
+            "wrong connection cannot consume the pending request"
+        );
+        app.settle_session_cwd_change(
+            "cwd-request-1",
+            "runtime-1",
+            "stored-1",
+            Some("work".into()),
+            Some(connection_id.into()),
+            Ok(confirmed),
+        );
+        let owner = app.session_chat_views.get(&owner_key).expect("owned view");
+        assert_eq!(owner.backend_cwd.as_deref(), Some("D:/new"));
+        assert_eq!(owner.backend_branch.as_deref(), Some("feature/test"));
+        assert_eq!(
+            app.session_chat_views
+                .get(&other_key)
+                .unwrap()
+                .backend_cwd
+                .as_deref(),
+            Some("E:/other")
+        );
+        assert_eq!(app.sessions[0].cwd.as_deref(), Some("D:/new"));
+        assert_eq!(app.sessions[1].cwd.as_deref(), Some("E:/other"));
+        assert!(app.pending_session_cwd_change.is_none());
+        assert!(app.session_cwd_dialog.is_none());
+        let _ = std::fs::remove_dir_all(profile_dir);
+    }
+
+    #[test]
+    fn changing_session_directory_is_refused_while_hermes_reports_it_busy() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.gateway_connection_id = Some("conn-a".into());
+        app.route = AppRoute::Session("stored-1".into());
+        app.active_runtime_session_id = Some("runtime-1".into());
+        app.active_session_profile = Some("work".into());
+        let (gateway, commands, _) = crate::gateway::GatewayDiscovery::for_test_session_resume();
+        app.gateway_discovery = Some(gateway);
+        let key = app.session_identity_key_for_connection(Some("conn-a"), "stored-1", Some("work"));
+        app.session_cwd_dialog = Some(SessionCwdDialog {
+            stored_session_id: "stored-1".into(),
+            runtime_session_id: "runtime-1".into(),
+            profile: Some("work".into()),
+            connection_id: "conn-a".into(),
+            owner_key: key,
+            cwd: "D:/projects/next".into(),
+            error: None,
+        });
+        app.active_session_statuses.insert(
+            ("work".into(), "stored-1".into()),
+            crate::gateway::ActiveSessionStatus {
+                runtime_session_id: "runtime-1".into(),
+                stored_session_id: "stored-1".into(),
+                status: crate::gateway::ActiveSessionStatusKind::Working,
+                last_active: None,
+            },
+        );
+        app.submit_session_cwd_change();
+        assert!(app.pending_session_cwd_change.is_none());
+        assert!(
+            commands.try_recv().is_err(),
+            "busy session must not send a cwd mutation"
+        );
+        assert!(
+            app.session_cwd_dialog
+                .as_ref()
+                .and_then(|dialog| dialog.error.as_deref())
+                .is_some_and(|error| error.contains("idle"))
+        );
+        let _ = std::fs::remove_dir_all(profile_dir);
+    }
+
+    #[test]
     fn session_usage_is_owner_scoped_merged_and_rendered_in_chat_toolbar() {
         let (mut app, profile_dir) = isolated_app();
         let connection_id = "conn-a";
@@ -66875,6 +67522,7 @@ impl HermesNativeApp {
         self.show_agent_plugin_removal_dialog(&ctx);
         self.show_mcp_server_removal_dialog(&ctx);
         self.show_rename_dialog(&ctx);
+        self.show_session_cwd_dialog(&ctx);
         self.show_session_close_dialog(&ctx);
         self.show_recent_session_switcher(&ctx);
         self.show_command_palette(&ctx);
