@@ -688,8 +688,10 @@ fn service_event_rule_commit_suppresses_its_own_follow_up_events() {
     assert_eq!(triggered.len(), 1);
     let plan = WindowRulePlan::prepare(triggered[0].evaluation.clone(), &context).unwrap();
     let rule_command = CommandId::from("rule-pin-beta");
-    consumer.suppress_command(rule_command.clone()).unwrap();
-    plan.commit(&mut service, rule_command).unwrap();
+    let rule_commit = plan.commit(&mut service, rule_command.clone()).unwrap();
+    consumer
+        .suppress_command_at_revision(rule_command, rule_commit.resulting_revision)
+        .unwrap();
     assert!(
         service
             .snapshot()

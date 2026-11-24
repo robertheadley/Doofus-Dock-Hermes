@@ -148,9 +148,7 @@ pub enum NodeKind {
     Tabs {
         #[serde(rename = "active")]
         active_index: usize,
-        /// Canonical collapsed state for this whole tab group. This is
-        /// additive and defaults to expanded when loading older documents.
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "is_false")]
         minimized: bool,
         items: Vec<NodePtr>,
     },
@@ -381,7 +379,7 @@ pub struct LayoutDocument {
 impl LayoutDocument {
     pub fn new(id: impl Into<LayoutId>, workspace: impl Into<WorkspaceId>) -> Self {
         Self {
-            schema_version: 1,
+            schema_version: CURRENT_LAYOUT_SCHEMA,
             id: id.into(),
             workspace: workspace.into(),
             revision: 0,
@@ -399,6 +397,8 @@ impl LayoutDocument {
     }
 }
 
+pub const CURRENT_LAYOUT_SCHEMA: u32 = 2;
+
 pub fn validate_layout(doc: &LayoutDocument) -> DockResult<()> {
     if doc.id.is_empty() || doc.workspace.is_empty() {
         return Err(DockError::new(
@@ -407,7 +407,7 @@ pub fn validate_layout(doc: &LayoutDocument) -> DockResult<()> {
             "document",
         ));
     }
-    if doc.schema_version != 1 {
+    if doc.schema_version != CURRENT_LAYOUT_SCHEMA {
         return Err(DockError::new(
             ErrorCode::SchemaError,
             "Unsupported layout schema version.",

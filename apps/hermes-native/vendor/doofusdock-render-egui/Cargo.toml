@@ -4,14 +4,30 @@ version = "0.2.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.88"
+repository = "https://github.com/robertheadley/doofusdock"
+
+[package.metadata.doofusdock-vendor]
+source_revision = "f23ed02a99c7f8c57f83164d98feadb17cc4ed87"
+local_changes = "None; tab context menu API is included in upstream source"
+
+[features]
+default = []
+wgpu-shaders = ["dep:wgpu", "dep:shaderc"]
 
 [dependencies]
-doofusdock-core = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
-doofusdock-presentation = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
+accesskit = "0.25.2"
+doofusdock-core = { path = "../doofusdock-core", version = "0.2.0" }
+doofusdock-presentation = { path = "../doofusdock-presentation", version = "0.2.0" }
 egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
 egui-winit = { version = "0.37", default-features = false, features = ["accesskit", "clipboard"] }
 winit = "0.30.13"
 softbuffer = "0.4.8"
+uuid = { version = "1.29.0", default-features = false, features = ["v5"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive", "rc"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
+resvg = "0.49.0"
+imagesize = "0.15.0"
+naga = { version = "=25.0.1", default-features = false, features = ["glsl-in", "wgsl-in", "spv-out"] }
+wgpu = { version = "=25.0.2", default-features = false, features = ["gles", "glsl", "metal", "spirv", "vulkan", "wgsl"], optional = true }
+shaderc = { version = "=0.10.1", default-features = false, features = ["build-from-source"], optional = true }

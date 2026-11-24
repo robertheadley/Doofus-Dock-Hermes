@@ -213,6 +213,107 @@ mod tests {
     }
 
     #[test]
+    fn animated_snapshot_keeps_focus_on_stable_panel_widget() {
+        let viewport = Rect::from_min_size(pos2(0.0, 0.0), vec2(160.0, 100.0));
+        let context = Context::default();
+        let panel = PanelId::from("focused-panel");
+        let mut focused_widget = None;
+
+        let mut snapshot = Snapshot::default();
+        snapshot.panels.insert(
+            panel.clone(),
+            visual(
+                4.0,
+                4.0,
+                120.0,
+                72.0,
+                Box2 {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 160.0,
+                    h: 100.0,
+                },
+                1.0,
+                0,
+            ),
+        );
+
+        let mut output = context.run_ui(
+            RawInput {
+                screen_rect: Some(viewport),
+                focused: true,
+                ..RawInput::default()
+            },
+            &mut |ui: &mut Ui| {
+                render_visual_snapshot(ui, &snapshot, viewport, |ui, id, _visual| {
+                    if id == panel.0 {
+                        focused_widget = Some(
+                            ui.add_sized([110.0, 32.0], egui::Button::new("Focused panel action"))
+                                .id,
+                        );
+                    }
+                });
+            },
+        );
+        output.textures_delta.clear();
+
+        let focused_widget = focused_widget.expect("the visible panel action is rendered");
+        context.memory_mut(|memory| memory.request_focus(focused_widget));
+        assert_eq!(
+            context.memory(|memory| memory.focused()),
+            Some(focused_widget)
+        );
+
+        for (x, y, opacity) in [(12.0, 6.0, 0.9), (28.0, 10.0, 0.65), (40.0, 14.0, 1.0)] {
+            snapshot.panels.insert(
+                panel.clone(),
+                visual(
+                    x,
+                    y,
+                    120.0,
+                    72.0,
+                    Box2 {
+                        x: 0.0,
+                        y: 0.0,
+                        w: 160.0,
+                        h: 100.0,
+                    },
+                    opacity,
+                    0,
+                ),
+            );
+            let mut observed_widget = None;
+            let mut output = context.run_ui(
+                RawInput {
+                    screen_rect: Some(viewport),
+                    focused: true,
+                    ..RawInput::default()
+                },
+                &mut |ui: &mut Ui| {
+                    render_visual_snapshot(ui, &snapshot, viewport, |ui, id, _visual| {
+                        if id == panel.0 {
+                            observed_widget = Some(
+                                ui.add_sized(
+                                    [110.0, 32.0],
+                                    egui::Button::new("Focused panel action"),
+                                )
+                                .id,
+                            );
+                        }
+                    });
+                },
+            );
+            output.textures_delta.clear();
+
+            assert_eq!(observed_widget, Some(focused_widget));
+            assert_eq!(
+                context.memory(|memory| memory.focused()),
+                Some(focused_widget)
+            );
+        }
+    }
+
+    #[test]
     fn scratch_renderer_retains_capacity_and_drains_the_ordering_buffer() {
         let mut snapshot = Snapshot::default();
         let bounds = Box2 {

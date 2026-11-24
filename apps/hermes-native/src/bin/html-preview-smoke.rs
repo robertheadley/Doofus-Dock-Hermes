@@ -316,7 +316,7 @@ fn main() -> Result<(), String> {
     let metadata = serde_json::json!({
         "version": 1,
         "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
-        "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+        "doofusdock_sha": "f23ed02a99c7f8c57f83164d98feadb17cc4ed87",
         "target_commit": target_commit,
         "target_dirty": true,
         "smoke_binary_sha256": format!("{:x}", Sha256::digest(executable_bytes)),

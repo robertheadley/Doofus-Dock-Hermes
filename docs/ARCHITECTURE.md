@@ -39,7 +39,7 @@ The initial tree uses four zones: files/tasks on the left, chat in the center, p
 
 The planned app is a Rust + egui client. The Hermes gateway remains responsible for conversations, tools, models, sessions, and approvals. Hermes-Doofus remains responsible for tasks, plans, requirements, evidence, vault data, and routing decisions. DoofusDock owns only workspace composition. Rust reducers and transport adapters will translate typed messages into views; widgets will not make backend decisions.
 
-The app uses the DoofusDock crates at pinned revision `f6eb49b9e488f4e851d8d3abe18e95d296201bba`. The source checkouts were dirty at review time, so they are not path dependencies and their existing edits were left untouched.
+The app uses DoofusDock `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`, pinned by Git revision in Cargo. The core, presentation, and egui-renderer crates are repository-local snapshots with per-crate source and license notes; the native host remains a Git dependency at the same pinned revision. Hermes preserves its GroupRail restore projection as a consumer extension. DoofusDock updates are opt-in and do not follow `main` automatically.
 
 ## Protocol implementation sequence
 

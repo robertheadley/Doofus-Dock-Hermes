@@ -2,7 +2,7 @@ use crate::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     panic::{AssertUnwindSafe, catch_unwind},
     sync::Arc,
 };
@@ -24,6 +24,7 @@ pub type ModalityValidationHook = Arc<dyn Fn(&Value) -> DockResult<()> + Send + 
 pub type TransitionDurationHook = Arc<dyn Fn(&TransitionRequest) -> u32 + Send + Sync>;
 pub type CodecEncodeHook = Arc<dyn Fn(&Value) -> DockResult<Value> + Send + Sync>;
 pub type CodecDecodeHook = Arc<dyn Fn(&Value) -> DockResult<Value> + Send + Sync>;
+pub type CodecMigrationHook = Arc<dyn Fn(&Value) -> DockResult<Value> + Send + Sync>;
 pub type CommandExecuteHook =
     Arc<dyn Fn(&LayoutDocument, &Value) -> DockResult<TransactionResult> + Send + Sync>;
 pub type HostDiffValidationHook = Arc<dyn Fn(&LayoutDiff) -> DockResult<()> + Send + Sync>;
@@ -131,6 +132,20 @@ pub struct PersistenceCodecExtension {
     pub descriptor: ExtensionDescriptor,
     pub encode: CodecEncodeHook,
     pub decode: CodecDecodeHook,
+}
+#[derive(Clone)]
+pub struct PersistenceCodecMigration {
+    pub from_schema_version: u32,
+    pub to_schema_version: u32,
+    pub migrate: CodecMigrationHook,
+}
+#[derive(Clone)]
+pub struct VersionedPersistenceCodecExtension {
+    pub codec: PersistenceCodecExtension,
+    pub current_schema_version: u32,
+    /// Adjacent, deterministic source-to-target steps. The supplied steps
+    /// must form one continuous chain ending at `current_schema_version`.
+    pub migrations: Vec<PersistenceCodecMigration>,
 }
 #[derive(Clone)]
 pub struct CommandExtension {
@@ -296,6 +311,8 @@ pub struct ExtensionRegistry {
     modalities: HashMap<String, ModalityExtension>,
     transitions: HashMap<String, TransitionExtension>,
     codecs: HashMap<String, PersistenceCodecExtension>,
+    codec_current_versions: HashMap<String, u32>,
+    codec_migrations: HashMap<String, BTreeMap<u32, PersistenceCodecMigration>>,
     commands: HashMap<String, CommandExtension>,
     host_adapters: HashMap<String, HostAdapterExtension>,
     layout_providers: HashMap<String, LayoutProviderExtension>,
@@ -318,6 +335,8 @@ impl Default for ExtensionRegistry {
             modalities: HashMap::new(),
             transitions: HashMap::new(),
             codecs: HashMap::new(),
+            codec_current_versions: HashMap::new(),
+            codec_migrations: HashMap::new(),
             commands: HashMap::new(),
             host_adapters: HashMap::new(),
             layout_providers: HashMap::new(),
@@ -404,9 +423,13 @@ impl ExtensionRegistry {
                         None,
                     )
                 } else if self.codecs.contains_key(id) {
+                    let mut operations = vec!["decode".into(), "encode".into()];
+                    if self.codec_migrations.contains_key(id) {
+                        operations.push("migrate".into());
+                    }
                     (
                         ExtensionKind::PersistenceCodec,
-                        vec!["decode".into(), "encode".into()],
+                        operations,
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
@@ -681,6 +704,171 @@ impl ExtensionRegistry {
         self.register_base(&e.descriptor)?;
         self.codecs.insert(e.descriptor.namespaced_id.clone(), e);
         Ok(())
+    }
+    /// Register a persistence codec with a declared current data schema and
+    /// an adjacent migration chain. Existing codec registration remains
+    /// available for extensions whose persisted schema is host-owned.
+    pub fn register_versioned_persistence_codec(
+        &mut self,
+        extension: VersionedPersistenceCodecExtension,
+    ) -> DockResult<()> {
+        let id = extension.codec.descriptor.namespaced_id.clone();
+        if extension.current_schema_version == 0 {
+            return Err(DockError::new(
+                ErrorCode::SchemaError,
+                "A versioned persistence codec must declare a positive current schema version.",
+                id,
+            ));
+        }
+        let mut migrations = BTreeMap::new();
+        for migration in extension.migrations {
+            if migration.from_schema_version.checked_add(1) != Some(migration.to_schema_version)
+                || migration.to_schema_version > extension.current_schema_version
+            {
+                return Err(DockError::new(
+                    ErrorCode::SchemaError,
+                    "Persistence migrations must advance exactly one schema version and not exceed the current version.",
+                    format!(
+                        "extension={id};from={};to={};current={}",
+                        migration.from_schema_version,
+                        migration.to_schema_version,
+                        extension.current_schema_version
+                    ),
+                ));
+            }
+            let from = migration.from_schema_version;
+            if migrations.insert(from, migration).is_some() {
+                return Err(DockError::new(
+                    ErrorCode::DuplicateId,
+                    "Persistence codec has more than one migration from a schema version.",
+                    format!("extension={id};from={from}"),
+                ));
+            }
+        }
+        if let Some((&first_from, _)) = migrations.first_key_value() {
+            let mut expected = first_from;
+            for migration in migrations.values() {
+                if migration.from_schema_version != expected {
+                    return Err(DockError::new(
+                        ErrorCode::SchemaError,
+                        "Persistence codec migration chain contains a version gap.",
+                        format!("extension={id};expected={expected}"),
+                    ));
+                }
+                expected = migration.to_schema_version;
+            }
+            if expected != extension.current_schema_version {
+                return Err(DockError::new(
+                    ErrorCode::SchemaError,
+                    "Persistence codec migration chain must end at its declared current schema.",
+                    format!(
+                        "extension={id};chain_target={expected};current={}",
+                        extension.current_schema_version
+                    ),
+                ));
+            }
+        }
+
+        self.register_base(&extension.codec.descriptor)?;
+        self.codecs.insert(id.clone(), extension.codec);
+        self.codec_current_versions
+            .insert(id.clone(), extension.current_schema_version);
+        if !migrations.is_empty() {
+            self.codec_migrations.insert(id, migrations);
+        }
+        Ok(())
+    }
+    pub fn persistence_codec_schema_version(&self, id: &str) -> Option<u32> {
+        self.codec_current_versions.get(id).copied()
+    }
+    /// Migrate extension state in memory through the codec's registered
+    /// adjacent steps. The source value is never changed and future schemas
+    /// are rejected before any provider callback runs.
+    pub fn migrate_persistence_codec_state(
+        &self,
+        id: &str,
+        source_version: u32,
+        state: &Value,
+    ) -> DockResult<Value> {
+        let current_version = self
+            .codec_current_versions
+            .get(id)
+            .copied()
+            .ok_or_else(|| {
+                DockError::new(
+                    ErrorCode::UnsupportedOperation,
+                    "Persistence codec has no declared state schema migration contract.",
+                    id,
+                )
+            })?;
+        validate_codec_state_value(state)?;
+        if source_version > current_version {
+            return Err(DockError::new(
+                ErrorCode::SchemaError,
+                "Extension state is newer than the registered persistence codec supports.",
+                format!("extension={id};source={source_version};current={current_version}"),
+            ));
+        }
+        if source_version == current_version {
+            return Ok(state.clone());
+        }
+        self.require_active(id)?;
+
+        let migrations = self.codec_migrations.get(id).ok_or_else(|| {
+            DockError::new(
+                ErrorCode::SchemaError,
+                "No persistence migration chain is registered for the extension state version.",
+                format!("extension={id};source={source_version};current={current_version}"),
+            )
+        })?;
+        let mut steps = Vec::new();
+        let mut version = source_version;
+        while version < current_version {
+            if steps.len() >= 64 {
+                return Err(DockError::new(
+                    ErrorCode::ResourceLimit,
+                    "Persistence migration chain exceeds its step limit.",
+                    format!("extension={id};source={source_version};current={current_version}"),
+                ));
+            }
+            let migration = migrations.get(&version).ok_or_else(|| {
+                DockError::new(
+                    ErrorCode::SchemaError,
+                    "Persistence migration chain does not cover the extension state version.",
+                    format!("extension={id};missing_from={version};current={current_version}"),
+                )
+            })?;
+            steps.push(migration);
+            version = migration.to_schema_version;
+        }
+
+        let mut migrated = state.clone();
+        for migration in steps {
+            let result = catch_unwind(AssertUnwindSafe(|| (migration.migrate)(&migrated)))
+                .map_err(|_| {
+                    DockError::new(
+                        ErrorCode::ExtensionError,
+                        "Persistence migration callback panicked.",
+                        format!(
+                            "extension={id};from={};to={}",
+                            migration.from_schema_version, migration.to_schema_version
+                        ),
+                    )
+                })?
+                .map_err(|error| {
+                    DockError::new(
+                        ErrorCode::ExtensionError,
+                        "Persistence migration callback rejected extension state.",
+                        format!(
+                            "extension={id};from={};to={};cause={error}",
+                            migration.from_schema_version, migration.to_schema_version
+                        ),
+                    )
+                })?;
+            validate_codec_state_value(&result)?;
+            migrated = result;
+        }
+        Ok(migrated)
     }
     pub fn register_command(&mut self, e: CommandExtension) -> DockResult<()> {
         self.register_base(&e.descriptor)?;
@@ -1237,6 +1425,26 @@ impl ExtensionRegistry {
         })?
     }
 }
+fn validate_codec_state_value(value: &Value) -> DockResult<()> {
+    let limits = PersistenceLimits::default();
+    let encoded = serde_json::to_vec(value).map_err(|error| {
+        DockError::new(
+            ErrorCode::SerializationError,
+            "Extension state cannot be serialized as JSON.",
+            error.to_string(),
+        )
+    })?;
+    if encoded.len() > limits.maximum_bytes {
+        return Err(DockError::new(
+            ErrorCode::ResourceLimit,
+            "Extension state exceeds the persistence byte limit.",
+            format!("bytes={};limit={}", encoded.len(), limits.maximum_bytes),
+        ));
+    }
+    let mut nodes = 0;
+    crate::persistence::check_preference_bounds(value, limits, 0, &mut nodes)
+}
+
 fn validate_panel_shell_spec(spec: &PanelShellSpec, panel: &PanelDescriptor) -> DockResult<()> {
     let invalid_text =
         |value: &str| value.is_empty() || value.len() > 512 || value.chars().any(char::is_control);

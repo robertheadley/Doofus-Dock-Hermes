@@ -54,10 +54,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
     )?;
 
-    let floated = workspace.transact(
-        composed.document.revision,
-        "float-inspector".into(),
-        [Operation::FloatPanel {
+    let embedded_host = HostCapabilities {
+        supported: ["embedded_viewport".into()].into_iter().collect(),
+    };
+    let before_float = workspace.snapshot();
+    let float_plan = plan_modality_change(
+        &composed.document,
+        ModalityChange::EmbeddedFloating {
             panel: "inspector".into(),
             window: "inspector-window".into(),
             geometry: Rect {
@@ -68,8 +71,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             monitor: "primary".into(),
             scale: 1.0,
-        }],
+        },
+        &embedded_host,
     )?;
+    assert_eq!(before_float.document, composed.document);
+    let floated = float_plan.commit(&mut workspace)?;
     assert_eq!(floated.document.floating_windows.len(), 1);
 
     let undone = workspace.undo(floated.document.revision)?;
@@ -202,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     validate_layout(&docked_pip.document)?;
 
     let operation_schema = builtin_operation_json_schema();
-    assert_eq!(operation_schema["oneOf"].as_array().unwrap().len(), 35);
+    assert_eq!(operation_schema["oneOf"].as_array().unwrap().len(), 38);
 
     let serialized = serialize_layout(&docked_pip.document)?;
     let restored = deserialize_layout(&serialized, PersistenceLimits::default())?;

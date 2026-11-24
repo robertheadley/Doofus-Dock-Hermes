@@ -1,4 +1,4 @@
 Source: https://github.com/robertheadley/doofusdock
-Source revision: f6eb49b9e488f4e851d8d3abe18e95d296201bba
-Local Hermes parity extension: canonical group minimization and restore state.
+Source revision: f23ed02a99c7f8c57f83164d98feadb17cc4ed87
+Local Hermes addition: group-minimization contract test; core behavior now comes from this upstream revision.
 License: LICENSE (MIT).

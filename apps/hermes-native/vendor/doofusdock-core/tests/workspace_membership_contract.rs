@@ -1,5 +1,6 @@
 use doofusdock_core::{
-    LayoutDocument, Node, Operation, PanelDescriptor, PanelId, apply_operation, validate_layout,
+    HostCapabilities, LayoutDocument, Node, Operation, PanelDescriptor, PanelId, UndoStack,
+    apply_operation, preflight_operation, validate_layout,
 };
 use std::collections::BTreeSet;
 
@@ -21,6 +22,20 @@ fn panel_workspace_memberships_are_atomic_persistent_and_idempotent() {
     validate_layout(&document).unwrap();
 
     let tags = BTreeSet::from(["work".to_string(), "research".to_string()]);
+    let preflight = preflight_operation(
+        &document,
+        &Operation::SetPanelWorkspaceMemberships {
+            panel: PanelId::from("editor"),
+            tags: tags.clone(),
+        },
+        &HostCapabilities::default(),
+    )
+    .unwrap();
+    assert!(
+        preflight.supported,
+        "the public operation catalog must expose this operation"
+    );
+
     let result = apply_operation(
         &document,
         Operation::SetPanelWorkspaceMemberships {
@@ -61,6 +76,34 @@ fn panel_workspace_memberships_are_atomic_persistent_and_idempotent() {
     let encoded = serde_json::to_vec(&result.document).unwrap();
     let restored: LayoutDocument = serde_json::from_slice(&encoded).unwrap();
     assert_eq!(restored, result.document);
+
+    let mut history_document = document.clone();
+    let mut history = UndoStack::new(4);
+    history
+        .execute(
+            &mut history_document,
+            Operation::SetPanelWorkspaceMemberships {
+                panel: PanelId::from("editor"),
+                tags: BTreeSet::from(["work".to_string(), "research".to_string()]),
+            },
+        )
+        .unwrap();
+    history.undo(&mut history_document).unwrap();
+    assert!(
+        history_document
+            .descriptor(&PanelId::from("editor"))
+            .unwrap()
+            .workspace_memberships
+            .is_empty()
+    );
+    history.redo(&mut history_document).unwrap();
+    assert_eq!(
+        history_document
+            .descriptor(&PanelId::from("editor"))
+            .unwrap()
+            .workspace_memberships,
+        BTreeSet::from(["work".to_string(), "research".to_string()])
+    );
 }
 
 #[test]

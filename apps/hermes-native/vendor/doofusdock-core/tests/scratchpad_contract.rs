@@ -121,6 +121,23 @@ fn named_scratchpad_visibility_and_summon_geometry_are_canonical_and_reversible(
         .unwrap();
     assert!(repeated.diff.is_empty());
     assert_eq!(repeated.document.revision, 3);
+
+    let undo = service.undo(3).unwrap();
+    assert_eq!(
+        undo.document.floating_windows[0]
+            .scratchpad
+            .as_ref()
+            .map(|state| state.visible),
+        Some(true)
+    );
+    let redo = service.redo(undo.document.revision).unwrap();
+    assert_eq!(
+        redo.document.floating_windows[0]
+            .scratchpad
+            .as_ref()
+            .map(|state| state.visible),
+        Some(false)
+    );
 }
 
 #[test]

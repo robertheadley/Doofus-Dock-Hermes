@@ -553,6 +553,32 @@ impl WorkspaceDocumentHost {
         host_capabilities: crate::HostCapabilities,
         limit: usize,
     ) -> DockResult<Vec<crate::TriggeredRuleEvaluation>> {
+        self.poll_rule_events_with_host_context(
+            workspace,
+            rules,
+            host_capabilities,
+            limit,
+            |_, _, _| None,
+        )
+    }
+
+    /// Poll workspace events and enrich each canonical per-panel context with
+    /// host observations looked up by the exact workspace, revision, and
+    /// panel. Returning `None` leaves host-only predicates unset, so rules
+    /// requiring those fields do not match. The resolver must use historical
+    /// observations for the requested revision rather than current host state.
+    pub fn poll_rule_events_with_host_context(
+        &mut self,
+        workspace: &WorkspaceId,
+        rules: &crate::WindowRuleSet,
+        host_capabilities: crate::HostCapabilities,
+        limit: usize,
+        mut resolve_host_context: impl FnMut(
+            &WorkspaceId,
+            u64,
+            &crate::PanelId,
+        ) -> Option<crate::WindowRuleHostContext>,
+    ) -> DockResult<Vec<crate::TriggeredRuleEvaluation>> {
         let subscription = self
             .rule_event_subscriptions
             .get(workspace)
@@ -582,11 +608,21 @@ impl WorkspaceDocumentHost {
             .collect::<BTreeSet<_>>();
         let mut contexts = Vec::new();
         for revision in revisions {
-            contexts.extend(self.rule_contexts_for_revision(
-                workspace,
-                revision,
-                host_capabilities.clone(),
-            )?);
+            let mut revision_contexts =
+                self.rule_contexts_for_revision(workspace, revision, host_capabilities.clone())?;
+            for context in &mut revision_contexts {
+                if let Some(host) =
+                    resolve_host_context(&context.workspace_id, context.revision, &context.panel_id)
+                {
+                    context.group_id = host.group_id;
+                    context.modality = host.modality;
+                    context.focused = host.focused;
+                    context.monitor_role = host.monitor_role;
+                    context.viewport_class = host.viewport_class;
+                    context.user_metadata = host.user_metadata;
+                }
+            }
+            contexts.extend(revision_contexts);
         }
         self.rule_event_consumers
             .get_mut(workspace)
@@ -866,7 +902,6 @@ impl WorkspaceDocumentHost {
                     &workspace.0,
                 )
             })?;
-        staged_consumer.suppress_command(command.clone())?;
         let result = plan.commit(
             self.services.get_mut(workspace).ok_or_else(|| {
                 workspace_error(
@@ -875,8 +910,11 @@ impl WorkspaceDocumentHost {
                     &workspace.0,
                 )
             })?,
-            command,
+            command.clone(),
         )?;
+        if result.transaction.is_some() || !result.host_intents.is_empty() {
+            staged_consumer.suppress_command(command.clone())?;
+        }
         self.rule_event_consumers
             .insert(workspace.clone(), staged_consumer);
         self.retain_active_rule_context_revision(self.snapshot().document);
@@ -2045,6 +2083,98 @@ mod tests {
         assert_eq!(triggered[1].evaluation.base_revision, 1);
         assert!(
             host.poll_rule_events(&work, &rules, crate::HostCapabilities::default(), 16,)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn workspace_rule_polling_matches_revision_bound_host_context_and_fails_closed_when_missing() {
+        let work = WorkspaceId::from("work");
+        let mut catalog = WorkspaceCatalog::default();
+        catalog.create(work.clone(), "Work").unwrap();
+        let make_host = || {
+            WorkspaceDocumentHost::new(catalog.clone(), [workspace_document("work", "editor")], 8)
+                .unwrap()
+        };
+        let rules = crate::WindowRuleSet {
+            schema_version: 1,
+            rules: vec![crate::WindowRule {
+                id: "primary-wide-display-rule".into(),
+                enabled: true,
+                priority: 1,
+                overrides: Vec::new(),
+                event_kinds: BTreeSet::from([crate::FrameworkEventKind::FocusChanged]),
+                predicate: crate::WindowRulePredicate {
+                    monitor_role: Some("primary".into()),
+                    viewport_class: Some("wide".into()),
+                    user_metadata: BTreeMap::from([("display".into(), "left".into())]),
+                    ..crate::WindowRulePredicate::default()
+                },
+                actions: vec![crate::WindowRuleAction::SetPinned { pinned: true }],
+            }],
+        };
+
+        let mut host = make_host();
+        host.observe_host_event(
+            &work,
+            0,
+            "host-context-focus".into(),
+            crate::HostObservation::PanelFocused {
+                panel: "editor".into(),
+                floating_window: None,
+            },
+        )
+        .unwrap();
+        let matched = host
+            .poll_rule_events_with_host_context(
+                &work,
+                &rules,
+                crate::HostCapabilities::default(),
+                16,
+                |workspace, revision, panel| {
+                    assert_eq!(workspace, &work);
+                    assert_eq!(revision, 0, "resolver receives the event's old revision");
+                    assert_eq!(panel, &crate::PanelId::from("editor"));
+                    Some(crate::WindowRuleHostContext {
+                        group_id: Some(crate::NodeId::from("work-tabs")),
+                        modality: Some(crate::ModalityId::from("workspace:tabs")),
+                        focused: true,
+                        monitor_role: Some("primary".into()),
+                        viewport_class: Some("wide".into()),
+                        user_metadata: BTreeMap::from([("display".into(), "left".into())]),
+                    })
+                },
+            )
+            .unwrap();
+        assert_eq!(matched.len(), 1);
+        assert_eq!(matched[0].evaluation.base_revision, 0);
+        assert_eq!(
+            matched[0].evaluation.matched_rules[0],
+            "primary-wide-display-rule"
+        );
+
+        let mut host_without_observation = make_host();
+        host_without_observation
+            .observe_host_event(
+                &work,
+                0,
+                "missing-host-context-focus".into(),
+                crate::HostObservation::PanelFocused {
+                    panel: "editor".into(),
+                    floating_window: None,
+                },
+            )
+            .unwrap();
+        assert!(
+            host_without_observation
+                .poll_rule_events_with_host_context(
+                    &work,
+                    &rules,
+                    crate::HostCapabilities::default(),
+                    16,
+                    |_, _, _| None,
+                )
                 .unwrap()
                 .is_empty()
         );

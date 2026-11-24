@@ -156,6 +156,7 @@ pub fn builtin_operation_support(
         (
             "layout_edit",
             &[
+                "set_panel_workspace_memberships",
                 "set_tab_pinned",
                 "convert_container",
                 "set_stack_expanded",
@@ -338,6 +339,10 @@ pub fn builtin_operation_support(
 /// still evaluated by [`preflight_operation`].
 pub fn builtin_operation_json_schema() -> serde_json::Value {
     const OPERATIONS: &[(&str, &[(&str, bool)])] = &[
+        (
+            "set_panel_workspace_memberships",
+            &[("panel", true), ("tags", true)],
+        ),
         ("set_tab_pinned", &[("panel", true), ("pinned", true)]),
         (
             "convert_container",
@@ -607,9 +612,11 @@ fn operation_field_schema(operation: &str, field: &str) -> serde_json::Value {
             "maxItems": if operation == "center_panel_group" { MAX_PREFLIGHT_TARGETS - 1 } else { MAX_PREFLIGHT_TARGETS },
             "items": {"type": "string", "minLength": 1, "maxLength": 4096}
         }),
-        "pinned" | "expanded" | "before" | "enabled" | "minimized" => {
-            json!({"type": "boolean"})
-        }
+        "tags" => json!({
+            "type": "array", "maxItems": 64, "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]+$"}
+        }),
+        "pinned" | "expanded" | "before" | "enabled" | "minimized" => json!({"type": "boolean"}),
         "orientation" => json!({"$ref": "#/$defs/Orientation"}),
         "ratio" => json!({
             "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1
@@ -868,7 +875,6 @@ fn operation_target_ids(operation: &Operation) -> DockResult<Vec<String>> {
             format!("container:{}", container.0),
             format!("node:{}", child.0),
         ],
-        Operation::SetGroupMinimized { group, .. } => vec![format!("group:{}", group.0)],
         Operation::FloatGroup { group, window, .. } => {
             vec![format!("group:{}", group.0), format!("window:{}", window.0)]
         }
@@ -877,6 +883,7 @@ fn operation_target_ids(operation: &Operation) -> DockResult<Vec<String>> {
             .map(|panel| format!("panel:{}", panel.0))
             .collect(),
         Operation::ResizeSplit { split, .. } => vec![format!("container:{}", split.0)],
+        Operation::SetGroupMinimized { group, .. } => vec![format!("group:{}", group.0)],
         Operation::SelectTab { tabs, .. } => vec![format!("container:{}", tabs.0)],
         Operation::ActivateDocumentGroup { well, .. } => vec![format!("container:{}", well.0)],
         Operation::AddPanel { descriptor, target } => {
@@ -1041,6 +1048,7 @@ pub enum Operation {
     ReorderPanel {
         panel: PanelId,
         container: NodeId,
+        /// Insertion boundary before the original child at this index; `child_count` appends.
         index: usize,
     },
     ClosePanel {
@@ -2282,10 +2290,10 @@ pub fn apply_operation(doc: &LayoutDocument, op: Operation) -> DockResult<Transa
                     ));
                 }
             };
-            if index >= count {
+            if index > count {
                 return Err(DockError::new(
                     ErrorCode::ConstraintViolation,
-                    "Reorder index outside container.",
+                    "Reorder insertion boundary outside container.",
                     index.to_string(),
                 ));
             }
@@ -2489,32 +2497,22 @@ pub fn apply_operation(doc: &LayoutDocument, op: Operation) -> DockResult<Transa
             finish(doc, next, "resize-split")
         }
         Operation::SetGroupMinimized { group, minimized } => {
-            let node = all_find(doc, &group).ok_or_else(|| {
-                DockError::new(ErrorCode::NotFound, "Tab group not found.", group.0.clone())
-            })?;
-            if !matches!(node.kind, NodeKind::Tabs { .. }) {
-                return Err(DockError::new(
-                    ErrorCode::UnsupportedOperation,
-                    "Only a tab group can be minimized.",
-                    group.0,
-                ));
-            }
             let mut next = doc.clone();
-            let changed = replace(&mut next, &group, |node| {
+            let updated = replace(&mut next, &group, |node| {
                 if let NodeKind::Tabs {
-                    minimized: state, ..
+                    minimized: current, ..
                 } = &mut node.kind
                 {
-                    *state = minimized;
+                    *current = minimized;
                     true
                 } else {
                     false
                 }
             });
-            if !changed {
+            if !updated {
                 return Err(DockError::new(
                     ErrorCode::NotFound,
-                    "Tab group disappeared before minimize operation.",
+                    "Tab group not found.",
                     group.0,
                 ));
             }

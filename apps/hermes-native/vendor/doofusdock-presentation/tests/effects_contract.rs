@@ -44,7 +44,42 @@ fn built_in_effect_capabilities_project_as_bounded_schema_relationships() {
         .iter()
         .filter(|node| node.node_type == "effect_capability")
         .collect::<Vec<_>>();
-    assert_eq!(effects.len(), 8);
+    assert_eq!(effects.len(), 15);
+    assert!(
+        effects
+            .iter()
+            .any(|node| node.metadata["effect_id"] == "tile_assembly")
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|node| node.metadata["effect_id"] == "fly_in")
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|node| node.metadata["effect_id"] == "unfold")
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|node| node.metadata["effect_id"] == "fly_out")
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|node| node.metadata["effect_id"] == "collapse")
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|node| node.metadata["effect_id"] == "card_stack")
+    );
+    assert!(
+        effects
+            .iter()
+            .any(|node| node.metadata["effect_id"] == "fluid_ripple")
+    );
     let awakening = effects
         .iter()
         .find(|node| node.metadata["effect_id"] == "awakening")
@@ -85,6 +120,314 @@ fn built_in_effect_capabilities_project_as_bounded_schema_relationships() {
     let mut too_deep = built_in_effect_capability_report();
     too_deep.observations[0].schema = nested_schema;
     assert!(too_deep.validate().is_err());
+}
+
+#[test]
+fn tile_assembly_is_deterministic_reversible_and_reduced_motion_safe() {
+    let doc = sample_workbench();
+    let source = doc.clone();
+    let viewport = Box2 {
+        x: 19.0,
+        y: 31.0,
+        w: 1000.0,
+        h: 600.0,
+    };
+    let sample = |progress, reduced_motion| {
+        evaluate_scene_effects(
+            "tile_assembly",
+            EffectContext {
+                time_seconds: 0.0,
+                progress,
+                viewport,
+                seed: 7,
+                lod_budget: 32,
+                reduced_motion,
+                pulse: 0.0,
+                canonical_doc: &doc,
+            },
+        )
+        .unwrap()
+    };
+    let start = sample(0.0, false);
+    let early = sample(0.25, false);
+    let middle = sample(0.5, false);
+    let end = sample(1.0, false);
+    assert_ne!(start.panels, middle.panels);
+    assert_ne!(middle.panels, end.panels);
+    assert_eq!(middle, sample(0.5, false));
+    assert_eq!(early, sample(0.25, false));
+    assert_eq!(
+        end.panels,
+        doofusdock_presentation::project(&doc, viewport)
+            .unwrap()
+            .panels
+    );
+    assert_eq!(sample(0.0, true).panels, end.panels);
+    assert_eq!(doc, source);
+}
+
+#[test]
+fn fly_in_staggers_from_offstage_and_reduced_motion_settles() {
+    let doc = sample_workbench();
+    let viewport = Box2 {
+        x: 19.0,
+        y: 31.0,
+        w: 1000.0,
+        h: 600.0,
+    };
+    let sample = |progress, reduced_motion| {
+        evaluate_scene_effects(
+            "fly_in",
+            EffectContext {
+                time_seconds: 0.0,
+                progress,
+                viewport,
+                seed: 11,
+                lod_budget: 32,
+                reduced_motion,
+                pulse: 0.0,
+                canonical_doc: &doc,
+            },
+        )
+        .unwrap()
+    };
+    let start = sample(0.0, false);
+    assert!(start.panels.values().all(|panel| panel.opacity == 0.0));
+    assert!(start.panels.values().any(|panel| {
+        panel.bounds.x + panel.bounds.w <= viewport.x
+            || panel.bounds.y + panel.bounds.h <= viewport.y
+            || panel.bounds.x >= viewport.x + viewport.w
+            || panel.bounds.y >= viewport.y + viewport.h
+    }));
+    let middle = sample(0.5, false);
+    let end = sample(1.0, false);
+    assert_ne!(middle.panels, end.panels);
+    assert_eq!(middle, sample(0.5, false));
+    assert_eq!(
+        end.panels,
+        doofusdock_presentation::project(&doc, viewport)
+            .unwrap()
+            .panels
+    );
+    assert_eq!(sample(0.0, true).panels, end.panels);
+}
+
+#[test]
+fn unfold_opens_from_center_seams_and_reduced_motion_settles() {
+    let doc = sample_workbench();
+    let source = doc.clone();
+    let viewport = Box2 {
+        x: 19.0,
+        y: 31.0,
+        w: 1000.0,
+        h: 600.0,
+    };
+    let sample = |progress, reduced_motion| {
+        evaluate_scene_effects(
+            "unfold",
+            EffectContext {
+                time_seconds: 0.0,
+                progress,
+                viewport,
+                seed: 11,
+                lod_budget: 32,
+                reduced_motion,
+                pulse: 0.0,
+                canonical_doc: &doc,
+            },
+        )
+        .unwrap()
+    };
+    let start = sample(0.0, false);
+    let base = doofusdock_presentation::project(&doc, viewport).unwrap();
+    for (id, panel) in &start.panels {
+        let target = &base.panels[id];
+        assert_eq!(panel.bounds.w, 0.0);
+        assert_eq!(panel.bounds.x, target.bounds.x + target.bounds.w * 0.5);
+    }
+    let middle = sample(0.5, false);
+    let end = sample(1.0, false);
+    assert_ne!(middle.panels, end.panels);
+    assert_eq!(middle, sample(0.5, false));
+    assert_eq!(end.panels, base.panels);
+    assert_eq!(sample(0.0, true).panels, end.panels);
+    assert_eq!(doc, source);
+}
+
+#[test]
+fn fly_out_staggers_beyond_viewport_and_reduced_motion_skips_animation() {
+    let doc = sample_workbench();
+    let source = doc.clone();
+    let viewport = Box2 {
+        x: 19.0,
+        y: 31.0,
+        w: 1000.0,
+        h: 600.0,
+    };
+    let sample = |progress, reduced_motion| {
+        evaluate_scene_effects(
+            "fly_out",
+            EffectContext {
+                time_seconds: 0.0,
+                progress,
+                viewport,
+                seed: 11,
+                lod_budget: 32,
+                reduced_motion,
+                pulse: 0.0,
+                canonical_doc: &doc,
+            },
+        )
+        .unwrap()
+    };
+    let start = sample(0.0, false);
+    let base = doofusdock_presentation::project(&doc, viewport).unwrap();
+    assert_eq!(start.panels, base.panels);
+    let middle = sample(0.5, false);
+    let end = sample(1.0, false);
+    assert_ne!(middle.panels, end.panels);
+    assert_eq!(middle, sample(0.5, false));
+    assert!(end.panels.values().all(|panel| panel.opacity == 0.0));
+    assert!(end.panels.values().all(|panel| {
+        panel.bounds.x + panel.bounds.w <= viewport.x
+            || panel.bounds.y + panel.bounds.h <= viewport.y
+            || panel.bounds.x >= viewport.x + viewport.w
+            || panel.bounds.y >= viewport.y + viewport.h
+    }));
+    assert_eq!(sample(1.0, true).panels, base.panels);
+    assert_eq!(doc, source);
+}
+
+#[test]
+fn collapse_closes_to_center_seams_and_reduced_motion_skips_animation() {
+    let doc = sample_workbench();
+    let source = doc.clone();
+    let viewport = Box2 {
+        x: 19.0,
+        y: 31.0,
+        w: 1000.0,
+        h: 600.0,
+    };
+    let sample = |progress, reduced_motion| {
+        evaluate_scene_effects(
+            "collapse",
+            EffectContext {
+                time_seconds: 0.0,
+                progress,
+                viewport,
+                seed: 11,
+                lod_budget: 32,
+                reduced_motion,
+                pulse: 0.0,
+                canonical_doc: &doc,
+            },
+        )
+        .unwrap()
+    };
+    let base = doofusdock_presentation::project(&doc, viewport).unwrap();
+    let start = sample(0.0, false);
+    let end = sample(1.0, false);
+    assert_eq!(start.panels, base.panels);
+    let middle = sample(0.5, false);
+    assert_ne!(middle.panels, end.panels);
+    assert_eq!(middle, sample(0.5, false));
+    for (id, panel) in &end.panels {
+        let target = &base.panels[id];
+        assert_eq!(panel.bounds.w, 0.0);
+        assert_eq!(panel.bounds.x, target.bounds.x + target.bounds.w * 0.5);
+        assert_eq!(panel.opacity, 0.0);
+    }
+    assert_eq!(sample(1.0, true).panels, base.panels);
+    assert_eq!(doc, source);
+}
+
+#[test]
+fn card_stack_converges_to_stable_order_and_reduced_motion_keeps_layout() {
+    let doc = sample_workbench();
+    let source = doc.clone();
+    let viewport = Box2 {
+        x: 19.0,
+        y: 31.0,
+        w: 1000.0,
+        h: 600.0,
+    };
+    let sample = |progress, reduced_motion| {
+        evaluate_scene_effects(
+            "card_stack",
+            EffectContext {
+                time_seconds: 0.0,
+                progress,
+                viewport,
+                seed: 11,
+                lod_budget: 32,
+                reduced_motion,
+                pulse: 0.0,
+                canonical_doc: &doc,
+            },
+        )
+        .unwrap()
+    };
+    let base = doofusdock_presentation::project(&doc, viewport).unwrap();
+    let start = sample(0.0, false);
+    let middle = sample(0.5, false);
+    let end = sample(1.0, false);
+    assert_eq!(start.panels, base.panels);
+    assert_ne!(middle.panels, end.panels);
+    assert_eq!(middle, sample(0.5, false));
+    let stacked = end.panels.values().collect::<Vec<_>>();
+    assert!(stacked.windows(2).all(|pair| pair[0].z < pair[1].z));
+    assert!(
+        stacked
+            .iter()
+            .all(|panel| panel.bounds.w > 0.0 && panel.bounds.h > 0.0)
+    );
+    assert_eq!(sample(1.0, true).panels, base.panels);
+    assert_eq!(doc, source);
+}
+
+#[test]
+fn fluid_ripple_is_deterministic_bounded_and_settles_canonically() {
+    let doc = sample_workbench();
+    let source = doc.clone();
+    let viewport = Box2 {
+        x: 19.0,
+        y: 31.0,
+        w: 1000.0,
+        h: 600.0,
+    };
+    let sample = |progress, reduced_motion| {
+        evaluate_scene_effects(
+            "fluid_ripple",
+            EffectContext {
+                time_seconds: 0.0,
+                progress,
+                viewport,
+                seed: 37,
+                lod_budget: 32,
+                reduced_motion,
+                pulse: 0.0,
+                canonical_doc: &doc,
+            },
+        )
+        .unwrap()
+    };
+    let base = doofusdock_presentation::project(&doc, viewport).unwrap();
+    let start = sample(0.0, false);
+    let middle = sample(0.5, false);
+    let end = sample(1.0, false);
+    assert!(start.panels.values().all(|panel| panel.opacity == 0.0));
+    assert_ne!(middle.panels, end.panels);
+    assert_eq!(middle, sample(0.5, false));
+    assert!(middle.panels.values().all(|panel| {
+        panel.bounds.valid()
+            && panel.bounds.w > 0.0
+            && panel.bounds.h > 0.0
+            && panel.opacity.is_finite()
+            && (0.0..=1.0).contains(&panel.opacity)
+    }));
+    assert_eq!(end.panels, base.panels);
+    assert_eq!(sample(0.0, true).panels, base.panels);
+    assert_eq!(doc, source);
 }
 
 #[test]
@@ -527,18 +870,41 @@ fn morph_focus_regeneration_and_recovery_have_distinct_visible_states() {
             .unwrap()
             .panels
     );
-    for progress in [0.0, 0.3, 0.75, 0.99] {
+    for progress in [0.3, 0.6] {
         let storm = scene("kinetic_storm", progress);
         let mut center = (0.0, 0.0);
         for item in &storm.decorative {
             let b = item.bounds;
-            assert!((b.w / b.h - 16.0 / 9.0).abs() < 1e-9);
+            assert!(b.valid());
+            assert!(viewport.contains(b.x, b.y));
             center.0 += b.x + b.w * 0.5;
             center.1 += b.y + b.h * 0.5;
         }
         let n = storm.decorative.len() as f64;
         assert!((center.0 / n - viewport.x - viewport.w * 0.5).abs() < 1e-6);
         assert!((center.1 / n - viewport.y - viewport.h * 0.5).abs() < 1e-6);
+    }
+
+    let fused = scene("kinetic_storm", 1.0);
+    assert!(fused.panels.values().all(|panel| panel.opacity == 1.0));
+    let base = doofusdock_presentation::project(&doc, viewport).unwrap();
+    assert_eq!(fused.decorative.len(), base.panels.len() * 4);
+    for (panel_index, (_, panel)) in base.panels.iter().enumerate() {
+        for piece in 0..4 {
+            let fragment = &fused
+                .decorative
+                .iter()
+                .find(|item| item.id == format!("storm_{}", panel_index * 4 + piece))
+                .expect("fragment id remains stable")
+                .bounds;
+            let target = Box2 {
+                x: panel.bounds.x + (piece % 2) as f64 * panel.bounds.w * 0.5,
+                y: panel.bounds.y + (piece / 2) as f64 * panel.bounds.h * 0.5,
+                w: panel.bounds.w * 0.5,
+                h: panel.bounds.h * 0.5,
+            };
+            assert_eq!(*fragment, target);
+        }
     }
 }
 

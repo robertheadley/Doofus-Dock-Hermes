@@ -1,5 +1,5 @@
 use crate::*;
-use std::cmp::{max, min};
+use std::cmp::{Ordering, max, min};
 #[derive(Clone, Debug, PartialEq)]
 pub struct SplitPreview {
     pub weights: Vec<f64>,
@@ -84,7 +84,7 @@ fn monitor_for_geometry<'a>(
                 && center_y >= monitor.work_area.y as f64
                 && center_y < monitor.work_area.y.saturating_add(monitor.work_area.height) as f64
         })
-        .max_by_key(|monitor| monitor.primary)
+        .max_by(|left, right| compare_monitor_tie_break(left, right))
     {
         return Some(monitor);
     }
@@ -100,10 +100,11 @@ fn monitor_for_geometry<'a>(
             as f64;
         (right - left).max(0.0) * (bottom - top).max(0.0)
     };
-    if let Some(monitor) = monitors
-        .iter()
-        .max_by(|left, right| intersection(left).total_cmp(&intersection(right)))
-        && intersection(&monitor) > 0.0
+    if let Some(monitor) = monitors.iter().max_by(|left, right| {
+        intersection(left)
+            .total_cmp(&intersection(right))
+            .then_with(|| compare_monitor_tie_break(left, right))
+    }) && intersection(&monitor) > 0.0
     {
         return Some(monitor);
     }
@@ -111,8 +112,20 @@ fn monitor_for_geometry<'a>(
     monitors
         .iter()
         .find(|monitor| monitor.id == preferred_monitor)
-        .or_else(|| monitors.iter().find(|monitor| monitor.primary))
-        .or_else(|| monitors.first())
+        .or_else(|| {
+            monitors
+                .iter()
+                .filter(|monitor| monitor.primary)
+                .min_by(|left, right| left.id.cmp(&right.id))
+        })
+        .or_else(|| monitors.iter().min_by(|left, right| left.id.cmp(&right.id)))
+}
+
+/// Prefer primary displays, then the lexically smallest stable monitor ID.
+fn compare_monitor_tie_break(left: &MonitorInfo, right: &MonitorInfo) -> Ordering {
+    left.primary
+        .cmp(&right.primary)
+        .then_with(|| right.id.cmp(&left.id))
 }
 
 /// Keep a floating window reachable after display removal or DPI change.
@@ -433,7 +446,6 @@ pub fn project_narrow_viewport(doc: &LayoutDocument, size: Size) -> DockResult<L
                 active_index,
                 items,
                 minimized,
-                ..
             } => Node::tabs_with_minimized(
                 n.id.clone(),
                 items.iter().map(|x| proj(x, d, s, c)).collect(),

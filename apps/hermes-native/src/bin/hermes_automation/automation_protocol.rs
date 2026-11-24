@@ -1462,7 +1462,7 @@ fn capture_screenshot(
         "timestamp_utc": captured_at,
         "request_id": request_id,
         "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
-        "doofusdock_sha": "f6eb49b9e488f4e851d8d3abe18e95d296201bba",
+        "doofusdock_sha": "f23ed02a99c7f8c57f83164d98feadb17cc4ed87",
         "target_commit": target_git_commit,
         "target_worktree_dirty": target_worktree_dirty,
         "build_id": executable_sha256,
@@ -2979,7 +2979,7 @@ mod tests {
             "id": "resize-split",
             "method": "actions.drag",
             "params": {
-                "role": "Button",
+                "role": "Splitter",
                 "name": handle_name,
                 "to_x": 430.0,
                 "to_y": 480.0,
@@ -2988,7 +2988,7 @@ mod tests {
             }
         });
         let response = protocol.handle(request, &mut harness, &app);
-        assert_eq!(response["status"], "succeeded");
+        assert_eq!(response["status"], "succeeded", "{response}");
         let after = &response["result"]["after"];
         let resized_weights = &after["layout_document"]["root"]["weights"];
         assert_ne!(*resized_weights, initial_weights);
@@ -3075,7 +3075,7 @@ mod tests {
         );
         assert_eq!(
             metadata["doofusdock_sha"],
-            "f6eb49b9e488f4e851d8d3abe18e95d296201bba"
+            "f23ed02a99c7f8c57f83164d98feadb17cc4ed87"
         );
         assert!(metadata["timestamp_utc"].as_str().unwrap().ends_with('Z'));
         assert!(

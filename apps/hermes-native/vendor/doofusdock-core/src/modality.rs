@@ -404,6 +404,10 @@ pub(crate) fn converted_container(node: &Node, target: &ContainerModality) -> Do
             _ => {}
         }
     }
+    let minimized = match &node.kind {
+        NodeKind::Tabs { minimized, .. } => *minimized,
+        _ => false,
+    };
     let children = match &node.kind {
         NodeKind::Tabs { items, .. } => items,
         NodeKind::Split { children, .. } => children,
@@ -470,13 +474,13 @@ pub(crate) fn converted_container(node: &Node, target: &ContainerModality) -> Do
                     .unwrap_or(*active_index);
                 NodeKind::Tabs {
                     active_index: selected_index.min(ordered_children.len().saturating_sub(1)),
-                    minimized: false,
+                    minimized,
                     items: ordered_children.clone(),
                 }
             } else {
                 NodeKind::Tabs {
                     active_index: *active_index,
-                    minimized: false,
+                    minimized,
                     items: ordered_children.clone(),
                 }
             }
@@ -742,6 +746,16 @@ pub enum ModalityChange {
         monitor: String,
         scale: f64,
     },
+    /// Float a panel in the host's in-window/embedded viewport implementation.
+    /// The canonical operation is the same as native floating; realization is
+    /// selected by the host capability negotiated for this plan.
+    EmbeddedFloating {
+        panel: PanelId,
+        window: WindowId,
+        geometry: Rect,
+        monitor: String,
+        scale: f64,
+    },
     PictureInPicture {
         panel: PanelId,
         window: WindowId,
@@ -863,6 +877,22 @@ pub fn plan_modality_change(
             scale,
         } => (
             "native_viewport",
+            vec![Operation::FloatPanel {
+                panel,
+                window,
+                geometry,
+                monitor,
+                scale,
+            }],
+        ),
+        ModalityChange::EmbeddedFloating {
+            panel,
+            window,
+            geometry,
+            monitor,
+            scale,
+        } => (
+            "embedded_viewport",
             vec![Operation::FloatPanel {
                 panel,
                 window,

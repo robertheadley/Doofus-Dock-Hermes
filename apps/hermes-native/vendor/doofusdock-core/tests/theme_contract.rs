@@ -62,6 +62,187 @@ fn package_editor_rejects_invalid_edits_without_mutation_and_round_trips_saved_p
 }
 
 #[test]
+fn loading_legacy_theme_upgrades_with_backup_and_preserves_assets() {
+    let package = TempPackage::new();
+    let path = package.0.join("theme.json");
+    let asset_directory = package.0.join("assets");
+    fs::create_dir_all(&asset_directory).unwrap();
+    let asset_path = asset_directory.join("frame.png");
+    let asset_bytes = b"theme asset bytes must remain untouched";
+    fs::write(&asset_path, asset_bytes).unwrap();
+
+    let mut manifest = sample();
+    manifest.assets.push(ThemeAsset {
+        id: "frame".into(),
+        path: "assets/frame.png".into(),
+        format: ThemeAssetFormat::Png,
+        source_width: 1,
+        source_height: 1,
+        scale: 1.0,
+        transparency: ThemeTransparency::Alpha,
+        color_key: None,
+        nine_slice: None,
+        edge_tiling: ThemeTiling::Stretch,
+        center_tiling: ThemeTiling::Stretch,
+        provenance: None,
+    });
+    manifest.validate().unwrap();
+    let legacy_source = serde_json::to_vec(&manifest).unwrap();
+    fs::write(&path, &legacy_source).unwrap();
+
+    let read_only = ThemePackageEditor::load(&path).unwrap();
+    assert_eq!(read_only.manifest(), &manifest);
+    assert_eq!(fs::read(&path).unwrap(), legacy_source);
+
+    let (upgraded, migrated) = ThemePackageEditor::load_and_upgrade(&path).unwrap();
+    assert!(migrated);
+    assert_eq!(upgraded.manifest(), &manifest);
+    let current_bytes = fs::read(&path).unwrap();
+    let current_value: Value = serde_json::from_slice(&current_bytes).unwrap();
+    assert_eq!(current_value["format_version"], 1);
+    assert_eq!(
+        ThemeManifest::parse_json(std::str::from_utf8(&current_bytes).unwrap()).unwrap(),
+        manifest
+    );
+    assert_eq!(
+        fs::read(path.with_extension("json.bak")).unwrap(),
+        legacy_source
+    );
+    assert_eq!(fs::read(&asset_path).unwrap(), asset_bytes);
+
+    let (reloaded, migrated_again) = ThemePackageEditor::load_and_upgrade(&path).unwrap();
+    assert!(!migrated_again);
+    assert_eq!(reloaded.manifest(), &manifest);
+    assert_eq!(fs::read(&path).unwrap(), current_bytes);
+    assert_eq!(
+        fs::read(path.with_extension("json.bak")).unwrap(),
+        legacy_source
+    );
+    assert_eq!(fs::read(&asset_path).unwrap(), asset_bytes);
+
+    let future_path = package.0.join("future-theme.json");
+    let mut future = manifest.clone();
+    future.schema_version += 1;
+    let future_bytes = serde_json::to_vec(&future).unwrap();
+    fs::write(&future_path, &future_bytes).unwrap();
+    assert!(ThemePackageEditor::load_and_upgrade(&future_path).is_err());
+    assert_eq!(fs::read(&future_path).unwrap(), future_bytes);
+    assert!(!future_path.with_extension("json.bak").exists());
+
+    let corrupt_path = package.0.join("corrupt-theme.json");
+    let mut corrupt: Value = serde_json::from_slice(&current_bytes).unwrap();
+    corrupt["checksum"] = Value::String("fnv1a64:0000000000000000".into());
+    let corrupt_bytes = serde_json::to_vec(&corrupt).unwrap();
+    fs::write(&corrupt_path, &corrupt_bytes).unwrap();
+    assert!(ThemePackageEditor::load_and_upgrade(&corrupt_path).is_err());
+    assert_eq!(fs::read(&corrupt_path).unwrap(), corrupt_bytes);
+    assert!(!corrupt_path.with_extension("json.bak").exists());
+
+    fs::write(&path, b"corrupt primary after upgrade").unwrap();
+    let recovered = ThemePackageEditor::recover(&path).unwrap();
+    assert_eq!(recovered.manifest(), &manifest);
+    assert_eq!(
+        ThemePackageEditor::load(&path).unwrap().manifest(),
+        &manifest
+    );
+    assert_eq!(
+        fs::read(path.with_extension("json.bak")).unwrap(),
+        legacy_source
+    );
+    assert_eq!(fs::read(&asset_path).unwrap(), asset_bytes);
+}
+
+#[test]
+fn theme_schema_v1_migrates_read_only_then_upgrades_atomically_with_exact_backup() {
+    let package = TempPackage::new();
+    let path = package.0.join("noctua.json");
+    let legacy_bytes = NOCTUA.as_bytes().to_vec();
+    fs::write(&path, &legacy_bytes).unwrap();
+
+    let loaded = ThemePackageEditor::load(&path).unwrap();
+    assert_eq!(loaded.manifest().schema_version, THEME_SCHEMA_VERSION);
+    assert_eq!(loaded.manifest().id, "doofusdock-noctua");
+    assert_eq!(fs::read(&path).unwrap(), legacy_bytes);
+
+    let (upgraded, migrated) = ThemePackageEditor::load_and_upgrade(&path).unwrap();
+    assert!(migrated);
+    assert_eq!(upgraded.manifest().schema_version, THEME_SCHEMA_VERSION);
+    assert_eq!(
+        fs::read(path.with_extension("json.bak")).unwrap(),
+        legacy_bytes
+    );
+    let current_bytes = fs::read(&path).unwrap();
+    let envelope: Value = serde_json::from_slice(&current_bytes).unwrap();
+    assert_eq!(envelope["format_version"], 1);
+    assert_eq!(envelope["manifest"]["schema_version"], THEME_SCHEMA_VERSION);
+
+    let (reloaded, migrated_again) = ThemePackageEditor::load_and_upgrade(&path).unwrap();
+    assert!(!migrated_again);
+    assert_eq!(reloaded.manifest(), upgraded.manifest());
+    assert_eq!(fs::read(&path).unwrap(), current_bytes);
+    assert_eq!(
+        fs::read(path.with_extension("json.bak")).unwrap(),
+        legacy_bytes
+    );
+
+    let envelope_path = package.0.join("checksummed-v1.json");
+    let legacy_manifest: Value = serde_json::from_str(NOCTUA).unwrap();
+    let mut legacy_envelope = serde_json::json!({
+        "format_version": 1,
+        "manifest": legacy_manifest,
+    });
+    let legacy_checksum = checksum_layout_json(&legacy_envelope.to_string()).unwrap();
+    legacy_envelope["checksum"] = Value::String(legacy_checksum);
+    let legacy_envelope_bytes = serde_json::to_vec_pretty(&legacy_envelope).unwrap();
+    fs::write(&envelope_path, &legacy_envelope_bytes).unwrap();
+
+    let (envelope_upgrade, envelope_migrated) =
+        ThemePackageEditor::load_and_upgrade(&envelope_path).unwrap();
+    assert!(envelope_migrated);
+    assert_eq!(
+        envelope_upgrade.manifest().schema_version,
+        THEME_SCHEMA_VERSION
+    );
+    assert_eq!(
+        fs::read(envelope_path.with_extension("json.bak")).unwrap(),
+        legacy_envelope_bytes
+    );
+    let envelope_current: Value =
+        serde_json::from_slice(&fs::read(&envelope_path).unwrap()).unwrap();
+    assert_eq!(
+        envelope_current["manifest"]["schema_version"],
+        THEME_SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn in_place_theme_upgrade_rejects_symlink_and_non_file_targets() {
+    let package = TempPackage::new();
+    let source = serde_json::to_vec(&sample()).unwrap();
+
+    let backup_directory_path = package.0.join("backup-directory.json");
+    fs::write(&backup_directory_path, &source).unwrap();
+    fs::create_dir(backup_directory_path.with_extension("json.bak")).unwrap();
+    let error = ThemePackageEditor::load_and_upgrade(&backup_directory_path).unwrap_err();
+    assert_eq!(error.code, ThemeErrorCode::InvalidJson);
+    assert_eq!(fs::read(&backup_directory_path).unwrap(), source);
+
+    let target = package.0.join("theme-target.json");
+    fs::write(&target, &source).unwrap();
+    let link = package.0.join("theme-link.json");
+    #[cfg(windows)]
+    let symlink_result = std::os::windows::fs::symlink_file(&target, &link);
+    #[cfg(unix)]
+    let symlink_result = std::os::unix::fs::symlink(&target, &link);
+    if symlink_result.is_ok() {
+        let error = ThemePackageEditor::load_and_upgrade(&link).unwrap_err();
+        assert_eq!(error.code, ThemeErrorCode::InvalidJson);
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&target).unwrap(), source);
+    }
+}
+
+#[test]
 fn theme_package_recovery_restores_only_a_checksummed_known_good_manifest() {
     let package = TempPackage::new();
     let path = package.0.join("theme.json");
@@ -98,6 +279,31 @@ fn theme_package_recovery_restores_only_a_checksummed_known_good_manifest() {
 }
 
 #[test]
+fn future_theme_schema_does_not_fall_back_to_an_older_backup() {
+    let package = TempPackage::new();
+    let path = package.0.join("theme.json");
+    let mut editor = ThemePackageEditor::import_json(SAMPLE).unwrap();
+    editor.save(&path).unwrap();
+    editor
+        .set_base_token("color.surface.panel", ThemeValue::Color("#EEEEEE".into()))
+        .unwrap();
+    editor.save(&path).unwrap();
+
+    let backup = package.0.join("theme.json.bak");
+    let backup_bytes = fs::read(&backup).unwrap();
+    let mut future = editor.manifest().clone();
+    future.schema_version = THEME_SCHEMA_VERSION + 1;
+    let future_bytes = serde_json::to_vec(&future).unwrap();
+    fs::write(&path, &future_bytes).unwrap();
+
+    let error = ThemePackageEditor::recover(&path).unwrap_err();
+    assert_eq!(error.code, ThemeErrorCode::UnsupportedSchemaVersion);
+    assert!(error.message.contains("newer than supported"));
+    assert_eq!(fs::read(&path).unwrap(), future_bytes);
+    assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+}
+
+#[test]
 fn package_editor_failed_save_preserves_existing_target() {
     let package = TempPackage::new();
     let path = package.0.join("authored-theme.json");
@@ -109,6 +315,106 @@ fn package_editor_failed_save_preserves_existing_target() {
     assert!(editor.save(&missing).is_err());
     assert_eq!(fs::read(&path).unwrap(), original);
     assert_eq!(fs::read_dir(&package.0).unwrap().count(), 1);
+}
+
+#[test]
+fn stylesheet_package_round_trips_resolves_and_preserves_previous_valid_source() {
+    let first = ThemeStylePackage::new(
+        "doofusdock-workbench",
+        "button { color: var(--text-primary); padding: 8px; }",
+    )
+    .unwrap();
+    let json = first.to_json().unwrap();
+    assert_eq!(ThemeStylePackage::parse_json(&json).unwrap(), first);
+
+    let context = ThemeStyleContext::new("button").unwrap();
+    let tokens = BTreeMap::from([(
+        "text-primary".to_owned(),
+        ThemeValue::Color("#f0f0f0".to_owned()),
+    )]);
+    let resolved = first
+        .resolve("doofusdock-workbench", &context, &tokens)
+        .unwrap();
+    assert_eq!(
+        resolved[&ThemeStyleProperty::Color],
+        ThemeValue::Color("#f0f0f0".to_owned())
+    );
+    assert_eq!(
+        first
+            .resolve("another-theme", &context, &tokens)
+            .unwrap_err()
+            .code,
+        ThemeErrorCode::IncompatibleSnapshot
+    );
+
+    let package = TempPackage::new();
+    let path = package.0.join("theme-style.json");
+    first.save(&path).unwrap();
+    assert_eq!(
+        ThemeStylePackage::load(&path, "doofusdock-workbench").unwrap(),
+        first
+    );
+
+    let second = ThemeStylePackage::new(
+        "doofusdock-workbench",
+        "button { color: #aabbcc; padding: 10px; }",
+    )
+    .unwrap();
+    second.save(&path).unwrap();
+    assert_eq!(
+        ThemeStylePackage::load(&path, "doofusdock-workbench").unwrap(),
+        second
+    );
+    assert_eq!(
+        ThemeStylePackage::load(&path.with_extension("json.bak"), "doofusdock-workbench").unwrap(),
+        first
+    );
+    assert_eq!(
+        ThemeStylePackage::load(&path, "another-theme")
+            .unwrap_err()
+            .code,
+        ThemeErrorCode::IncompatibleSnapshot
+    );
+}
+
+#[test]
+fn stylesheet_package_rejects_tampering_future_formats_and_corrupt_replacement_targets() {
+    let package =
+        ThemeStylePackage::new("doofusdock-workbench", "button { opacity: 0.5; }").unwrap();
+    let mut tampered: Value = serde_json::from_str(&package.to_json().unwrap()).unwrap();
+    tampered["package"]["source"] = Value::String("button { opacity: 1; }".into());
+    assert_eq!(
+        ThemeStylePackage::parse_json(&tampered.to_string())
+            .unwrap_err()
+            .code,
+        ThemeErrorCode::InvalidJson
+    );
+    tampered["format_version"] = Value::from(99);
+    assert_eq!(
+        ThemeStylePackage::parse_json(&tampered.to_string())
+            .unwrap_err()
+            .code,
+        ThemeErrorCode::UnsupportedSchemaVersion
+    );
+    assert!(ThemeStylePackage::new("doofusdock-workbench", "button { color: red; }").is_err());
+
+    let directory = TempPackage::new();
+    let path = directory.0.join("theme-style.json");
+    fs::write(&path, b"corrupt existing sidecar").unwrap();
+    assert!(package.save(&path).is_err());
+    assert_eq!(fs::read(&path).unwrap(), b"corrupt existing sidecar");
+    assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
+
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
+    let marker = path.join("preserve.txt");
+    fs::write(&marker, b"directory target must remain untouched").unwrap();
+    assert!(package.save(&path).is_err());
+    assert_eq!(
+        fs::read(&marker).unwrap(),
+        b"directory target must remain untouched"
+    );
+    assert_eq!(fs::read_dir(&directory.0).unwrap().count(), 1);
 }
 
 fn capabilities() -> ThemeAdapterCapabilities {
@@ -357,12 +663,21 @@ fn schema_unknown_fields_version_limits_and_ids_are_rejected() {
         ThemeErrorCode::InvalidJson
     );
     value.as_object_mut().unwrap().remove("unexpected");
-    value["schema_version"] = Value::from(2);
+    value["schema_version"] = Value::from(THEME_SCHEMA_VERSION + 1);
     assert_eq!(
         ThemeManifest::parse_json(&value.to_string())
             .unwrap_err()
             .code,
         ThemeErrorCode::UnsupportedSchemaVersion
+    );
+    let mut mislabeled_v1_svg: Value = serde_json::from_str(SAMPLE).unwrap();
+    mislabeled_v1_svg["assets"] = serde_json::json!([{ "format": "svg" }]);
+    assert_eq!(
+        ThemeManifest::parse_json(&mislabeled_v1_svg.to_string())
+            .unwrap_err()
+            .code,
+        ThemeErrorCode::UnsupportedSchemaVersion,
+        "a schema-v1 manifest cannot smuggle in a schema-v2 asset kind"
     );
     assert_eq!(
         ThemeManifest::parse_json(&format!(
@@ -641,6 +956,298 @@ fn assets_validate_paths_slices_crc_dimensions_and_degrade_to_tokens() {
     fs::write(package.0.join("assets/frame.png"), corrupt).unwrap();
     let report = inspect_theme_assets(&manifest, &package.0).unwrap();
     assert!(!report.is_verified("panel-frame"));
+}
+
+#[test]
+fn svg_theme_assets_are_bounded_verified_negotiated_and_fail_closed() {
+    const VECTOR: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 16"><defs><linearGradient id="g"><stop stop-color="#fff"/></linearGradient></defs><rect width="32" height="16" fill="url(#g)"/></svg>"##;
+    let package = TempPackage::new();
+    fs::create_dir_all(package.0.join("assets")).unwrap();
+    let asset_path = package.0.join("assets/vector.svg");
+    fs::write(&asset_path, VECTOR).unwrap();
+
+    let mut manifest = sample();
+    manifest.assets = vec![ThemeAsset {
+        id: "panel-vector".into(),
+        path: "assets/vector.svg".into(),
+        format: ThemeAssetFormat::Svg,
+        source_width: 32,
+        source_height: 16,
+        scale: 1.0,
+        transparency: ThemeTransparency::Alpha,
+        color_key: None,
+        nine_slice: None,
+        edge_tiling: ThemeTiling::Stretch,
+        center_tiling: ThemeTiling::Stretch,
+        provenance: None,
+    }];
+    let state = manifest
+        .components
+        .get_mut("splitter")
+        .unwrap()
+        .states
+        .get_mut("grip")
+        .unwrap();
+    state.requires = vec!["asset-panel-vector".into()];
+    state.tokens.insert(
+        "decoration".into(),
+        ThemeValue::Asset("panel-vector".into()),
+    );
+    state.fallback = Some(BTreeMap::from([(
+        "decoration".into(),
+        ThemeValue::Reference("color.surface.raised".into()),
+    )]));
+    state.tokens.insert(
+        "svg.fill".into(),
+        ThemeValue::Reference("color.surface.raised".into()),
+    );
+    state.svg_bindings.push(ThemeSvgStyleBinding {
+        asset_id: "panel-vector".into(),
+        selector: ".grip-fill".into(),
+        property: ThemeSvgStyleProperty::Fill,
+        token: "svg.fill".into(),
+    });
+    state
+        .tokens
+        .insert("svg.stroke_width".into(), ThemeValue::Number(2.0));
+    state.svg_bindings.push(ThemeSvgStyleBinding {
+        asset_id: "panel-vector".into(),
+        selector: ".grip-fill".into(),
+        property: ThemeSvgStyleProperty::StrokeWidth,
+        token: "svg.stroke_width".into(),
+    });
+    manifest.validate().unwrap();
+    let mut editor = ThemePackageEditor::new(manifest.clone()).unwrap();
+    let editor_before = editor.manifest().clone();
+    let mut invalid_bindings = editor_before.components["splitter"].states["grip"]
+        .svg_bindings
+        .clone();
+    invalid_bindings[0].selector = ".safe, script".into();
+    assert!(
+        editor
+            .set_component_state_svg_bindings("splitter", "grip", invalid_bindings)
+            .is_err()
+    );
+    assert_eq!(editor.manifest(), &editor_before);
+    let changed_bindings = editor_before.components["splitter"].states["grip"]
+        .svg_bindings
+        .iter()
+        .take(1)
+        .cloned()
+        .collect();
+    editor
+        .set_component_state_svg_bindings("splitter", "grip", changed_bindings)
+        .unwrap();
+    assert!(editor.dirty());
+
+    let mut variant_draft = manifest.clone();
+    variant_draft
+        .variants
+        .get_mut("dark")
+        .unwrap()
+        .components
+        .insert(
+            "splitter".into(),
+            ThemeComponent {
+                states: BTreeMap::from([(
+                    "grip".into(),
+                    ThemeComponentState {
+                        requires: Vec::new(),
+                        tokens: BTreeMap::from([(
+                            "svg.fill".into(),
+                            ThemeValue::Reference("color.accent".into()),
+                        )]),
+                        fallback: None,
+                        svg_bindings: Vec::new(),
+                    },
+                )]),
+            },
+        );
+    let mut variant_editor = ThemePackageEditor::new(variant_draft).unwrap();
+    let variant_binding = ThemeSvgStyleBinding {
+        asset_id: "panel-vector".into(),
+        selector: "circle".into(),
+        property: ThemeSvgStyleProperty::Fill,
+        token: "svg.fill".into(),
+    };
+    variant_editor
+        .set_variant_component_state_svg_bindings("dark", "splitter", "grip", vec![variant_binding])
+        .unwrap();
+    assert!(variant_editor.dirty());
+    let encoded = manifest.to_json().unwrap();
+    assert_eq!(ThemeManifest::parse_json(&encoded).unwrap(), manifest);
+
+    let report = inspect_theme_assets(&manifest, &package.0).unwrap();
+    assert!(report.is_verified("panel-vector"));
+    let svg_capabilities = ThemeAdapterCapabilities {
+        supported_features: BTreeSet::new(),
+        supported_asset_formats: BTreeSet::from([ThemeAssetFormatName::Svg]),
+        supports_raster_assets: false,
+    };
+    let resolved = resolve_theme(
+        &manifest,
+        "dark",
+        &BTreeMap::new(),
+        &svg_capabilities,
+        Some(&report),
+    )
+    .unwrap();
+    assert!(resolved.assets[0].enabled);
+    assert!(
+        !resolved.svg_bindings["splitter"]["grip"].is_empty(),
+        "resolved bindings: {:?}; resolved component values: {:?}; source bindings: {:?}",
+        resolved.svg_bindings,
+        resolved.components["splitter"]["grip"],
+        manifest.components["splitter"].states["grip"].svg_bindings
+    );
+    assert_eq!(
+        resolved.components["splitter"]["grip"]["decoration"],
+        ThemeValue::Asset("panel-vector".into())
+    );
+    assert_eq!(
+        resolved
+            .svg_stylesheet("panel-vector", "splitter", "grip")
+            .unwrap(),
+        ".grip-fill { fill: #303947; }\n.grip-fill { stroke-width: 2; }\n"
+    );
+
+    let mut unsafe_selector = manifest.clone();
+    unsafe_selector
+        .components
+        .get_mut("splitter")
+        .unwrap()
+        .states
+        .get_mut("grip")
+        .unwrap()
+        .svg_bindings[0]
+        .selector = ".grip, script".into();
+    assert_eq!(
+        unsafe_selector.validate().unwrap_err().code,
+        ThemeErrorCode::InvalidAsset
+    );
+    let mut unsafe_value = manifest.clone();
+    unsafe_value
+        .components
+        .get_mut("splitter")
+        .unwrap()
+        .states
+        .get_mut("grip")
+        .unwrap()
+        .tokens
+        .insert(
+            "svg.fill".into(),
+            ThemeValue::Text("url(https://example.invalid)".into()),
+        );
+    assert_eq!(
+        unsafe_value.validate().unwrap_err().code,
+        ThemeErrorCode::TypeMismatch
+    );
+
+    for (source, reason) in [
+        (
+            r#"<svg viewBox="0 0 32 16"><image href="https://example.invalid/image.png"/></svg>"#,
+            "external href",
+        ),
+        (
+            r#"<svg viewBox="0 0 32 16"><script>alert(1)</script></svg>"#,
+            "script element",
+        ),
+        (
+            r#"<svg viewBox="0 0 32 16"><style>@import url(https://example.invalid/a.css)</style></svg>"#,
+            "external stylesheet",
+        ),
+        (
+            r#"<!DOCTYPE svg [<!ENTITY x SYSTEM "file:///private">]><svg viewBox="0 0 32 16"/>"#,
+            "entity declaration",
+        ),
+    ] {
+        fs::write(&asset_path, source).unwrap();
+        let report = inspect_theme_assets(&manifest, &package.0).unwrap();
+        assert!(
+            !report.is_verified("panel-vector"),
+            "{reason} must fail closed"
+        );
+        let unsupported = resolve_theme(
+            &manifest,
+            "dark",
+            &BTreeMap::new(),
+            &svg_capabilities,
+            Some(&report),
+        )
+        .unwrap();
+        assert!(!unsupported.assets[0].enabled, "{reason} must not resolve");
+        assert_eq!(
+            unsupported.components["splitter"]["grip"]["decoration"],
+            ThemeValue::Color("#303947".into()),
+            "{reason} must keep the token fallback"
+        );
+        assert!(
+            unsupported
+                .svg_stylesheet("panel-vector", "splitter", "grip")
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn theme_schema_v2_adapts_to_v3_without_losing_existing_theme_values() {
+    let mut legacy: Value = serde_json::from_str(SAMPLE).unwrap();
+    legacy["schema_version"] = Value::from(2);
+    if let Some(components) = legacy.get_mut("components").and_then(Value::as_object_mut) {
+        for component in components.values_mut() {
+            if let Some(states) = component.get_mut("states").and_then(Value::as_object_mut) {
+                for state in states.values_mut() {
+                    state.as_object_mut().unwrap().remove("svg_bindings");
+                }
+            }
+        }
+    }
+    let legacy_json = serde_json::to_string(&legacy).unwrap();
+    let upgraded = ThemeManifest::parse_json(&legacy_json).unwrap();
+    let current = sample();
+    assert_eq!(upgraded.schema_version, THEME_SCHEMA_VERSION);
+    assert_eq!(upgraded.id, current.id);
+    assert_eq!(upgraded.tokens, current.tokens);
+    assert_eq!(upgraded.variants, current.variants);
+    assert_eq!(upgraded.assets, current.assets);
+    assert!(
+        upgraded
+            .components
+            .values()
+            .flat_map(|component| component.states.values())
+            .all(|state| state.svg_bindings.is_empty())
+    );
+    legacy["components"]["splitter"]["states"]["grip"]["svg_bindings"] = serde_json::json!([]);
+    assert_eq!(
+        ThemeManifest::parse_json(&legacy.to_string())
+            .unwrap_err()
+            .code,
+        ThemeErrorCode::UnsupportedSchemaVersion
+    );
+
+    let package = TempPackage::new();
+    let path = package.0.join("theme-v2.json");
+    legacy["components"]["splitter"]["states"]["grip"]
+        .as_object_mut()
+        .unwrap()
+        .remove("svg_bindings");
+    let original_bytes = serde_json::to_vec_pretty(&legacy).unwrap();
+    fs::write(&path, &original_bytes).unwrap();
+    let (upgraded_editor, migrated) = ThemePackageEditor::load_and_upgrade(&path).unwrap();
+    assert!(migrated);
+    assert_eq!(
+        upgraded_editor.manifest().schema_version,
+        THEME_SCHEMA_VERSION
+    );
+    assert_eq!(
+        fs::read(path.with_extension("json.bak")).unwrap(),
+        original_bytes
+    );
+    assert_eq!(
+        ThemePackageEditor::load(&path).unwrap().manifest(),
+        upgraded_editor.manifest()
+    );
 }
 
 #[test]

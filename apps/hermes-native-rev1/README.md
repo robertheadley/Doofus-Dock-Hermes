@@ -5,7 +5,7 @@ Independent native Rust/egui implementation of the stock upstream Hermes Desktop
 ## Source pins
 
 - Hermes Agent: `8358fc7bb4ce18fbee8d4bf6659dd155c2a03783`
-- DoofusDock: `f6eb49b9e488f4e851d8d3abe18e95d296201bba`
+- DoofusDock: `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`
 
 The source pin and source tree evidence are recorded in `docs/SOURCE_AUDIT.md`. The prior Doofus/Hermes prototype remains in the parent workspace and is not part of this crate.
 

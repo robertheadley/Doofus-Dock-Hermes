@@ -17,7 +17,9 @@ Session-scoped MCP and connector setup now appears on the originating tool row f
 ## Source pins
 
 - Hermes Agent parity snapshot: `8783054ef6cbafd86f10892241436862c1171a66` (downloaded and fixed on 2026-11-14)
-- DoofusDock: `f6eb49b9e488f4e851d8d3abe18e95d296201bba`
+- DoofusDock: `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`
+
+This is a fixed DoofusDock source pin, updated explicitly on 2026-11-24. The vendored renderer/core/presentation snapshots match this source, with the Hermes GroupRail restore projection documented as a local presentation extension. Later upstream commits are not pulled automatically.
 
 The source pin and source tree evidence are recorded in `docs/SOURCE_AUDIT.md`. Parity work targets this downloaded snapshot and does not follow later upstream releases unless the target is explicitly changed. The prior Doofus/Hermes prototype remains in the parent workspace and is not part of this crate.
 

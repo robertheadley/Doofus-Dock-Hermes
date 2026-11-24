@@ -5327,3 +5327,16 @@ Mapped existing native session listing, archive, search, pin, rename, delete and
 - **performance:** No runtime impact.
 - **risks:** None; record payloads were preserved exactly.
 - **follow_up:** Keep future append operations line-delimited and validate after writing.
+
+### Hermes DoofusDock dependency refresh — 2026-11-24T15:34:23Z
+
+- **id:** hermes-dock-pin-refresh-20261124
+- **timestamp:** 2026-11-24T15:34:23Z
+- **what:** Updated Hermes active and preserved rev1 manifests, lockfiles, and vendored DoofusDock crates to `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87`. Preserved the Hermes-only GroupRail restore projection.
+- **why:** Use the current DoofusDock `main` snapshot while keeping this pin fixed until a future explicit refresh.
+- **components:** Cargo manifests and locks, vendored core/presentation/egui renderer, source audit and runtime capture metadata.
+- **type:** dependency refresh
+- **validation:** Locked workspace tests (696 library + 15 protocol + 3 launcher), all-target check, native build, rev1 locked check, package validator, rustfmt, and diff checks passed.
+- **performance:** No performance claim; no benchmark change.
+- **risks:** Historical screenshots and dated artifacts retain their original source hashes. No authenticated live Gateway or installed UI validation was performed.
+- **follow_up:** Refresh only when explicitly requested; compare source APIs and revalidate both Hermes manifests.

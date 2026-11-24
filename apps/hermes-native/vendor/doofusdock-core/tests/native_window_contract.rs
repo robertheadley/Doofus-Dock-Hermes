@@ -322,6 +322,52 @@ fn native_window_activation_demotes_previous_topmost_and_reports_order_diff() {
 }
 
 #[test]
+fn activating_a_native_window_is_undoable_and_redoable() {
+    let mut document = fixture();
+    let mut history = UndoStack::new(4);
+    let original_order = document
+        .floating_windows
+        .iter()
+        .map(|window| (window.id.clone(), window.z_order_hint))
+        .collect::<Vec<_>>();
+
+    history
+        .execute(
+            &mut document,
+            Operation::ActivateFloatingWindow {
+                window: "window-two".into(),
+            },
+        )
+        .unwrap();
+    let activated_order = document
+        .floating_windows
+        .iter()
+        .map(|window| (window.id.clone(), window.z_order_hint))
+        .collect::<Vec<_>>();
+    assert_ne!(activated_order, original_order);
+
+    history.undo(&mut document).unwrap();
+    assert_eq!(
+        document
+            .floating_windows
+            .iter()
+            .map(|window| (window.id.clone(), window.z_order_hint))
+            .collect::<Vec<_>>(),
+        original_order
+    );
+
+    history.redo(&mut document).unwrap();
+    assert_eq!(
+        document
+            .floating_windows
+            .iter()
+            .map(|window| (window.id.clone(), window.z_order_hint))
+            .collect::<Vec<_>>(),
+        activated_order
+    );
+}
+
+#[test]
 fn picture_in_picture_is_persisted_bounded_single_panel_and_diffed() {
     let mut document = fixture();
     document.floating_windows[0].root = Node::panel("pip-panel-node", "one");
@@ -373,6 +419,32 @@ fn picture_in_picture_is_persisted_bounded_single_panel_and_diffed() {
     .unwrap_err();
     assert_eq!(error.code, ErrorCode::ConstraintViolation);
     assert_eq!(invalid_document, before);
+}
+
+#[test]
+fn picture_in_picture_toggle_is_undoable_and_redoable() {
+    let mut document = fixture();
+    document.floating_windows[0].root = Node::panel("pip-panel-node", "one");
+    let mut history = UndoStack::new(4);
+
+    history
+        .execute(
+            &mut document,
+            Operation::SetPictureInPicture {
+                window: "window-one".into(),
+                enabled: true,
+            },
+        )
+        .unwrap();
+    assert!(document.floating_windows[0].picture_in_picture);
+
+    history.undo(&mut document).unwrap();
+    assert!(!document.floating_windows[0].picture_in_picture);
+    validate_layout(&document).unwrap();
+
+    history.redo(&mut document).unwrap();
+    assert!(document.floating_windows[0].picture_in_picture);
+    validate_layout(&document).unwrap();
 }
 
 #[test]
@@ -582,6 +654,54 @@ fn removed_monitor_and_mixed_scale_recovery_keep_windows_inside_work_area() {
         }
     );
     assert!(monitor_change_reported);
+}
+
+#[test]
+fn floating_window_monitor_recovery_breaks_equal_ties_by_stable_monitor_id() {
+    let mut window = fixture().floating_windows[0].clone();
+    window.monitor_id = "removed-monitor".into();
+    window.geometry = Rect {
+        x: 0,
+        y: 10,
+        width: 100,
+        height: 60,
+    };
+    let alpha = MonitorInfo {
+        id: "alpha".into(),
+        work_area: Rect {
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 100,
+        },
+        scale: 1.0,
+        primary: false,
+    };
+    let zulu = MonitorInfo {
+        id: "zulu".into(),
+        work_area: Rect {
+            x: 60,
+            y: 0,
+            width: 40,
+            height: 100,
+        },
+        scale: 1.0,
+        primary: false,
+    };
+
+    let first = recover_floating_window_geometry(&window, &[zulu.clone(), alpha.clone()]).unwrap();
+    let reordered =
+        recover_floating_window_geometry(&window, &[alpha.clone(), zulu.clone()]).unwrap();
+    assert_eq!(first, reordered);
+    assert_eq!(first.1.id, "alpha");
+
+    window.geometry.x = 5_000;
+    window.geometry.y = 5_000;
+    let fallback_first =
+        recover_floating_window_geometry(&window, &[zulu.clone(), alpha.clone()]).unwrap();
+    let fallback_reordered = recover_floating_window_geometry(&window, &[alpha, zulu]).unwrap();
+    assert_eq!(fallback_first, fallback_reordered);
+    assert_eq!(fallback_first.1.id, "alpha");
 }
 
 #[test]

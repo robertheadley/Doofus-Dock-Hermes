@@ -25,6 +25,21 @@ fn viewport() -> Box2 {
     }
 }
 
+#[test]
+fn minimized_tab_group_keeps_content_canonical_but_not_visible() {
+    let mut document = source();
+    document.root = Some(Node::tabs_with_minimized(
+        "tabs",
+        vec![Node::panel("panel-node", "p0")],
+        0,
+        true,
+    ));
+    let snapshot = project(&document, viewport()).unwrap();
+    assert_eq!(snapshot.panels[&PanelId::from("p0")].opacity, 0.0);
+    assert_eq!(snapshot.hit_test(200.0, 200.0), None);
+    assert!(find_panel_leaf(document.root.as_ref().unwrap(), &PanelId::from("p0")).is_some());
+}
+
 fn transition_registry() -> ExtensionRegistry {
     use std::sync::Arc;
     let version = ApiVersion { major: 1, minor: 0 };

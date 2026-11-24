@@ -55,7 +55,7 @@ fn group_minimize_is_revision_checked_diffed_audited_and_undoable() {
     assert_eq!(result.document.revision, 1);
     assert!(matches!(
         result.diff.patches.as_slice(),
-        [DiffPatch::GroupMinimizedChanged { group, minimized: true }]
+        [DiffPatch::TabGroupMinimizedChanged { group, minimized: true }]
             if group == &NodeId::from("group")
     ));
     assert!(matches!(
@@ -65,7 +65,7 @@ fn group_minimize_is_revision_checked_diffed_audited_and_undoable() {
     ));
     let events = service.read_events(subscription, 16).unwrap();
     assert!(events.events.iter().any(|event| {
-        event.kind == FrameworkEventKind::GroupMinimizedChanged
+        event.kind == FrameworkEventKind::GroupChanged
             && event
                 .payload
                 .get("group")

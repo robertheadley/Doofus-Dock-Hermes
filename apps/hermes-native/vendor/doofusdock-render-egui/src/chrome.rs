@@ -234,7 +234,10 @@ pub fn resize_handle(
         Sense::hover()
     };
     let response = ui.interact(rect, id, sense);
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, accessible_label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Splitter, enabled, accessible_label));
+    if enabled && response.clicked() {
+        response.request_focus();
+    }
     if enabled && (response.hovered() || response.dragged()) {
         ui.output_mut(|output| {
             output.cursor_icon = match axis {
@@ -349,7 +352,7 @@ pub fn group_modality_menu(
     extra_content: impl FnOnce(&mut Ui),
 ) -> Option<GroupModalityIntent> {
     ui.push_id(id, |ui| {
-        ui.menu_button("…", |ui| {
+        let menu = ui.menu_button("…", |ui| {
             extra_content(ui);
             ui.separator();
             for (label, intent) in [
@@ -402,8 +405,11 @@ pub fn group_modality_menu(
                 return Some(intent);
             }
             None
-        })
-        .inner
+        });
+        menu.response.widget_info(|| {
+            WidgetInfo::labeled(Role::Button, true, "Group actions and layout options")
+        });
+        menu.inner
     })
     .inner
     .flatten()
@@ -513,6 +519,91 @@ mod tests {
     }
 
     #[test]
+    fn focused_shell_control_accepts_enter_and_space() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut activated = Vec::new();
+        for key in [egui::Key::Enter, egui::Key::Space] {
+            let mut focus_frame = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(160.0, 80.0),
+                    )),
+                    ..Default::default()
+                },
+                &mut |ui: &mut Ui| {
+                    let id = ui.scope_id().with("keyboard-shell");
+                    ui.ctx().memory_mut(|memory| {
+                        memory.request_focus(id.with(("control", 0)));
+                    });
+                    panel_title_bar(
+                        ui,
+                        id,
+                        Rect::from_min_size(egui::pos2(10.0, 10.0), Vec2::new(120.0, 24.0)),
+                        "Accordion section",
+                        &style(),
+                        &[PanelChromeControl {
+                            glyph: "+",
+                            accessible_label: "Expand section",
+                            tooltip: "Expand or collapse section",
+                            enabled: true,
+                        }],
+                    );
+                },
+            );
+            focus_frame.textures_delta.clear();
+
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(160.0, 80.0),
+                    )),
+                    events: vec![egui::Event::Key {
+                        key,
+                        physical_key: Some(key),
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                &mut |ui: &mut Ui| {
+                    activated = panel_title_bar(
+                        ui,
+                        ui.scope_id().with("keyboard-shell"),
+                        Rect::from_min_size(egui::pos2(10.0, 10.0), Vec2::new(120.0, 24.0)),
+                        "Accordion section",
+                        &style(),
+                        &[PanelChromeControl {
+                            glyph: "+",
+                            accessible_label: "Expand section",
+                            tooltip: "Expand or collapse section",
+                            enabled: true,
+                        }],
+                    )
+                    .activated_controls;
+                },
+            );
+            if key == egui::Key::Enter {
+                let update = output
+                    .platform_output
+                    .accesskit_update
+                    .take()
+                    .expect("focused shell action publishes an AccessKit update");
+                assert!(update.nodes.iter().any(|(_, node)| {
+                    node.role() == Role::Button
+                        && node.label() == Some("Expand section")
+                        && !node.is_disabled()
+                }));
+            }
+            output.textures_delta.clear();
+            assert_eq!(activated, vec![0], "{key:?} activates the focused control");
+        }
+    }
+
+    #[test]
     fn resize_handle_reports_drag_and_respects_disabled_state() {
         let context = egui::Context::default();
         let rect = Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(8.0, 64.0));
@@ -571,6 +662,47 @@ mod tests {
             }
             assert_eq!(drag_started, enabled);
         }
+    }
+
+    #[test]
+    fn resize_handle_exposes_splitter_semantics_to_accessibility() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(120.0, 100.0),
+                )),
+                ..Default::default()
+            },
+            &mut |ui: &mut Ui| {
+                resize_handle(
+                    ui,
+                    ui.scope_id().with("splitter-accessibility-contract"),
+                    Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(8.0, 64.0)),
+                    ResizeAxis::Horizontal,
+                    true,
+                    "Resize split divider",
+                    ResizeHandleStyle {
+                        idle: Color32::GRAY,
+                        hovered: Color32::LIGHT_BLUE,
+                        dragged: Color32::YELLOW,
+                    },
+                );
+            },
+        );
+        let update = output
+            .platform_output
+            .accesskit_update
+            .take()
+            .expect("splitter publishes an AccessKit node");
+        assert!(update.nodes.iter().any(|(_, node)| {
+            node.role() == Role::Splitter
+                && node.label() == Some("Resize split divider")
+                && !node.is_disabled()
+        }));
+        output.textures_delta.clear();
     }
 
     #[test]

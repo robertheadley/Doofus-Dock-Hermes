@@ -16,16 +16,65 @@ pub(crate) fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
     }
     const REPLACE_EXISTING: u32 = 0x1;
     const WRITE_THROUGH: u32 = 0x8;
-    let ok = unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), REPLACE_EXISTING | WRITE_THROUGH) };
-    if ok == 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
+    const MAX_TRANSIENT_RETRIES: u8 = 3;
+    let mut retry = 0u8;
+    loop {
+        let ok =
+            unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), REPLACE_EXISTING | WRITE_THROUGH) };
+        if ok != 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        let retryable = matches!(error.raw_os_error(), Some(5 | 32 | 33));
+        if !retryable || retry >= MAX_TRANSIENT_RETRIES {
+            return Err(error);
+        }
+        // Antivirus/indexing handles can briefly deny atomic replacement. A
+        // bounded increasing delay gives those handles time to release while
+        // preserving fail-fast behavior for persistent permission errors.
+        std::thread::sleep(std::time::Duration::from_millis(10u64 << retry));
+        retry += 1;
     }
 }
 #[cfg(not(windows))]
 pub(crate) fn atomic_replace(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::rename(from, to)
+}
+
+/// Atomically publish a new path without replacing an entry created by a
+/// concurrent writer. Windows uses a same-volume rename because hard-link
+/// creation can be denied by filesystem policy or transient file scanners.
+#[cfg(windows)]
+pub(crate) fn atomic_publish_new(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
+    let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
+    #[link(name = "Kernel32")]
+    unsafe extern "system" {
+        fn MoveFileExW(existing: *const u16, new: *const u16, flags: u32) -> i32;
+    }
+    const WRITE_THROUGH: u32 = 0x8;
+    const MAX_TRANSIENT_RETRIES: u8 = 3;
+    let mut retry = 0u8;
+    loop {
+        let ok = unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), WRITE_THROUGH) };
+        if ok != 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        if !matches!(error.raw_os_error(), Some(5 | 32 | 33)) || retry >= MAX_TRANSIENT_RETRIES {
+            return Err(error);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10u64 << retry));
+        retry += 1;
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn atomic_publish_new(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::hard_link(from, to)?;
+    let _ = fs::remove_file(from);
+    Ok(())
 }
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Copy, Debug)]
@@ -277,16 +326,18 @@ pub fn deserialize_layout(text: &str, limits: PersistenceLimits) -> DockResult<L
                 "schema_version",
             )
         })?;
-    if version > 1 {
+    if version > u64::from(CURRENT_LAYOUT_SCHEMA) {
         return Err(DockError::new(
             ErrorCode::SchemaError,
             "Layout schema is newer than supported.",
             version.to_string(),
         ));
     }
-    if version == 0 {
-        value["schema_version"] = Value::from(1);
-        if let Value::Object(ref mut o) = value {
+    if version < u64::from(CURRENT_LAYOUT_SCHEMA) {
+        value["schema_version"] = Value::from(CURRENT_LAYOUT_SCHEMA);
+        if let Value::Object(ref mut o) = value
+            && version == 0
+        {
             o.entry("closed_panels").or_insert(Value::Array(vec![]));
             o.entry("auto_hide_panels").or_insert(Value::Array(vec![]));
             o.entry("maximized_panel").or_insert(Value::Null);
@@ -451,7 +502,37 @@ impl LayoutStore {
         match self.load(id) {
             Ok(d) => Ok(d),
             Err(primary) => {
-                let p = self.path_for(id)?.with_extension("json.bak");
+                let primary_path = self.path_for(id)?;
+                if fs::metadata(&primary_path)
+                    .is_ok_and(|metadata| metadata.len() > self.limits.maximum_bytes as u64)
+                {
+                    return Err(DockError::new(
+                        ErrorCode::ResourceLimit,
+                        "Layout primary exceeds the configured limit; backup recovery was not attempted.",
+                        primary_path.display().to_string(),
+                    ));
+                }
+                if let Ok(bytes) = fs::read(&primary_path)
+                    && bytes.len() <= self.limits.maximum_bytes
+                    && let Ok(value) = serde_json::from_slice::<Value>(&bytes)
+                    && let Some(schema) = value.get("schema_version")
+                {
+                    let Some(version) = schema.as_u64() else {
+                        return Err(DockError::new(
+                            ErrorCode::SchemaError,
+                            "Layout schema version is invalid; backup recovery was not attempted.",
+                            schema.to_string(),
+                        ));
+                    };
+                    if version > u64::from(CURRENT_LAYOUT_SCHEMA) {
+                        return Err(DockError::new(
+                            ErrorCode::SchemaError,
+                            "Layout schema is newer than supported; backup recovery was not attempted.",
+                            version.to_string(),
+                        ));
+                    }
+                }
+                let p = primary_path.with_extension("json.bak");
                 let bytes = fs::read(&p).map_err(|e| {
                     DockError::new(
                         ErrorCode::PersistenceError,
@@ -547,6 +628,33 @@ mod persistence_tests {
     }
 
     #[test]
+    fn atomic_publish_new_never_replaces_an_existing_entry() {
+        let directory = temp_directory();
+        fs::create_dir_all(&directory).unwrap();
+        let first = directory.join("first.tmp");
+        let second = directory.join("second.tmp");
+        let destination = directory.join("journal.json");
+        fs::write(&first, b"first journal").unwrap();
+        fs::write(&second, b"second journal").unwrap();
+
+        atomic_publish_new(&first, &destination).unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), b"first journal");
+        assert!(!first.exists());
+
+        let conflict = atomic_publish_new(&second, &destination).unwrap_err();
+        assert!(
+            conflict.kind() == std::io::ErrorKind::AlreadyExists
+                || matches!(conflict.raw_os_error(), Some(80 | 183))
+        );
+        assert_eq!(fs::read(&destination).unwrap(), b"first journal");
+        assert!(
+            second.exists(),
+            "failed no-replace publish retains its source"
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn replacement_failure_after_backup_copy_preserves_durable_primary() {
         let directory = temp_directory();
         let mut store = LayoutStore::new(&directory, PersistenceLimits::default());
@@ -602,6 +710,73 @@ mod persistence_tests {
     }
 
     #[test]
+    fn future_layout_schema_does_not_fall_back_to_older_backup() {
+        let directory = temp_directory();
+        let mut store = LayoutStore::new(&directory, PersistenceLimits::default());
+        let original = fixture();
+        store.save(&original).unwrap();
+
+        let mut updated = original.clone();
+        updated.revision += 1;
+        store.save(&updated).unwrap();
+        let primary = directory.join("recovery-layout.json");
+        let backup = directory.join("recovery-layout.json.bak");
+        let backup_bytes = fs::read(&backup).unwrap();
+
+        let mut future: Value = serde_json::from_str(&serialize_layout(&updated).unwrap()).unwrap();
+        future["schema_version"] = Value::from(3);
+        let future_checksum = checksum(&future).unwrap();
+        future["checksum"] = Value::String(future_checksum);
+        let future_bytes = serde_json::to_vec(&future).unwrap();
+        fs::write(&primary, &future_bytes).unwrap();
+
+        let error = store.recover(&updated.id).unwrap_err();
+        assert_eq!(error.code, ErrorCode::SchemaError);
+        assert!(error.message.contains("newer than supported"));
+        assert_eq!(fs::read(&primary).unwrap(), future_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+        assert_eq!(
+            deserialize_layout(
+                std::str::from_utf8(&backup_bytes).unwrap(),
+                PersistenceLimits::default()
+            )
+            .unwrap(),
+            original
+        );
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn oversized_layout_primary_does_not_fall_back_to_older_backup() {
+        let directory = temp_directory();
+        let limits = PersistenceLimits {
+            maximum_bytes: 1024,
+            ..PersistenceLimits::default()
+        };
+        let mut store = LayoutStore::new(&directory, limits);
+        let original = fixture();
+        store.save(&original).unwrap();
+        let mut updated = original.clone();
+        updated.revision += 1;
+        store.save(&updated).unwrap();
+
+        let primary = directory.join("recovery-layout.json");
+        let backup = directory.join("recovery-layout.json.bak");
+        let backup_bytes = fs::read(&backup).unwrap();
+        let oversized_primary = vec![b' '; limits.maximum_bytes + 1];
+        fs::write(&primary, &oversized_primary).unwrap();
+
+        let error = store.recover(&updated.id).unwrap_err();
+        assert_eq!(error.code, ErrorCode::ResourceLimit);
+        assert!(error.message.contains("backup recovery was not attempted"));
+        assert_eq!(fs::read(&primary).unwrap(), oversized_primary);
+        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn preference_replacement_failure_preserves_and_recovers_previous_checksummed_value() {
         let directory = temp_directory();
         let store = WorkspacePreferencesStore::new(&directory, PersistenceLimits::default());
@@ -646,9 +821,37 @@ mod persistence_tests {
 
         fs::remove_dir_all(directory).unwrap();
     }
+
+    #[test]
+    fn future_preferences_schema_does_not_fall_back_to_older_backup() {
+        let directory = temp_directory();
+        let store = WorkspacePreferencesStore::new(&directory, PersistenceLimits::default());
+        let workspace = WorkspaceId::from("future-preferences");
+        let original = serde_json::json!({"theme":"old"});
+        store.save(&workspace, &original).unwrap();
+        store
+            .save(&workspace, &serde_json::json!({"theme":"new"}))
+            .unwrap();
+        let primary = directory.join("future-preferences.json");
+        let backup = directory.join("future-preferences.json.bak");
+        let backup_bytes = fs::read(&backup).unwrap();
+        let mut future: Value = serde_json::from_slice(&fs::read(&primary).unwrap()).unwrap();
+        future["schema_version"] = Value::from(2);
+        future["checksum"] = Value::String(checksum(&future).unwrap());
+        let future_bytes = serde_json::to_vec(&future).unwrap();
+        fs::write(&primary, &future_bytes).unwrap();
+
+        let error = store.recover(&workspace).unwrap_err();
+        assert_eq!(error.code, ErrorCode::SchemaError);
+        assert!(error.message.contains("newer than supported"));
+        assert_eq!(fs::read(&primary).unwrap(), future_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
 }
 
-fn check_preference_bounds(
+pub(crate) fn check_preference_bounds(
     value: &Value,
     limits: PersistenceLimits,
     depth: usize,
@@ -887,6 +1090,34 @@ impl WorkspacePreferencesStore {
         match self.load_from_path(workspace, &primary) {
             Ok(value) => Ok(value),
             Err(primary_error) => {
+                if fs::metadata(&primary)
+                    .is_ok_and(|metadata| metadata.len() > self.limits.maximum_bytes as u64)
+                {
+                    return Err(DockError::new(
+                        ErrorCode::ResourceLimit,
+                        "Preferences primary exceeds the configured limit; backup recovery was not attempted.",
+                        primary.display().to_string(),
+                    ));
+                }
+                if let Ok(bytes) = fs::read(&primary)
+                    && let Ok(value) = serde_json::from_slice::<Value>(&bytes)
+                    && let Some(schema) = value.get("schema_version")
+                {
+                    let Some(version) = schema.as_u64() else {
+                        return Err(DockError::new(
+                            ErrorCode::SchemaError,
+                            "Preferences schema version is invalid; backup recovery was not attempted.",
+                            schema.to_string(),
+                        ));
+                    };
+                    if version > 1 {
+                        return Err(DockError::new(
+                            ErrorCode::SchemaError,
+                            "Preferences schema is newer than supported; backup recovery was not attempted.",
+                            version.to_string(),
+                        ));
+                    }
+                }
                 let backup = primary.with_extension("json.bak");
                 let value = self.load_from_path(workspace, &backup).map_err(|backup_error| {
                     DockError::new(
@@ -902,4 +1133,87 @@ impl WorkspacePreferencesStore {
             }
         }
     }
+}
+
+/// Validate the complete versioned preferences envelope without accessing or
+/// mutating a store path. Unknown user-owned envelope and preference keys are
+/// included in checksum validation and retained by the caller's input value.
+pub(crate) fn validate_workspace_preferences_envelope(
+    json: &str,
+    limits: PersistenceLimits,
+) -> DockResult<()> {
+    if json.len() > limits.maximum_bytes {
+        return Err(DockError::new(
+            ErrorCode::ResourceLimit,
+            "Workspace preferences exceed configured byte limit.",
+            "preferences",
+        ));
+    }
+    let value: Value = serde_json::from_str(json).map_err(|error| {
+        DockError::new(
+            ErrorCode::SerializationError,
+            error.to_string(),
+            "preferences",
+        )
+    })?;
+    let expected = value
+        .get("checksum")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            DockError::new(
+                ErrorCode::SerializationError,
+                "Preferences checksum is missing.",
+                "checksum",
+            )
+        })?;
+    if checksum(&value)? != expected {
+        return Err(DockError::new(
+            ErrorCode::SerializationError,
+            "Preferences checksum does not match.",
+            "checksum",
+        ));
+    }
+    let version = value
+        .get("schema_version")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            DockError::new(
+                ErrorCode::SchemaError,
+                "Preferences schema version is missing or malformed.",
+                "schema_version",
+            )
+        })?;
+    if version != 1 {
+        return Err(DockError::new(
+            ErrorCode::SchemaError,
+            "Unsupported preferences schema version.",
+            version.to_string(),
+        ));
+    }
+    let workspace_id = value
+        .get("workspace_id")
+        .and_then(Value::as_str)
+        .filter(|id| {
+            !id.is_empty()
+                && id
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || "-_.".contains(character))
+        })
+        .ok_or_else(|| {
+            DockError::new(
+                ErrorCode::SchemaError,
+                "Preferences workspace ID is missing or unsafe.",
+                "workspace_id",
+            )
+        })?;
+    let _ = workspace_id;
+    let preferences = value.get("preferences").ok_or_else(|| {
+        DockError::new(
+            ErrorCode::SchemaError,
+            "Preferences payload is missing.",
+            "preferences",
+        )
+    })?;
+    let mut count = 0;
+    check_preference_bounds(preferences, limits, 0, &mut count)
 }

@@ -86,6 +86,34 @@ impl WindowRuleStore {
         match read_rule_file(&primary) {
             Ok(rules) => Ok(rules),
             Err(primary_error) => {
+                if fs::metadata(&primary)
+                    .is_ok_and(|metadata| metadata.len() > MAX_RULE_FILE_BYTES as u64)
+                {
+                    return Err(DockError::new(
+                        ErrorCode::ResourceLimit,
+                        "Window-rule primary exceeds its byte limit; backup recovery was not attempted.",
+                        primary.display().to_string(),
+                    ));
+                }
+                if let Ok(bytes) = fs::read(&primary)
+                    && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
+                    && let Some(schema) = value.get("schema_version")
+                {
+                    let Some(version) = schema.as_u64() else {
+                        return Err(DockError::new(
+                            ErrorCode::SchemaError,
+                            "Window-rule schema version is invalid; backup recovery was not attempted.",
+                            schema.to_string(),
+                        ));
+                    };
+                    if version > 1 {
+                        return Err(DockError::new(
+                            ErrorCode::SchemaError,
+                            "Window-rule schema is newer than supported; backup recovery was not attempted.",
+                            version.to_string(),
+                        ));
+                    }
+                }
                 let backup = backup_path(&primary);
                 let rules = read_rule_file(&backup).map_err(|backup_error| {
                     DockError::new(
@@ -116,7 +144,7 @@ impl WindowRuleStore {
     }
 }
 
-fn encode_rule_file(rules: &WindowRuleSet) -> DockResult<Vec<u8>> {
+pub(crate) fn encode_rule_file(rules: &WindowRuleSet) -> DockResult<Vec<u8>> {
     let rule_bytes = serde_json::to_vec(rules).map_err(|error| {
         DockError::new(
             ErrorCode::SerializationError,
@@ -157,11 +185,29 @@ fn read_rule_file(path: &Path) -> DockResult<WindowRuleSet> {
         ));
     }
     let bytes = fs::read(path).map_err(|error| persistence_error("Read rule file", error, path))?;
-    let file: WindowRuleFile = serde_json::from_slice(&bytes).map_err(|error| {
+    let json = std::str::from_utf8(&bytes).map_err(|error| {
         DockError::new(
             ErrorCode::SerializationError,
             error.to_string(),
             path.display().to_string(),
+        )
+    })?;
+    decode_window_rule_file_json(json)
+}
+
+pub(crate) fn decode_window_rule_file_json(json: &str) -> DockResult<WindowRuleSet> {
+    if json.len() > MAX_RULE_FILE_BYTES {
+        return Err(DockError::new(
+            ErrorCode::ResourceLimit,
+            "Window-rule file exceeds its byte limit.",
+            json.len().to_string(),
+        ));
+    }
+    let file: WindowRuleFile = serde_json::from_str(json).map_err(|error| {
+        DockError::new(
+            ErrorCode::SerializationError,
+            error.to_string(),
+            "window-rules-file",
         )
     })?;
     if file.schema_version != 1 {
@@ -182,11 +228,17 @@ fn read_rule_file(path: &Path) -> DockResult<WindowRuleSet> {
         return Err(DockError::new(
             ErrorCode::PersistenceError,
             "Window-rule checksum does not match.",
-            path.display().to_string(),
+            "window-rules-file.checksum",
         ));
     }
-    file.rules.validate()?;
-    Ok(file.rules)
+    let rules_json = serde_json::to_string(&file.rules).map_err(|error| {
+        DockError::new(
+            ErrorCode::SerializationError,
+            error.to_string(),
+            "window-rules-file.rules",
+        )
+    })?;
+    WindowRuleSet::from_json(&rules_json)
 }
 
 fn write_new_file(path: &Path, bytes: &[u8]) -> DockResult<()> {
@@ -386,6 +438,19 @@ pub struct WindowRuleContext {
     pub host_capabilities: HostCapabilities,
 }
 
+/// Host-observed predicates kept separate from canonical panel/workspace data.
+/// A host supplies these by the exact workspace revision and panel identity
+/// when evaluating triggered rules.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WindowRuleHostContext {
+    pub group_id: Option<NodeId>,
+    pub modality: Option<ModalityId>,
+    pub focused: bool,
+    pub monitor_role: Option<String>,
+    pub viewport_class: Option<String>,
+    pub user_metadata: BTreeMap<String, String>,
+}
+
 impl WindowRuleContext {
     pub fn for_panel(
         document: &LayoutDocument,
@@ -505,7 +570,7 @@ pub struct WindowRuleCommit {
 #[derive(Clone, Debug, Default)]
 pub struct WindowRuleEventConsumer {
     processed: VecDeque<u64>,
-    suppressed_commands: VecDeque<CommandId>,
+    suppressed_commands: VecDeque<(CommandId, Option<u64>)>,
     last_sequence: u64,
 }
 
@@ -518,14 +583,36 @@ pub struct TriggeredRuleEvaluation {
 }
 
 impl WindowRuleEventConsumer {
-    /// Mark a command as rule-originated before committing it. Events carrying
-    /// that command are consumed but not reevaluated, bounding feedback loops.
+    /// Mark a command ID as rule-originated at every revision. Use this for a
+    /// causal host-action chain whose observations may span revisions. A
+    /// command ID must uniquely identify that causal action while retained;
+    /// use `suppress_command_at_revision` for a single-transaction effect.
     pub fn suppress_command(&mut self, command: CommandId) -> DockResult<()> {
+        self.suppress_command_scope(command, None)
+    }
+
+    /// Mark a rule-originated command at its resulting canonical revision.
+    /// Every fact emitted by that transaction is consumed without rule
+    /// reevaluation, while later reuse of the same command ID is unaffected.
+    pub fn suppress_command_at_revision(
+        &mut self,
+        command: CommandId,
+        revision: u64,
+    ) -> DockResult<()> {
+        self.suppress_command_scope(command, Some(revision))
+    }
+
+    fn suppress_command_scope(
+        &mut self,
+        command: CommandId,
+        revision: Option<u64>,
+    ) -> DockResult<()> {
         if command.is_empty() || command.0.len() > 128 {
             return Err(rule_error("Suppressed command ID is invalid.", &command.0));
         }
-        if !self.suppressed_commands.contains(&command) {
-            self.suppressed_commands.push_back(command);
+        let entry = (command, revision);
+        if !self.suppressed_commands.contains(&entry) {
+            self.suppressed_commands.push_back(entry);
             while self.suppressed_commands.len() > MAX_SUPPRESSED_RULE_COMMANDS {
                 self.suppressed_commands.pop_front();
             }
@@ -572,7 +659,11 @@ impl WindowRuleEventConsumer {
             if event.sequence <= self.last_sequence || staged_processed.contains(&event.sequence) {
                 continue;
             }
-            if !self.suppressed_commands.contains(&event.command) {
+            let suppressed = self.suppressed_commands.iter().any(|(command, revision)| {
+                command == &event.command
+                    && revision.is_none_or(|revision| revision == event.revision)
+            });
+            if !suppressed {
                 let matching_contexts = contexts
                     .iter()
                     .filter(|context| context.revision == event.revision)
@@ -1962,6 +2053,55 @@ mod tests {
     }
 
     #[test]
+    fn revision_scoped_suppression_keeps_same_command_eligible_in_later_revision() {
+        let mut context = context();
+        context.revision = 7;
+        let mut event_rule = rule("on_create", 1, WindowRuleAction::SetPinned { pinned: true });
+        event_rule
+            .event_kinds
+            .insert(FrameworkEventKind::PanelCreated);
+        let rules = WindowRuleSet {
+            schema_version: 1,
+            rules: vec![event_rule],
+        };
+        let command = CommandId::from("reused-rule-command");
+        let make_event = |sequence, revision| FrameworkEvent {
+            id: crate::EventId(sequence),
+            sequence,
+            revision,
+            kind: FrameworkEventKind::PanelCreated,
+            command: command.clone(),
+            payload: BTreeMap::new(),
+        };
+        let mut consumer = WindowRuleEventConsumer::default();
+        consumer
+            .suppress_command_at_revision(command.clone(), 7)
+            .unwrap();
+
+        let same_commit_facts = EventBatch {
+            events: vec![make_event(11, 7), make_event(12, 7)],
+            lost_events: 0,
+        };
+        assert!(
+            consumer
+                .evaluate_batch(&rules, &same_commit_facts, std::slice::from_ref(&context))
+                .unwrap()
+                .is_empty()
+        );
+
+        context.revision = 8;
+        let later_reuse = EventBatch {
+            events: vec![make_event(13, 8)],
+            lost_events: 0,
+        };
+        let triggered = consumer
+            .evaluate_batch(&rules, &later_reuse, &[context])
+            .unwrap();
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].event_sequence, 13);
+    }
+
+    #[test]
     fn rule_consumer_accepts_revision_bound_host_geometry_monitor_and_transition_facts() {
         let revision_zero = context();
         let mut revision_one = revision_zero.clone();
@@ -2368,7 +2508,7 @@ mod tests {
 
     #[test]
     fn import_export_migrates_version_zero_and_rejects_cycles_and_unknown_fields() {
-        let legacy = r#"{"schema_version":0,"rules":[]}"#;
+        let legacy = include_str!("../tests/fixtures/window_rules_schema_v0.json");
         assert_eq!(WindowRuleSet::from_json(legacy).unwrap().schema_version, 1);
         let unknown = r#"{"schema_version":1,"rules":[],"surprise":true}"#;
         assert!(WindowRuleSet::from_json(unknown).is_err());
@@ -2725,6 +2865,51 @@ mod tests {
         assert_eq!(store.recover(&workspace).unwrap(), first);
         assert_eq!(store.load(&workspace).unwrap(), first);
         assert!(store.load(&WorkspaceId::from("../escape")).is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn future_window_rule_schema_does_not_fall_back_to_older_backup() {
+        let directory = std::env::temp_dir().join(format!(
+            "doofusdock-window-rules-future-{}-{}",
+            std::process::id(),
+            RULE_TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        let store = WindowRuleStore::new(&directory);
+        let workspace = WorkspaceId::from("workbench");
+        let first = WindowRuleSet {
+            schema_version: 1,
+            rules: vec![rule(
+                "first",
+                1,
+                WindowRuleAction::SetPinned { pinned: true },
+            )],
+        };
+        let second = WindowRuleSet {
+            schema_version: 1,
+            rules: vec![rule(
+                "second",
+                2,
+                WindowRuleAction::SetPinned { pinned: false },
+            )],
+        };
+        store.save(&workspace, &first).unwrap();
+        store.save(&workspace, &second).unwrap();
+        let primary = store.path_for(&workspace).unwrap();
+        let backup = backup_path(&primary);
+        let backup_bytes = fs::read(&backup).unwrap();
+        let mut future: serde_json::Value =
+            serde_json::from_slice(&fs::read(&primary).unwrap()).unwrap();
+        future["schema_version"] = serde_json::Value::from(2);
+        let future_bytes = serde_json::to_vec(&future).unwrap();
+        fs::write(&primary, &future_bytes).unwrap();
+
+        let error = store.recover(&workspace).unwrap_err();
+        assert_eq!(error.code, ErrorCode::SchemaError);
+        assert!(error.message.contains("newer than supported"));
+        assert_eq!(fs::read(&primary).unwrap(), future_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+
         fs::remove_dir_all(directory).unwrap();
     }
 

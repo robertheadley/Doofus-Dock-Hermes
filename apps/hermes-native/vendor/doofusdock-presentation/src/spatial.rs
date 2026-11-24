@@ -42,7 +42,8 @@ pub enum CollisionPolicy {
     Overlap,
     /// Ignore this panel when evaluating collision candidates.
     PassThrough,
-    /// Behaves as a collision target and may attract a moving panel.
+    /// Behaves as a collision target. It has the same snap-target eligibility
+    /// as other policies; this enum does not assign a stronger magnetic pull.
     Magnetic,
     /// May be a snap target, but its bounds do not block overlap.
     SnapOnly,
@@ -354,11 +355,24 @@ impl SpatialIndex {
     /// Find the best directional focus candidate using projected geometry.
     /// Primary-axis distance wins, then perpendicular distance, then stable ID.
     pub fn focus_direction(&self, from: &PanelId, direction: FocusDirection) -> Option<PanelId> {
+        self.focus_direction_filtered(from, direction, |_| true)
+    }
+
+    /// Find the best directional focus candidate among host-eligible panels.
+    /// The predicate can exclude hidden, disabled, or non-focusable surfaces without
+    /// changing the index or the deterministic geometry ordering.
+    pub fn focus_direction_filtered(
+        &self,
+        from: &PanelId,
+        direction: FocusDirection,
+        mut eligible: impl FnMut(&PanelId) -> bool,
+    ) -> Option<PanelId> {
         let source = self.panels.get(from)?;
         let (sx, sy) = center(source.visual_bounds);
         self.panels
             .iter()
             .filter(|(id, _)| *id != from)
+            .filter(|(id, _)| eligible(id))
             .filter_map(|(id, panel)| {
                 let (x, y) = center(panel.visual_bounds);
                 let dx = x - sx;
@@ -381,11 +395,22 @@ impl SpatialIndex {
     }
 
     pub fn nearest(&self, x: f64, y: f64) -> Option<PanelId> {
+        self.nearest_filtered(x, y, |_| true)
+    }
+
+    /// Find the nearest panel among host-eligible surfaces, with stable ID tie-breaking.
+    pub fn nearest_filtered(
+        &self,
+        x: f64,
+        y: f64,
+        mut eligible: impl FnMut(&PanelId) -> bool,
+    ) -> Option<PanelId> {
         if !x.is_finite() || !y.is_finite() {
             return None;
         }
         self.panels
             .iter()
+            .filter(|(id, _)| eligible(id))
             .map(|(id, panel)| {
                 let (cx, cy) = center(panel.visual_bounds);
                 (id, (cx - x).mul_add(cx - x, (cy - y) * (cy - y)))
@@ -523,6 +548,52 @@ impl SpatialIndex {
         settings: SnapSettings,
         spacing_priority: Option<i16>,
     ) -> DockResult<SnapResult> {
+        let moving_panels = moving_panel.cloned().into_iter().collect::<BTreeSet<_>>();
+        self.snap_bounds_with_spacing_excluding(moving, &moving_panels, settings, spacing_priority)
+    }
+
+    /// Snap caller-supplied projected group bounds while excluding every
+    /// moving member from snap targets, spacing neighbors, and collision
+    /// reports. Group geometry remains transient and host/presentation-owned.
+    pub fn snap_group_bounds(
+        &self,
+        moving: Box2,
+        moving_panels: &BTreeSet<PanelId>,
+        settings: SnapSettings,
+    ) -> DockResult<SnapResult> {
+        self.snap_group_bounds_with_spacing(moving, moving_panels, settings, None)
+    }
+
+    /// Group-aware counterpart to `snap_bounds_with_spacing`. The host
+    /// supplies the projected union bounds and all moving member identities.
+    pub fn snap_group_bounds_with_spacing(
+        &self,
+        moving: Box2,
+        moving_panels: &BTreeSet<PanelId>,
+        settings: SnapSettings,
+        spacing_priority: Option<i16>,
+    ) -> DockResult<SnapResult> {
+        if moving_panels.is_empty() || moving_panels.len() > MAX_TOTAL_MEMBERSHIPS {
+            return Err(DockError::new(
+                if moving_panels.is_empty() {
+                    ErrorCode::SchemaError
+                } else {
+                    ErrorCode::ResourceLimit
+                },
+                "Group snapping requires a non-empty, bounded set of moving panel identities.",
+                moving_panels.len().to_string(),
+            ));
+        }
+        self.snap_bounds_with_spacing_excluding(moving, moving_panels, settings, spacing_priority)
+    }
+
+    fn snap_bounds_with_spacing_excluding(
+        &self,
+        moving: Box2,
+        moving_panels: &BTreeSet<PanelId>,
+        settings: SnapSettings,
+        spacing_priority: Option<i16>,
+    ) -> DockResult<SnapResult> {
         if !moving.valid()
             || moving.w <= 0.0
             || moving.h <= 0.0
@@ -555,7 +626,7 @@ impl SpatialIndex {
         let mut best_y: Option<SnapCandidate> = None;
 
         for target_id in &nearby {
-            if moving_panel.is_some_and(|moving_id| moving_id == target_id) {
+            if moving_panels.contains(target_id) {
                 continue;
             }
             let Some(target) = self.panels.get(target_id) else {
@@ -587,7 +658,7 @@ impl SpatialIndex {
                 SnapAxis::X,
                 moving,
                 &self.panels,
-                moving_panel,
+                moving_panels,
                 threshold,
                 spacing_priority.unwrap_or_default(),
             );
@@ -596,7 +667,7 @@ impl SpatialIndex {
                 SnapAxis::Y,
                 moving,
                 &self.panels,
-                moving_panel,
+                moving_panels,
                 threshold,
                 spacing_priority.unwrap_or_default(),
             );
@@ -657,7 +728,7 @@ impl SpatialIndex {
         let collision_candidates = self
             .collision_candidates(result.bounds)?
             .into_iter()
-            .filter(|(panel, _)| !moving_panel.is_some_and(|moving| moving == panel))
+            .filter(|(panel, _)| !moving_panels.contains(panel))
             .collect::<Vec<_>>();
         result.collisions = collision_candidates
             .iter()
@@ -753,7 +824,7 @@ fn collect_equal_spacing_candidate(
     axis: SnapAxis,
     moving: Box2,
     targets: &BTreeMap<PanelId, IndexedPanel>,
-    moving_panel: Option<&PanelId>,
+    moving_panels: &BTreeSet<PanelId>,
     threshold: f64,
     priority: i16,
 ) {
@@ -764,8 +835,7 @@ fn collect_equal_spacing_candidate(
     let before = targets
         .iter()
         .filter(|(id, panel)| {
-            !moving_panel.is_some_and(|moving_id| moving_id == *id)
-                && overlaps_cross_axis(axis, moving, panel.visual_bounds)
+            !moving_panels.contains(*id) && overlaps_cross_axis(axis, moving, panel.visual_bounds)
         })
         .filter_map(|(id, panel)| {
             let end = axis_end(axis, panel.visual_bounds);
@@ -779,8 +849,7 @@ fn collect_equal_spacing_candidate(
     let after = targets
         .iter()
         .filter(|(id, panel)| {
-            !moving_panel.is_some_and(|moving_id| moving_id == *id)
-                && overlaps_cross_axis(axis, moving, panel.visual_bounds)
+            !moving_panels.contains(*id) && overlaps_cross_axis(axis, moving, panel.visual_bounds)
         })
         .filter_map(|(id, panel)| {
             let start = axis_start(axis, panel.visual_bounds);
@@ -1051,6 +1120,21 @@ mod tests {
             None
         );
         assert_eq!(index.nearest(180., 30.), Some(PanelId::from("b")));
+    }
+
+    #[test]
+    fn focus_navigation_filters_ineligible_panels_without_changing_ordering() {
+        let index = SpatialIndex::build(&snapshot(), 4, 7, 64.).unwrap();
+        assert_eq!(
+            index.focus_direction_filtered(&PanelId::from("a"), FocusDirection::Right, |id| id
+                != &PanelId::from("b"),),
+            None
+        );
+        assert_eq!(
+            index.nearest_filtered(180., 30., |id| id == &PanelId::from("c")),
+            Some(PanelId::from("c"))
+        );
+        assert_eq!(index.nearest_filtered(f64::NAN, 30., |_| true), None);
     }
 
     #[test]
@@ -1336,6 +1420,108 @@ mod tests {
     }
 
     #[test]
+    fn group_snapping_excludes_all_members_deterministically_from_targets_and_collisions() {
+        let moving = Box2 {
+            x: 102.0,
+            y: 20.0,
+            w: 80.0,
+            h: 70.0,
+        };
+        let member_a = PanelId::from("member-a");
+        let member_b = PanelId::from("member-b");
+        let anchor = PanelId::from("external-anchor");
+        let panels = [
+            (
+                member_a.clone(),
+                Box2 {
+                    x: 100.0,
+                    y: 20.0,
+                    w: 40.0,
+                    h: 35.0,
+                },
+                CollisionPolicy::Solid,
+            ),
+            (
+                member_b.clone(),
+                Box2 {
+                    x: 140.0,
+                    y: 55.0,
+                    w: 40.0,
+                    h: 35.0,
+                },
+                CollisionPolicy::Solid,
+            ),
+            (
+                anchor.clone(),
+                Box2 {
+                    x: 185.0,
+                    y: 20.0,
+                    w: 40.0,
+                    h: 70.0,
+                },
+                CollisionPolicy::SnapOnly,
+            ),
+        ];
+        let make_index = |panels: &[(PanelId, Box2, CollisionPolicy)]| {
+            let mut projected = Snapshot::default();
+            let mut bounds = BTreeMap::new();
+            for (id, rect, policy) in panels {
+                projected.panels.insert(
+                    id.clone(),
+                    Visual {
+                        bounds: *rect,
+                        clip: *rect,
+                        opacity: 1.0,
+                        z: 0,
+                    },
+                );
+                bounds.insert(
+                    id.clone(),
+                    PanelSpatialBounds {
+                        interaction: *rect,
+                        docking: *rect,
+                        collision: *rect,
+                        collision_policy: *policy,
+                    },
+                );
+            }
+            SpatialIndex::build_with_panel_bounds(&projected, 7, 2, 64.0, &bounds).unwrap()
+        };
+        let index = make_index(&panels);
+        let mut reversed_panels = panels.to_vec();
+        reversed_panels.reverse();
+        let reversed_index = make_index(&reversed_panels);
+        let members = BTreeSet::from([member_a.clone(), member_b.clone()]);
+        let reversed_members = BTreeSet::from([member_b.clone(), member_a.clone()]);
+        let settings = SnapSettings {
+            threshold_points: 4.0,
+            ..SnapSettings::default()
+        };
+
+        let result = index.snap_group_bounds(moving, &members, settings).unwrap();
+        let reversed = reversed_index
+            .snap_group_bounds(moving, &reversed_members, settings)
+            .unwrap();
+        assert_eq!(result, reversed);
+        assert_eq!(result.bounds.x, 105.0);
+        assert_eq!(result.collisions, Vec::<PanelId>::new());
+        assert_eq!(
+            result
+                .guides
+                .iter()
+                .find(|guide| guide.axis == SnapAxis::X)
+                .unwrap()
+                .target,
+            Some(anchor)
+        );
+        assert!(
+            index
+                .snap_group_bounds(moving, &BTreeSet::new(), settings)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn snapping_equal_spacing_supports_vertical_neighbors() {
         let mut snapshot = Snapshot::default();
         for (id, bounds) in [
@@ -1577,6 +1763,60 @@ mod tests {
             )
             .unwrap();
         assert_eq!(allowed_overlap.collisions, vec![panel]);
+    }
+
+    #[test]
+    fn edge_snap_targets_use_explicit_docking_bounds() {
+        let panel = PanelId::from("b");
+        let mut projected = snapshot();
+        projected.panels.retain(|id, _| id == &panel);
+        let metadata = BTreeMap::from([(
+            panel.clone(),
+            PanelSpatialBounds {
+                interaction: Box2 {
+                    x: 120.0,
+                    y: 0.0,
+                    w: 80.0,
+                    h: 80.0,
+                },
+                docking: Box2 {
+                    x: 140.0,
+                    y: 0.0,
+                    w: 80.0,
+                    h: 80.0,
+                },
+                collision: Box2 {
+                    x: 240.0,
+                    y: 0.0,
+                    w: 80.0,
+                    h: 80.0,
+                },
+                collision_policy: CollisionPolicy::Overlap,
+            },
+        )]);
+        let index =
+            SpatialIndex::build_with_panel_bounds(&projected, 4, 7, 32.0, &metadata).unwrap();
+
+        let snapped = index
+            .snap_bounds(
+                Box2 {
+                    x: 60.0,
+                    y: 10.0,
+                    w: 75.0,
+                    h: 30.0,
+                },
+                None,
+                SnapSettings::default(),
+            )
+            .unwrap();
+
+        assert_eq!(snapped.bounds.x, 65.0, "{snapped:?}");
+        assert!(snapped.guides.iter().any(|guide| {
+            guide.axis == SnapAxis::X
+                && guide.kind == SnapKind::Edge
+                && guide.coordinate == 140.0
+                && guide.target.as_ref() == Some(&panel)
+        }));
     }
 
     #[test]

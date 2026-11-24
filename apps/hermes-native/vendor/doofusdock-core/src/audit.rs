@@ -266,7 +266,7 @@ fn patch_name(p: &DiffPatch) -> String {
         DiffPatch::ContainerKindChanged { .. } => "container_kind_changed",
         DiffPatch::ContainerOrderChanged { .. } => "container_order_changed",
         DiffPatch::ActiveTabChanged { .. } => "active_tab_changed",
-        DiffPatch::GroupMinimizedChanged { .. } => "group_minimized_changed",
+        DiffPatch::TabGroupMinimizedChanged { .. } => "tab_group_minimized_changed",
         DiffPatch::SplitRatioUpdated { .. } => "split_ratio_updated",
         DiffPatch::ExtensionPayloadUpdated { .. } => "extension_payload_updated",
         DiffPatch::WindowCreated { .. } => "window_created",

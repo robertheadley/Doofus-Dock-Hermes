@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProfileRegion {
     pub id: String,
     pub title_key: String,
@@ -20,7 +21,12 @@ pub struct ProfileRegion {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+#[serde(
+    tag = "kind",
+    content = "value",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
 pub enum ProfileLayout {
     Region(String),
     Split {
@@ -45,6 +51,7 @@ pub enum ProfileLayout {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceProfile {
     pub id: String,
     pub version: u32,
@@ -59,7 +66,7 @@ pub struct WorkspaceProfile {
 /// Toolkit-neutral presentation behavior that a host applies after resolving the
 /// profile's semantic regions in the canonical layout document.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "mode", rename_all = "snake_case")]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProfilePresentation {
     Standard,
     Overlay {
@@ -425,6 +432,7 @@ pub fn validate_profile(profile: &WorkspaceProfile) -> DockResult<()> {
 
 /// Versioned, host-neutral declarative workspace recipe.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceSpecification {
     pub schema_version: u32,
     pub profile: WorkspaceProfile,
@@ -493,6 +501,7 @@ pub fn validate_workspace_specification(specification: &WorkspaceSpecification) 
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceProfileCatalog {
     pub schema_version: u32,
     pub default_profile: Option<String>,
@@ -1172,6 +1181,7 @@ impl WorkspaceProfileCatalog {
         {
             Some(0) => {
                 #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
                 struct LegacyCatalog {
                     schema_version: u32,
                     profiles: Vec<WorkspaceProfile>,

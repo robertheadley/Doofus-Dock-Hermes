@@ -1,0 +1,1419 @@
+{
+  "schema_version": 1,
+  "id": "doofusdock-noctua",
+  "metadata": {
+    "name": "DoofusDock Noctua Tracker",
+    "version": "1.0.0",
+    "description": "Retro pixel-era tracker chrome with warm cream and brass controls, dark brown panels, square borders, and explicit interaction states.",
+    "license": "MIT",
+    "authors": [
+      "DoofusDock contributors"
+    ],
+    "homepage": "https://github.com/robertheadley/doofusdock"
+  },
+  "tokens": {
+    "color.surface.base": {
+      "type": "color",
+      "value": "#170b08"
+    },
+    "color.surface.panel": {
+      "type": "color",
+      "value": "#24100b"
+    },
+    "color.surface.raised": {
+      "type": "color",
+      "value": "#3b1b10"
+    },
+    "color.text.primary": {
+      "type": "color",
+      "value": "#f4dfb0"
+    },
+    "color.text.muted": {
+      "type": "color",
+      "value": "#b99569"
+    },
+    "color.text.on_accent": {
+      "type": "color",
+      "value": "#211009"
+    },
+    "color.border": {
+      "type": "color",
+      "value": "#100805"
+    },
+    "color.accent": {
+      "type": "color",
+      "value": "#f1b35c"
+    },
+    "color.focus": {
+      "type": "color",
+      "value": "#ffe7a8"
+    },
+    "color.bevel.highlight": {
+      "type": "color",
+      "value": "#ffe8b5"
+    },
+    "color.bevel.shadow": {
+      "type": "color",
+      "value": "#100805"
+    },
+    "metric.bevel.width": {
+      "type": "metric",
+      "value": {
+        "amount": 2,
+        "unit": "logical_px"
+      }
+    },
+    "metric.corner.radius": {
+      "type": "metric",
+      "value": {
+        "amount": 0,
+        "unit": "logical_px"
+      }
+    },
+    "metric.spacing.unit": {
+      "type": "metric",
+      "value": {
+        "amount": 8,
+        "unit": "logical_px"
+      }
+    },
+    "effect.dither.enabled": {
+      "type": "boolean",
+      "value": false
+    },
+    "effect.dither.strength": {
+      "type": "number",
+      "value": 0
+    },
+    "color.chrome.frame": {
+      "type": "color",
+      "value": "#2a120c"
+    },
+    "color.chrome.brown": {
+      "type": "color",
+      "value": "#6b3219"
+    },
+    "color.chrome.mid": {
+      "type": "color",
+      "value": "#965226"
+    },
+    "color.chrome.brass": {
+      "type": "color",
+      "value": "#c18b4b"
+    },
+    "color.chrome.cream": {
+      "type": "color",
+      "value": "#efd49a"
+    },
+    "color.chrome.light": {
+      "type": "color",
+      "value": "#ffe8b5"
+    },
+    "color.chrome.line": {
+      "type": "color",
+      "value": "#100805"
+    },
+    "color.chrome.titlebar": {
+      "type": "color",
+      "value": "#c99554"
+    },
+    "color.chrome.titlebar_text": {
+      "type": "color",
+      "value": "#211009"
+    },
+    "color.chrome.toolbar": {
+      "type": "color",
+      "value": "#6b3219"
+    },
+    "color.chrome.panel_header": {
+      "type": "color",
+      "value": "#efd49a"
+    },
+    "color.chrome.tab_strip": {
+      "type": "color",
+      "value": "#6b3219"
+    },
+    "color.chrome.statusbar": {
+      "type": "color",
+      "value": "#c18b4b"
+    },
+    "color.chrome.highlight": {
+      "type": "color",
+      "value": "#ffe8b5"
+    },
+    "color.chrome.control": {
+      "type": "color",
+      "value": "#c99554"
+    },
+    "color.chrome.control_hover": {
+      "type": "color",
+      "value": "#ffe8b5"
+    },
+    "color.chrome.control_pressed": {
+      "type": "color",
+      "value": "#965226"
+    },
+    "color.chrome.control_disabled": {
+      "type": "color",
+      "value": "#3b1b10"
+    },
+    "color.chrome.control_text": {
+      "type": "color",
+      "value": "#211009"
+    },
+    "color.chrome.focus_ring": {
+      "type": "color",
+      "value": "#ffe7a8"
+    },
+    "color.chrome.inset": {
+      "type": "color",
+      "value": "#100805"
+    },
+    "metric.border.width": {
+      "type": "metric",
+      "value": {
+        "amount": 1,
+        "unit": "logical_px"
+      }
+    },
+    "metric.spacing.dense": {
+      "type": "metric",
+      "value": {
+        "amount": 4,
+        "unit": "logical_px"
+      }
+    },
+    "metric.control.height": {
+      "type": "metric",
+      "value": {
+        "amount": 26,
+        "unit": "logical_px"
+      }
+    },
+    "metric.control.padding": {
+      "type": "metric",
+      "value": {
+        "amount": 6,
+        "unit": "logical_px"
+      }
+    },
+    "metric.font.chrome": {
+      "type": "metric",
+      "value": {
+        "amount": 12,
+        "unit": "logical_px"
+      }
+    },
+    "metric.font.caption": {
+      "type": "metric",
+      "value": {
+        "amount": 10,
+        "unit": "logical_px"
+      }
+    },
+    "text.typography.chrome": {
+      "type": "text",
+      "value": "Courier New, monospace"
+    }
+  },
+  "variants": {
+    "dark": {
+      "label": "Copper & Cream Dark",
+      "extends": null,
+      "tokens": {},
+      "components": {}
+    },
+    "light": {
+      "label": "Copper & Cream Light",
+      "extends": "dark",
+      "tokens": {
+        "color.surface.base": {
+          "type": "color",
+          "value": "#84502c"
+        },
+        "color.surface.panel": {
+          "type": "color",
+          "value": "#f1dfb8"
+        },
+        "color.surface.raised": {
+          "type": "color",
+          "value": "#e5ca96"
+        },
+        "color.text.primary": {
+          "type": "color",
+          "value": "#2a160b"
+        },
+        "color.text.muted": {
+          "type": "color",
+          "value": "#74502b"
+        },
+        "color.text.on_accent": {
+          "type": "color",
+          "value": "#fff0c9"
+        },
+        "color.border": {
+          "type": "color",
+          "value": "#653719"
+        },
+        "color.accent": {
+          "type": "color",
+          "value": "#834318"
+        },
+        "color.focus": {
+          "type": "color",
+          "value": "#51300f"
+        },
+        "color.bevel.highlight": {
+          "type": "color",
+          "value": "#fff8e4"
+        },
+        "color.bevel.shadow": {
+          "type": "color",
+          "value": "#653719"
+        },
+        "color.chrome.frame": {
+          "type": "color",
+          "value": "#84502c"
+        },
+        "color.chrome.brown": {
+          "type": "color",
+          "value": "#b57c43"
+        },
+        "color.chrome.mid": {
+          "type": "color",
+          "value": "#cf9e5d"
+        },
+        "color.chrome.brass": {
+          "type": "color",
+          "value": "#efd49a"
+        },
+        "color.chrome.cream": {
+          "type": "color",
+          "value": "#fff0c9"
+        },
+        "color.chrome.light": {
+          "type": "color",
+          "value": "#fff8e4"
+        },
+        "color.chrome.line": {
+          "type": "color",
+          "value": "#653719"
+        },
+        "color.chrome.titlebar": {
+          "type": "color",
+          "value": "#fff0c9"
+        },
+        "color.chrome.titlebar_text": {
+          "type": "color",
+          "value": "#2a160b"
+        },
+        "color.chrome.toolbar": {
+          "type": "color",
+          "value": "#b57c43"
+        },
+        "color.chrome.panel_header": {
+          "type": "color",
+          "value": "#fff0c9"
+        },
+        "color.chrome.tab_strip": {
+          "type": "color",
+          "value": "#b57c43"
+        },
+        "color.chrome.statusbar": {
+          "type": "color",
+          "value": "#efd49a"
+        },
+        "color.chrome.highlight": {
+          "type": "color",
+          "value": "#fff8e4"
+        },
+        "color.chrome.control": {
+          "type": "color",
+          "value": "#b57c43"
+        },
+        "color.chrome.control_hover": {
+          "type": "color",
+          "value": "#fff8e4"
+        },
+        "color.chrome.control_pressed": {
+          "type": "color",
+          "value": "#84502c"
+        },
+        "color.chrome.control_disabled": {
+          "type": "color",
+          "value": "#e5ca96"
+        },
+        "color.chrome.control_text": {
+          "type": "color",
+          "value": "#2a160b"
+        },
+        "color.chrome.focus_ring": {
+          "type": "color",
+          "value": "#51300f"
+        },
+        "color.chrome.inset": {
+          "type": "color",
+          "value": "#653719"
+        }
+      },
+      "components": {}
+    },
+    "high_contrast": {
+      "label": "High Contrast",
+      "extends": "dark",
+      "tokens": {
+        "color.surface.base": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.surface.panel": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.surface.raised": {
+          "type": "color",
+          "value": "#111111"
+        },
+        "color.text.primary": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.text.muted": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.text.on_accent": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.border": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.accent": {
+          "type": "color",
+          "value": "#ffff00"
+        },
+        "color.focus": {
+          "type": "color",
+          "value": "#00ffff"
+        },
+        "color.bevel.highlight": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.bevel.shadow": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.chrome.frame": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.chrome.brown": {
+          "type": "color",
+          "value": "#111111"
+        },
+        "color.chrome.mid": {
+          "type": "color",
+          "value": "#292929"
+        },
+        "color.chrome.brass": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.chrome.cream": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.chrome.light": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.chrome.line": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.chrome.titlebar": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.chrome.titlebar_text": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.chrome.toolbar": {
+          "type": "color",
+          "value": "#111111"
+        },
+        "color.chrome.panel_header": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.chrome.tab_strip": {
+          "type": "color",
+          "value": "#111111"
+        },
+        "color.chrome.statusbar": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.chrome.highlight": {
+          "type": "color",
+          "value": "#00ffff"
+        },
+        "color.chrome.control": {
+          "type": "color",
+          "value": "#ffff00"
+        },
+        "color.chrome.control_hover": {
+          "type": "color",
+          "value": "#00ffff"
+        },
+        "color.chrome.control_pressed": {
+          "type": "color",
+          "value": "#ffffff"
+        },
+        "color.chrome.control_disabled": {
+          "type": "color",
+          "value": "#111111"
+        },
+        "color.chrome.control_text": {
+          "type": "color",
+          "value": "#000000"
+        },
+        "color.chrome.focus_ring": {
+          "type": "color",
+          "value": "#00ffff"
+        },
+        "color.chrome.inset": {
+          "type": "color",
+          "value": "#ffffff"
+        }
+      },
+      "components": {}
+    }
+  },
+  "components": {
+    "tab": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.mid"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "hover": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.brass"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.on_accent"
+            }
+          },
+          "fallback": null
+        },
+        "selected": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.panel"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.focus"
+            }
+          },
+          "fallback": null
+        },
+        "pressed": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_pressed"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.inset"
+            }
+          },
+          "fallback": null
+        },
+        "focused": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.panel"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "disabled": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_disabled"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.muted"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.border"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "splitter": {
+      "states": {
+        "grip": {
+          "requires": [
+            "custom_chrome"
+          ],
+          "tokens": {
+            "foreground": {
+              "type": "reference",
+              "value": "color.bevel.highlight"
+            },
+            "shadow": {
+              "type": "reference",
+              "value": "color.bevel.shadow"
+            }
+          },
+          "fallback": {
+            "foreground": {
+              "type": "reference",
+              "value": "color.border"
+            },
+            "shadow": {
+              "type": "reference",
+              "value": "color.surface.base"
+            }
+          }
+        },
+        "hover": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.raised"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.highlight"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "focused": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.raised"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.highlight"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "drop-target": {
+      "states": {
+        "valid": {
+          "requires": [],
+          "tokens": {
+            "border": {
+              "type": "reference",
+              "value": "color.accent"
+            }
+          },
+          "fallback": null
+        },
+        "invalid": {
+          "requires": [],
+          "tokens": {
+            "border": {
+              "type": "color",
+              "value": "#FF5555"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "title_bar": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.titlebar"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.titlebar_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "inactive": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.toolbar"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "toolbar": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.toolbar"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.on_accent"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "panel_header": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.panel_header"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.on_accent"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "focused": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.panel_header"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.titlebar_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "tab_strip": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.tab_strip"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "status_bar": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.statusbar"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.on_accent"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "button": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "hover": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_hover"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "pressed": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_pressed"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.inset"
+            }
+          },
+          "fallback": null
+        },
+        "focused": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "disabled": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_disabled"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.muted"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.border"
+            }
+          },
+          "fallback": null
+        },
+        "selected": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.panel"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.focus"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.focus"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "menu": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.raised"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "hover": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_hover"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "focused": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "selected": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "disabled": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_disabled"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.muted"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.border"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "scrollbar": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "track": {
+              "type": "reference",
+              "value": "color.surface.base"
+            },
+            "thumb": {
+              "type": "reference",
+              "value": "color.chrome.brass"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "hover": {
+          "requires": [],
+          "tokens": {
+            "track": {
+              "type": "reference",
+              "value": "color.surface.base"
+            },
+            "thumb": {
+              "type": "reference",
+              "value": "color.chrome.control_hover"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "dragged": {
+          "requires": [],
+          "tokens": {
+            "track": {
+              "type": "reference",
+              "value": "color.surface.base"
+            },
+            "thumb": {
+              "type": "reference",
+              "value": "color.chrome.control_pressed"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "disabled": {
+          "requires": [],
+          "tokens": {
+            "track": {
+              "type": "reference",
+              "value": "color.surface.base"
+            },
+            "thumb": {
+              "type": "reference",
+              "value": "color.chrome.control_disabled"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.border"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "window_control": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "hover": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_hover"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "pressed": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_pressed"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.inset"
+            }
+          },
+          "fallback": null
+        },
+        "focused": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.chrome.control_text"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        },
+        "disabled": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.chrome.control_disabled"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.muted"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.border"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "panel_shell": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.panel"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.line"
+            }
+          },
+          "fallback": null
+        },
+        "focused": {
+          "requires": [],
+          "tokens": {
+            "background": {
+              "type": "reference",
+              "value": "color.surface.panel"
+            },
+            "foreground": {
+              "type": "reference",
+              "value": "color.text.primary"
+            },
+            "border": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "focus-ring": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            }
+          },
+          "fallback": null
+        }
+      }
+    },
+    "focus_ring": {
+      "states": {
+        "normal": {
+          "requires": [],
+          "tokens": {
+            "color": {
+              "type": "reference",
+              "value": "color.chrome.focus_ring"
+            },
+            "width": {
+              "type": "reference",
+              "value": "metric.bevel.width"
+            }
+          },
+          "fallback": null
+        }
+      }
+    }
+  },
+  "parameters": {
+    "bevel_width": {
+      "kind": "metric",
+      "default": 2,
+      "minimum": 0,
+      "maximum": 8,
+      "step": 1,
+      "unit": "logical_px",
+      "target_token": "metric.bevel.width"
+    },
+    "corner_radius": {
+      "kind": "metric",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 24,
+      "step": 1,
+      "unit": "logical_px",
+      "target_token": "metric.corner.radius"
+    },
+    "dense_spacing": {
+      "kind": "metric",
+      "default": 4,
+      "minimum": 2,
+      "maximum": 12,
+      "step": 1,
+      "unit": "logical_px",
+      "target_token": "metric.spacing.dense"
+    },
+    "control_height": {
+      "kind": "metric",
+      "default": 26,
+      "minimum": 20,
+      "maximum": 40,
+      "step": 1,
+      "unit": "logical_px",
+      "target_token": "metric.control.height"
+    },
+    "control_padding": {
+      "kind": "metric",
+      "default": 6,
+      "minimum": 2,
+      "maximum": 14,
+      "step": 1,
+      "unit": "logical_px",
+      "target_token": "metric.control.padding"
+    }
+  },
+  "assets": [],
+  "dependencies": [],
+  "contrast_pairs": [
+    {
+      "id": "primary-text-panel",
+      "foreground": "color.text.primary",
+      "background": "color.surface.panel",
+      "target": "normal_text_aa"
+    },
+    {
+      "id": "muted-text-panel",
+      "foreground": "color.text.muted",
+      "background": "color.surface.panel",
+      "target": "normal_text_aa"
+    },
+    {
+      "id": "accent-text",
+      "foreground": "color.text.on_accent",
+      "background": "color.accent",
+      "target": "normal_text_aa"
+    },
+    {
+      "id": "focus-boundary-panel",
+      "foreground": "color.focus",
+      "background": "color.surface.panel",
+      "target": "non_text_aa"
+    },
+    {
+      "id": "selected-tab-text",
+      "foreground": "foreground",
+      "background": "background",
+      "target": "normal_text_aa",
+      "component": "tab",
+      "state": "selected"
+    },
+    {
+      "id": "titlebar-text",
+      "foreground": "color.chrome.titlebar_text",
+      "background": "color.chrome.titlebar",
+      "target": "normal_text_aa"
+    },
+    {
+      "id": "button-text-control",
+      "foreground": "color.chrome.control_text",
+      "background": "color.chrome.control",
+      "target": "normal_text_aa"
+    },
+    {
+      "id": "focus-ring-panel",
+      "foreground": "color.chrome.focus_ring",
+      "background": "color.surface.panel",
+      "target": "non_text_aa"
+    }
+  ],
+  "provenance": {
+    "kind": "adapted",
+    "source": "User-provided Noctua Tracker window-chrome reference",
+    "generator": null,
+    "prompt": null,
+    "inputs": {
+      "reference": "preview (9).html",
+      "palette": "deep chestnut, brass, cream, and pixel-era control chrome"
+    }
+  }
+}

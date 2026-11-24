@@ -22,6 +22,8 @@ pub struct TabStripState {
     pub query: String,
     last_query: String,
     pub last_selected: Option<usize>,
+    /// Canonical item index to refocus after a host-committed reorder.
+    pub focus_request: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -32,11 +34,12 @@ pub struct TabStripResponse {
     pub pin_toggle: Option<usize>,
     pub close: Option<usize>,
     pub drag_started: Option<usize>,
+    /// `(canonical_item_index, insertion_boundary)` from Ctrl+Shift+PageUp/Down.
+    pub reorder: Option<(usize, usize)>,
+    pub focused: Option<usize>,
     pub hovered: Option<(usize, Rect)>,
     /// Canonical item indices and clipped-to-strip tab rectangles drawn this frame.
     pub visible_bounds: Vec<(usize, Rect)>,
-    /// Canonical item index holding keyboard focus, when any tab is focused.
-    pub focused: Option<usize>,
 }
 
 /// Paint a bounded, keyboard-navigable tab strip. Overflow is exposed through
@@ -51,6 +54,15 @@ pub fn tab_strip(
     style: &PanelChromeStyle,
 ) -> TabStripResponse {
     let mut pin_toggle = None;
+    let mut context_menu = |ui: &mut Ui, index: usize, item: TabStripItem<'_>| {
+        if ui
+            .button(if item.pinned { "Unpin tab" } else { "Pin tab" })
+            .clicked()
+        {
+            pin_toggle = Some(index);
+            ui.close();
+        }
+    };
     let mut response = tab_strip_with_context_menu(
         ui,
         id,
@@ -59,27 +71,15 @@ pub fn tab_strip(
         selected_index,
         state,
         style,
-        |ui, index, item| {
-            if ui
-                .button(if item.pinned {
-                    "Unpin tab"
-                } else {
-                    "Pin tab"
-                })
-                .clicked()
-            {
-                pin_toggle = Some(index);
-                ui.close();
-            }
-        },
+        &mut context_menu,
     );
     response.pin_toggle = pin_toggle;
     response
 }
 
-/// Paint the shared tab strip while allowing the host to provide canonical
-/// context-menu actions for each tab. The original `tab_strip` API retains its
-/// built-in Pin/Unpin menu for existing consumers.
+/// Paint a tab strip while letting the host provide additional context actions.
+/// The callback receives the canonical item index and the item's display data.
+#[allow(clippy::too_many_arguments)]
 pub fn tab_strip_with_context_menu(
     ui: &mut Ui,
     id: Id,
@@ -278,8 +278,37 @@ pub fn tab_strip_with_context_menu(
         if response.hovered() {
             output.hovered = Some((index, tab_rect));
         }
+        if state.focus_request == Some(index) {
+            ui.memory_mut(|memory| memory.request_focus(response.id));
+        }
         if response.has_focus() {
             output.focused = Some(index);
+            if state.focus_request == Some(index) {
+                state.focus_request = None;
+            }
+            let reorder_direction = ui.input_mut(|input| {
+                let modifiers = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+                if input.consume_key(modifiers, egui::Key::PageUp) {
+                    Some(-1_i8)
+                } else if input.consume_key(modifiers, egui::Key::PageDown) {
+                    Some(1_i8)
+                } else {
+                    None
+                }
+            });
+            if state.query.trim().is_empty()
+                && !items.iter().any(|candidate| candidate.pinned)
+                && let Some(direction) = reorder_direction
+            {
+                let insertion = match direction {
+                    -1 if index > 0 => Some(index - 1),
+                    1 if index + 1 < items.len() => Some(index + 2),
+                    _ => None,
+                };
+                if let Some(insertion) = insertion {
+                    output.reorder = Some((index, insertion));
+                }
+            }
             let direction = ui.input(|input| {
                 if input.key_pressed(egui::Key::ArrowRight) {
                     1_i8
@@ -306,7 +335,18 @@ pub fn tab_strip_with_context_menu(
                 tab_rect.max,
             );
             let close = ui.interact(close_rect, id.with(("close", index)), Sense::click());
-            close.widget_info(|| WidgetInfo::labeled(Role::Button, true, "Close tab"));
+            let close_target = if item.accessible_label.trim().is_empty() {
+                item.title.trim()
+            } else {
+                item.accessible_label.trim()
+            };
+            close.widget_info(|| {
+                if close_target.is_empty() {
+                    WidgetInfo::labeled(Role::Button, true, format_args!("Close tab {}", index + 1))
+                } else {
+                    WidgetInfo::labeled(Role::Button, true, format_args!("Close {}", close_target))
+                }
+            });
             if close.hovered() {
                 ui.painter()
                     .rect_filled(close_rect, 2.0, style.control_hover);
@@ -420,6 +460,158 @@ mod tests {
             focus: Color32::YELLOW,
             corner_radius: 3.0,
             font: FontId::proportional(14.0),
+        }
+    }
+
+    #[test]
+    fn close_tab_accessibility_names_identify_the_target_tab() {
+        let context = egui::Context::default();
+        context.enable_accesskit();
+        let items = [
+            TabStripItem {
+                title: "first.png",
+                accessible_label: "First image",
+                icon: None,
+                modified: false,
+                pinned: false,
+                closable: true,
+                multi_selected: false,
+            },
+            TabStripItem {
+                title: "histogram",
+                accessible_label: "Histogram panel",
+                icon: None,
+                modified: false,
+                pinned: false,
+                closable: true,
+                multi_selected: false,
+            },
+            TabStripItem {
+                title: "Untitled",
+                accessible_label: "",
+                icon: None,
+                modified: false,
+                pinned: false,
+                closable: true,
+                multi_selected: false,
+            },
+            TabStripItem {
+                title: "",
+                accessible_label: "",
+                icon: None,
+                modified: false,
+                pinned: false,
+                closable: true,
+                multi_selected: false,
+            },
+        ];
+        let mut state = TabStripState::default();
+        let mut output = context.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(420.0, 32.0),
+                )),
+                ..Default::default()
+            },
+            &mut |ui: &mut Ui| {
+                tab_strip(
+                    ui,
+                    ui.scope_id().with("accessible-tabs"),
+                    Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(420.0, 32.0)),
+                    &items,
+                    0,
+                    &mut state,
+                    &style(),
+                );
+            },
+        );
+        let update = output
+            .platform_output
+            .accesskit_update
+            .take()
+            .expect("tab strip exposes its AccessKit tree");
+        let close_labels: Vec<_> = update
+            .nodes
+            .iter()
+            .filter_map(|(_, node)| {
+                (node.role() == Role::Button)
+                    .then(|| node.label())
+                    .flatten()
+                    .filter(|label| label.starts_with("Close "))
+            })
+            .collect();
+        assert!(close_labels.contains(&"Close First image"));
+        assert!(close_labels.contains(&"Close Histogram panel"));
+        assert!(close_labels.contains(&"Close Untitled"));
+        assert!(close_labels.contains(&"Close tab 4"));
+        assert_eq!(close_labels.len(), 4);
+        output.textures_delta.clear();
+
+        for key in [egui::Key::Enter, egui::Key::Space] {
+            let mut focus_frame = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(420.0, 32.0),
+                    )),
+                    ..Default::default()
+                },
+                &mut |ui: &mut Ui| {
+                    let id = ui.scope_id().with("accessible-tabs");
+                    ui.ctx().memory_mut(|memory| {
+                        memory.request_focus(id.with(("close", 0)));
+                    });
+                    tab_strip(
+                        ui,
+                        id,
+                        Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(420.0, 32.0)),
+                        &items,
+                        0,
+                        &mut state,
+                        &style(),
+                    );
+                },
+            );
+            focus_frame.textures_delta.clear();
+
+            let mut close_request = None;
+            let mut key_frame = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(420.0, 32.0),
+                    )),
+                    events: vec![egui::Event::Key {
+                        key,
+                        physical_key: Some(key),
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                &mut |ui: &mut Ui| {
+                    close_request = Some(
+                        tab_strip(
+                            ui,
+                            ui.scope_id().with("accessible-tabs"),
+                            Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(420.0, 32.0)),
+                            &items,
+                            0,
+                            &mut state,
+                            &style(),
+                        )
+                        .close,
+                    );
+                },
+            );
+            key_frame.textures_delta.clear();
+            assert_eq!(
+                close_request,
+                Some(Some(0)),
+                "{key:?} activates focused close"
+            );
         }
     }
 
@@ -735,6 +927,148 @@ mod tests {
         }
         assert!(state.first_visible < 4);
         assert_eq!(state.last_selected, Some(0));
+    }
+
+    #[test]
+    fn focused_tab_reorders_with_ctrl_shift_page_keys_and_respects_bounds() {
+        let context = egui::Context::default();
+        let items = ["One", "Two", "Three"].map(|name| TabStripItem {
+            title: name,
+            accessible_label: name,
+            icon: None,
+            modified: false,
+            pinned: false,
+            closable: false,
+            multi_selected: false,
+        });
+        let mut state = TabStripState::default();
+        let selected = std::cell::Cell::new(0);
+        let pointer = egui::pos2(150.0, 15.0);
+        let mut run = |events| {
+            let mut result = None;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(300.0, 40.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                &mut |ui: &mut Ui| {
+                    result = Some(tab_strip(
+                        ui,
+                        ui.scope_id().with("keyboard-reorder"),
+                        Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(300.0, 30.0)),
+                        &items,
+                        selected.get(),
+                        &mut state,
+                        &style(),
+                    ));
+                },
+            );
+            output.textures_delta.clear();
+            let response = result.unwrap();
+            if let Some(next) = response.selected {
+                selected.set(next);
+            }
+            response
+        };
+        run(vec![egui::Event::PointerMoved(pointer)]);
+        run(vec![egui::Event::PointerButton {
+            pos: pointer,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert_eq!(
+            run(vec![egui::Event::PointerButton {
+                pos: pointer,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }])
+            .selected,
+            Some(1)
+        );
+        let modifiers = egui::Modifiers::CTRL | egui::Modifiers::SHIFT;
+        let key_event = |key| egui::Event::Key {
+            key,
+            physical_key: Some(key),
+            pressed: true,
+            repeat: false,
+            modifiers,
+        };
+        assert_eq!(
+            run(vec![key_event(egui::Key::PageUp)]).reorder,
+            Some((1, 0))
+        );
+        assert_eq!(
+            run(vec![key_event(egui::Key::PageDown)]).reorder,
+            Some((1, 3))
+        );
+
+        selected.set(0);
+        run(vec![egui::Event::PointerMoved(egui::pos2(50.0, 15.0))]);
+        run(vec![egui::Event::PointerButton {
+            pos: egui::pos2(50.0, 15.0),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        run(vec![egui::Event::PointerButton {
+            pos: egui::pos2(50.0, 15.0),
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert_eq!(run(vec![key_event(egui::Key::PageUp)]).reorder, None);
+    }
+
+    #[test]
+    fn host_focus_request_survives_tab_rebuild_and_confirms_the_same_index() {
+        let context = egui::Context::default();
+        let items = ["Activity", "Editor"].map(|name| TabStripItem {
+            title: name,
+            accessible_label: name,
+            icon: None,
+            modified: false,
+            pinned: false,
+            closable: false,
+            multi_selected: false,
+        });
+        let mut state = TabStripState {
+            focus_request: Some(1),
+            ..Default::default()
+        };
+        for frame in 0..2 {
+            let mut response = None;
+            let mut output = context.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(240.0, 40.0),
+                    )),
+                    ..Default::default()
+                },
+                &mut |ui: &mut Ui| {
+                    response = Some(tab_strip(
+                        ui,
+                        ui.scope_id().with("reorder-focus"),
+                        Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(240.0, 30.0)),
+                        &items,
+                        1,
+                        &mut state,
+                        &style(),
+                    ));
+                },
+            );
+            output.textures_delta.clear();
+            if frame == 1 {
+                assert_eq!(response.unwrap().focused, Some(1));
+                assert_eq!(state.focus_request, None);
+            }
+        }
     }
 
     #[test]

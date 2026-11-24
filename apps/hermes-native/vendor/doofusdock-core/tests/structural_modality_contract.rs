@@ -710,6 +710,36 @@ fn stack_expansion_selection_and_close_cleanup_are_canonical_and_atomic() {
     )
     .unwrap()
     .document;
+    let parse = |d: &LayoutDocument| {
+        let NodeKind::Extension {
+            payload, children, ..
+        } = &d.root.as_ref().unwrap().kind
+        else {
+            unreachable!()
+        };
+        StackConfiguration::parse(payload, children).unwrap()
+    };
+    let initial_expanded = parse(&d).expanded;
+    let mut history_document = d.clone();
+    let mut history = UndoStack::new(4);
+    history
+        .execute(
+            &mut history_document,
+            Operation::SetStackExpanded {
+                container: "tabs".into(),
+                child: "one-node".into(),
+                expanded: true,
+            },
+        )
+        .unwrap();
+    history.undo(&mut history_document).unwrap();
+    assert_eq!(parse(&history_document).expanded, initial_expanded);
+    history.redo(&mut history_document).unwrap();
+    assert_eq!(
+        parse(&history_document).expanded,
+        BTreeSet::from(["one-node".into()])
+    );
+
     let d = apply_operation(
         &d,
         Operation::SetStackExpanded {
@@ -720,15 +750,6 @@ fn stack_expansion_selection_and_close_cleanup_are_canonical_and_atomic() {
     )
     .unwrap()
     .document;
-    let parse = |d: &LayoutDocument| {
-        let NodeKind::Extension {
-            payload, children, ..
-        } = &d.root.as_ref().unwrap().kind
-        else {
-            unreachable!()
-        };
-        StackConfiguration::parse(payload, children).unwrap()
-    };
     assert_eq!(parse(&d).expanded, BTreeSet::from(["one-node".into()]));
     let closed = apply_operation(
         &d,

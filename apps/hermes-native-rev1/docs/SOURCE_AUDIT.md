@@ -3,7 +3,7 @@
 ## Pins
 
 - Hermes source selected at implementation start: `NousResearch/hermes-agent@8358fc7bb4ce18fbee8d4bf6659dd155c2a03783`.
-- DoofusDock: `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba`.
+- DoofusDock: `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87`.
 - The supplied ZIP references Hermes `ffdc7eeb25343df1a7ee84503ba552538db9af72`. The audit also observed `6da444ebda7533429b655aeca2b02d77fd900238`; the upstream branch advanced again before the source clone. Relevant layout, mode, route, sidebar-width and responsive source files were verified unchanged between the ZIP pin and the previous audit pin. They must be rechecked at every source pin refresh.
 - Source checkout: `../../.staging/hermes-upstream-8358fc` from this crate. It is isolated from the installed Hermes application.
 

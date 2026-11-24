@@ -393,3 +393,106 @@ fn picture_in_picture_plan_floats_and_marks_window_in_one_undoable_revision() {
     expected.revision = 2;
     assert_eq!(service.snapshot().document, expected);
 }
+
+#[test]
+fn embedded_floating_plan_negotiates_embedded_capability_and_undoes() {
+    let mut document = LayoutDocument::new("embedded-float", "embedded-workspace");
+    Arc::make_mut(&mut document.panels).push(PanelDescriptor::new("panel", "Panel"));
+    document.root = Some(Node::panel("panel-node", "panel"));
+    let original = document.clone();
+    let host = HostCapabilities {
+        supported: ["embedded_viewport".into()].into_iter().collect(),
+    };
+    let change = ModalityChange::EmbeddedFloating {
+        panel: "panel".into(),
+        window: "embedded-panel".into(),
+        geometry: Rect {
+            x: 40,
+            y: 60,
+            width: 420,
+            height: 300,
+        },
+        monitor: "embedded-host".into(),
+        scale: 1.0,
+    };
+
+    let plan = plan_modality_change(&document, change.clone(), &host).unwrap();
+    assert_eq!(plan.preview().revision, 1);
+    assert!(plan.preview().root.is_none());
+    assert_eq!(
+        plan.preview().floating_windows[0].id,
+        WindowId::from("embedded-panel")
+    );
+    assert_eq!(document, original);
+
+    let mut service = DockingService::new(document, 4).unwrap();
+    plan.commit(&mut service).unwrap();
+    assert_eq!(service.snapshot().revision, 1);
+    service.undo(1).unwrap();
+    let mut expected = original.clone();
+    expected.revision = 2;
+    assert_eq!(service.snapshot().document, expected);
+
+    let error = plan_modality_change(&original, change, &HostCapabilities::default()).unwrap_err();
+    assert_eq!(error.code, ErrorCode::UnsupportedOperation);
+    assert_eq!(service.snapshot().document, expected);
+}
+
+#[test]
+fn embedded_floating_and_native_floating_require_distinct_host_capabilities() {
+    let mut document = LayoutDocument::new("floating-capabilities", "workspace");
+    Arc::make_mut(&mut document.panels).push(PanelDescriptor::new("panel", "Panel"));
+    document.root = Some(Node::panel("panel-node", "panel"));
+    let make_change = |embedded| {
+        let parameters = (
+            "panel".into(),
+            "floating-window".into(),
+            Rect {
+                x: 10,
+                y: 20,
+                width: 400,
+                height: 300,
+            },
+            "primary".into(),
+            1.0,
+        );
+        if embedded {
+            ModalityChange::EmbeddedFloating {
+                panel: parameters.0,
+                window: parameters.1,
+                geometry: parameters.2,
+                monitor: parameters.3,
+                scale: parameters.4,
+            }
+        } else {
+            ModalityChange::NativeFloating {
+                panel: parameters.0,
+                window: parameters.1,
+                geometry: parameters.2,
+                monitor: parameters.3,
+                scale: parameters.4,
+            }
+        }
+    };
+    let embedded_host = HostCapabilities {
+        supported: ["embedded_viewport".into()].into_iter().collect(),
+    };
+    let native_host = HostCapabilities {
+        supported: ["native_viewport".into()].into_iter().collect(),
+    };
+
+    assert!(plan_modality_change(&document, make_change(true), &embedded_host).is_ok());
+    assert!(plan_modality_change(&document, make_change(false), &native_host).is_ok());
+    assert_eq!(
+        plan_modality_change(&document, make_change(true), &native_host)
+            .unwrap_err()
+            .code,
+        ErrorCode::UnsupportedOperation
+    );
+    assert_eq!(
+        plan_modality_change(&document, make_change(false), &embedded_host)
+            .unwrap_err()
+            .code,
+        ErrorCode::UnsupportedOperation
+    );
+}

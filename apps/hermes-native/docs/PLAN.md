@@ -5,7 +5,7 @@
 - **Working revision:** 369 (implementation in progress).
 - **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
-- **Current DoofusDock:** `robertheadley/doofusdock@f6eb49b9e488f4e851d8d3abe18e95d296201bba` (current `main` on 2026-11-13).
+- **Current DoofusDock:** `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87` (fetched `main` on 2026-11-24; exact commit pinned until explicitly refreshed).
 - **Scope:** first usable native Rust/egui UI for agent workflows in pinned Hermes source `8783054ef6cbafd86f10892241436862c1171a66`: establish model/provider connections, chat and prompt lifecycle, tool execution/progress/results and approvals, skills, plugins/MCP, and supporting context/attachments. Hermes Gateway/runtime/tool execution remains authoritative. Functional support is the target; pixel accuracy and unrelated Desktop administration are deferred.
 - **Excluded:** Hermes-Doofus plugin UI/backend, Doofus Vault/Control and the separate browser Dashboard.
 
@@ -2276,3 +2276,10 @@ Source commit `d2dc104585723b44632d1095590630b333f821e9` is now bound to EV-0165
 PAR-0518 is now mapped partial. The pinned `connection.request` event is parsed into bounded typed metadata and attached to its existing tool row by tool-call ID. Newer full `connection.update` snapshots are session/operation/sequence fenced. The accessible transcript card exposes target status, authorization links, pending approve/skip, masked setup inputs, and Continue; `connection.respond` sends through the matching session/profile/Gateway actor. Environment drafts use zeroizing strings and clear on send or settlement; unknown outcomes remain locked until a newer authoritative snapshot. Focused parser/reducer, RPC actor, transcript lifecycle, and rendered UI action tests pass. Pending connection-operation resume hydration, failed/expired target reissue, authenticated live Gateway and packaged Windows acceptance remain open, so PAR-0518 stays partial.
 
 Validation: full locked automation-feature suite passes 695 library + 15 protocol + 3 launcher tests; locked workspace all-target check, rustfmt, diff check and persisted task validation pass. Generated ledgers now map 104/176 scoped requirements (1 implemented, 102 partial, 1 not implemented, 72 unknown) and 138/499 broad rows (6 implemented, 131 partial, 1 not implemented, 361 unknown). All 176 scoped rows still lack live-runtime and source-paired acceptance. No live Hermes Gateway or installed Hermes app was used.
+
+
+### Revision 370 — Refresh DoofusDock dependency snapshot — 2026-11-24
+
+Pinned Hermes and preserved rev1 dependency declarations and lockfiles to `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87`. Refreshed the three vendored crates from fetched source, retaining the Hermes-specific GroupRail restore projection in presentation. The pin remains fixed until explicitly requested. Historical runtime captures keep their original hashes.
+
+Validation: locked workspace suite passes (696 library + 15 protocol + 3 launcher tests); `cargo check --locked --workspace --all-targets`, `cargo build --locked -p hermes-native`, and rev1 locked check pass. Package validator, rustfmt and diff checks pass. No live Gateway or installed app validation claimed.

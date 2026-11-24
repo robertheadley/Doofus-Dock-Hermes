@@ -1,5 +1,5 @@
 use doofusdock_core::PanelId;
-use doofusdock_presentation::{Box2, Snapshot, SpatialIndex, Visual};
+use doofusdock_presentation::{Box2, SnapSettings, Snapshot, SpatialIndex, Visual};
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
@@ -40,8 +40,9 @@ fn percentile_duration(samples: &mut [Duration]) -> Duration {
 fn main() {
     const QUERIES: usize = 5_000;
     const REPETITIONS: usize = 15;
+    const DRAG_FRAMES: usize = 60;
     println!(
-        "objects,build_p50_us,point_query_p50_ns,point_linear_p50_ns,rect_query_p50_ns,rect_linear_p50_ns,rebuild_p50_us"
+        "objects,build_p50_us,point_query_p50_ns,point_linear_p50_ns,rect_query_p50_ns,rect_linear_p50_ns,rebuild_p50_us,drag_rebuild_frame_p50_us,drag_cached_frame_p50_us"
     );
     for count in [10, 50, 100, 250, 500, 1_000] {
         let snapshot = scene(count);
@@ -145,15 +146,73 @@ fn main() {
             }
             linear_rect.push(start.elapsed());
         }
+        let drag_rects: Vec<_> = (0..DRAG_FRAMES)
+            .map(|frame| Box2 {
+                x: 218.0 + (frame % 30) as f64,
+                y: 20.0 + (frame % 5) as f64,
+                w: 180.0,
+                h: 40.0,
+            })
+            .collect();
+        let drag_points: Vec<_> = (0..DRAG_FRAMES)
+            .map(|frame| (55.0 + (frame % 20) as f64, 35.0))
+            .collect();
+        let mut rebuild_drag_samples = Vec::with_capacity(REPETITIONS);
+        let mut cached_drag_samples = Vec::with_capacity(REPETITIONS);
+        for repetition in 0..REPETITIONS {
+            let start = Instant::now();
+            for (frame, (rect, (x, y))) in drag_rects.iter().zip(&drag_points).enumerate() {
+                let frame_index = SpatialIndex::build(
+                    &snapshot,
+                    1,
+                    (repetition * DRAG_FRAMES + frame + 2) as u64,
+                    128.0,
+                )
+                .unwrap();
+                let snapped = frame_index
+                    .snap_bounds_with_spacing(*rect, None, SnapSettings::default(), Some(6))
+                    .unwrap();
+                black_box((snapped, frame_index.point_containing(*x, *y)));
+            }
+            rebuild_drag_samples.push(start.elapsed());
+
+            let start = Instant::now();
+            for (rect, (x, y)) in drag_rects.iter().zip(&drag_points) {
+                let snapped = index
+                    .snap_bounds_with_spacing(*rect, None, SnapSettings::default(), Some(6))
+                    .unwrap();
+                black_box((snapped, index.point_containing(*x, *y)));
+            }
+            cached_drag_samples.push(start.elapsed());
+        }
+        let first_rect = drag_rects[0];
+        let first_point = drag_points[0];
+        let cached_snap = index
+            .snap_bounds_with_spacing(first_rect, None, SnapSettings::default(), Some(6))
+            .unwrap();
+        let rebuilt_index = SpatialIndex::build(&snapshot, 1, 999, 128.0).unwrap();
+        let rebuilt_snap = rebuilt_index
+            .snap_bounds_with_spacing(first_rect, None, SnapSettings::default(), Some(6))
+            .unwrap();
+        assert_eq!(cached_snap.bounds, rebuilt_snap.bounds);
+        assert_eq!(cached_snap.guides, rebuilt_snap.guides);
+        assert_eq!(
+            index.point_containing(first_point.0, first_point.1),
+            rebuilt_index.point_containing(first_point.0, first_point.1)
+        );
+        let per_drag_frame_us =
+            |duration: Duration| duration.as_secs_f64() * 1e6 / DRAG_FRAMES as f64;
         let per_query_ns = |duration: Duration| duration.as_secs_f64() * 1e9 / QUERIES as f64;
         println!(
-            "{count},{:.2},{:.1},{:.1},{:.1},{:.1},{:.2}",
+            "{count},{:.2},{:.1},{:.1},{:.1},{:.1},{:.2},{:.2},{:.2}",
             percentile_us(&mut build_samples),
             per_query_ns(percentile_duration(&mut indexed_point)),
             per_query_ns(percentile_duration(&mut linear_point)),
             per_query_ns(percentile_duration(&mut indexed_rect)),
             per_query_ns(percentile_duration(&mut linear_rect)),
             percentile_us(&mut rebuild_samples),
+            per_drag_frame_us(percentile_duration(&mut rebuild_drag_samples)),
+            per_drag_frame_us(percentile_duration(&mut cached_drag_samples)),
         );
     }
 }

@@ -1,0 +1,25 @@
+{
+  "schema_version": 0,
+  "profiles": [
+    {
+      "id": "legacy-workbench",
+      "version": 1,
+      "category": "work",
+      "title_key": "Legacy workbench",
+      "regions": [
+        {
+          "id": "main",
+          "title_key": "Main",
+          "required": true
+        }
+      ],
+      "layout": {
+        "kind": "region",
+        "value": "main"
+      },
+      "presentation": {
+        "mode": "standard"
+      }
+    }
+  ]
+}

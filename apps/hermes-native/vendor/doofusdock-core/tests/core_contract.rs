@@ -31,6 +31,83 @@ fn fixture() -> LayoutDocument {
     doc
 }
 
+fn assert_operation_undo_redo(document: &LayoutDocument, operation: Operation) {
+    let mut trial = document.clone();
+    let mut history = UndoStack::new(4);
+    let before = trial.clone();
+    let result = history
+        .execute(&mut trial, operation)
+        .expect("operation should be accepted by transaction history");
+    validate_layout(&result.document).expect("transaction result remains a valid layout");
+    if result.diff.is_empty() {
+        assert_eq!(
+            history.undo_size(),
+            0,
+            "no-op operations do not create history"
+        );
+        return;
+    }
+
+    history.undo(&mut trial).expect("operation should undo");
+    let mut expected_before = before;
+    expected_before.revision = trial.revision;
+    assert_eq!(trial, expected_before, "undo restores canonical state");
+
+    history.redo(&mut trial).expect("operation should redo");
+    let mut expected_after = result.document;
+    expected_after.revision = trial.revision;
+    assert_eq!(trial, expected_after, "redo reapplies canonical state");
+}
+
+#[test]
+fn reorder_panel_appends_at_the_child_count_insertion_boundary() {
+    let doc = fixture();
+    let result = apply_operation(
+        &doc,
+        Operation::ReorderPanel {
+            panel: "a".into(),
+            container: "tabs-ab".into(),
+            index: 2,
+        },
+    )
+    .unwrap();
+    let tabs = find_node(
+        result.document.root.as_deref().unwrap(),
+        &NodeId::from("tabs-ab"),
+    )
+    .expect("tab container remains in the layout");
+    let NodeKind::Tabs {
+        items,
+        active_index,
+        ..
+    } = &tabs.kind
+    else {
+        panic!("reorder target remains a tab container");
+    };
+    assert_eq!(
+        items
+            .iter()
+            .map(|item| match &item.kind {
+                NodeKind::Panel { panel } => panel.clone(),
+                _ => panic!("tab items remain panel leaves"),
+            })
+            .collect::<Vec<_>>(),
+        vec![PanelId::from("b"), PanelId::from("a")]
+    );
+    assert_eq!(*active_index, 1);
+    assert_eq!(result.document.revision, doc.revision + 1);
+
+    let invalid = apply_operation(
+        &doc,
+        Operation::ReorderPanel {
+            panel: "a".into(),
+            container: "tabs-ab".into(),
+            index: 3,
+        },
+    );
+    assert!(invalid.is_err());
+}
+
 #[test]
 fn all_public_layout_operations_commit_valid_documents() {
     let doc = fixture();
@@ -81,6 +158,10 @@ fn all_public_layout_operations_commit_valid_documents() {
             split: "workspace-root".into(),
             weights: vec![0.6, 0.4],
         },
+        Operation::SetGroupMinimized {
+            group: "tabs-ab".into(),
+            minimized: true,
+        },
         Operation::AutoHide {
             panel: "c".into(),
             edge: DockEdge::Right,
@@ -102,7 +183,7 @@ fn all_public_layout_operations_commit_valid_documents() {
         let decoded: Operation =
             serde_json::from_value(encoded).expect("operation request should deserialize");
         assert_eq!(decoded, op, "{} request should round trip", op.id());
-        let result = apply_operation(&doc, op).expect("operation should succeed");
+        let result = apply_operation(&doc, op.clone()).expect("operation should succeed");
         validate_layout(&result.document).expect("operation result must remain valid");
         let expected_revision = if result.diff.is_empty() {
             doc.revision
@@ -110,6 +191,7 @@ fn all_public_layout_operations_commit_valid_documents() {
             doc.revision + 1
         };
         assert_eq!(result.document.revision, expected_revision);
+        assert_operation_undo_redo(&doc, op);
     }
     let mut root_panel = doc.clone();
     root_panel.root = None;
@@ -120,6 +202,7 @@ fn all_public_layout_operations_commit_valid_documents() {
     let result = apply_operation(&root_panel, Operation::RootPanel { panel: "c".into() }).unwrap();
     assert!(result.document.root.is_some());
     assert!(result.document.auto_hide_panels.is_empty());
+    assert_operation_undo_redo(&root_panel, Operation::RootPanel { panel: "c".into() });
 
     let closed = apply_operation(&doc, Operation::ClosePanel { panel: "c".into() }).unwrap();
     let reopened = apply_operation(
@@ -131,6 +214,14 @@ fn all_public_layout_operations_commit_valid_documents() {
         },
     )
     .unwrap();
+    assert_operation_undo_redo(
+        &closed.document,
+        Operation::ReopenPanel {
+            panel: "c".into(),
+            target_tabs: "tabs-ab".into(),
+            index: 2,
+        },
+    );
     validate_layout(&reopened.document).unwrap();
     let reordered = apply_operation(
         &doc,
@@ -158,6 +249,22 @@ fn all_public_layout_operations_commit_valid_documents() {
         },
     )
     .unwrap();
+    assert_operation_undo_redo(
+        &apply_operation(
+            &doc,
+            Operation::AutoHide {
+                panel: "c".into(),
+                edge: DockEdge::Right,
+            },
+        )
+        .unwrap()
+        .document,
+        Operation::PinPanel {
+            panel: "c".into(),
+            target_tabs: "tabs-ab".into(),
+            index: 2,
+        },
+    );
     validate_layout(&reordered.document).unwrap();
     validate_layout(&pinned.document).unwrap();
 
@@ -169,6 +276,13 @@ fn all_public_layout_operations_commit_valid_documents() {
         },
     )
     .unwrap();
+    assert_operation_undo_redo(
+        &doc,
+        Operation::AddPanel {
+            descriptor: PanelDescriptor::new("e", "E"),
+            target: Some("tabs-ab".into()),
+        },
+    );
     validate_layout(&added_panel.document).unwrap();
     assert!(
         added_panel
@@ -188,6 +302,16 @@ fn all_public_layout_operations_commit_valid_documents() {
         },
     )
     .unwrap();
+    assert_operation_undo_redo(
+        &added_panel.document,
+        Operation::AddGroup {
+            descriptor: PanelDescriptor::new("f", "F"),
+            target: Some("tabs-ab".into()),
+            orientation: Orientation::Horizontal,
+            before: false,
+            ratio: 0.35,
+        },
+    );
     validate_layout(&added_group.document).unwrap();
 
     let floated = apply_operation(
@@ -219,6 +343,18 @@ fn all_public_layout_operations_commit_valid_documents() {
         },
     )
     .unwrap();
+    assert_operation_undo_redo(
+        &floated.document,
+        Operation::UpdateFloatingWindow {
+            window: "float-f".into(),
+            geometry: Rect {
+                x: 80,
+                y: 95,
+                width: 400,
+                height: 280,
+            },
+        },
+    );
     validate_layout(&moved_window.document).unwrap();
     assert!(moved_window.diff.patches.iter().any(|patch| matches!(
         patch,
@@ -234,6 +370,7 @@ fn all_public_layout_operations_commit_valid_documents() {
     )));
 
     let cleared = apply_operation(&moved_window.document, Operation::ClearLayout).unwrap();
+    assert_operation_undo_redo(&moved_window.document, Operation::ClearLayout);
     validate_layout(&cleared.document).unwrap();
     assert!(cleared.document.root.is_none());
     assert!(cleared.document.floating_windows.is_empty());
@@ -903,7 +1040,7 @@ fn constraints_history_and_persistence_round_trip() {
 
 #[test]
 fn schema_zero_migration_uses_cpp_defaults_and_canonical_field_order() {
-    let legacy = r#"{"schema_version":0,"layout_id":"legacy-layout","workspace_id":"legacy-workspace","revision":7,"panels":[{"id":"legacy-panel","title_key":"Legacy panel","icon_key":"","min":[0,0],"max":[0,0],"provider":"legacy-provider"}],"root":null,"windows":[{"id":"legacy-float","geometry":[30,40,640,480],"root":{"id":"legacy-panel-node","type":"panel","panel":"legacy-panel"}}]}"#;
+    let legacy = include_str!("fixtures/layout_schema_v0.json");
     let sum = checksum_layout_json(legacy).unwrap();
     let mut value: serde_json::Value = serde_json::from_str(legacy).unwrap();
     value
@@ -912,7 +1049,15 @@ fn schema_zero_migration_uses_cpp_defaults_and_canonical_field_order() {
         .insert("checksum".into(), serde_json::Value::String(sum));
     let encoded = serde_json::to_string(&value).unwrap();
     let migrated = deserialize_layout(&encoded, PersistenceLimits::default()).unwrap();
-    assert_eq!(migrated.schema_version, 1);
+    assert_eq!(migrated.schema_version, CURRENT_LAYOUT_SCHEMA);
+    assert_eq!(migrated.id, LayoutId::from("legacy-layout"));
+    assert_eq!(migrated.workspace, WorkspaceId::from("legacy-workspace"));
+    assert_eq!(migrated.revision, 7);
+    assert_eq!(migrated.panels[0].id, PanelId::from("legacy-panel"));
+    assert_eq!(
+        migrated.floating_windows[0].id,
+        WindowId::from("legacy-float")
+    );
     assert_eq!(migrated.floating_windows[0].monitor_id, "");
     assert_eq!(migrated.floating_windows[0].scale, 1.0);
     assert_eq!(migrated.floating_windows[0].z_order_hint, 0);
@@ -935,6 +1080,136 @@ fn schema_zero_migration_uses_cpp_defaults_and_canonical_field_order() {
         positions.windows(2).all(|pair| pair[0] < pair[1]),
         "serialized top-level keys must match the C++ canonical order"
     );
+}
+
+#[test]
+fn schema_one_migration_defaults_tab_groups_to_expanded() {
+    let mut value: serde_json::Value =
+        serde_json::from_str(&serialize_layout(&fixture()).unwrap()).unwrap();
+    value["schema_version"] = serde_json::Value::from(1);
+    let sum = checksum_layout_json(&serde_json::to_string(&value).unwrap()).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .insert("checksum".into(), serde_json::Value::String(sum));
+    let restored = deserialize_layout(
+        &serde_json::to_string(&value).unwrap(),
+        PersistenceLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(restored.schema_version, CURRENT_LAYOUT_SCHEMA);
+    let root = restored.root.as_ref().unwrap();
+    let tabs = find_node(root, &NodeId::from("tabs-ab")).unwrap();
+    assert!(matches!(
+        tabs.kind,
+        NodeKind::Tabs {
+            minimized: false,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn minimized_tab_group_operation_is_revisioned_diffed_and_persisted() {
+    let doc = fixture();
+    let operation = Operation::SetGroupMinimized {
+        group: "tabs-ab".into(),
+        minimized: true,
+    };
+    let changed = apply_operation(&doc, operation.clone()).unwrap();
+    let reconverted = apply_operation(
+        &changed.document,
+        Operation::ConvertContainer {
+            container: "tabs-ab".into(),
+            target: ContainerModality::Tabbed { active_index: 1 },
+        },
+    )
+    .unwrap();
+    let reconverted_tabs = find_node(
+        reconverted.document.root.as_ref().unwrap(),
+        &NodeId::from("tabs-ab"),
+    )
+    .unwrap();
+    assert!(matches!(
+        reconverted_tabs.kind,
+        NodeKind::Tabs {
+            minimized: true,
+            ..
+        }
+    ));
+    let mut history = UndoStack::new(2);
+    let mut reversible = doc.clone();
+    history.execute(&mut reversible, operation).unwrap();
+    history.undo(&mut reversible).unwrap();
+    let tabs = find_node(reversible.root.as_ref().unwrap(), &NodeId::from("tabs-ab")).unwrap();
+    assert!(matches!(
+        tabs.kind,
+        NodeKind::Tabs {
+            minimized: false,
+            ..
+        }
+    ));
+    history.redo(&mut reversible).unwrap();
+    let tabs = find_node(reversible.root.as_ref().unwrap(), &NodeId::from("tabs-ab")).unwrap();
+    assert!(matches!(
+        tabs.kind,
+        NodeKind::Tabs {
+            minimized: true,
+            ..
+        }
+    ));
+    assert_eq!(changed.document.revision, doc.revision + 1);
+    assert!(
+        changed
+            .diff
+            .patches
+            .contains(&DiffPatch::TabGroupMinimizedChanged {
+                group: "tabs-ab".into(),
+                minimized: true,
+            })
+    );
+    let encoded = serialize_layout(&changed.document).unwrap();
+    let restored = deserialize_layout(&encoded, PersistenceLimits::default()).unwrap();
+    let tabs = find_node(restored.root.as_ref().unwrap(), &NodeId::from("tabs-ab")).unwrap();
+    assert!(matches!(
+        tabs.kind,
+        NodeKind::Tabs {
+            minimized: true,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn diff_reports_minimize_and_active_tab_changes_together() {
+    let original = fixture();
+    let selected = apply_operation(
+        &original,
+        Operation::SelectTab {
+            tabs: "tabs-ab".into(),
+            index: 1,
+        },
+    )
+    .unwrap()
+    .document;
+    let minimized = apply_operation(
+        &selected,
+        Operation::SetGroupMinimized {
+            group: "tabs-ab".into(),
+            minimized: true,
+        },
+    )
+    .unwrap()
+    .document;
+    let diff = diff_layouts(&original, &minimized);
+    assert!(diff.patches.contains(&DiffPatch::ActiveTabChanged {
+        tabs: "tabs-ab".into(),
+        active_index: 1,
+    }));
+    assert!(diff.patches.contains(&DiffPatch::TabGroupMinimizedChanged {
+        group: "tabs-ab".into(),
+        minimized: true,
+    }));
 }
 
 #[test]
@@ -2275,6 +2550,270 @@ fn extension_registry_validates_schemas_capabilities_lifecycle_and_callbacks() {
             "stop:sample:first"
         ]
     );
+}
+
+#[test]
+fn versioned_persistence_codec_migrates_only_covered_versions_after_activation() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let callbacks = Arc::new(AtomicUsize::new(0));
+    let first_calls = callbacks.clone();
+    let second_calls = callbacks.clone();
+    let mut registry = ExtensionRegistry::default();
+    registry
+        .register_versioned_persistence_codec(VersionedPersistenceCodecExtension {
+            codec: PersistenceCodecExtension {
+                descriptor: extension_descriptor("sample:versioned-codec", None, None),
+                encode: Arc::new(|state| Ok(state.clone())),
+                decode: Arc::new(|state| Ok(state.clone())),
+            },
+            current_schema_version: 2,
+            migrations: vec![
+                PersistenceCodecMigration {
+                    from_schema_version: 0,
+                    to_schema_version: 1,
+                    migrate: Arc::new(move |state| {
+                        first_calls.fetch_add(1, Ordering::SeqCst);
+                        let mut value = state.clone();
+                        value["adapter_v1"] = serde_json::json!(true);
+                        Ok(value)
+                    }),
+                },
+                PersistenceCodecMigration {
+                    from_schema_version: 1,
+                    to_schema_version: 2,
+                    migrate: Arc::new(move |state| {
+                        second_calls.fetch_add(1, Ordering::SeqCst);
+                        let mut value = state.clone();
+                        value["adapter_v2"] = serde_json::json!(true);
+                        Ok(value)
+                    }),
+                },
+            ],
+        })
+        .unwrap();
+    assert_eq!(
+        registry.persistence_codec_schema_version("sample:versioned-codec"),
+        Some(2)
+    );
+
+    let source = serde_json::json!({"custom":"keep-this"});
+    assert_eq!(
+        registry
+            .migrate_persistence_codec_state("sample:versioned-codec", 0, &source)
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(callbacks.load(Ordering::SeqCst), 0);
+
+    registry.freeze();
+    registry.activate("sample:versioned-codec").unwrap();
+    let migrated = registry
+        .migrate_persistence_codec_state("sample:versioned-codec", 0, &source)
+        .unwrap();
+    assert_eq!(migrated["custom"], "keep-this");
+    assert_eq!(migrated["adapter_v1"], true);
+    assert_eq!(migrated["adapter_v2"], true);
+    assert_eq!(source, serde_json::json!({"custom":"keep-this"}));
+    assert_eq!(callbacks.load(Ordering::SeqCst), 2);
+
+    let current = serde_json::json!({"already":"current"});
+    assert_eq!(
+        registry
+            .migrate_persistence_codec_state("sample:versioned-codec", 2, &current)
+            .unwrap(),
+        current
+    );
+    let future = registry
+        .migrate_persistence_codec_state("sample:versioned-codec", 3, &source)
+        .unwrap_err();
+    assert_eq!(future.code, ErrorCode::SchemaError);
+    assert_eq!(callbacks.load(Ordering::SeqCst), 2);
+    assert!(
+        registry
+            .capability_snapshot(&HostCapabilities::default())
+            .iter()
+            .find(|capability| capability.id == "sample:versioned-codec")
+            .unwrap()
+            .operations
+            .contains(&"migrate".to_owned())
+    );
+}
+
+#[test]
+fn extension_state_migration_rechecks_envelope_and_requires_registry() {
+    let mut registry = ExtensionRegistry::default();
+    registry
+        .register_versioned_persistence_codec(VersionedPersistenceCodecExtension {
+            codec: PersistenceCodecExtension {
+                descriptor: extension_descriptor("sample:state", None, None),
+                encode: Arc::new(|state| Ok(state.clone())),
+                decode: Arc::new(|state| Ok(state.clone())),
+            },
+            current_schema_version: 2,
+            migrations: vec![PersistenceCodecMigration {
+                from_schema_version: 1,
+                to_schema_version: 2,
+                migrate: Arc::new(|state| {
+                    let mut target = state.clone();
+                    target["migrated"] = serde_json::json!(true);
+                    Ok(target)
+                }),
+            }],
+        })
+        .unwrap();
+    registry.freeze();
+    registry.activate("sample:state").unwrap();
+    let mut envelope = serde_json::json!({
+        "schema_version": 1,
+        "workspace_id": "extension-test",
+        "preferences": {
+            "extensions": { "sample:state": { "schema_version": 1, "data": { "keep": 7 } } },
+            "host.preference": "preserve"
+        }
+    });
+    let sum = checksum_layout_json(&serde_json::to_string(&envelope).unwrap()).unwrap();
+    envelope["checksum"] = serde_json::json!(sum);
+    let source = serde_json::to_string(&envelope).unwrap();
+    assert_eq!(
+        preview_persisted_migration(PersistedDataFormat::ExtensionState, &source)
+            .unwrap_err()
+            .code,
+        ErrorCode::UnsupportedOperation
+    );
+    let preview = preview_extension_state_migration(&registry, &source).unwrap();
+    assert!(preview.requires_migration);
+    assert_eq!(preview.extension_migrations[0].extension_id, "sample:state");
+    let target: serde_json::Value = serde_json::from_str(&preview.target_json).unwrap();
+    let target_checksum = checksum_layout_json(&preview.target_json).unwrap();
+    assert_eq!(target["checksum"], target_checksum);
+    assert_eq!(
+        target["preferences"]["extensions"]["sample:state"]["data"]["keep"],
+        7
+    );
+    assert_eq!(
+        target["preferences"]["extensions"]["sample:state"]["data"]["migrated"],
+        true
+    );
+    assert_eq!(target["preferences"]["host.preference"], "preserve");
+
+    let mut corrupt = envelope.clone();
+    corrupt["checksum"] = serde_json::json!("fnv1a64:0000000000000000");
+    assert_eq!(
+        preview_extension_state_migration(&registry, &corrupt.to_string())
+            .unwrap_err()
+            .code,
+        ErrorCode::SerializationError
+    );
+    let mut future = envelope.clone();
+    future["preferences"]["extensions"]["sample:state"]["schema_version"] = serde_json::json!(3);
+    let checksum = checksum_layout_json(&future.to_string()).unwrap();
+    future["checksum"] = serde_json::json!(checksum);
+    assert_eq!(
+        preview_extension_state_migration(&registry, &future.to_string())
+            .unwrap_err()
+            .code,
+        ErrorCode::SchemaError
+    );
+
+    envelope["preferences"]["extensions"]["unknown:provider"] = serde_json::json!({
+        "schema_version": 1, "data": {}
+    });
+    let sum = checksum_layout_json(&serde_json::to_string(&envelope).unwrap()).unwrap();
+    envelope["checksum"] = serde_json::json!(sum);
+    let bad = serde_json::to_string(&envelope).unwrap();
+    assert_eq!(
+        preview_extension_state_migration(&registry, &bad)
+            .unwrap_err()
+            .code,
+        ErrorCode::UnsupportedOperation
+    );
+}
+
+#[test]
+fn versioned_persistence_codec_rejects_gapped_chains_before_registration() {
+    let mut registry = ExtensionRegistry::default();
+    let result =
+        registry.register_versioned_persistence_codec(VersionedPersistenceCodecExtension {
+            codec: PersistenceCodecExtension {
+                descriptor: extension_descriptor("sample:gapped-codec", None, None),
+                encode: Arc::new(|state| Ok(state.clone())),
+                decode: Arc::new(|state| Ok(state.clone())),
+            },
+            current_schema_version: 3,
+            migrations: vec![
+                PersistenceCodecMigration {
+                    from_schema_version: 0,
+                    to_schema_version: 1,
+                    migrate: Arc::new(|state| Ok(state.clone())),
+                },
+                PersistenceCodecMigration {
+                    from_schema_version: 2,
+                    to_schema_version: 3,
+                    migrate: Arc::new(|state| Ok(state.clone())),
+                },
+            ],
+        });
+    assert_eq!(result.unwrap_err().code, ErrorCode::SchemaError);
+    assert_eq!(registry.counts()[3], 0);
+    assert_eq!(
+        registry.persistence_codec_schema_version("sample:gapped-codec"),
+        None
+    );
+}
+
+#[test]
+fn versioned_persistence_codec_contains_migration_errors_and_panics() {
+    let mut registry = ExtensionRegistry::default();
+    for (id, migrate) in [
+        (
+            "sample:rejecting-codec",
+            Arc::new(|_: &serde_json::Value| {
+                Err(DockError::new(
+                    ErrorCode::Conflict,
+                    "legacy setting cannot be converted",
+                    "provider-data",
+                ))
+            }) as CodecMigrationHook,
+        ),
+        (
+            "sample:panicking-codec",
+            Arc::new(|_: &serde_json::Value| -> DockResult<serde_json::Value> {
+                panic!("migration panic")
+            }) as CodecMigrationHook,
+        ),
+    ] {
+        registry
+            .register_versioned_persistence_codec(VersionedPersistenceCodecExtension {
+                codec: PersistenceCodecExtension {
+                    descriptor: extension_descriptor(id, None, None),
+                    encode: Arc::new(|state| Ok(state.clone())),
+                    decode: Arc::new(|state| Ok(state.clone())),
+                },
+                current_schema_version: 1,
+                migrations: vec![PersistenceCodecMigration {
+                    from_schema_version: 0,
+                    to_schema_version: 1,
+                    migrate,
+                }],
+            })
+            .unwrap();
+    }
+    registry.freeze();
+    registry.activate("sample:rejecting-codec").unwrap();
+    registry.activate("sample:panicking-codec").unwrap();
+    let source = serde_json::json!({"custom":"preserve-on-failure"});
+    for id in ["sample:rejecting-codec", "sample:panicking-codec"] {
+        assert_eq!(
+            registry
+                .migrate_persistence_codec_state(id, 0, &source)
+                .unwrap_err()
+                .code,
+            ErrorCode::ExtensionError
+        );
+        assert_eq!(source["custom"], "preserve-on-failure");
+    }
 }
 
 #[test]

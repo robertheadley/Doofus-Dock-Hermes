@@ -68,6 +68,59 @@ impl Rasterizer {
         }
         Ok(())
     }
+    /// Current retained texture storage measured in source pixels.
+    pub fn texture_pixels(&self) -> usize {
+        self.textures
+            .values()
+            .map(|texture| texture.pixels.len())
+            .sum()
+    }
+
+    /// Estimate retained texture storage after applying a delta, before mutating
+    /// the rasterizer. Partial updates retain their existing dimensions.
+    pub fn projected_texture_pixels_after(&self, delta: &TexturesDelta) -> Result<usize, String> {
+        let mut sizes = self
+            .textures
+            .iter()
+            .map(|(id, texture)| (*id, texture.size))
+            .collect::<HashMap<_, _>>();
+        for (id, images) in &delta.set {
+            for image in images {
+                let ImageData::Color(data) = &image.image;
+                let [w, h] = data.size;
+                if w == 0
+                    || h == 0
+                    || w > 8192
+                    || h > 8192
+                    || w.checked_mul(h) != Some(data.pixels.len())
+                {
+                    return Err("Invalid texture dimensions".into());
+                }
+                if let Some([x, y]) = image.pos {
+                    let [base_w, base_h] = sizes
+                        .get(id)
+                        .copied()
+                        .ok_or("Partial texture update without base")?;
+                    if x.checked_add(w).is_none_or(|value| value > base_w)
+                        || y.checked_add(h).is_none_or(|value| value > base_h)
+                    {
+                        return Err("Partial texture update out of bounds".into());
+                    }
+                } else {
+                    sizes.insert(*id, data.size);
+                }
+            }
+        }
+        for id in &delta.free {
+            sizes.remove(id);
+        }
+        sizes.values().try_fold(0usize, |total, [w, h]| {
+            total
+                .checked_add(w.checked_mul(*h).ok_or("Texture size overflow")?)
+                .ok_or_else(|| "Texture budget overflow".to_owned())
+        })
+    }
+
     pub fn free(&mut self, delta: &TexturesDelta) {
         for id in &delta.free {
             self.textures.remove(id);

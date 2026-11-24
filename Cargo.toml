@@ -6,9 +6,9 @@ license = "MIT"
 rust-version = "1.95"
 
 [dependencies]
-doofusdock-core = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
-doofusdock-presentation = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
-doofusdock-render-egui = { git = "https://github.com/robertheadley/doofusdock", rev = "f6eb49b9e488f4e851d8d3abe18e95d296201bba" }
+doofusdock-core = { git = "https://github.com/robertheadley/doofusdock", rev = "f23ed02a99c7f8c57f83164d98feadb17cc4ed87" }
+doofusdock-presentation = { git = "https://github.com/robertheadley/doofusdock", rev = "f23ed02a99c7f8c57f83164d98feadb17cc4ed87" }
+doofusdock-render-egui = { git = "https://github.com/robertheadley/doofusdock", rev = "f23ed02a99c7f8c57f83164d98feadb17cc4ed87" }
 eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
 egui = { version = "0.37", default-features = false, features = ["default_fonts"] }
 serde = { version = "1", features = ["derive"] }

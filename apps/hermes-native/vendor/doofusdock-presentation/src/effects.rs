@@ -127,7 +127,7 @@ pub struct EffectContext<'a> {
 /// discovery. This reports CPU scene-graph effects only; it makes no claim
 /// about GPU shaders, surface presentation, or frame pacing.
 pub fn built_in_effect_capability_report() -> EffectCapabilityReport {
-    const EFFECT_IDS: [&str; 8] = [
+    const EFFECT_IDS: [&str; 15] = [
         "awakening",
         "wall_of_windows",
         "magnetic_assembly",
@@ -136,6 +136,13 @@ pub fn built_in_effect_capability_report() -> EffectCapabilityReport {
         "kinetic_storm",
         "infinite_regeneration",
         "impossible_recovery",
+        "tile_assembly",
+        "fly_in",
+        "unfold",
+        "fly_out",
+        "collapse",
+        "card_stack",
+        "fluid_ripple",
     ];
     let schema = serde_json::json!({
         "type": "object",
@@ -336,6 +343,243 @@ pub fn evaluate_scene_effects(scene_id: &str, ctx: EffectContext) -> Result<Scen
     let base_snapshot = crate::project(ctx.canonical_doc, ctx.viewport)?;
 
     match scene_id {
+        "tile_assembly" => {
+            // Panels begin as a compact grid of preview tiles and assemble into
+            // their canonical projected bounds. The source document stays read-only.
+            let count = base_snapshot.panels.len().max(1);
+            let columns = (count as f64).sqrt().ceil() as usize;
+            let rows = count.div_ceil(columns);
+            let cell_w = ctx.viewport.w / columns as f64;
+            let cell_h = ctx.viewport.h / rows as f64;
+            let stagger = 0.08;
+            let schedule_span = 1.0 + stagger * count.saturating_sub(1) as f64;
+            for (index, (id, visual)) in base_snapshot.panels.into_iter().enumerate() {
+                let tile_w = (visual.bounds.w * 0.58).min(cell_w * 0.82);
+                let tile_h = (visual.bounds.h * 0.58).min(cell_h * 0.82);
+                let col = index % columns;
+                let row = index / columns;
+                let start = Box2 {
+                    x: ctx.viewport.x + col as f64 * cell_w + (cell_w - tile_w) * 0.5,
+                    y: ctx.viewport.y + row as f64 * cell_h + (cell_h - tile_h) * 0.5,
+                    w: tile_w,
+                    h: tile_h,
+                };
+                let local = if ctx.reduced_motion {
+                    1.0
+                } else {
+                    smooth((ctx.progress * schedule_span - index as f64 * stagger).clamp(0.0, 1.0))
+                };
+                graph.panels.insert(
+                    id,
+                    Visual {
+                        bounds: start.mix(visual.bounds, local),
+                        opacity: visual.opacity * (0.72 + 0.28 * local),
+                        ..visual
+                    },
+                );
+            }
+        }
+        "fly_in" => {
+            // Panels enter from alternating viewport edges in stable ID order.
+            // The stateless progress input lets hosts reverse or scrub the motion.
+            let count = base_snapshot.panels.len().max(1);
+            let stagger = 0.07;
+            let schedule_span = 1.0 + stagger * count.saturating_sub(1) as f64;
+            for (index, (id, visual)) in base_snapshot.panels.into_iter().enumerate() {
+                let mut start = visual.bounds;
+                match index % 4 {
+                    0 => start.x = ctx.viewport.x - start.w - ctx.viewport.w,
+                    1 => start.y = ctx.viewport.y - start.h - ctx.viewport.h,
+                    2 => start.x = ctx.viewport.x + ctx.viewport.w,
+                    _ => start.y = ctx.viewport.y + ctx.viewport.h,
+                }
+                let local = if ctx.reduced_motion {
+                    1.0
+                } else {
+                    smooth((ctx.progress * schedule_span - index as f64 * stagger).clamp(0.0, 1.0))
+                };
+                graph.panels.insert(
+                    id,
+                    Visual {
+                        bounds: start.mix(visual.bounds, local),
+                        opacity: visual.opacity * local,
+                        ..visual
+                    },
+                );
+            }
+        }
+        "unfold" => {
+            // Panels open from a narrow center seam into canonical bounds.
+            // Sampling is stateless so hosts may reverse, scrub, or retarget.
+            let count = base_snapshot.panels.len().max(1);
+            let stagger = 0.06;
+            let schedule_span = 1.0 + stagger * count.saturating_sub(1) as f64;
+            for (index, (id, visual)) in base_snapshot.panels.into_iter().enumerate() {
+                let center_x = visual.bounds.x + visual.bounds.w * 0.5;
+                let start = Box2 {
+                    x: center_x,
+                    y: visual.bounds.y,
+                    w: 0.0,
+                    h: visual.bounds.h,
+                };
+                let local = if ctx.reduced_motion {
+                    1.0
+                } else {
+                    smooth((ctx.progress * schedule_span - index as f64 * stagger).clamp(0.0, 1.0))
+                };
+                graph.panels.insert(
+                    id,
+                    Visual {
+                        bounds: start.mix(visual.bounds, local),
+                        opacity: visual.opacity * (0.55 + 0.45 * local),
+                        ..visual
+                    },
+                );
+            }
+        }
+        "fly_out" => {
+            // Panels exit beyond alternating viewport edges. In reduced-motion
+            // mode the host receives the canonical projection and can dismiss
+            // the surface immediately without animating its content.
+            let count = base_snapshot.panels.len().max(1);
+            let stagger = 0.07;
+            let schedule_span = 1.0 + stagger * count.saturating_sub(1) as f64;
+            for (index, (id, visual)) in base_snapshot.panels.into_iter().enumerate() {
+                let mut end = visual.bounds;
+                match index % 4 {
+                    0 => end.x = ctx.viewport.x - end.w - ctx.viewport.w,
+                    1 => end.y = ctx.viewport.y - end.h - ctx.viewport.h,
+                    2 => end.x = ctx.viewport.x + ctx.viewport.w,
+                    _ => end.y = ctx.viewport.y + ctx.viewport.h,
+                }
+                let local = if ctx.reduced_motion {
+                    0.0
+                } else {
+                    smooth((ctx.progress * schedule_span - index as f64 * stagger).clamp(0.0, 1.0))
+                };
+                graph.panels.insert(
+                    id,
+                    Visual {
+                        bounds: visual.bounds.mix(end, local),
+                        opacity: visual.opacity * (1.0 - local),
+                        ..visual
+                    },
+                );
+            }
+        }
+        "collapse" => {
+            // Panels close toward a vertical center seam. Reduced motion
+            // returns canonical bounds so the host may switch state directly.
+            let count = base_snapshot.panels.len().max(1);
+            let stagger = 0.06;
+            let schedule_span = 1.0 + stagger * count.saturating_sub(1) as f64;
+            for (index, (id, visual)) in base_snapshot.panels.into_iter().enumerate() {
+                let center_x = visual.bounds.x + visual.bounds.w * 0.5;
+                let end = Box2 {
+                    x: center_x,
+                    y: visual.bounds.y,
+                    w: 0.0,
+                    h: visual.bounds.h,
+                };
+                let local = if ctx.reduced_motion {
+                    0.0
+                } else {
+                    smooth((ctx.progress * schedule_span - index as f64 * stagger).clamp(0.0, 1.0))
+                };
+                graph.panels.insert(
+                    id,
+                    Visual {
+                        bounds: visual.bounds.mix(end, local),
+                        opacity: visual.opacity * (1.0 - local),
+                        ..visual
+                    },
+                );
+            }
+        }
+        "card_stack" => {
+            // Panels converge to a compact, ordered stack. Small bounded
+            // offsets keep each card edge visible and stable across samples.
+            let count = base_snapshot.panels.len().max(1);
+            let stagger = 0.05;
+            let schedule_span = 1.0 + stagger * count.saturating_sub(1) as f64;
+            for (index, (id, visual)) in base_snapshot.panels.into_iter().enumerate() {
+                let depth = index as f64;
+                let offset = (depth * 6.0).min(ctx.viewport.w.min(ctx.viewport.h) * 0.12);
+                let target = Box2 {
+                    x: ctx.viewport.x + (ctx.viewport.w - visual.bounds.w * 0.62) * 0.5 + offset,
+                    y: ctx.viewport.y + (ctx.viewport.h - visual.bounds.h * 0.62) * 0.5 + offset,
+                    w: visual.bounds.w * 0.62,
+                    h: visual.bounds.h * 0.62,
+                };
+                let local = if ctx.reduced_motion {
+                    0.0
+                } else {
+                    smooth((ctx.progress * schedule_span - depth * stagger).clamp(0.0, 1.0))
+                };
+                graph.panels.insert(
+                    id,
+                    Visual {
+                        bounds: visual.bounds.mix(target, local),
+                        z: if local > 0.5 {
+                            visual.z.saturating_add(index.min(i32::MAX as usize) as i32)
+                        } else {
+                            visual.z
+                        },
+                        ..visual
+                    },
+                );
+            }
+        }
+        "fluid_ripple" => {
+            // Panels flow from a compact center-stage cluster along staggered
+            // ripple paths, then settle exactly onto canonical bounds.
+            let count = base_snapshot.panels.len().max(1);
+            let stagger = 0.045;
+            let schedule_span = 1.0 + stagger * count.saturating_sub(1) as f64;
+            let seed_phase = (ctx.seed % 1024) as f64 * 0.006_135_923_151_542_565;
+            for (index, (id, visual)) in base_snapshot.panels.into_iter().enumerate() {
+                let index_phase = index as f64 * 2.399_963_229_728_653;
+                let start = Box2 {
+                    x: ctx.viewport.x
+                        + ctx.viewport.w * 0.5
+                        + index_phase.cos() * ctx.viewport.w * 0.025
+                        - visual.bounds.w * 0.35,
+                    y: ctx.viewport.y
+                        + ctx.viewport.h * 0.5
+                        + index_phase.sin() * ctx.viewport.h * 0.025
+                        - visual.bounds.h * 0.35,
+                    w: visual.bounds.w * 0.7,
+                    h: visual.bounds.h * 0.7,
+                };
+                let local = if ctx.reduced_motion {
+                    1.0
+                } else {
+                    (ctx.progress * schedule_span - index as f64 * stagger).clamp(0.0, 1.0)
+                };
+                if ctx.reduced_motion || ctx.progress >= 1.0 || local >= 1.0 {
+                    graph.panels.insert(id, visual);
+                    continue;
+                }
+                let eased = smooth(local);
+                let wave = (std::f64::consts::PI * local).sin()
+                    * (std::f64::consts::TAU * local + index_phase + seed_phase).sin()
+                    * 0.025;
+                let flow = Box2 {
+                    x: start.x + (visual.bounds.x - start.x) * eased + wave * ctx.viewport.w,
+                    y: start.y + (visual.bounds.y - start.y) * eased - wave * ctx.viewport.h * 0.7,
+                    w: start.w + (visual.bounds.w - start.w) * eased,
+                    h: start.h + (visual.bounds.h - start.h) * eased,
+                };
+                graph.panels.insert(
+                    id,
+                    Visual {
+                        bounds: flow,
+                        opacity: visual.opacity * eased,
+                        ..visual
+                    },
+                );
+            }
+        }
         "awakening" => {
             // Materialize: panels expand smoothly from center with opacity fade
             let t = if ctx.reduced_motion {
@@ -563,14 +807,42 @@ pub fn evaluate_scene_effects(scene_id: &str, ctx: EffectContext) -> Result<Scen
             }
         }
         "kinetic_storm" => {
-            let count = (base_snapshot.panels.len() * 4).min(ctx.lod_budget);
+            let base_panels: Vec<_> = base_snapshot.panels.into_iter().collect();
+            let count = (base_panels.len() * 4).min(ctx.lod_budget);
             let v = ctx.viewport;
             let beats = if ctx.reduced_motion {
                 0.0
             } else {
                 ctx.progress * 32.0
             };
+            let fission = if ctx.reduced_motion {
+                0.0
+            } else {
+                smooth(ctx.progress / 0.18)
+            };
+            let fusion = if ctx.reduced_motion {
+                0.0
+            } else {
+                smooth((ctx.progress - 0.72) / 0.28)
+            };
+
+            // Fade each live pane out as its four fragments scatter, then restore it
+            // while those same fragments converge into their original quadrants.
+            for (id, mut panel) in base_panels.iter().cloned() {
+                panel.opacity *= (1.0 - fission + fusion).clamp(0.0, 1.0);
+                graph.panels.insert(id, panel);
+            }
+
             for i in 0..count {
+                let panel_index = i / 4;
+                let piece = i % 4;
+                let parent = base_panels[panel_index].1.bounds;
+                let target = Box2 {
+                    x: parent.x + (piece % 2) as f64 * parent.w * 0.5,
+                    y: parent.y + (piece / 2) as f64 * parent.h * 0.5,
+                    w: parent.w * 0.5,
+                    h: parent.h * 0.5,
+                };
                 // Opposing satellites share their size and radius, centering the ensemble.
                 let pair = i / 2;
                 let theta = pair as f64 * 2.39996
@@ -579,17 +851,14 @@ pub fn evaluate_scene_effects(scene_id: &str, ctx: EffectContext) -> Result<Scen
                 let depth = (beats * 0.81 + pair as f64 * 1.7).sin() * 0.5 + 0.5;
                 let w = (v.w * (0.15 + 0.12 * depth)).min(v.h * 0.55);
                 let h = w * 9.0 / 16.0;
-                let radius = if i % 2 == 0 && i + 1 == count {
-                    0.0
-                } else {
-                    0.57 + 0.31 * depth + 0.10 * ctx.pulse
-                };
-                let bounds = Box2 {
+                let radius = 0.57 + 0.31 * depth + 0.10 * ctx.pulse;
+                let orbit = Box2 {
                     x: v.x + (v.w - w) * (0.5 + 0.5 * radius * theta.cos()),
                     y: v.y + (v.h - h) * (0.5 + 0.5 * radius * theta.sin()),
                     w,
                     h,
                 };
+                let bounds = target.mix(orbit, fission).mix(target, fusion);
                 graph.decorative.push(card(
                     format!("storm_{i}"),
                     format!("Signal {:02}", i + 1),

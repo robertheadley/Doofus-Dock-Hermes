@@ -1280,7 +1280,6 @@ fn framework_event_kind_token(kind: crate::FrameworkEventKind) -> &'static str {
         Kind::PanelClosed => "panel_closed",
         Kind::PanelVisibilityChanged => "panel_visibility_changed",
         Kind::PanelWorkspaceMembershipChanged => "panel_workspace_membership_changed",
-        Kind::GroupMinimizedChanged => "group_minimized_changed",
         Kind::ScratchpadChanged => "scratchpad_changed",
         Kind::PanelMoved => "panel_moved",
         Kind::PanelDrawerChanged => "panel_drawer_changed",
@@ -2356,10 +2355,9 @@ fn project_node(
         NodeKind::Tabs {
             active_index,
             items,
-            minimized,
+            ..
         } => {
             metadata.insert("active_index".into(), Value::from(*active_index));
-            metadata.insert("minimized".into(), Value::from(*minimized));
             ("Tab group".into(), items.clone())
         }
         NodeKind::DocumentWell {

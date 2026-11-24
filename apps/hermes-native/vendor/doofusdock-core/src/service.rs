@@ -598,11 +598,6 @@ fn event_for_patch(
             );
             Kind::PanelWorkspaceMembershipChanged
         }
-        DiffPatch::GroupMinimizedChanged { group, minimized } => {
-            payload.insert("group".into(), group.0.clone());
-            payload.insert("minimized".into(), minimized.to_string());
-            Kind::GroupMinimizedChanged
-        }
         DiffPatch::DrawerChanged {
             panel,
             auto_hidden,
@@ -758,6 +753,11 @@ fn event_for_patch(
             payload.insert("pinned".into(), pinned.to_string());
             Kind::GroupChanged
         }
+        DiffPatch::TabGroupMinimizedChanged { group, minimized } => {
+            payload.insert("group".into(), group.0.clone());
+            payload.insert("minimized".into(), minimized.to_string());
+            Kind::GroupChanged
+        }
     };
     Some((kind, payload))
 }
@@ -855,6 +855,13 @@ mod event_projection_tests {
                     active_index: 0,
                 },
                 Kind::FocusChanged,
+            ),
+            (
+                DiffPatch::TabGroupMinimizedChanged {
+                    group: "tabs".into(),
+                    minimized: true,
+                },
+                Kind::GroupChanged,
             ),
             (
                 DiffPatch::SplitRatioUpdated {

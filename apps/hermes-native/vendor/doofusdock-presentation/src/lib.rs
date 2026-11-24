@@ -2,14 +2,20 @@
 mod animation;
 pub use animation::*;
 mod camera;
+mod cube;
 pub use camera::*;
+pub use cube::*;
 mod scene;
+mod shape;
 mod spatial;
+mod theme_transition;
 use doofusdock_core::*;
 pub use scene::*;
 use serde::{Deserialize, Serialize};
+pub use shape::*;
 pub use spatial::*;
 use std::collections::{BTreeMap, BTreeSet};
+pub use theme_transition::*;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Box2 {
     pub x: f64,
@@ -189,7 +195,15 @@ pub fn project_with_extensions(
                     return Ok(());
                 }
                 for (i, c) in items.iter().enumerate() {
-                    walk(c, b, visible && i == *active_index, z, doc, registries, out)?;
+                    walk(
+                        c,
+                        b,
+                        visible && !*minimized && i == *active_index,
+                        z,
+                        doc,
+                        registries,
+                        out,
+                    )?;
                 }
             }
             NodeKind::Split {

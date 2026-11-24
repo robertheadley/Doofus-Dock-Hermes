@@ -55,7 +55,7 @@ pub enum DiffPatch {
         tabs: NodeId,
         active_index: usize,
     },
-    GroupMinimizedChanged {
+    TabGroupMinimizedChanged {
         group: NodeId,
         minimized: bool,
     },
@@ -254,18 +254,6 @@ pub fn diff_layouts(a: &LayoutDocument, b: &LayoutDocument) -> LayoutDiff {
             });
         }
     }
-    for (id, before) in &old_nodes {
-        if let Some(after) = new_nodes.get(id)
-            && let (NodeKind::Tabs { minimized: old, .. }, NodeKind::Tabs { minimized: new, .. }) =
-                (&before.kind, &after.kind)
-            && old != new
-        {
-            d.patches.push(DiffPatch::GroupMinimizedChanged {
-                group: id.clone(),
-                minimized: *new,
-            });
-        }
-    }
     let old_root = a.root.as_ref().map(|n| n.id.clone());
     let new_root = b.root.as_ref().map(|n| n.id.clone());
     if old_root != new_root {
@@ -380,6 +368,15 @@ pub fn diff_layouts(a: &LayoutDocument, b: &LayoutDocument) -> LayoutDiff {
                 })
             }
             _ => (),
+        }
+        if let (NodeKind::Tabs { minimized: old, .. }, NodeKind::Tabs { minimized: new, .. }) =
+            (&previous.kind, &node.kind)
+            && old != new
+        {
+            d.patches.push(DiffPatch::TabGroupMinimizedChanged {
+                group: node.id.clone(),
+                minimized: *new,
+            });
         }
     }
     let old_windows: BTreeMap<_, _> = a

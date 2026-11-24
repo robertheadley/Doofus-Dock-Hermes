@@ -1,14 +1,27 @@
 //! Optional native egui software host and bounded bitmap chrome. Canonical state remains host-owned.
+pub mod accessibility;
 pub mod chrome;
+pub mod cube_transition;
+#[cfg(feature = "wgpu-shaders")]
+pub mod hlsl;
+pub mod input;
 pub mod modal;
+pub mod panel_contexts;
+pub mod panel_surface;
 pub mod raster;
 pub mod scene;
+pub mod shader_validation;
 pub mod skin;
 pub mod software;
+pub mod svg;
 pub mod tabs;
+pub mod theme_style;
 pub mod topology;
 pub mod transient;
 pub mod transition;
+pub mod vector_path;
+#[cfg(feature = "wgpu-shaders")]
+pub mod wgpu_shader;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Capabilities {
@@ -89,14 +102,27 @@ impl Capabilities {
                     details: "Vector chrome is available as the baseline and fallback path.".into(),
                 },
                 RendererCapabilityObservation {
+                    capability_id: "svg_vector_visuals".into(),
+                    availability: Available,
+                    details: "Bounded SVG assets can be rasterized for egui visuals; external resources are disabled.".into(),
+                },
+                RendererCapabilityObservation {
                     capability_id: "shader_chrome".into(),
                     availability: NotImplemented,
                     details: "The current chrome selector never emits shader chrome.".into(),
                 },
                 RendererCapabilityObservation {
                     capability_id: "application_shader_effects".into(),
-                    availability: NotImplemented,
-                    details: "No application shader effect pipeline is implemented.".into(),
+                    availability: if self.shaders {
+                        Available
+                    } else {
+                        NotImplemented
+                    },
+                    details: if self.shaders {
+                        "An optional initialized WGPU backend supports caller-owned offscreen fullscreen effects; shader chrome and automatic theme integration are not implemented.".into()
+                    } else {
+                        "No initialized optional WGPU shader backend is present.".into()
+                    },
                 },
             ],
         }
@@ -154,11 +180,7 @@ mod tests {
             effects.availability,
             RendererCapabilityAvailability::NotImplemented
         );
-        assert!(
-            effects
-                .details
-                .contains("No application shader effect pipeline")
-        );
+        assert!(effects.details.contains("No initialized optional WGPU"));
         let vector = report
             .observations
             .iter()
@@ -168,6 +190,12 @@ mod tests {
             vector.availability,
             RendererCapabilityAvailability::Available
         );
+        let svg = report
+            .observations
+            .iter()
+            .find(|entry| entry.capability_id == "svg_vector_visuals")
+            .unwrap();
+        assert_eq!(svg.availability, RendererCapabilityAvailability::Available);
         let serialized = serde_json::to_value(&report).unwrap();
         assert_eq!(serialized["renderer_id"], "doofusdock-render-egui");
         assert_eq!(
@@ -185,5 +213,34 @@ mod tests {
         )
         .unwrap();
         assert!(error.contains("using vector chrome"));
+    }
+
+    #[test]
+    fn initialized_shader_backend_reports_effects_but_not_shader_chrome() {
+        let report = Capabilities {
+            software: false,
+            raster_skin: true,
+            shaders: true,
+        }
+        .capability_report();
+        let effect = report
+            .observations
+            .iter()
+            .find(|entry| entry.capability_id == "application_shader_effects")
+            .unwrap();
+        assert_eq!(
+            effect.availability,
+            RendererCapabilityAvailability::Available
+        );
+        assert!(effect.details.contains("offscreen fullscreen effects"));
+        let chrome = report
+            .observations
+            .iter()
+            .find(|entry| entry.capability_id == "shader_chrome")
+            .unwrap();
+        assert_eq!(
+            chrome.availability,
+            RendererCapabilityAvailability::NotImplemented
+        );
     }
 }

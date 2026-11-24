@@ -8,10 +8,12 @@ description = "Toolkit-independent docking model and transaction engine"
 repository = "https://github.com/robertheadley/doofusdock"
 
 [package.metadata.doofusdock-vendor]
-source_revision = "f6eb49b9e488f4e851d8d3abe18e95d296201bba"
-local_changes = "Canonical tab-group minimization and restore state"
+source_revision = "f23ed02a99c7f8c57f83164d98feadb17cc4ed87"
+local_changes = "Hermes group-minimize acceptance test"
 
 [dependencies]
-serde = { version = "1", features = [ "derive", "rc" ] }
-serde_json = { version = "1", features = [ "preserve_order" ] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 serde_repr = "0.1"
+roxmltree = "0.21.2"
+fs4 = { version = "1", features = ["sync"] }

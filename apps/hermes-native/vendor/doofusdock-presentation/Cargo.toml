@@ -7,11 +7,12 @@ rust-version = "1.88"
 repository = "https://github.com/robertheadley/doofusdock"
 
 [package.metadata.doofusdock-vendor]
-source_revision = "f6eb49b9e488f4e851d8d3abe18e95d296201bba"
-local_changes = "Group minimization projection and restore rail geometry"
+source_revision = "f23ed02a99c7f8c57f83164d98feadb17cc4ed87"
+local_changes = "Hermes group-rail projection extension"
 
 [dependencies]
 doofusdock-core = { path = "../doofusdock-core", version = "0.2.0" }
+geo = { version = "=0.33.1", default-features = false, features = ["earcut"] }
 rand_pcg = "0.10.2"
-serde = { version = "1", features = [ "derive", "rc" ] }
-serde_json = { version = "1", features = [ "preserve_order" ] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }

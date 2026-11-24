@@ -4,11 +4,14 @@
 //! transaction, so any follow-up mutation must use a fresh service revision.
 use crate::{CommandId, DockError, DockResult, ErrorCode, PanelId, TransitionId, WindowId};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 const MAX_EVENT_QUEUE: usize = 4096;
+const MAX_EVENT_DEDUP_HISTORY: usize = 4096;
 const MAX_SUBSCRIBERS: usize = 256;
 const MAX_EVENT_PAYLOAD_FIELDS: usize = 32;
+const MAX_EVENT_PAYLOAD_BYTES: usize = 4096;
 const MAX_EVENT_KEY_BYTES: usize = 64;
 const MAX_EVENT_VALUE_BYTES: usize = 512;
 
@@ -27,7 +30,6 @@ pub enum FrameworkEventKind {
     PanelClosed,
     PanelVisibilityChanged,
     PanelWorkspaceMembershipChanged,
-    GroupMinimizedChanged,
     ScratchpadChanged,
     PanelMoved,
     PanelDrawerChanged,
@@ -107,6 +109,14 @@ struct Subscriber {
     cursor: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct EventFingerprint {
+    revision: u64,
+    kind: FrameworkEventKind,
+    command: CommandId,
+    payload: Vec<(String, String)>,
+}
+
 /// Single-writer event buffer with bounded subscriber cursors and duplicate
 /// suppression for a repeated `(revision, command, kind)` publication.
 #[derive(Clone, Debug)]
@@ -115,6 +125,8 @@ pub struct EventHub {
     next_sequence: u64,
     next_subscription: u64,
     events: VecDeque<FrameworkEvent>,
+    recent_publications: VecDeque<Arc<EventFingerprint>>,
+    recent_publication_set: BTreeSet<Arc<EventFingerprint>>,
     subscribers: BTreeMap<EventSubscriptionId, Subscriber>,
 }
 
@@ -132,6 +144,8 @@ impl EventHub {
             next_sequence: 1,
             next_subscription: 1,
             events: VecDeque::with_capacity(capacity.min(256)),
+            recent_publications: VecDeque::with_capacity(MAX_EVENT_DEDUP_HISTORY.min(256)),
+            recent_publication_set: BTreeSet::new(),
             subscribers: BTreeMap::new(),
         })
     }
@@ -193,12 +207,16 @@ impl EventHub {
             ));
         }
         validate_payload(&payload)?;
-        if self.events.iter().any(|event| {
-            event.revision == revision
-                && event.command == command
-                && event.kind == kind
-                && event.payload == payload
-        }) {
+        let fingerprint = Arc::new(EventFingerprint {
+            revision,
+            kind,
+            command: command.clone(),
+            payload: payload
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+        });
+        if self.recent_publication_set.contains(&fingerprint) {
             return Ok(None);
         }
         let sequence = self.next_sequence;
@@ -221,6 +239,12 @@ impl EventHub {
             self.events.pop_front();
         }
         self.events.push_back(event.clone());
+        self.recent_publication_set.insert(Arc::clone(&fingerprint));
+        self.recent_publications.push_back(fingerprint);
+        if self.recent_publications.len() > MAX_EVENT_DEDUP_HISTORY {
+            let expired = self.recent_publications.pop_front().unwrap();
+            self.recent_publication_set.remove(&expired);
+        }
         Ok(Some(event))
     }
 
@@ -264,7 +288,17 @@ impl EventHub {
 }
 
 fn validate_payload(payload: &BTreeMap<String, String>) -> DockResult<()> {
-    if payload.len() > MAX_EVENT_PAYLOAD_FIELDS
+    if payload.len() > MAX_EVENT_PAYLOAD_FIELDS {
+        return Err(event_error(
+            ErrorCode::ResourceLimit,
+            "Event payload contains invalid or unbounded fields.",
+            format!("fields={}", payload.len()),
+        ));
+    }
+    let payload_bytes = payload.iter().fold(0usize, |total, (key, value)| {
+        total.saturating_add(key.len()).saturating_add(value.len())
+    });
+    if payload_bytes > MAX_EVENT_PAYLOAD_BYTES
         || payload.iter().any(|(key, value)| {
             key.is_empty()
                 || key.len() > MAX_EVENT_KEY_BYTES
@@ -349,6 +383,71 @@ mod tests {
     }
 
     #[test]
+    fn exact_retry_remains_suppressed_after_delivery_queue_overflow() {
+        let mut hub = EventHub::new(1).unwrap();
+        let subscription = hub.subscribe().unwrap();
+        let first_command = CommandId::from("first-commit");
+        let first_payload = BTreeMap::from([("panel".into(), "editor".into())]);
+        let first = hub
+            .publish(
+                1,
+                FrameworkEventKind::PanelMoved,
+                first_command.clone(),
+                first_payload.clone(),
+            )
+            .unwrap()
+            .unwrap();
+        hub.publish(
+            2,
+            FrameworkEventKind::PanelMoved,
+            "second-commit".into(),
+            BTreeMap::new(),
+        )
+        .unwrap();
+
+        assert!(
+            hub.publish(
+                1,
+                FrameworkEventKind::PanelMoved,
+                first_command,
+                first_payload,
+            )
+            .unwrap()
+            .is_none()
+        );
+        let third = hub
+            .publish(
+                3,
+                FrameworkEventKind::PanelMoved,
+                "third-commit".into(),
+                BTreeMap::new(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(third.sequence, 3, "suppressed retries do not consume IDs");
+        let batch = hub.read(subscription, 8).unwrap();
+        assert_eq!(batch.lost_events, 2);
+        assert_eq!(batch.events, vec![third]);
+        assert_ne!(batch.events[0], first);
+    }
+
+    #[test]
+    fn exact_retry_memory_has_a_fixed_bound() {
+        let mut hub = EventHub::new(1).unwrap();
+        for revision in 1..=(MAX_EVENT_DEDUP_HISTORY as u64 + 1) {
+            hub.publish(
+                revision,
+                FrameworkEventKind::LayoutCommitted,
+                format!("bounded-{revision}").into(),
+                BTreeMap::new(),
+            )
+            .unwrap();
+        }
+        assert_eq!(hub.recent_publications.len(), MAX_EVENT_DEDUP_HISTORY);
+        assert_eq!(hub.recent_publication_set.len(), MAX_EVENT_DEDUP_HISTORY);
+    }
+
+    #[test]
     fn same_kind_facts_keep_distinct_payloads_but_suppress_exact_retries() {
         let mut hub = EventHub::new(8).unwrap();
         let subscription = hub.subscribe().unwrap();
@@ -385,6 +484,18 @@ mod tests {
                 FrameworkEventKind::LayoutCommitted,
                 "command".into(),
                 BTreeMap::from([("bad key".into(), "value".into())]),
+            )
+            .is_err()
+        );
+        let oversized_fields = (0..9)
+            .map(|index| (format!("field-{index}"), "x".repeat(MAX_EVENT_VALUE_BYTES)))
+            .collect::<BTreeMap<_, _>>();
+        assert!(
+            hub.publish(
+                1,
+                FrameworkEventKind::LayoutCommitted,
+                "oversized-aggregate".into(),
+                oversized_fields,
             )
             .is_err()
         );

@@ -391,6 +391,7 @@ fn built_in_support_catalog_covers_every_operation_variant_once() {
         .collect();
     let mut expected = vec![
         "set_tab_pinned",
+        "set_panel_workspace_memberships",
         "convert_container",
         "set_stack_expanded",
         "raise_layer",
@@ -561,7 +562,7 @@ fn built_in_operation_json_schema_matches_the_tagged_wire_shape() {
 #[test]
 fn operation_catalog_joins_request_schema_with_per_operation_host_support() {
     let catalog = builtin_operation_catalog(&HostCapabilities::default()).unwrap();
-    assert_eq!(catalog.len(), 37);
+    assert_eq!(catalog.len(), 38);
     assert!(catalog.windows(2).all(|pair| pair[0].name < pair[1].name));
 
     let close = catalog
@@ -575,6 +576,18 @@ fn operation_catalog_joins_request_schema_with_per_operation_host_support() {
     assert_eq!(
         close.request_schema["properties"]["operation"]["const"],
         "close_panel"
+    );
+
+    let memberships = catalog
+        .iter()
+        .find(|entry| entry.name == "set_panel_workspace_memberships")
+        .unwrap();
+    assert_eq!(memberships.family, "layout_edit");
+    assert!(memberships.core_available);
+    assert!(memberships.host_available);
+    assert_eq!(
+        memberships.request_schema["properties"]["arguments"]["properties"]["tags"]["maxItems"],
+        64
     );
 
     let float = catalog
