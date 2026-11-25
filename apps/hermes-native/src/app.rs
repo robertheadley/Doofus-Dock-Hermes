@@ -1538,9 +1538,17 @@ struct ScheduledFailedTurnRetry {
     resets_at_ms: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SlashCompletionAnchor {
+    byte_range: std::ops::Range<usize>,
+    inline: bool,
+    token: String,
+}
+
 #[derive(Clone, Debug)]
 struct PendingSlashCompletion {
     request_id: String,
+    composer_id: egui::Id,
     query: String,
     session_id: Option<String>,
     profile: Option<String>,
@@ -2503,6 +2511,8 @@ pub struct HermesNativeApp {
     active_session_profile: Option<String>,
     draft: String,
     slash_completion_query: Option<String>,
+    slash_completion_anchor: Option<SlashCompletionAnchor>,
+    slash_completion_composer_id: Option<egui::Id>,
     slash_completion_scope: Option<String>,
     slash_completion_due: Option<std::time::Instant>,
     slash_completion_pending: Option<PendingSlashCompletion>,
@@ -5087,6 +5097,8 @@ fn render_message() -> &'static str {
             active_session_profile: None,
             draft: String::new(),
             slash_completion_query: None,
+            slash_completion_anchor: None,
+            slash_completion_composer_id: None,
             slash_completion_scope: None,
             slash_completion_due: None,
             slash_completion_pending: None,
@@ -17235,8 +17247,26 @@ fn render_message() -> &'static str {
         }
     }
 
-    fn sync_slash_completion_query(&mut self) {
-        let query = slash_completion_query(&self.draft);
+    fn sync_focused_slash_completion_query(
+        &mut self,
+        composer_id: egui::Id,
+        focused: bool,
+        caret_char_index: Option<usize>,
+    ) {
+        if focused {
+            self.sync_slash_completion_query(composer_id, caret_char_index);
+        }
+    }
+
+    fn sync_slash_completion_query(
+        &mut self,
+        composer_id: egui::Id,
+        caret_char_index: Option<usize>,
+    ) {
+        let composer_changed = self.slash_completion_composer_id != Some(composer_id);
+        self.slash_completion_composer_id = Some(composer_id);
+        let (query, anchor) = slash_completion_at_caret(&self.draft, caret_char_index)
+            .map_or((None, None), |(query, anchor)| (Some(query), Some(anchor)));
         let session_id = self.active_runtime_session_id.as_deref().unwrap_or("");
         let profile = self
             .active_session_profile
@@ -17251,12 +17281,15 @@ fn render_message() -> &'static str {
             "{}\u{1f}{session_id}\u{1f}{profile}",
             self.active_gateway_connection_id()
         );
-        if self.slash_completion_query == query
+        if !composer_changed
+            && self.slash_completion_query == query
+            && self.slash_completion_anchor == anchor
             && self.slash_completion_scope.as_deref() == Some(&scope)
         {
             return;
         }
         self.slash_completion_query = query.clone();
+        self.slash_completion_anchor = anchor;
         self.slash_completion_scope = Some(scope);
         self.slash_completion_due = query
             .as_ref()
@@ -17268,9 +17301,47 @@ fn render_message() -> &'static str {
         self.slash_completion_dismissed = false;
     }
 
-    fn insert_slash_suggestion(&mut self, text: String) {
-        self.draft = text;
-        self.sync_slash_completion_query();
+    fn insert_slash_suggestion(
+        &mut self,
+        text: String,
+        ctx: &egui::Context,
+        composer_id: egui::Id,
+    ) {
+        if self.slash_completion_composer_id != Some(composer_id) {
+            return;
+        }
+        let Some(anchor) = self.slash_completion_anchor.clone() else {
+            return;
+        };
+        if self.draft.get(anchor.byte_range.clone()) != Some(anchor.token.as_str()) {
+            self.sync_slash_completion_query(composer_id, None);
+            return;
+        }
+        let prefix_chars = self.draft[..anchor.byte_range.start].chars().count();
+        let suffix = &self.draft[anchor.byte_range.end..];
+        let mut replacement = text;
+        if anchor.inline
+            && suffix
+                .chars()
+                .next()
+                .is_some_and(|character| !character.is_whitespace())
+        {
+            replacement.push(' ');
+        }
+        self.draft
+            .replace_range(anchor.byte_range.clone(), &replacement);
+        if let Some(mut state) = egui::widgets::text_edit::TextEditState::load(ctx, composer_id) {
+            let caret = egui::text::CCursor::new(prefix_chars + replacement.chars().count());
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(caret)));
+            state.store(ctx, composer_id);
+        }
+        ctx.memory_mut(|memory| memory.request_focus(composer_id));
+        self.sync_slash_completion_query(
+            composer_id,
+            Some(prefix_chars + replacement.chars().count()),
+        );
         self.slash_completion_due = None;
         self.slash_completion_pending = None;
         self.slash_completion_items.clear();
@@ -17281,8 +17352,11 @@ fn render_message() -> &'static str {
         self.save_active_chat_view();
     }
 
-    fn request_slash_completion_if_due(&mut self, ctx: &egui::Context) {
-        if self.slash_completion_dismissed || self.slash_completion_pending.is_some() {
+    fn request_slash_completion_if_due(&mut self, ctx: &egui::Context, composer_id: egui::Id) {
+        if self.slash_completion_composer_id != Some(composer_id)
+            || self.slash_completion_dismissed
+            || self.slash_completion_pending.is_some()
+        {
             return;
         }
         let Some(query) = self.slash_completion_query.clone() else {
@@ -17326,6 +17400,7 @@ fn render_message() -> &'static str {
         }
         self.slash_completion_pending = Some(PendingSlashCompletion {
             request_id,
+            composer_id,
             query,
             session_id,
             profile,
@@ -17833,8 +17908,22 @@ fn render_message() -> &'static str {
         self.status = "Waiting for Hermes to confirm the credits setting".into();
     }
 
+    fn composer_widget_id(&self, ui: &Ui) -> egui::Id {
+        let composer_owner = match &self.route {
+            AppRoute::Session(session_id) => self.session_identity_key_for_connection(
+                Some(self.active_gateway_connection_id()),
+                session_id,
+                self.active_session_profile.as_deref(),
+            ),
+            AppRoute::NewChat => self.new_chat_draft_scope.clone().unwrap_or_else(|| {
+                self.session_identity_key("__new__", self.active_session_profile.as_deref())
+            }),
+            _ => "unscoped-chat-composer".into(),
+        };
+        ui.make_persistent_id(("message-composer", composer_owner))
+    }
+
     fn composer(&mut self, ui: &mut Ui) {
-        self.sync_slash_completion_query();
         let read_only = self.active_session_is_read_only();
         let session_id = self.active_runtime_session_id.clone();
         if session_id.is_some() && !read_only {
@@ -18234,19 +18323,18 @@ fn render_message() -> &'static str {
         let mut composer_drop_requires_path = false;
         let mut keyboard_insert = None;
         let mut pasted_image = None;
+        let mut composer_widget_id = None;
+        let mut composer_focused = false;
         ui.horizontal(|ui| {
-            let composer_owner = match &self.route {
-                AppRoute::Session(session_id) => self.session_identity_key_for_connection(
-                    Some(self.active_gateway_connection_id()),
-                    session_id,
-                    self.active_session_profile.as_deref(),
-                ),
-                AppRoute::NewChat => self.new_chat_draft_scope.clone().unwrap_or_else(|| {
-                    self.session_identity_key("__new__", self.active_session_profile.as_deref())
-                }),
-                _ => "unscoped-chat-composer".into(),
-            };
-            let composer_id = ui.make_persistent_id(("message-composer", composer_owner));
+            let composer_id = self.composer_widget_id(ui);
+            composer_widget_id = Some(composer_id);
+            let caret_char_index =
+                egui::widgets::text_edit::TextEditState::load(ui.ctx(), composer_id)
+                    .and_then(|state| state.cursor.char_range())
+                    .and_then(|range| range.single())
+                    .map(|cursor| cursor.index.into());
+            let focused = ui.ctx().memory(|memory| memory.focused() == Some(composer_id));
+            self.sync_focused_slash_completion_query(composer_id, focused, caret_char_index);
             pasted_image = if self.gateway_connected && !read_only {
                 crate::clipboard_image::take_focused_image_event(ui.ctx(), composer_id)
             } else {
@@ -18254,6 +18342,7 @@ fn render_message() -> &'static str {
             };
             let completion_list_active = ui.ctx().memory(|memory| {
                 memory.focused() == Some(composer_id)
+                    && self.slash_completion_composer_id == Some(composer_id)
                     && !self.slash_completion_dismissed
                     && self.slash_completion_pending.is_none()
                     && self.slash_completion_error.is_none()
@@ -18316,6 +18405,9 @@ fn render_message() -> &'static str {
                 .accessible_name("Message composer");
             let input_rect = input.rect;
             let changed = input.changed();
+            let input_has_focus =
+                ui.ctx().memory(|memory| memory.focused() == Some(composer_id));
+            composer_focused = input_has_focus;
             let (
                 pointer_position,
                 has_hovered_files,
@@ -18385,8 +18477,15 @@ fn render_message() -> &'static str {
             if changed {
                 self.persist_active_prepared_image_draft();
                 self.save_active_chat_view();
-                self.sync_slash_completion_query();
             }
+            let caret_char_index =
+                egui::widgets::text_edit::TextEditState::load(ui.ctx(), composer_id)
+                    .and_then(|state| state.cursor.char_range())
+                    .and_then(|range| range.single())
+                    .map(|cursor| cursor.index.into());
+            self.sync_focused_slash_completion_query(
+                composer_id, input_has_focus, caret_char_index,
+            );
             if waiting_for_this_session {
                 let uncertain = pending.as_ref().is_some_and(|pending| pending.uncertain);
                 if uncertain {
@@ -18448,6 +18547,7 @@ fn render_message() -> &'static str {
                 }
             }
         });
+        let composer_id = composer_widget_id.expect("composer ID captured from its UI scope");
         if let Some(image) = pasted_image {
             match crate::clipboard_image::stage_png(
                 self.workspace.data_directory(),
@@ -18501,10 +18601,15 @@ fn render_message() -> &'static str {
                     .color(MUTED),
             );
         }
-        if !read_only {
-            self.request_slash_completion_if_due(ui.ctx());
+        let completion_owner_active = self.slash_completion_composer_id == Some(composer_id);
+        if !read_only && completion_owner_active && composer_focused {
+            self.request_slash_completion_if_due(ui.ctx(), composer_id);
         }
-        if !read_only && !self.slash_completion_dismissed && self.slash_completion_query.is_some() {
+        if !read_only
+            && completion_owner_active
+            && !self.slash_completion_dismissed
+            && self.slash_completion_query.is_some()
+        {
             if self.slash_completion_pending.is_some() {
                 ui.horizontal(|ui| {
                     ui.spinner();
@@ -18559,7 +18664,7 @@ fn render_message() -> &'static str {
                     );
                 });
                 if let Some(text) = insert {
-                    self.insert_slash_suggestion(text);
+                    self.insert_slash_suggestion(text, ui.ctx(), composer_id);
                 }
             }
         }
@@ -38189,6 +38294,7 @@ fn render_message() -> &'static str {
                         .as_deref()
                         .unwrap_or_else(|| self.active_gateway_connection_id());
                     if pending.request_id != request_id
+                        || self.slash_completion_composer_id != Some(pending.composer_id)
                         || pending.query != query
                         || pending.session_id != session_id
                         || pending.profile != profile
@@ -38203,9 +38309,15 @@ fn render_message() -> &'static str {
                         Ok(SlashCompletionResult { items, .. }) => {
                             let advanced =
                                 self.workspace.preferences.mode == InterfaceMode::Advanced;
+                            let inline = self
+                                .slash_completion_anchor
+                                .as_ref()
+                                .is_some_and(|anchor| anchor.inline);
                             self.slash_completion_items = items
                                 .into_iter()
-                                .filter(|item| desktop_slash_suggestion_allowed(item, advanced))
+                                .filter(|item| {
+                                    slash_completion_item_allowed(item, advanced, inline)
+                                })
                                 .collect();
                             self.slash_completion_selected_index = 0;
                             self.slash_completion_error = None;
@@ -41716,6 +41828,77 @@ fn desktop_slash_registry() -> &'static BTreeMap<String, Option<String>> {
     })
 }
 
+fn char_index_to_byte_offset(text: &str, char_index: usize) -> Option<usize> {
+    if char_index == text.chars().count() {
+        return Some(text.len());
+    }
+    text.char_indices()
+        .nth(char_index)
+        .map(|(byte_index, _)| byte_index)
+}
+
+fn slash_completion_at_caret(
+    draft: &str,
+    caret_char_index: Option<usize>,
+) -> Option<(String, SlashCompletionAnchor)> {
+    let caret_byte = match caret_char_index {
+        Some(index) => char_index_to_byte_offset(draft, index.min(draft.chars().count()))?,
+        None => draft.len(),
+    };
+    let before = &draft[..caret_byte];
+
+    let boundary = before
+        .char_indices()
+        .rev()
+        .find(|(_, character)| character.is_whitespace() || *character == '\u{fffc}')
+        .map_or(0, |(index, character)| index + character.len_utf8());
+    let inline_candidate = &before[boundary..];
+    if inline_candidate.starts_with('/') && boundary > 0 {
+        let query = &inline_candidate[1..];
+        let valid = query.is_empty()
+            || (query
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
+                && query.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || character == '_' || character == '-'
+                }));
+        if valid && inline_candidate.len() <= 512 {
+            let mut end = caret_byte;
+            for (offset, character) in draft[caret_byte..].char_indices() {
+                if character.is_ascii_alphanumeric() || character == '_' || character == '-' {
+                    end = caret_byte + offset + character.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            return Some((
+                inline_candidate.to_owned(),
+                SlashCompletionAnchor {
+                    byte_range: boundary..end,
+                    inline: true,
+                    token: draft[boundary..end].to_owned(),
+                },
+            ));
+        }
+    }
+
+    let trimmed = before.trim_start();
+    let query = slash_completion_query(draft)?;
+    if trimmed.starts_with('/') {
+        let start = before.len() - trimmed.len();
+        return Some((
+            query,
+            SlashCompletionAnchor {
+                byte_range: start..draft.len(),
+                inline: false,
+                token: draft[start..].to_owned(),
+            },
+        ));
+    }
+    None
+}
+
 fn slash_completion_query(draft: &str) -> Option<String> {
     let query = draft.trim_start();
     if !query.starts_with('/') || query.contains('\n') || query.contains('\r') || query.len() > 512
@@ -41746,6 +41929,14 @@ fn desktop_slash_suggestion_allowed(item: &SlashCompletionItem, advanced: bool) 
         Some(None) => true,
         Some(Some(surface)) => surface == "advanced" && advanced,
         None => item.group.to_ascii_lowercase().contains("skill"),
+    }
+}
+
+fn slash_completion_item_allowed(item: &SlashCompletionItem, advanced: bool, inline: bool) -> bool {
+    if inline {
+        item.group.to_ascii_lowercase().contains("skill")
+    } else {
+        desktop_slash_suggestion_allowed(item, advanced)
     }
 }
 
@@ -52220,6 +52411,63 @@ mod tests {
     }
 
     #[test]
+    fn inline_slash_completion_anchors_a_skill_token_at_the_caret() {
+        let draft = "Please inspect /revnotes after this";
+        let caret = "Please inspect /rev".chars().count();
+        let (query, anchor) = slash_completion_at_caret(draft, Some(caret)).unwrap();
+        assert_eq!(query, "/rev");
+        assert!(anchor.inline);
+        assert_eq!(&draft[anchor.byte_range.clone()], "/revnotes");
+        assert_eq!(anchor.token, "/revnotes");
+
+        let (query, anchor) = slash_completion_at_caret("é🙂 /rev after", Some(7)).unwrap();
+        assert_eq!(query, "/rev");
+        assert_eq!(&"é🙂 /rev after"[anchor.byte_range], "/rev");
+    }
+
+    #[test]
+    fn slash_completion_anchor_preserves_leading_command_and_rejects_non_token_carets() {
+        let (query, anchor) = slash_completion_at_caret("  /review fix later", Some(12)).unwrap();
+        assert_eq!(query, "/review fix later");
+        assert!(!anchor.inline);
+        assert_eq!(anchor.byte_range, 2..19);
+        let (query, anchor) = slash_completion_at_caret("ordinary /rev", Some(13)).unwrap();
+        assert_eq!(query, "/rev");
+        assert!(anchor.inline);
+        assert!(slash_completion_at_caret("/review\nnext", Some(7)).is_none());
+        assert_eq!(char_index_to_byte_offset("é🙂x", 2), Some(6));
+        assert_eq!(char_index_to_byte_offset("é🙂x", 4), None);
+        let (query, anchor) = slash_completion_at_caret("/r", Some(9)).unwrap();
+        assert_eq!(query, "/r");
+        assert_eq!(anchor.byte_range, 0..2);
+    }
+
+    #[test]
+    fn inline_slash_suggestions_only_offer_skills() {
+        let item = |text: &str, group: &str| SlashCompletionItem {
+            text: text.into(),
+            display: text.into(),
+            meta: String::new(),
+            group: group.into(),
+        };
+        assert!(slash_completion_item_allowed(
+            &item("/review", "Skills"),
+            false,
+            true
+        ));
+        assert!(!slash_completion_item_allowed(
+            &item("/model", "Commands"),
+            true,
+            true
+        ));
+        assert!(slash_completion_item_allowed(
+            &item("/resume", "Session"),
+            false,
+            false
+        ));
+    }
+
+    #[test]
     fn slash_suggestion_filter_uses_pinned_desktop_surface_and_skill_rows() {
         let item = |text: &str, group: &str| SlashCompletionItem {
             text: text.into(),
@@ -52256,19 +52504,31 @@ mod tests {
         app.gateway_connected = true;
         app.route = AppRoute::NewChat;
         app.draft = "/rev".into();
-        app.sync_slash_completion_query();
-        app.slash_completion_items = vec![SlashCompletionItem {
-            text: "/review fix".into(),
-            display: "/review fix".into(),
-            meta: "Review the working tree".into(),
-            group: "Commands".into(),
-        }];
-        app.slash_completion_due = None;
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1280.0, 800.0))
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.get_by_label("Message composer").click();
+        harness.run();
+        harness.key_press(egui::Key::End);
+        harness.run();
+        {
+            let mut app = app.borrow_mut();
+            let composer_id = app
+                .slash_completion_composer_id
+                .expect("focused composer ID");
+            let caret = app.draft.chars().count();
+            app.sync_slash_completion_query(composer_id, Some(caret));
+            app.slash_completion_items = vec![SlashCompletionItem {
+                text: "/review fix".into(),
+                display: "/review fix".into(),
+                meta: "Review the working tree".into(),
+                group: "Commands".into(),
+            }];
+            app.slash_completion_due = None;
+        }
+        harness.run();
         harness
             .get_by_label("Insert /review fix into the message draft without sending")
             .click();
@@ -52283,33 +52543,169 @@ mod tests {
 
     #[cfg(feature = "agent-automation")]
     #[test]
-    fn slash_suggestions_support_keyboard_selection_without_sending() {
+    fn inline_skill_suggestion_replaces_only_its_token_and_preserves_prose() {
         let (mut app, profile) = isolated_app();
         app.gateway_connected = true;
         app.route = AppRoute::NewChat;
-        app.draft = "/r".into();
-        app.sync_slash_completion_query();
-        app.slash_completion_items = vec![
-            SlashCompletionItem {
-                text: "/review".into(),
-                display: "/review".into(),
-                meta: "Review the working tree".into(),
-                group: "Commands".into(),
-            },
-            SlashCompletionItem {
-                text: "/research".into(),
-                display: "/research".into(),
-                meta: "Research a topic".into(),
-                group: "Skills".into(),
-            },
-        ];
-        app.slash_completion_due = None;
+        app.draft = "Please inspect /revnotes after this".into();
+        let caret = "Please inspect /rev".chars().count();
+        let composer_id = egui::Id::unique("inline-skill-test-composer");
+        app.sync_slash_completion_query(composer_id, Some(caret));
+        app.slash_completion_items = vec![SlashCompletionItem {
+            text: "/review".into(),
+            display: "/review".into(),
+            meta: "Review the working tree".into(),
+            group: "Skills".into(),
+        }];
+        let context = egui::Context::default();
+        egui::widgets::text_edit::TextEditState::default().store(&context, composer_id);
+        app.insert_slash_suggestion("/review".into(), &context, composer_id);
+        assert_eq!(app.draft, "Please inspect /review after this");
+        assert!(app.pending_submissions.is_empty());
+        assert!(app.slash_completion_dismissed);
+        let caret = egui::widgets::text_edit::TextEditState::load(&context, composer_id)
+            .and_then(|state| state.cursor.char_range())
+            .and_then(|range| range.single())
+            .map(|cursor| cursor.index.into());
+        assert_eq!(caret, Some("Please inspect /review".chars().count()));
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn identical_session_composers_have_distinct_panel_scoped_widget_ids() {
+        let (mut app, profile) = isolated_app();
+        app.route = AppRoute::Session("same-session".into());
+        app.active_session_profile = Some("work".into());
+        let context = egui::Context::default();
+        let mut ids = Vec::new();
+        let output = context.run_ui(egui::RawInput::default(), |ui| {
+            ui.push_id("primary-workspace", |ui| {
+                ui.horizontal(|ui| ids.push(app.composer_widget_id(ui)));
+            });
+            ui.push_id("session-pane", |ui| {
+                ui.horizontal(|ui| ids.push(app.composer_widget_id(ui)));
+            });
+        });
+        output.drop_without_applying_deltas();
+        assert_eq!(ids.len(), 2);
+        assert_ne!(ids[0], ids[1]);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn unfocused_composer_cannot_replace_focused_slash_completion_state() {
+        let (mut app, profile) = isolated_app();
+        app.draft = "Inspect /rev".into();
+        let focused = egui::Id::unique("focused-composer");
+        let unfocused = egui::Id::unique("unfocused-composer");
+        app.sync_focused_slash_completion_query(
+            focused,
+            true,
+            Some("Inspect /rev".chars().count()),
+        );
+        app.slash_completion_items = vec![SlashCompletionItem {
+            text: "/review".into(),
+            display: "/review".into(),
+            meta: "Review the working tree".into(),
+            group: "Skills".into(),
+        }];
+        let query = app.slash_completion_query.clone();
+        let anchor = app.slash_completion_anchor.clone();
+        let items = app.slash_completion_items.clone();
+        app.draft = "Plain draft".into();
+        app.sync_focused_slash_completion_query(unfocused, false, Some(4));
+        assert_eq!(app.slash_completion_composer_id, Some(focused));
+        assert_eq!(app.slash_completion_query, query);
+        assert_eq!(app.slash_completion_anchor, anchor);
+        assert_eq!(app.slash_completion_items, items);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn inline_skill_suggestion_is_visible_and_click_inserts_without_sending() {
+        let (mut app, profile) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::NewChat;
         let app = std::rc::Rc::new(std::cell::RefCell::new(app));
         let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1280.0, 800.0))
             .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
         harness.get_by_label("Message composer").click();
+        harness.run();
+        harness
+            .get_by_label("Message composer")
+            .type_text("Please inspect /rev");
+        harness.run();
+        {
+            let mut app = app.borrow_mut();
+            assert_eq!(app.slash_completion_query.as_deref(), Some("/rev"));
+            assert!(
+                app.slash_completion_anchor
+                    .as_ref()
+                    .is_some_and(|anchor| anchor.inline)
+            );
+            app.slash_completion_due = None;
+            app.slash_completion_items = vec![SlashCompletionItem {
+                text: "/review".into(),
+                display: "/review".into(),
+                meta: "Review the working tree".into(),
+                group: "Skills".into(),
+            }];
+        }
+        harness.run();
+        harness
+            .get_by_label("Insert /review into the message draft without sending")
+            .click();
+        harness.run();
+        assert_eq!(app.borrow().draft, "Please inspect /review");
+        assert!(app.borrow().pending_submissions.is_empty());
+        assert!(app.borrow().slash_completion_dismissed);
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile).expect("remove isolated test profile");
+    }
+
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn slash_suggestions_support_keyboard_selection_without_sending() {
+        let (mut app, profile) = isolated_app();
+        app.gateway_connected = true;
+        app.route = AppRoute::NewChat;
+        app.draft = "/r".into();
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1280.0, 800.0))
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+        harness.get_by_label("Message composer").click();
+        harness.run();
+        harness.key_press(egui::Key::End);
+        harness.run();
+        {
+            let mut app = app.borrow_mut();
+            let composer_id = app
+                .slash_completion_composer_id
+                .expect("focused composer ID");
+            let caret = app.draft.chars().count();
+            app.sync_slash_completion_query(composer_id, Some(caret));
+            app.slash_completion_items = vec![
+                SlashCompletionItem {
+                    text: "/review".into(),
+                    display: "/review".into(),
+                    meta: "Review the working tree".into(),
+                    group: "Commands".into(),
+                },
+                SlashCompletionItem {
+                    text: "/research".into(),
+                    display: "/research".into(),
+                    meta: "Research a topic".into(),
+                    group: "Skills".into(),
+                },
+            ];
+            app.slash_completion_due = None;
+        }
         harness.run();
         harness.key_press(egui::Key::ArrowDown);
         harness.run();
@@ -52328,7 +52724,11 @@ mod tests {
         {
             let mut app = app.borrow_mut();
             app.draft = "/r".into();
-            app.sync_slash_completion_query();
+            let caret = app.draft.chars().count();
+            let composer_id = app
+                .slash_completion_composer_id
+                .expect("focused composer ID");
+            app.sync_slash_completion_query(composer_id, Some(caret));
             app.slash_completion_items = vec![
                 SlashCompletionItem {
                     text: "/review".into(),
