@@ -24,3 +24,4 @@ pub mod routes;
 pub mod session_owner;
 pub mod session_peer_sync;
 pub mod skill_catalog;
+pub mod terminal;

@@ -77,6 +77,9 @@ fn run() -> Result<(), String> {
     if args.as_slice() == ["--stdio"] {
         return automation_protocol::run_stdio();
     }
+    if args.as_slice() == ["--stdio-live-gateway"] {
+        return automation_protocol::run_stdio_live_gateway();
+    }
     if args.iter().any(|arg| arg == "--stdio") {
         return Err("--stdio cannot be combined with one-shot UI arguments".into());
     }
@@ -467,6 +470,8 @@ fn print_help() {
 Usage: hermes-automation [--native-window] [--viewport WIDTHxHEIGHT] [--markdown-fixture | --first-run-setup-fixture | --long-session-fixture | --transcript-find-fixture | --transcript-timestamps-fixture | --session-pane-fixture | --session-cwd-fixture | --recent-session-switcher-fixture | --recent-session-reorder-fixture | --command-center-sessions-fixture | --plugins-catalog-fixture | --plugin-install-review-fixture | --plugin-update-scan-review-fixture | --plugin-auto-update-fixture | --plugin-update-all-report-fixture | --connectors-fixture | --artifacts-fixture | --files-preview-fixture | --image-preview-fixture | --svg-preview-fixture | --pdf-preview-fixture | --pdf-scroll-fixture | --html-preview-fixture] [--inspect] [--click ACCESSIBLE_NAME] [--scroll-up ACCESSIBLE_NAME | --scroll-down ACCESSIBLE_NAME] [--type ACCESSIBLE_NAME TEXT | --type-role ROLE ACCESSIBLE_NAME TEXT] [--screenshot PATH]...
 Actions run in order against an isolated offline Hermes Native UI. No native window is opened and no Hermes gateway is started.
 Accessible actions use egui's AccessKit UI tree and normal widget input handling.
+--stdio starts the Playwright-shaped headless UI protocol with Gateway access disabled.
+--stdio-live-gateway explicitly enables the headless protocol's local Hermes Gateway connection using a temporary UI profile. Set HERMES_HOME to a dedicated test Hermes profile before launch; this mode may start that profile's Gateway. It does not use the installed profile implicitly.
 --native-window opens the actual app off-screen and inactive on Windows, with a temporary profile and gateway disabled. Add --stdio for generation-checked egui input and renderer screenshot requests; inspect controls through Windows UI Automation.");
 }
 

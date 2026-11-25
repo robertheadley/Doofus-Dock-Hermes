@@ -2,16 +2,22 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 385 (implementation in progress).
-- **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
+- **Working revision:** 388 (workflow-first delivery; provider access blocks live coding acceptance).
+- **Status:** active gate is a complete live coding workflow in Hermes Native. The 24–72 hour delivery window is a target, not an evidence-based ETA.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87` (fetched `main` on 2026-11-24; exact commit pinned until explicitly refreshed).
-- **Scope:** first usable native Rust/egui UI for agent workflows in pinned Hermes source `8783054ef6cbafd86f10892241436862c1171a66`: establish model/provider connections, chat and prompt lifecycle, tool execution/progress/results and approvals, skills, plugins/MCP, and supporting context/attachments. Hermes Gateway/runtime/tool execution remains authoritative. Functional support is the target; pixel accuracy and unrelated Desktop administration are deferred.
+- **Immediate scope:** a reliable primary AI coding agent on native Rust/egui/DoofusDock, proven by a complete real coding assignment. Minimum release capabilities and acceptance dimensions are in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md). Hermes Gateway/runtime/tool loops remain authoritative.
 - **Excluded:** Hermes-Doofus plugin UI/backend, Doofus Vault/Control and the separate browser Dashboard.
 
 ## Completion and runtime boundary
 
-Completion means verified support for every feature directly needed to use Hermes as an agent, using the current 176-row `docs/status/CHAT_TOOL_SCOPE.csv` as the working feature ledger. The broader 499-row Desktop inventory remains a reference and is not the completion denominator. Pixel accuracy and unrelated Desktop administration are deferred. DoofusDock provides the UI framework; Hermes remains authoritative for the Gateway, runtime, tool execution and agent loops. After this first version is complete, Doofus Hermes will be backported to this UI.
+Immediate completion means the operator can finish a real coding assignment in Hermes Native without the original Desktop app. The feature ledger helps locate gaps but is not a completion percentage. The broad parity objective and architectural follow-on work remain preserved as later milestones. DoofusDock provides the UI framework; Hermes remains authoritative for Gateway, runtime, tools, and agent loops.
+
+## Working revision 388 — live workflow critical path (2026-11-25)
+
+The current headless executable connects to the isolated Gateway, opens a session, and submits the controlled coding prompt. The provider returns HTTP 402 `Insufficient Balance` for `deepseek-flash` before any tool call, so the test project remains unchanged. The application rendered the provider error and returned to a non-pending state. This is the current external blocker; the previously recorded Python-runtime discovery diagnostic is separate and has not been shown to cause the failure.
+
+Next sequence: (1) use an already-authorized provider with available entitlement; (2) complete the disposable coding assignment and verify the exact file diff, tool result and project test; (3) smoke Skills, Hermes Agent Plugins and a local read-only MCP tool; (4) cold restart/resume and two concurrent sessions; (5) make a portable Windows release folder and cold-launch it. Relative effort bands and acceptance details are in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md); total ETA remains unavailable until provider access and comparable work samples exist. The prior parity milestone remains preserved for later work.
 
 ## Downloaded parity source snapshot
 
@@ -2367,3 +2373,19 @@ Validation: focused slash suite passes 12 tests; full locked workspace suite pas
 Extended the real two-pane egui_kittest scenario so focus can move from one session composer to another while inline suggestions are visible. The test proves panel-scoped owner transfer, clearing of the previous pane's suggestion, query ownership in the newly focused pane, and no prompt submission. EV-0183 records this pass. PAR-0067 remains partial: late Gateway responses after blur still lack a direct event test, and authenticated live Gateway, packaged Windows and pinned-source paired acceptance remain outstanding.
 
 Validation: focused slash suite passes 12 tests; full locked workspace suite passes 761 library + 15 automation protocol + 3 launcher tests; all-target locked check, rustfmt and diff checks pass. Source commit: 5f0a07e4796593fb8b569d750281532018edc936.
+
+
+### Revision 386 — workflow-first immediate release objective — 2026-11-25
+
+The operator changed the immediate milestone from feature-ledger completeness to a usable primary AI coding agent, while explicitly preserving all existing work and the broader parity/architecture objectives. Acceptance is centered on one complete live coding workflow, with model/provider, session, streaming, tool, approval/clarification, file/result, restart, and packaged-app capabilities exercised as dependencies. The 24–72 hour window is an aggressive target only; measured ETA remains unavailable.
+
+Baseline: native headless UI build passes; isolated Gateway attach passes; session creation and prompt admission pass after omitting the active endpoint identity from the wire-level `profile` field. The configured DeepSeek provider then returned a payment/credit error before tools ran. No live coding assignment has passed. See `DELIVERY_OBJECTIVE.md` and `COMPLETION_OVERVIEW.md`.
+
+
+### Revision 387 — Wire the local PTY into the Terminal Dock pane — 2026-11-25
+
+The Terminal Dock pane now provides an explicit local-shell start, editable working folder, command input, bounded VT output, resize, Ctrl+C, and Stop. Its label states that the process runs on this computer independently of the Hermes Gateway. Rendering the panel does not start a process. The Windows PTY reader handles ConPTY device-status and cursor-position queries, including escape sequences split across reads; the shell test now verifies output, resize, and clean exit.
+
+Validation: full locked workspace suite passes 766 library + 15 automation-protocol + 3 launcher tests; all-target locked `cargo check`, `cargo fmt --all -- --check`, and `git diff --check` pass. Headless panel test proves no shell starts without an explicit action.
+
+Limits: terminal commands are currently line-oriented; raw key-by-key input and full-screen interactive TUI behavior are not implemented. Live Hermes coding acceptance remains blocked by the configured provider credit error; packaged Windows and source-paired acceptance remain open.

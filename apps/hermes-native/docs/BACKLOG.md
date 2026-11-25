@@ -1,3 +1,21 @@
+# Immediate release critical path (2026-11-25)
+
+1. **Live model response — blocked externally:** the isolated `deepseek-flash` request returned HTTP 402 `Insufficient Balance`; proceed after an already-authorized provider has usable entitlement. Acceptance is a streamed assistant response from an actual provider.
+2. **Tool-using coding task — attempted, blocked before tools:** the live prompt and failure rendered in the native transcript, but no tool call occurred and the isolated project did not change. Acceptance is a Hermes tool edit plus passing project tests and an accurate summary.
+3. **Approval/clarification, stop/recovery, and session resume:** exercise the existing UI actions against live runtime events; acceptance requires correct owner scoping and no duplicate prompt admission.
+4. **Project context and artifacts:** verify working directory, file/image attachment handling, terminal/file/artifact access in the same workflow.
+5. **Reliability/release:** restart and resume, isolate two concurrent sessions, then package and launch the Windows executable.
+
+The target window is 24–72 hours, not a measured ETA. The current model credit failure blocks provider-backed acceptance; implementation and headless validation continue where independent. Detailed capabilities and acceptance live in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md).
+
+## Terminal slice — local implementation, partial acceptance
+
+The existing Dock Terminal pane now exposes a configurable working folder and explicit **Start local shell** action. It runs a local `portable-pty` process independently of the Hermes Gateway, displays a bounded VT screen, accepts complete command lines, supports resize, Ctrl+C, and Stop, and never launches merely because the pane was rendered. Windows tests cover command output, query-response handling, resize, and clean exit. This is line-oriented; full key-by-key terminal input, full-screen TUI behavior, packaged-app interaction, and pinned-source acceptance remain open.
+
+## Deferred until after first usable release
+
+Electron Desktop plugin compatibility, comprehensive native Desktop plugin hosting, advanced delegated-worker UI, voice, pixel parity, exhaustive edge cases, unrelated Desktop administration, visual polish, and formal acceptance for every historical requirement stay deferred unless a demonstrated dependency blocks a release workflow. Hermes backend plugins and MCP integrations remain in the immediate scope.
+
 # Hermes Native parity backlog
 
 The pinned source inventory is downloaded Hermes snapshot 8783054ef6cbafd86f10892241436862c1171a66. The preserved research package has 499 stock Desktop rows and 66 excluded Hermes-Doofus rows. The current milestone is a first usable agent-workflow version: model/provider connection, chat and prompt lifecycle, tool execution/progress/results and approvals, skills, plugins/MCP, plus supporting context and attachments. It is not a full Hermes Desktop replica; pixel matching and unrelated administration are deferred. Doofus Hermes follows the agent-focused milestone.

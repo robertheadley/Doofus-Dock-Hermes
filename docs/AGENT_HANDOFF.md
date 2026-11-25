@@ -1,6 +1,6 @@
 # Agent handoff and task recovery
 
-This repository uses portable, versioned records under `.doofus/`. They contain task state and evidence references, never conversation transcripts, credentials, machine-specific absolute paths, or a local SQLite database. The active milestone is a first usable native agent-workflow UI for pinned Hermes source: model/provider connection, chat/prompt lifecycle, tools/results/approvals, skills, plugins/MCP, and required context/attachments. The 499-row Desktop matrix is a reference inventory, not the goal denominator; the separate 33/59 checklist remains an unverified historical metric.
+This repository uses portable, versioned records under `.doofus/`. They contain task state and evidence references, never conversation transcripts, credentials, machine-specific absolute paths, or a local SQLite database. The active milestone is a usable primary AI coding agent in native Rust/DoofusDock, proven by a complete real coding assignment through Hermes Native. The 24–72 hour window is an aggressive target, not an ETA. Preserve the broader parity and architecture objectives as later milestones; do not discard working features. Release scope, current blockers, and evidence dimensions are in `apps/hermes-native/docs/DELIVERY_OBJECTIVE.md`.
 
 ## Startup procedure for every provider
 

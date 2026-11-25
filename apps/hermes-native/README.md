@@ -2,6 +2,8 @@
 
 The delivery goal is verified support for the Hermes workflows needed for agentic coding: model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP, and supporting context/attachments from pinned Hermes Desktop snapshot `8783054ef6cbafd86f10892241436862c1171a66`. The 176-row `docs/status/CHAT_TOOL_SCOPE.csv` and generated `CHAT_TOOL_PROGRESS.csv` define the feature target and evidence state. Pixel parity and unrelated Desktop administration are deferred. Doofus Hermes will be backported after this scope is complete.
 
+For the isolated provider-backed coding acceptance runner, its bounded path checks, evidence output, and invocation, see [agent/acceptance/README.md](agent/acceptance/README.md). Prompt admission by itself does not pass that acceptance; it requires a Hermes tool result, changed fixture file, and passing test.
+
 Independent native Rust/egui implementation of the stock upstream Hermes Desktop GUI. It uses the Hermes Python gateway as the runtime and DoofusDock for canonical workspace layouts, profiles, docking and presentation.
 
 Pinned `secret`, `vault.code`, and `vault.save_login` server prompts now have masked, owner-fenced native responses with ephemeral drafts and no automatic resend after an unknown write outcome; this has headless coverage only, with authenticated Gateway and packaged Windows verification open.

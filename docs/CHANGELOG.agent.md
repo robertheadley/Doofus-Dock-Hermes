@@ -5628,3 +5628,119 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: No runtime-path change; one headless UI test added.
 - risks: Gateway response arriving after blur still lacks a direct event-level regression; no live or packaged acceptance was performed.
 - follow_up: Verify authenticated live Gateway and add late-response fence coverage.
+
+
+### hermes-native-workflow-first-20261125
+
+- id: `hermes-native-workflow-first-20261125`
+- timestamp: `2026-11-25T16:42:33Z`
+- what: Set the immediate success target to a usable primary coding agent accepted through a complete live coding assignment.
+- why: The operator replaced comprehensive near-term parity with an operational workflow-first release and asked to preserve existing functional work and the long-term direction.
+- components: Hermes Native delivery objective, plan, completion overview, backlog, root task goal, live prompt scope handling.
+- type: delivery-goal and Gateway-scope correction.
+- validation: runner build and formatting pass; focused profile-scope and New Chat→submit regressions pass; isolated Gateway attaches and admits prompts. The live assignment did not pass because DeepSeek returned a payment/credit error before tool execution.
+- performance: not measured; no performance change claimed.
+- risks: live agent execution, tool results, Windows package, restart/resume, concurrent sessions, and Windows runtime remain unverified. The 24–72 hour window is a target, not an ETA.
+- follow_up: Continue independent workflow-critical implementation; repeat provider-backed acceptance after a usable model/provider is available; keep the broad objective preserved.
+
+### goal-sync-20261125-1031
+
+- id: `goal-sync-20261125-1031`
+- timestamp: `2026-11-25T16:48:33Z`
+- what: Reconciled the handoff projection to the already-written immediate goal at task-ledger revision 186, recorded a prepared/reconciled event pair, and refreshed current checkpoint/next-action evidence.
+- why: The handoff expected revision 185 while the ledger had advanced to 186, preventing canonical validation and status reporting.
+- components: `.doofus/events.jsonl`; `.doofus/handoff.json`; project task state.
+- type: continuity reconciliation.
+- validation: `python apps/hermes-native/tools/doofus_task.py validate` passed at handoff revision 1031 and ledger revision 186; `progress --json` returned successfully.
+- performance: No runtime behavior changed.
+- risks: Project implementation remains incomplete; DeepSeek credit failure still blocks the full live coding assignment.
+- follow_up: Continue the local PTY Terminal slice while provider access is unavailable; repeat end-to-end coding acceptance with a usable provider.
+
+### hermes-par-0134-local-terminal-20261125
+
+- id: `hermes-par-0134-local-terminal-20261125`
+- timestamp: `2026-11-25T17:09:26Z`
+- what: Integrated the local PTY with the existing Terminal Dock pane, added scoped controls and bounded VT output, and fixed Windows ConPTY query handling.
+- why: The agent-focused app needs a usable terminal surface; the existing pane was only an offline placeholder.
+- components: `apps/hermes-native/src/terminal.rs`; `apps/hermes-native/src/app.rs`; `apps/hermes-native/src/lib.rs`; delivery/status/architecture docs; canonical task ledger.
+- type: feature implementation and verification.
+- validation: focused terminal tests 3/3 and explicit-start UI test 1/1; full workspace 766 library + 15 automation-protocol + 3 launcher tests; all-target locked check, format check, and diff check pass.
+- performance: PTY I/O and VT parsing run off the UI thread; UI polls at 80 ms while shell is running; no benchmark claimed.
+- risks: command input is line-oriented; no full-screen TUI/key-by-key behavior; packaged-app, source-paired, and full Hermes coding workflow acceptance remain open.
+- follow_up: Complete attachment/context and remaining tool/approval paths, then prove an end-to-end coding assignment with an available provider and packaged Windows runtime.
+
+## Revision 386 — Attached-owner session resume profile scope
+- id: hermes-session-resume-owner-wire-scope-20261125
+- timestamp: 2026-11-25T18:43:04Z
+- what: `session.resume` now omits `profile` only when it exactly equals the attached endpoint owner ID, and restores the original owner on the returned transcript/event; named sibling selectors remain unchanged.
+- why: Session rows retain an absolute endpoint profile ID for ownership, while the pinned Gateway interprets `profile` as a named sibling selector and rejects the owner ID with `profile_mismatch`.
+- components: `apps/hermes-native/src/gateway.rs`; actor-level WebSocket regression for attached owner and `worker` sibling.
+- type: correctness fix and regression coverage
+- validation: `cargo fmt --check`; focused attached-owner regression 1/1 and existing named-profile resume regression 1/1 with `--features agent-automation`.
+- performance: No additional requests or runtime work.
+- risks: Exact-match omission depends on the row owner ID matching the currently attached endpoint ID; nonmatching values continue to pass through for existing sibling routing.
+- follow_up: Verify the behavior in the normal app resume flow when a Gateway connection is available.
+
+### hermes-native-profile-resume-and-runner-20261125
+
+- id: `hermes-native-profile-resume-and-runner-20261125`
+- timestamp: `2026-11-25T18:44:25Z`
+- what: Omitted the attached Gateway owner identity from `session.resume` wire parameters while retaining it in app/event state; preserved named sibling profiles. Corrected live coding acceptance to wait for an idle terminal assistant outcome or explicit gate/error instead of treating the user message row as completion.
+- why: Hermes interprets `profile` as a named profile selector, while the UI uses the endpoint owner profile ID for identity. The previous acceptance harness could close while a submission was still pending.
+- components: `apps/hermes-native/src/gateway.rs`; `apps/hermes-native/agent/acceptance/live-coding-assignment.mjs`; `apps/hermes-native/agent/acceptance/live-coding-assignment.test.mjs`.
+- type: Gateway compatibility fix and acceptance harness correctness fix.
+- validation: Focused Rust owner-vs-sibling resume regression passed (1/1); Node completion-gate test passed (1/1); seven runner self-check cases passed; formatting, syntax, and diff checks passed. Full workspace suite and live resumption are still pending.
+- performance: No performance change claimed.
+- risks: Existing live coding operation remains unknown pending successful transcript readback; no provider prompt was sent during this change. The runner cannot yet assert a provider/model pair through the current semantic automation state.
+- follow_up: Rebuild and reopen the existing isolated session without resubmitting; reconcile the in-flight operation from terminal transcript and filesystem evidence; add deterministic model-selection state if needed before another provider-backed attempt.
+
+### hermes-native-live-coding-failure-reconcile-20261125
+
+- id: `hermes-native-live-coding-failure-reconcile-20261125`
+- timestamp: `2026-11-25T18:57:13Z`
+- what: Reconciled the live coding attempt as failed after a single DeepSeek Flash HTTP 402 response; confirmed zero tool calls, unchanged fixture, and no unit test. Recorded separate evidence that the ended session remains in the isolated state database while the current connected UI lists zero sessions.
+- why: The previous runner stopped before terminal readback, leaving the provider operation unknown. A reliable acceptance result must distinguish a provider billing failure from agent tool success.
+- components: `.doofus` operation/checkpoint state; isolated Gateway test profile; `apps/hermes-native/artifacts/agent-ui/live-coding-reconcile-20261125.json`; `apps/hermes-native/artifacts/agent-ui/live-coding-session-readback-20261125.json`.
+- type: External-operation reconciliation and runtime diagnosis.
+- validation: Query-only SQLite read confirmed the session has two message rows, `tool_call_count=0`, `end_reason=ws_orphan_reap`; live headless state reports `gateway connected` and `session_count=0`; fixture still contains `return abs(a) + b`; canonical task state validates.
+- performance: No performance change claimed.
+- risks: The app cannot currently discover this persisted session through its session list; provider account returns insufficient balance. No prompt was resent.
+- follow_up: Fix the session-list omission and make model selection observable; retry provider-backed acceptance only with a usable provider/model and an explicitly fresh prompt.
+
+### hermes-native-model-selection-observability-20261125
+
+- id: `hermes-native-model-selection-observability-20261125`
+- timestamp: `2026-11-25T18:59:32Z`
+- what: Added provider-qualified accessible names for new-chat model options and sanitized automation state reporting `status`, `source`, `provider_slug`, and `model`. Stale manual choices clear when the attached profile or connection owner changes.
+- why: Headless agents need to disambiguate duplicate model IDs, verify the selected pair, and distinguish a manual override from Hermes' profile default before submitting work.
+- components: `apps/hermes-native/src/app.rs` (new-chat picker, endpoint ownership transitions, `automation_state`).
+- type: agent-automation observability and UI accessibility improvement.
+- validation: Three focused Rust UI/state regressions passed; existing picker manual-selection/default regression passed; `cargo fmt --all -- --check` passed. Tests used local fixtures only.
+- performance: No measurable performance change; added constant-size state fields and accessible labels.
+- risks: The additive automation state has no provider API URL, token, or credential fields. Full live UI/Gateway behavior remains unverified.
+- follow_up: Use the exact provider/model state in a later isolated live acceptance run after reconciling the existing unknown session.
+
+## Revision 387 — Canonical attach live and stored sessions
+- id: hermes-attach-live-stored-session-merge-20261125
+- timestamp: 2026-11-25T19:03:15Z
+- what: Native attach now keeps the canonical live session list and additionally merges its stored/resumable rows when the response carries the canonical `scope` marker. Duplicate rows are keyed by profile owner and session ID, with the live row retained. Legacy TUI responses without a scope marker remain single-request.
+- why: The canonical session.list default is live scope and excludes ended sessions such as local rows closed by `ws_orphan_reap`; the native app also needs durable resumable chats at attach time.
+- components: `apps/hermes-native/src/gateway.rs`; isolated WebSocket fixtures for canonical merge/dedup and legacy compatibility.
+- type: correctness fix and regression coverage
+- validation: `cargo fmt --check`; canonical live/stored merge 1/1; legacy compatibility 1/1; attached-owner resume 1/1; `git diff --check`.
+- performance: Canonical attach adds one bounded `session.list` request; legacy TUI attach remains one request.
+- risks: Stored scope visibility remains governed by the pinned Gateway's native-reader and ownership checks. The separate HTTP recency profile-selector issue is unchanged and not claimed fixed here.
+- follow_up: Resolve the HTTP recency selector using an explicit logical-profile mapping and verify its observed status separately.
+
+### hermes-live-session-and-model-verify-20261125
+
+- id: `hermes-live-session-and-model-verify-20261125`
+- timestamp: `2026-11-25T19:19:03Z`
+- what: Verified headless live/stored Gateway session merge by reopening the persisted test conversation and reading its two-message transcript; verified exact manual selection of DeepSeek `deepseek-chat` through sanitized automation state. Ran the full workspace suite and build checks.
+- why: A provider failure had left a persisted session invisible to the native app, and the acceptance runner could not prove which provider/model the picker selected.
+- components: `apps/hermes-native/src/app.rs`; `apps/hermes-native/src/gateway.rs`; acceptance runner; headless artifacts under `apps/hermes-native/artifacts/agent-ui`.
+- type: Integration verification and automation observability.
+- validation: `cargo test --locked --workspace --features agent-automation -- --test-threads=1` exited 0 with 777 native library tests; all-target `cargo check`, automation `cargo build`, focused Node test, rustfmt, diff check, and Doofus task-state validation passed. Live headless state listed five sessions, resumed the target session with two transcript messages and no pending submission, and reported exact `provider_slug=deepseek`, `model=deepseek-chat`, `source=user_selected`.
+- performance: No performance change claimed.
+- risks: Original provider turn failed before tools with HTTP 402 and remains a failed acceptance; no prompt was retried. Repository discovery HTTP 403 and session recency HTTP 422 remain. Physical desktop/package behavior is not proven by headless rendering.
+- follow_up: Fix the remaining profile-scoped HTTP routes and continue attachments/tool-result/skills/plugins acceptance; run a fresh provider-backed coding assignment only after a usable provider is verified.

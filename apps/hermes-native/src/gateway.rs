@@ -17,12 +17,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    fmt,
+    env, fmt,
     io::{self, Read, Write},
     net::TcpStream,
     path::PathBuf,
-    process::Command,
-    process::Stdio,
+    process::{Child, Command, ExitStatus, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, AtomicUsize, Ordering},
@@ -7933,24 +7932,7 @@ fn attach_gateway(
     let endpoint = gateway_endpoint_from_attach_grant(&grant);
     let (mut socket, runtime) =
         connect_local_attach_grant(&grant, Some(&endpoint)).map_err(LocalAttachFailure::Other)?;
-    let rows = rpc(
-        &mut socket,
-        3,
-        "session.list",
-        serde_json::json!({ "limit": 200, "include_hidden": false }),
-    )?;
-    let sessions: Vec<SessionSummary> = serde_json::from_value(
-        rows.get("sessions")
-            .cloned()
-            .ok_or_else(|| "Hermes session list response omitted sessions".to_owned())?,
-    )
-    .map_err(|_| "Hermes returned an invalid session list".to_owned())?;
-    let mut sessions = sessions;
-    for session in &mut sessions {
-        if session.profile.is_none() {
-            session.profile = Some(endpoint.profile_id.clone());
-        }
-    }
+    let sessions = load_attached_sessions(&mut socket, &endpoint.profile_id)?;
     Ok((
         ConnectedGateway {
             endpoint,
@@ -7959,6 +7941,94 @@ fn attach_gateway(
         },
         socket,
     ))
+}
+
+fn load_attached_sessions(
+    socket: &mut GatewaySocket,
+    endpoint_profile_id: &str,
+) -> Result<Vec<SessionSummary>, String> {
+    let live_rows = rpc(
+        socket,
+        3,
+        "session.list",
+        serde_json::json!({
+            "limit": 200,
+            "include_hidden": false,
+        }),
+    )?;
+    let mut sessions: Vec<SessionSummary> = serde_json::from_value(
+        live_rows
+            .get("sessions")
+            .cloned()
+            .ok_or_else(|| "Hermes session list response omitted sessions".to_owned())?,
+    )
+    .map_err(|_| "Hermes returned an invalid session list".to_owned())?;
+
+    match live_rows.get("scope").and_then(serde_json::Value::as_str) {
+        Some("live") => {
+            let stored_rows = rpc(
+                socket,
+                4,
+                "session.list",
+                serde_json::json!({
+                    "scope": "stored",
+                    "limit": 200,
+                    "include_hidden": false,
+                }),
+            )?;
+            if stored_rows.get("scope").and_then(serde_json::Value::as_str) != Some("stored") {
+                return Err("Hermes stored session list response omitted its scope".into());
+            }
+            let stored_sessions: Vec<SessionSummary> =
+                serde_json::from_value(stored_rows.get("sessions").cloned().ok_or_else(|| {
+                    "Hermes stored session list response omitted sessions".to_owned()
+                })?)
+                .map_err(|_| "Hermes returned an invalid stored session list".to_owned())?;
+            merge_attached_session_scopes(&mut sessions, stored_sessions, endpoint_profile_id);
+        }
+        // The pinned classic TUI Gateway returns its stored session list without a
+        // scope marker. It already includes resumable rows, so preserve that response
+        // and do not send an unsupported second request.
+        None => {}
+        Some(scope) => {
+            return Err(format!(
+                "Hermes session list returned unexpected scope '{scope}'"
+            ));
+        }
+    }
+
+    for session in &mut sessions {
+        if session.profile.is_none() {
+            session.profile = Some(endpoint_profile_id.to_owned());
+        }
+    }
+    Ok(sessions)
+}
+
+fn merge_attached_session_scopes(
+    live_sessions: &mut Vec<SessionSummary>,
+    stored_sessions: Vec<SessionSummary>,
+    endpoint_profile_id: &str,
+) {
+    let mut seen = live_sessions
+        .iter()
+        .map(|session| {
+            (
+                session
+                    .profile
+                    .as_deref()
+                    .unwrap_or(endpoint_profile_id)
+                    .to_owned(),
+                session.id.clone(),
+            )
+        })
+        .collect::<HashSet<_>>();
+    for session in stored_sessions {
+        let owner = session.profile.as_deref().unwrap_or(endpoint_profile_id);
+        if seen.insert((owner.to_owned(), session.id.clone())) {
+            live_sessions.push(session);
+        }
+    }
 }
 
 fn client_capabilities_params(desktop_local: bool) -> serde_json::Value {
@@ -9301,7 +9371,21 @@ fn gateway_actor_with_replay(
                 profile,
             }) => {
                 let event_profile = profile.clone();
-                let result = resume_session(socket, &session_id, profile, &events);
+                // The endpoint's profile_id identifies the attached owner; the RPC
+                // `profile` parameter selects a named sibling. Keep the owner in
+                // event metadata, but let the active authority scope the wire call.
+                let wire_profile = match endpoint.as_ref() {
+                    Some(endpoint) if profile.as_deref() == Some(endpoint.profile_id.as_str()) => {
+                        None
+                    }
+                    _ => profile.clone(),
+                };
+                let result = resume_session(socket, &session_id, wire_profile, &events).map(
+                    |mut transcript| {
+                        transcript.profile = event_profile.clone();
+                        transcript
+                    },
+                );
                 if events
                     .send(GatewayEvent::SessionResumed {
                         request_id,
@@ -12283,30 +12367,8 @@ fn mint_windows_ticket(
     purpose: &str,
     scope: Option<&str>,
 ) -> Result<Zeroizing<String>, String> {
-    let runtime_output = Command::new("hermes")
-        .arg("--print-runtime-command")
-        .output()
-        .map_err(|error| format!("Could not resolve Hermes' installed Python runtime: {error}"))?;
-    if !runtime_output.status.success() || runtime_output.stdout.len() > 65_536 {
-        return Err("Hermes did not report its installed Python runtime".into());
-    }
-    let runtime: Vec<String> = serde_json::from_slice(&runtime_output.stdout)
-        .map_err(|_| "Hermes returned an invalid installed runtime command".to_owned())?;
-    let Some(python) = runtime
-        .first()
-        .filter(|path| std::path::Path::new(path).is_absolute())
-    else {
-        return Err("Hermes returned an invalid Python runtime path".into());
-    };
-    let code = runtime
-        .iter()
-        .position(|argument| argument == "-c")
-        .and_then(|index| runtime.get(index + 1))
-        .ok_or_else(|| "Hermes runtime launcher omitted its bootstrap command".to_owned())?;
-    let marker = "runpy.run_module('hermes_cli.main'";
-    let (bootstrap, _) = code
-        .split_once(marker)
-        .ok_or_else(|| "Hermes runtime launcher bootstrap is incompatible".to_owned())?;
+    let venv_python = resolve_hermes_venv_python()?;
+    let (python, bootstrap) = resolve_hermes_runtime_command(&venv_python, &endpoint.profile_id)?;
     let launcher =
         format!("{bootstrap}exec(compile({TICKET_CLIENT:?}, '<hermes-native-ticket>', 'exec'))");
     let endpoint_json = serde_json::json!({
@@ -12332,17 +12394,25 @@ fn mint_windows_ticket(
         .spawn()
         .map_err(|_| "Could not start Hermes' private ticket client".to_owned())?;
     let mut input = Zeroizing::new(format!("{}\n", request));
-    child
-        .stdin
-        .take()
-        .ok_or_else(|| "Hermes ticket client has no private input".to_owned())?
-        .write_all(input.as_bytes())
-        .map_err(|_| "Could not write to Hermes' private ticket client".to_owned())?;
+    let Some(mut child_stdin) = child.stdin.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        input.zeroize();
+        return Err("Hermes ticket client has no private input".into());
+    };
+    let write_result = child_stdin.write_all(input.as_bytes());
+    drop(child_stdin);
     input.zeroize();
-    let output = child
-        .wait_with_output()
-        .map_err(|_| "Hermes' private ticket client did not return".to_owned())?;
-    if !output.status.success() || output.stdout.len() > 65_536 {
+    if write_result.is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("Could not write to Hermes' private ticket client".into());
+    }
+    let (status, stdout) =
+        bounded_child_output(child, Duration::from_secs(10), 65_536).map_err(|_| {
+            "Hermes' private ticket client did not return a bounded response".to_owned()
+        })?;
+    if !status.success() {
         return Err("Hermes' private ticket client failed".into());
     }
     #[derive(Deserialize)]
@@ -12350,7 +12420,6 @@ fn mint_windows_ticket(
         ticket: Option<String>,
         error: Option<String>,
     }
-    let stdout = Zeroizing::new(output.stdout);
     let mut reply: TicketReply = serde_json::from_slice(&stdout)
         .map_err(|_| "Hermes' private ticket client returned invalid data".to_owned())?;
     if let Some(ticket) = reply.ticket.take().filter(|ticket| !ticket.is_empty()) {
@@ -12360,6 +12429,244 @@ fn mint_windows_ticket(
         "Hermes refused to mint a gateway ticket ({})",
         reply.error.unwrap_or_else(|| "ticket_failed".into())
     ))
+}
+
+fn resolve_hermes_venv_python() -> Result<PathBuf, String> {
+    let path = env::var_os("PATH").ok_or_else(|| "Hermes is not available on PATH".to_owned())?;
+    let directories = env::split_paths(&path).collect::<Vec<_>>();
+    let python = select_hermes_python_from_path_entries(
+        &directories,
+        |path| path.is_file(),
+        |path| std::fs::read_to_string(path).ok(),
+    )
+    .ok_or_else(|| "Could not locate Hermes' matching venv Python on PATH".to_owned())?;
+    python.canonicalize().map_err(|_| {
+        "Could not resolve the Python interpreter beside the Hermes installation".to_owned()
+    })
+}
+
+fn select_hermes_python_from_path_entries(
+    directories: &[PathBuf],
+    mut is_file: impl FnMut(&std::path::Path) -> bool,
+    mut read_wrapper: impl FnMut(&std::path::Path) -> Option<String>,
+) -> Option<PathBuf> {
+    // Prefer a Python interpreter beside the Hermes console launcher. This keeps the
+    // resolver tied to the exact installation selected by PATH instead of guessing
+    // from HERMES_HOME or accidentally choosing an unrelated `python` command.
+    for directory in directories {
+        #[cfg(windows)]
+        let launcher = directory.join("hermes.exe");
+        #[cfg(not(windows))]
+        let launcher = directory.join("hermes");
+        if is_file(&launcher) {
+            let python = adjacent_hermes_venv_python(&launcher)?;
+            if is_file(&python) {
+                return Some(python);
+            }
+        }
+    }
+
+    // Windows installs publish a small `hermes.cmd` wrapper in HERMES_HOME\bin;
+    // its Hermes launcher is under hermes-agent\venv\Scripts. Accept only the
+    // installer's fixed one-command wrapper shape; do not evaluate batch content.
+    #[cfg(windows)]
+    for directory in directories {
+        let wrapper = directory.join("hermes.cmd");
+        let Some(contents) = read_wrapper(&wrapper) else {
+            continue;
+        };
+        let Some(launcher) = parse_hermes_install_wrapper(&contents) else {
+            continue;
+        };
+        if !is_file(&launcher) {
+            continue;
+        }
+        let python = adjacent_hermes_venv_python(&launcher)?;
+        if is_file(&python) {
+            return Some(python);
+        }
+    }
+
+    None
+}
+
+fn adjacent_hermes_venv_python(launcher: &std::path::Path) -> Option<PathBuf> {
+    let name = launcher.file_name()?.to_str()?;
+    #[cfg(windows)]
+    {
+        if !name.eq_ignore_ascii_case("hermes.exe") {
+            return None;
+        }
+        Some(launcher.parent()?.join("python.exe"))
+    }
+    #[cfg(not(windows))]
+    {
+        if name != "hermes" {
+            return None;
+        }
+        Some(launcher.parent()?.join("python"))
+    }
+}
+
+#[cfg(windows)]
+fn parse_hermes_install_wrapper(contents: &str) -> Option<PathBuf> {
+    let lines = contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if lines.len() != 2 || !lines[0].eq_ignore_ascii_case("@echo off") {
+        return None;
+    }
+    let command = lines[1];
+    let quoted = command.strip_prefix('"')?;
+    let (launcher, suffix) = quoted.split_once('"')?;
+    if suffix.trim() != "%*" || launcher.contains('"') {
+        return None;
+    }
+    let launcher = PathBuf::from(launcher);
+    if !launcher.is_absolute()
+        || !launcher
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("hermes.exe"))
+    {
+        return None;
+    }
+    Some(launcher)
+}
+
+fn parse_hermes_runtime_command(output: &[u8]) -> Result<(PathBuf, String), String> {
+    let runtime: Vec<String> = serde_json::from_slice(output)
+        .map_err(|_| "Hermes returned an invalid installed runtime command".to_owned())?;
+    let python = runtime
+        .first()
+        .filter(|path| std::path::Path::new(path).is_absolute())
+        .map(PathBuf::from)
+        .ok_or_else(|| "Hermes returned an invalid Python runtime path".to_owned())?;
+    if runtime.get(1).map(String::as_str) != Some("-I")
+        || runtime.get(2).map(String::as_str) != Some("-c")
+    {
+        return Err("Hermes runtime launcher did not use isolated Python mode".into());
+    }
+    let code = runtime
+        .get(3)
+        .ok_or_else(|| "Hermes runtime launcher omitted its bootstrap command".to_owned())?;
+    let marker = "runpy.run_module('hermes_cli.main'";
+    let (bootstrap, _) = code
+        .split_once(marker)
+        .ok_or_else(|| "Hermes runtime launcher bootstrap is incompatible".to_owned())?;
+    if !bootstrap.contains("import hermes_bootstrap") {
+        return Err("Hermes runtime launcher bootstrap is incompatible".into());
+    }
+    Ok((python, bootstrap.to_owned()))
+}
+
+fn resolve_hermes_runtime_command(
+    venv_python: &std::path::Path,
+    profile_home: &str,
+) -> Result<(PathBuf, String), String> {
+    let child = Command::new(venv_python)
+        .args([
+            "-I",
+            "-m",
+            "hermes_cli._launchers",
+            "--print-runtime-command",
+            "--",
+        ])
+        .env("HERMES_HOME", profile_home)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "Could not resolve Hermes' installed Python runtime".to_owned())?;
+    let (status, stdout) = bounded_child_output(child, Duration::from_secs(10), 65_536)
+        .map_err(|_| "Hermes runtime resolver did not return bounded output".to_owned())?;
+    if !status.success() {
+        return Err("Hermes did not report its installed Python runtime".into());
+    }
+    parse_hermes_runtime_command(&stdout)
+}
+
+fn bounded_child_output(
+    mut child: Child,
+    timeout: Duration,
+    output_limit: usize,
+) -> Result<(ExitStatus, Zeroizing<Vec<u8>>), String> {
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "subprocess output pipe is unavailable".to_owned())?;
+    let (output_tx, output_rx) = mpsc::sync_channel(1);
+    let reader = match thread::Builder::new()
+        .name("hermes-private-child-output".into())
+        .spawn(move || {
+            let mut output = Vec::with_capacity(output_limit.min(4096));
+            let read = stdout
+                .take((output_limit + 1) as u64)
+                .read_to_end(&mut output);
+            let _ = output_tx.send((output, read.is_ok()));
+        }) {
+        Ok(reader) => reader,
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("could not read subprocess output".into());
+        }
+    };
+
+    let deadline = Instant::now() + timeout;
+    let mut captured = None;
+    loop {
+        if captured.is_none() {
+            match output_rx.try_recv() {
+                Ok((output, read_ok)) if read_ok && output.len() <= output_limit => {
+                    captured = Some(output);
+                }
+                Ok(_) | Err(mpsc::TryRecvError::Disconnected) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    drop(reader);
+                    return Err("subprocess output was invalid or exceeded its limit".into());
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let output = match captured {
+                    Some(output) => output,
+                    None => match output_rx.recv_timeout(Duration::from_millis(100)) {
+                        Ok((output, true)) if output.len() <= output_limit => output,
+                        _ => {
+                            let _ = reader.join();
+                            return Err(
+                                "subprocess output was invalid or exceeded its limit".into()
+                            );
+                        }
+                    },
+                };
+                let _ = reader.join();
+                return Ok((status, Zeroizing::new(output)));
+            }
+            Ok(None) => {}
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                drop(reader);
+                return Err("could not inspect subprocess status".into());
+            }
+        }
+
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            drop(reader);
+            return Err("subprocess timed out".into());
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[derive(Deserialize)]
@@ -15889,11 +16196,14 @@ fn load_model_options_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
 ) -> Result<ModelOptionsSnapshot, String> {
-    let profile = cron_profile_scope(endpoint, profile)?;
+    let profile = model_http_profile_scope(endpoint, profile)?;
+    let profile_query = profile
+        .map(|profile| format!("&profile={}", encode_query_component(profile)))
+        .unwrap_or_default();
     let url = format!(
-        "{}/api/model/options?explicit_only=1&profile={}",
+        "{}/api/model/options?explicit_only=1{}",
         endpoint.api_origin.trim_end_matches('/'),
-        encode_query_component(profile)
+        profile_query
     );
     let snapshot: ModelOptionsSnapshot = cron_gateway_http_request(endpoint, "GET", &url, None)?;
     if snapshot.providers.len() > 512
@@ -15935,6 +16245,19 @@ fn load_model_options_http(
     Ok(snapshot)
 }
 
+fn model_http_profile_scope<'a>(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&'a str>,
+) -> Result<Option<&'a str>, String> {
+    let profile = profile.filter(|profile| *profile != endpoint.profile_id);
+    if profile.is_some_and(|profile| {
+        profile.is_empty() || profile.len() > 128 || profile.chars().any(char::is_control)
+    }) {
+        return Err("Hermes model profile scope is invalid".into());
+    }
+    Ok(profile)
+}
+
 fn set_main_model_assignment_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
@@ -15943,7 +16266,7 @@ fn set_main_model_assignment_http(
     base_url: Option<&str>,
     confirm_expensive_model: bool,
 ) -> Result<MainModelAssignmentReceipt, String> {
-    let profile = cron_profile_scope(endpoint, profile)?;
+    let profile = model_http_profile_scope(endpoint, profile)?;
     let provider = provider.trim();
     let model = model.trim();
     let base_url = base_url.map(str::trim).filter(|value| !value.is_empty());
@@ -15964,14 +16287,16 @@ fn set_main_model_assignment_http(
     let url = format!(
         "{}/api/model/set{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(&profile)
+        profile.map(session_profile_suffix).unwrap_or_default()
     );
     let mut body = serde_json::json!({
         "scope": "main",
         "provider": provider,
         "model": model,
-        "profile": profile,
     });
+    if let Some(profile) = profile {
+        body["profile"] = serde_json::json!(profile);
+    }
     if confirm_expensive_model {
         body["confirm_expensive_model"] = serde_json::json!(true);
     }
@@ -20151,6 +20476,159 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hermes_venv_python_is_resolved_beside_the_selected_console_launcher() {
+        #[cfg(windows)]
+        let (launcher, python) = (
+            std::path::Path::new(r"C:\Hermes\hermes-agent\venv\Scripts\hermes.exe"),
+            std::path::PathBuf::from(r"C:\Hermes\hermes-agent\venv\Scripts\python.exe"),
+        );
+        #[cfg(not(windows))]
+        let (launcher, python) = (
+            std::path::Path::new("/opt/hermes/venv/bin/hermes"),
+            std::path::PathBuf::from("/opt/hermes/venv/bin/python"),
+        );
+        assert_eq!(adjacent_hermes_venv_python(launcher), Some(python));
+        #[cfg(windows)]
+        assert_eq!(
+            adjacent_hermes_venv_python(std::path::Path::new(r"C:\Hermes\hermes.cmd")),
+            None
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            adjacent_hermes_venv_python(std::path::Path::new("/opt/hermes/venv/bin/hermes.cmd")),
+            None
+        );
+    }
+
+    #[test]
+    fn hermes_python_resolver_selects_adjacent_interpreter_from_path_entries() {
+        #[cfg(windows)]
+        let (first, second, expected) = (
+            std::path::PathBuf::from(r"C:\Hermes\shim"),
+            std::path::PathBuf::from(r"C:\Hermes\hermes-agent\venv\Scripts"),
+            std::path::PathBuf::from(r"C:\Hermes\hermes-agent\venv\Scripts\python.exe"),
+        );
+        #[cfg(not(windows))]
+        let (first, second, expected) = (
+            std::path::PathBuf::from("/opt/hermes/shim"),
+            std::path::PathBuf::from("/opt/hermes/venv/bin"),
+            std::path::PathBuf::from("/opt/hermes/venv/bin/python"),
+        );
+        let directories = vec![first.clone(), second.clone()];
+        let resolved = select_hermes_python_from_path_entries(
+            &directories,
+            |path| {
+                #[cfg(windows)]
+                let shim_launcher = first.join("hermes.exe");
+                #[cfg(not(windows))]
+                let shim_launcher = first.join("hermes");
+                #[cfg(windows)]
+                let direct_launcher = second.join("hermes.exe");
+                #[cfg(not(windows))]
+                let direct_launcher = second.join("hermes");
+                path == shim_launcher || path == direct_launcher || path == expected
+            },
+            |_| None,
+        );
+        assert_eq!(resolved, Some(expected));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hermes_install_wrapper_parser_accepts_only_the_fixed_launcher_form() {
+        assert_eq!(
+            parse_hermes_install_wrapper(
+                "@echo off\r\n\r\n\"C:\\Hermes\\hermes-agent\\venv\\Scripts\\hermes.exe\" %*\r\n"
+            ),
+            Some(std::path::PathBuf::from(
+                r"C:\Hermes\hermes-agent\venv\Scripts\hermes.exe"
+            ))
+        );
+        assert!(parse_hermes_install_wrapper(
+            "@echo off\r\n\"C:\\Hermes\\hermes-agent\\venv\\Scripts\\hermes.exe\" %*\r\necho leaked\r\n"
+        )
+        .is_none());
+        assert!(parse_hermes_install_wrapper("@echo off\r\nhermes.exe %*\r\n").is_none());
+        assert!(
+            parse_hermes_install_wrapper("@echo off\r\n\"relative\\hermes.exe\" %*\r\n").is_none()
+        );
+        assert!(parse_hermes_install_wrapper(
+            "@echo off\r\n\"C:\\Hermes\\hermes-agent\\venv\\Scripts\\hermes.exe\" & whoami %*\r\n"
+        )
+        .is_none());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hermes_python_resolver_follows_only_a_valid_windows_install_wrapper() {
+        let bin = PathBuf::from(r"C:\Hermes\bin");
+        let launcher = PathBuf::from(r"C:\Hermes\hermes-agent\venv\Scripts\hermes.exe");
+        let python = PathBuf::from(r"C:\Hermes\hermes-agent\venv\Scripts\python.exe");
+        let wrapper_contents =
+            "@echo off\r\n\r\n\"C:\\Hermes\\hermes-agent\\venv\\Scripts\\hermes.exe\" %*\r\n";
+        let directories = vec![bin.clone()];
+        let resolved = select_hermes_python_from_path_entries(
+            &directories,
+            |path| path == &bin.join("hermes.exe") || path == &launcher || path == &python,
+            |path| (path == bin.join("hermes.cmd")).then(|| wrapper_contents.to_owned()),
+        );
+        assert_eq!(resolved, Some(python.clone()));
+
+        let injected_wrapper =
+            "@echo off\r\n\"C:\\Hermes\\hermes-agent\\venv\\Scripts\\hermes.exe\" & whoami %*\r\n";
+        let rejected = select_hermes_python_from_path_entries(
+            &directories,
+            |path| path == &bin.join("hermes.exe") || path == &launcher || path == &python,
+            |path| (path == bin.join("hermes.cmd")).then(|| injected_wrapper.to_owned()),
+        );
+        assert_eq!(rejected, None);
+    }
+
+    #[test]
+    fn hermes_runtime_command_parser_requires_absolute_isolated_bootstrap() {
+        let python_path = std::env::current_exe()
+            .expect("test executable path")
+            .to_string_lossy()
+            .into_owned();
+        let valid = serde_json::to_vec(&serde_json::json!([
+            &python_path,
+            "-I",
+            "-c",
+            "import os, sys, runpy; import hermes_bootstrap; runpy.run_module('hermes_cli.main', run_name='__main__')"
+        ]))
+        .expect("encode runtime command fixture");
+        let (python, bootstrap) = parse_hermes_runtime_command(&valid).expect("valid runtime");
+        assert_eq!(python, std::path::PathBuf::from(&python_path));
+        assert!(bootstrap.contains("import hermes_bootstrap"));
+        assert!(!bootstrap.contains("runpy.run_module"));
+
+        for invalid in [
+            serde_json::to_vec(&serde_json::json!([
+                "relative/python.exe",
+                "-I",
+                "-c",
+                "import hermes_bootstrap; runpy.run_module('hermes_cli.main')"
+            ]))
+            .expect("encode relative path fixture"),
+            serde_json::to_vec(&serde_json::json!([
+                &python_path,
+                "-c",
+                "import hermes_bootstrap; runpy.run_module('hermes_cli.main')"
+            ]))
+            .expect("encode non-isolated fixture"),
+            serde_json::to_vec(&serde_json::json!([
+                &python_path,
+                "-I",
+                "-c",
+                "runpy.run_module('hermes_cli.main')"
+            ]))
+            .expect("encode incompatible bootstrap fixture"),
+        ] {
+            assert!(parse_hermes_runtime_command(&invalid).is_err());
+        }
+    }
+
+    #[test]
     fn session_cwd_set_response_requires_confirmed_directory_and_valid_branch() {
         assert_eq!(
             parse_session_cwd_set(json!({"cwd":"/workspace/project", "branch":"main"})),
@@ -20241,6 +20719,11 @@ mod tests {
         });
         let (mut socket, _) =
             tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
         command_tx
@@ -24290,6 +24773,81 @@ mod tests {
     }
 
     #[test]
+    fn model_http_calls_omit_the_attached_endpoint_identity() {
+        use std::io::Write as _;
+
+        let listener =
+            TcpListener::bind("127.0.0.1:0").expect("bind attached-profile model fixture");
+        let address = listener
+            .local_addr()
+            .expect("attached-profile model fixture address");
+        let server = thread::spawn(move || {
+            for (route, body) in [
+                (
+                    "GET /hermes/api/model/options?explicit_only=1",
+                    r#"{"providers":[{"slug":"openai","name":"OpenAI","authenticated":true,"models":["gpt-fixture"]}],"provider":"openai","model":"gpt-fixture"}"#,
+                ),
+                (
+                    "POST /hermes/api/model/set",
+                    r#"{"ok":true,"provider":"openai","model":"gpt-fixture"}"#,
+                ),
+            ] {
+                let (mut stream, _) = listener
+                    .accept()
+                    .expect("accept attached-profile model request");
+                let request = read_http_fixture_request(&mut stream);
+                assert!(
+                    request
+                        .to_ascii_lowercase()
+                        .starts_with(&format!("{} http/1.1\r\n", route.to_ascii_lowercase()))
+                );
+                assert!(!request.to_ascii_lowercase().contains("profile="));
+                assert!(
+                    request
+                        .to_ascii_lowercase()
+                        .contains("x-hermes-session-token: cron-fixture-token\r\n")
+                );
+                let request_body = request.split_once("\r\n\r\n").unwrap().1;
+                if route.starts_with("POST ") {
+                    let value: serde_json::Value = serde_json::from_str(request_body).unwrap();
+                    assert_eq!(value["scope"], "main");
+                    assert_eq!(value["provider"], "openai");
+                    assert_eq!(value["model"], "gpt-fixture");
+                    assert!(value.get("profile").is_none());
+                } else {
+                    assert!(request_body.is_empty());
+                }
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .expect("write attached-profile model response");
+            }
+        });
+
+        let mut endpoint = cron_remote_fixture_endpoint(address);
+        endpoint.profile_id = r"C:\Users\test\Hermes-Delivery-Profile".into();
+        let models = load_model_options_http(&endpoint, Some(&endpoint.profile_id))
+            .expect("attached profile model catalog");
+        assert_eq!(models.provider.as_deref(), Some("openai"));
+        assert_eq!(models.model.as_deref(), Some("gpt-fixture"));
+
+        let saved = set_main_model_assignment_http(
+            &endpoint,
+            Some(&endpoint.profile_id),
+            "openai",
+            "gpt-fixture",
+            None,
+            false,
+        )
+        .expect("attached-profile main-model save");
+        assert!(saved.ok);
+        server.join().expect("attached-profile model fixture exits");
+    }
+
+    #[test]
     fn cron_crud_and_delivery_targets_use_profile_scoped_authenticated_contracts() {
         use std::io::Write as _;
 
@@ -26447,6 +27005,116 @@ mod tests {
         ));
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn attach_session_list_merges_live_and_stored_and_deduplicates_by_owner_and_id() {
+        let owner_profile = r"C:\Users\tester\AppData\Local\Temp\hermes-profile";
+        let orphan_id = "local-8bf96a4a426c9da10ebfbc50e6b22f0a83ad65b7b826b03b3e7a8c877ad0f935";
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for (scope, sessions) in [
+                (
+                    "live",
+                    json!([
+                        {"id":"active-session","title":"Active","message_count":1},
+                        {"id":"shared-session","title":"Live wins","message_count":2}
+                    ]),
+                ),
+                (
+                    "stored",
+                    json!([
+                        {"id":orphan_id,"title":"Orphan reaped","source":"local","message_count":2,
+                         "tool_call_count":0,"end_reason":"ws_orphan_reap","archived":false,"hidden":false},
+                        {"id":"shared-session","title":"Stored duplicate","message_count":1}
+                    ]),
+                ),
+            ] {
+                let request: serde_json::Value = match socket.read().expect("read session list") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse session list"),
+                    other => panic!("expected session.list request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "session.list");
+                assert_eq!(request["params"]["limit"], 200);
+                if scope == "live" {
+                    assert_eq!(request["params"].get("scope"), None);
+                } else {
+                    assert_eq!(request["params"]["scope"], "stored");
+                }
+                let id = request["id"].as_u64().expect("JSON-RPC request ID");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":{"scope":scope,"sessions":sessions}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .expect("send session list");
+            }
+            assert!(matches!(socket.read(), Ok(Message::Close(_)) | Err(_)));
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        let sessions =
+            load_attached_sessions(&mut socket, owner_profile).expect("load both scopes");
+        assert_eq!(sessions.len(), 3);
+        let by_id = sessions
+            .iter()
+            .map(|session| (session.id.as_str(), session))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(
+            by_id["active-session"].profile.as_deref(),
+            Some(owner_profile)
+        );
+        assert_eq!(by_id[orphan_id].profile.as_deref(), Some(owner_profile));
+        assert_eq!(by_id[orphan_id].message_count, 2);
+        assert_eq!(by_id["shared-session"].title, "Live wins");
+        socket.close(None).expect("close fixture client");
+        server.join().expect("fixture gateway exits");
+    }
+
+    #[test]
+    fn attach_session_list_keeps_legacy_tui_rows_without_second_request() {
+        let owner_profile = r"C:\Users\tester\AppData\Local\Temp\hermes-profile";
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read legacy session list")
+            {
+                Message::Text(text) => {
+                    serde_json::from_str(&text).expect("parse legacy session list")
+                }
+                other => panic!("expected session.list request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "session.list");
+            assert_eq!(request["params"].get("scope"), None);
+            let id = request["id"].as_u64().expect("JSON-RPC request ID");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"result":{"sessions":[
+                        {"id":"legacy-session","title":"Legacy stored row","message_count":2}
+                    ]}})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send legacy stored sessions");
+            assert!(matches!(socket.read(), Ok(Message::Close(_)) | Err(_)));
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        let sessions =
+            load_attached_sessions(&mut socket, owner_profile).expect("load legacy rows");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "legacy-session");
+        assert_eq!(sessions[0].profile.as_deref(), Some(owner_profile));
+        socket.close(None).expect("close fixture client");
+        server.join().expect("fixture gateway exits");
     }
 
     #[test]
@@ -30418,6 +31086,109 @@ mod tests {
             "op-resume"
         );
         server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn attached_owner_resume_omits_wire_profile_but_preserves_owner_identity() {
+        let owner_profile = r"C:\Users\tester\AppData\Local\Temp\hermes-profile";
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            for expected_profile in [None, Some("worker")] {
+                let request: serde_json::Value = match socket.read().expect("read resume") {
+                    Message::Text(text) => serde_json::from_str(&text).expect("parse resume"),
+                    other => panic!("expected resume request, got {other:?}"),
+                };
+                assert_eq!(request["method"], "session.resume");
+                assert_eq!(request["params"]["session_id"], "stored-1");
+                assert_eq!(
+                    request["params"]
+                        .get("profile")
+                        .and_then(serde_json::Value::as_str),
+                    expected_profile
+                );
+                let id = request["id"].as_u64().expect("JSON-RPC request id");
+                socket
+                    .send(Message::Text(
+                        json!({"jsonrpc":"2.0","id":id,"result":{
+                            "session_id":"runtime-1","stored_session_id":"stored-1",
+                            "message_count":0,"messages":[]
+                        }})
+                        .to_string()
+                        .into(),
+                    ))
+                    .expect("send resume snapshot");
+            }
+            socket.close(None).expect("close fixture socket");
+        });
+
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("configure client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let endpoint = GatewayEndpoint {
+            profile_id: owner_profile.to_owned(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        };
+        let actor = thread::spawn(move || {
+            let mut replay_cursors = HashMap::new();
+            gateway_actor_with_replay(
+                &mut socket,
+                &command_rx,
+                event_tx,
+                "",
+                Some(endpoint),
+                &mut replay_cursors,
+            );
+        });
+
+        for (request_id, profile) in [
+            ("resume-owner", owner_profile),
+            ("resume-sibling", "worker"),
+        ] {
+            command_tx
+                .send(GatewayCommand::ResumeSession {
+                    request_id: request_id.into(),
+                    session_id: "stored-1".into(),
+                    profile: Some(profile.into()),
+                })
+                .expect("queue resume");
+            match event_rx
+                .recv_timeout(Duration::from_secs(3))
+                .expect("resume completion")
+            {
+                GatewayEvent::SessionResumed {
+                    request_id: actual_request_id,
+                    session_id,
+                    profile: actual_profile,
+                    result: Ok(transcript),
+                    ..
+                } => {
+                    assert_eq!(actual_request_id, request_id);
+                    assert_eq!(session_id, "stored-1");
+                    assert_eq!(actual_profile.as_deref(), Some(profile));
+                    assert_eq!(transcript.profile.as_deref(), Some(profile));
+                }
+                other => panic!("expected successful resume, got {other:?}"),
+            }
+        }
+
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture gateway exits");
     }
 
     #[test]

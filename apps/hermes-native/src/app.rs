@@ -2185,6 +2185,11 @@ pub struct HermesNativeApp {
     project_preview_errors: BTreeMap<(String, String, String), String>,
     files: FileBrowserState,
     file_previews: FilePreviewStore,
+    local_terminal: Option<crate::terminal::LocalTerminal>,
+    local_terminal_cwd: String,
+    local_terminal_input: String,
+    local_terminal_error: Option<String>,
+    local_terminal_exit: Option<String>,
     archived_sessions: Vec<SessionSummary>,
     command_palette_sessions: Vec<SessionSummary>,
     command_palette_sessions_request_id: Option<String>,
@@ -3498,6 +3503,17 @@ fn is_valid_http_gateway_url(value: &str) -> bool {
         && crate::remote_probe::normalize_remote_base_url(value).is_ok()
 }
 
+/// The active Gateway ticket already scopes requests to its attached profile. `profile_id` is an
+/// owner identity (often an absolute Hermes home path), while the RPC `profile` field is a
+/// logical profile name used to route to a sibling. Never send the current owner's identity as
+/// that routing name.
+fn gateway_wire_profile_scope<'a>(
+    profile: Option<&'a str>,
+    endpoint_profile_id: Option<&str>,
+) -> Option<&'a str> {
+    profile.filter(|profile| Some(*profile) != endpoint_profile_id)
+}
+
 fn native_oauth_login_supported(report: &RemoteProbeReport) -> bool {
     report.supports_native_pkce
         && (report.providers.is_empty()
@@ -3627,9 +3643,20 @@ impl HermesNativeApp {
 
     #[cfg(feature = "agent-automation")]
     pub fn new_for_automation(profile_dir: std::path::PathBuf) -> Self {
+        Self::new_for_automation_with_gateway(profile_dir, false)
+    }
+
+    /// Start the headless UI automation harness against the selected local Hermes Gateway.
+    /// The caller must opt in explicitly and provide an isolated Hermes profile through
+    /// `HERMES_HOME`; the normal automation constructor remains gateway-disabled.
+    #[cfg(feature = "agent-automation")]
+    pub fn new_for_automation_with_gateway(
+        profile_dir: std::path::PathBuf,
+        connect_gateway: bool,
+    ) -> Self {
         let fallback_dir = profile_dir.clone();
         Self::from_workspace_result(
-            false,
+            connect_gateway,
             Workspace::load_isolated(profile_dir),
             Workspace::load_fallback_isolated(fallback_dir),
             FilePreviewStore::default(),
@@ -4772,6 +4799,14 @@ fn render_message() -> &'static str {
             project_preview_errors: BTreeMap::new(),
             files: FileBrowserState::default(),
             file_previews,
+            local_terminal: None,
+            local_terminal_cwd: std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            local_terminal_input: String::new(),
+            local_terminal_error: None,
+            local_terminal_exit: None,
             archived_sessions: Vec::new(),
             command_palette_sessions: Vec::new(),
             command_palette_sessions_request_id: None,
@@ -5766,10 +5801,7 @@ fn render_message() -> &'static str {
             WORKSPACE => self.workspace_content(&mut child),
             REVIEW => self.empty_panel(&mut child, "No review is active"),
             FILES => self.files_panel(&mut child),
-            TERMINAL => self.empty_panel(
-                &mut child,
-                "Terminal is unavailable while the backend is offline",
-            ),
+            TERMINAL => self.terminal_panel(&mut child),
             _ if is_session_tile => {
                 self.session_pane_content(
                     &mut child,
@@ -5789,6 +5821,182 @@ fn render_message() -> &'static str {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn terminal_panel(&mut self, ui: &mut Ui) {
+        let ctx = ui.ctx().clone();
+        let mut stop = false;
+        let mut start = false;
+        let mut submit = false;
+        let mut interrupt = false;
+
+        if let Some(terminal) = self.local_terminal.as_mut() {
+            for event in terminal.take_events() {
+                match event {
+                    crate::terminal::TerminalEvent::Exited(message) => {
+                        self.local_terminal_exit = Some(message);
+                        self.local_terminal_input.clear();
+                    }
+                    crate::terminal::TerminalEvent::Failed(message) => {
+                        self.local_terminal_error = Some(message);
+                    }
+                }
+            }
+            if terminal.has_new_output() {
+                ctx.request_repaint();
+            }
+            if !terminal.is_exited() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(80));
+            }
+        }
+
+        ui.horizontal(|ui| {
+            ui.heading("Terminal");
+            ui.label(RichText::new("LOCAL SHELL").color(MUTED).small());
+            if self
+                .local_terminal
+                .as_ref()
+                .is_some_and(|terminal| !terminal.is_exited())
+                && ui.button("Stop").clicked()
+            {
+                stop = true;
+            }
+        });
+        ui.label(
+            RichText::new("Runs on this computer, independently of the Hermes Gateway.")
+                .color(MUTED)
+                .size(CAPTION_TEXT_SIZE),
+        );
+
+        let running = self
+            .local_terminal
+            .as_ref()
+            .is_some_and(|terminal| !terminal.is_exited());
+        if !running {
+            ui.horizontal(|ui| {
+                ui.label("Working folder");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.local_terminal_cwd)
+                        .id_salt("local-terminal-working-folder")
+                        .hint_text("Local working folder path")
+                        .desired_width(ui.available_width().max(120.0)),
+                );
+                if ui.button("Start local shell").clicked() {
+                    start = true;
+                }
+            });
+            if let Some(exit) = self.local_terminal_exit.as_deref() {
+                ui.label(RichText::new(exit).color(MUTED));
+            }
+        } else {
+            ui.label(
+                RichText::new(format!("Local process · {}", self.local_terminal_cwd))
+                    .color(MUTED)
+                    .size(CAPTION_TEXT_SIZE),
+            );
+        }
+
+        if let Some(error) = self.local_terminal_error.as_deref() {
+            ui.colored_label(Color32::from_rgb(232, 116, 116), error);
+        }
+
+        if start {
+            let cwd = std::path::PathBuf::from(self.local_terminal_cwd.trim());
+            if !cwd.is_dir() {
+                self.local_terminal_error = Some(format!(
+                    "Working folder does not exist or is not a directory: {}",
+                    cwd.display()
+                ));
+            } else {
+                match crate::terminal::LocalTerminal::spawn(&cwd, 24, 100) {
+                    Ok(terminal) => {
+                        self.local_terminal = Some(terminal);
+                        self.local_terminal_exit = None;
+                        self.local_terminal_error = None;
+                        self.status = format!("Local terminal started in {}", cwd.display());
+                        ctx.request_repaint();
+                    }
+                    Err(error) => self.local_terminal_error = Some(error),
+                }
+            }
+        }
+        if stop {
+            self.local_terminal.take();
+            self.local_terminal_exit = Some("Local shell stopped by user".into());
+            self.local_terminal_input.clear();
+            self.status = "Local terminal stopped".into();
+            ctx.request_repaint();
+        }
+
+        if self.local_terminal.is_some() {
+            let output_height = (ui.available_height() - 52.0).max(80.0);
+            if let Some(terminal) = self.local_terminal.as_mut() {
+                let rows = (output_height / 18.0).floor().clamp(4.0, 200.0) as u16;
+                let cols = (ui.available_width() / 8.0).floor().clamp(20.0, 400.0) as u16;
+                terminal.resize(rows, cols);
+            }
+            let screen = self
+                .local_terminal
+                .as_ref()
+                .map(crate::terminal::LocalTerminal::screen_text)
+                .unwrap_or_default();
+            let mut screen = screen;
+            egui::ScrollArea::vertical()
+                .id_salt("local-terminal-output")
+                .stick_to_bottom(true)
+                .max_height(output_height)
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut screen)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(f32::INFINITY)
+                            .interactive(false),
+                    );
+                });
+
+            let input_enabled = self
+                .local_terminal
+                .as_ref()
+                .is_some_and(|term| !term.is_exited());
+            ui.horizontal(|ui| {
+                let response = ui.add_enabled(
+                    input_enabled,
+                    egui::TextEdit::singleline(&mut self.local_terminal_input)
+                        .id_salt("local-terminal-command")
+                        .hint_text("Command for the local shell")
+                        .desired_width(ui.available_width().max(120.0)),
+                );
+                submit =
+                    response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+                submit |= ui
+                    .add_enabled(input_enabled, egui::Button::new("Run"))
+                    .clicked();
+                if ui
+                    .add_enabled(input_enabled, egui::Button::new("Ctrl+C"))
+                    .clicked()
+                {
+                    interrupt = true;
+                }
+            });
+            if submit {
+                if let Some(terminal) = self.local_terminal.as_ref() {
+                    match terminal.send_line(&self.local_terminal_input) {
+                        Ok(()) => {
+                            self.local_terminal_input.clear();
+                            self.local_terminal_error = None;
+                        }
+                        Err(error) => self.local_terminal_error = Some(error),
+                    }
+                }
+            }
+            if interrupt {
+                if let Some(terminal) = self.local_terminal.as_ref() {
+                    if let Err(error) = terminal.interrupt() {
+                        self.local_terminal_error = Some(error);
+                    }
+                }
+            }
         }
     }
 
@@ -16715,6 +16923,7 @@ fn render_message() -> &'static str {
                     self.reset_messaging_state();
                                     self.gateway_connected = false;
                                     self.gateway_endpoint = None;
+                                    self.clear_stale_new_chat_model_selection();
                                     self.gateway_runtime = None;
                                     self.session_list_refresh_pending = None;
                                     self.session_list_refresh_again = false;
@@ -17457,7 +17666,29 @@ fn render_message() -> &'static str {
         });
     }
 
+    fn clear_stale_new_chat_model_selection(&mut self) {
+        let Some(profile) = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.clone())
+        else {
+            self.new_chat_model_selection = None;
+            return;
+        };
+        let connection_id = self.active_gateway_connection_id().to_owned();
+        if self
+            .new_chat_model_selection
+            .as_ref()
+            .is_some_and(|selection| {
+                selection.profile != profile || selection.connection_id != connection_id
+            })
+        {
+            self.new_chat_model_selection = None;
+        }
+    }
+
     fn new_chat_model_controls(&mut self, ui: &mut Ui) {
+        self.clear_stale_new_chat_model_selection();
         self.request_new_chat_model_options();
         let Some(endpoint) = self.gateway_endpoint.as_ref() else {
             return;
@@ -17543,6 +17774,10 @@ fn render_message() -> &'static str {
                                             || provider.name == current_provider);
                                     if ui
                                         .selectable_label(active, model)
+                                        .accessible_name(format!(
+                                            "Select model {model} from provider {}",
+                                            provider.slug
+                                        ))
                                         .on_hover_text(format!(
                                             "Use {model} from {}",
                                             provider.name
@@ -21417,6 +21652,12 @@ fn render_message() -> &'static str {
             return;
         }
         let profile = self.active_session_profile.clone();
+        let wire_profile = gateway_wire_profile_scope(
+            profile.as_deref(),
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str()),
+        );
         let pending_key = self.session_identity_key(&session_id, profile.as_deref());
         if self.pending_submissions.contains_key(&pending_key) {
             self.status =
@@ -21442,7 +21683,7 @@ fn render_message() -> &'static str {
             .unwrap_or_else(|| operation_id("submit"));
         if let Err(error) = gateway.submit_prompt_with_attachments(
             session_id.clone(),
-            self.active_session_profile.clone(),
+            wire_profile.map(str::to_owned),
             submission_id.clone(),
             text.clone(),
             attachments.clone(),
@@ -35032,6 +35273,21 @@ fn render_message() -> &'static str {
                             .as_ref()
                             .and_then(|gateway| gateway.connection_id().map(str::to_owned));
                         self.gateway_endpoint = Some(connection.endpoint);
+                        let endpoint_profile = self
+                            .gateway_endpoint
+                            .as_ref()
+                            .map(|endpoint| endpoint.profile_id.as_str());
+                        let connection_id = self.gateway_connection_id.as_deref();
+                        if self
+                            .new_chat_model_selection
+                            .as_ref()
+                            .is_some_and(|selection| {
+                                Some(selection.profile.as_str()) != endpoint_profile
+                                    || Some(selection.connection_id.as_str()) != connection_id
+                            })
+                        {
+                            self.new_chat_model_selection = None;
+                        }
                         for view in self.session_chat_views.values_mut() {
                             view.owner_resolution_request_id = None;
                             view.stored_transcript_request_id = None;
@@ -48002,7 +48258,9 @@ mod tests {
             .get_by_label("Choose model for the new Hermes chat")
             .click();
         harness.run();
-        harness.get_by_label("m2").click();
+        harness
+            .get_by_label("Select model m2 from provider openai")
+            .click();
         harness.run();
         harness.get_by_label("Reasoning · Default").click();
         harness.run();
@@ -48044,6 +48302,164 @@ mod tests {
         assert!(app.borrow().new_chat_model_selection.is_none());
         drop(harness);
         drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn duplicate_model_ids_are_accessible_by_provider_and_state_reports_exact_selection() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::NewChat;
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-work".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        let connection_id = app.active_gateway_connection_id().to_owned();
+        app.new_chat_model_options_owner = Some((connection_id.clone(), "work".into()));
+        app.new_chat_model_options = Some(ModelOptionsSnapshot {
+            providers: [("openai", "OpenAI"), ("anthropic", "Anthropic")]
+                .into_iter()
+                .map(|(slug, name)| crate::gateway::ModelOptionProvider {
+                    slug: slug.into(),
+                    name: name.into(),
+                    api_url: None,
+                    authenticated: Some(true),
+                    models: vec!["shared-model".into()],
+                    capabilities: BTreeMap::new(),
+                })
+                .collect(),
+            model: Some("shared-model".into()),
+            provider: Some("openai".into()),
+        });
+
+        let app = Rc::new(RefCell::new(app));
+        let draw_app = app.clone();
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 420.0))
+            .build_ui(move |ui| draw_app.borrow_mut().new_chat_model_controls(ui));
+        harness.run_steps(2);
+        harness
+            .get_by_label("Choose model for the new Hermes chat")
+            .click();
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Select model shared-model from provider openai")
+                .is_some()
+        );
+        assert!(
+            harness
+                .query_by_label("Select model shared-model from provider anthropic")
+                .is_some()
+        );
+        harness
+            .get_by_label("Select model shared-model from provider anthropic")
+            .click();
+        harness.run();
+        let state = app.borrow().automation_state();
+        assert_eq!(
+            state["chat"]["new_chat_model_selection"]["source"],
+            "user_selected"
+        );
+        assert_eq!(
+            state["chat"]["new_chat_model_selection"]["provider_slug"],
+            "anthropic"
+        );
+        assert_eq!(
+            state["chat"]["new_chat_model_selection"]["model"],
+            "shared-model"
+        );
+        let model_state = state["chat"]["new_chat_model_selection"]
+            .as_object()
+            .expect("sanitized model selection state");
+        assert_eq!(
+            model_state.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["status", "source", "provider_slug", "model"]
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn automation_model_state_reports_profile_default_and_clears_stale_owner_selection() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "work".into(),
+            instance_id: "gateway-work".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connection_id = Some("connection-work".into());
+        app.new_chat_model_options_owner = Some(("connection-work".into(), "work".into()));
+        app.new_chat_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "openai".into(),
+                name: "OpenAI".into(),
+                api_url: None,
+                authenticated: Some(true),
+                models: vec!["work-default".into()],
+                capabilities: BTreeMap::new(),
+            }],
+            model: Some("work-default".into()),
+            provider: Some("openai".into()),
+        });
+        app.new_chat_model_selection = Some(OwnedNewChatModelSelection {
+            profile: "work".into(),
+            connection_id: "connection-work".into(),
+            model: "manual-model".into(),
+            provider: "manual-provider".into(),
+        });
+        app.clear_stale_new_chat_model_selection();
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "personal".into(),
+            instance_id: "gateway-personal".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8766".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connection_id = Some("connection-personal".into());
+        app.new_chat_model_options_owner = Some(("connection-personal".into(), "personal".into()));
+        app.new_chat_model_options = Some(ModelOptionsSnapshot {
+            providers: vec![crate::gateway::ModelOptionProvider {
+                slug: "anthropic".into(),
+                name: "Anthropic".into(),
+                api_url: None,
+                authenticated: Some(true),
+                models: vec!["personal-default".into()],
+                capabilities: BTreeMap::new(),
+            }],
+            model: Some("personal-default".into()),
+            provider: Some("anthropic".into()),
+        });
+        app.clear_stale_new_chat_model_selection();
+        assert!(app.new_chat_model_selection.is_none());
+        let state = app.automation_state();
+        assert_eq!(
+            state["chat"]["new_chat_model_selection"]["source"],
+            "profile_default"
+        );
+        assert_eq!(
+            state["chat"]["new_chat_model_selection"]["provider_slug"],
+            "anthropic"
+        );
+        assert_eq!(
+            state["chat"]["new_chat_model_selection"]["model"],
+            "personal-default"
+        );
+        assert_eq!(state["chat"]["new_chat_model_selection"]["status"], "ready");
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
@@ -58164,7 +58580,10 @@ mod tests {
             panic!("expected prompt.submit command");
         };
         assert_eq!(session_id, "runtime-created");
-        assert_eq!(profile.as_deref(), Some("research"));
+        assert_eq!(
+            profile, None,
+            "the attached Gateway owns this profile scope"
+        );
         assert_eq!(text, "hello Hermes");
         assert!(attachments.is_empty());
         events
@@ -58212,6 +58631,19 @@ mod tests {
         drop(harness);
         drop(frame_app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn gateway_wire_profile_scope_omits_attached_owner_and_keeps_sibling_route() {
+        assert_eq!(
+            gateway_wire_profile_scope(Some("owner-id"), Some("owner-id")),
+            None
+        );
+        assert_eq!(
+            gateway_wire_profile_scope(Some("worker"), Some("owner-id")),
+            Some("worker")
+        );
+        assert_eq!(gateway_wire_profile_scope(None, Some("owner-id")), None);
     }
 
     #[test]
@@ -60167,6 +60599,24 @@ mod tests {
             HermesNativeApp::new_for_automation(profile.clone()),
             profile,
         )
+    }
+
+    #[test]
+    fn local_terminal_panel_discloses_scope_and_waits_for_explicit_start() {
+        let (mut app, profile_dir) = isolated_app();
+        let harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 700.0))
+            .build_ui(|ui| app.terminal_panel(ui));
+
+        assert!(harness.query_by_label("Start local shell").is_some());
+        assert!(harness.query_by_label("LOCAL SHELL").is_some());
+        drop(harness);
+        assert!(
+            app.local_terminal.is_none(),
+            "rendering the pane must not spawn a shell"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     fn start_cursor_read_only_session() -> (
@@ -70583,7 +71033,47 @@ impl HermesNativeApp {
             InterfaceMode::Advanced => "advanced",
             InterfaceMode::Simple => "simple",
         };
-        serde_json::json!({
+        let new_chat_model_owner = self.gateway_endpoint.as_ref().map(|endpoint| {
+            (
+                endpoint.profile_id.as_str(),
+                self.active_gateway_connection_id(),
+            )
+        });
+        let new_chat_model_selection = self.new_chat_model_selection.as_ref().filter(|selection| {
+            new_chat_model_owner.is_some_and(|(profile, connection_id)| {
+                selection.profile == profile && selection.connection_id == connection_id
+            })
+        });
+        let new_chat_model_options = new_chat_model_owner
+            .and_then(|(profile, connection_id)| {
+                self.new_chat_model_options_owner.as_ref().filter(
+                    |(owner_connection_id, owner_profile)| {
+                        owner_connection_id == connection_id && owner_profile == profile
+                    },
+                )
+            })
+            .and(self.new_chat_model_options.as_ref());
+        let new_chat_model_selection_source = if new_chat_model_selection.is_some() {
+            Some("user_selected")
+        } else if new_chat_model_options.is_some() {
+            Some("profile_default")
+        } else {
+            None
+        };
+        let new_chat_model_selection_status = if new_chat_model_selection_source.is_some() {
+            "ready"
+        } else if new_chat_model_owner.is_some_and(|(profile, connection_id)| {
+            self.new_chat_model_options_pending
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.profile == profile && pending.connection_id == connection_id
+                })
+        }) {
+            "loading"
+        } else {
+            "unavailable"
+        };
+        let mut state = serde_json::json!({
             "route": self.current_route_path(),
             "route_title": self.route.title(),
             "native_window": {
@@ -70749,6 +71239,16 @@ impl HermesNativeApp {
                 "transcript_page_loading": self.older_transcript_request.is_some(),
                 "transcript_page_error": self.older_transcript_error.as_deref(),
                 "active_profile": self.active_session_profile.as_deref(),
+                "new_chat_model_selection": {
+                    "status": new_chat_model_selection_status,
+                    "source": new_chat_model_selection_source,
+                    "provider_slug": new_chat_model_selection
+                        .map(|selection| selection.provider.as_str())
+                        .or_else(|| new_chat_model_options.and_then(|options| options.provider.as_deref())),
+                    "model": new_chat_model_selection
+                        .map(|selection| selection.model.as_str())
+                        .or_else(|| new_chat_model_options.and_then(|options| options.model.as_deref())),
+                },
                 "cached_session_view_count": self.session_chat_views.len(),
                 "submission_pending": self.active_runtime_session_id.as_ref().is_some_and(|session_id| {
                     self.pending_submissions.contains_key(&session_identity_key(session_id, self.active_session_profile.as_deref()))
@@ -70777,7 +71277,23 @@ impl HermesNativeApp {
             },
             "transcript_message_count": self.transcript.len(),
             "load_error": self.load_error.as_deref(),
-        })
+        });
+        if let Some(object) = state.as_object_mut() {
+            object.insert("status".into(), serde_json::json!(self.status));
+            object.insert(
+                "create_pending".into(),
+                serde_json::json!(self.pending_create.is_some()),
+            );
+            object.insert(
+                "create_prompt_pending".into(),
+                serde_json::json!(
+                    self.pending_create
+                        .as_ref()
+                        .is_some_and(|(_, text)| !text.is_empty())
+                ),
+            );
+        }
+        state
     }
 }
 

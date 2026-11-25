@@ -31,6 +31,7 @@ type UiApp = Rc<RefCell<HermesNativeApp>>;
 #[derive(Default)]
 struct ProtocolState {
     profile_path: Option<PathBuf>,
+    gateway_enabled: bool,
     generation: u64,
     next_event_id: u64,
     events: VecDeque<Value>,
@@ -45,17 +46,31 @@ struct CachedRequest {
 }
 
 pub fn run_stdio() -> Result<(), String> {
+    run_stdio_with_gateway(false)
+}
+
+/// Explicit live mode for isolated end-to-end acceptance. The app profile remains temporary;
+/// Hermes itself is bound to the caller's `HERMES_HOME` and is never inferred from user data.
+pub fn run_stdio_live_gateway() -> Result<(), String> {
+    run_stdio_with_gateway(true)
+}
+
+fn run_stdio_with_gateway(connect_gateway: bool) -> Result<(), String> {
     let profile = super::TemporaryProfile::create()?;
     let profile_path = profile.0.clone();
-    let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
-        profile_path.clone(),
-    )));
+    let app = Rc::new(RefCell::new(
+        HermesNativeApp::new_for_automation_with_gateway(profile_path.clone(), connect_gateway),
+    ));
     let frame_app = app.clone();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1440.0, 900.0))
         .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
+    // Prime the shared egui app before publishing its accessibility tree. This also gives the
+    // explicitly opted-in live mode its first chance to consume a completed Gateway attach.
+    harness.run();
     let mut protocol = ProtocolState {
         profile_path: Some(profile_path),
+        gateway_enabled: connect_gateway,
         ..ProtocolState::default()
     };
     let stdin = io::stdin();
@@ -69,7 +84,7 @@ pub fn run_stdio() -> Result<(), String> {
         "protocol": "hermes-native-agent-ui/1",
         "transport": "inherited-stdio-capability",
         "process_id": process::id(),
-        "gateway": "disabled",
+        "gateway": if connect_gateway { "enabled" } else { "disabled" },
         "state_generation": protocol.generation,
         "state": snapshot(&app, protocol.generation),
     });
@@ -199,13 +214,19 @@ impl ProtocolState {
                     "protocol": "hermes-native-agent-ui/1",
                     "process_id": process::id(),
                     "state_generation": self.generation,
-                    "gateway": "disabled",
+                    "gateway": if self.gateway_enabled { "enabled" } else { "disabled" },
                     "build_version": env!("CARGO_PKG_VERSION"),
                 }),
             ),
             "capabilities.list" => success(id.clone(), capabilities()),
             "app.actions.list" => success(id.clone(), registered_ui_action_catalog()),
-            "state.get" => success(id.clone(), snapshot(app, self.generation)),
+            // The headless harness has no native event loop to repaint the app on its own.
+            // Pump one frame before reporting state so background Gateway completions and
+            // other UI-owned async results are observable to an agent polling this endpoint.
+            "state.get" => {
+                harness.run();
+                success(id.clone(), snapshot(app, self.generation))
+            }
             "ui.tree" => success(id.clone(), describe_node(harness.root(), None)),
             "app.action.execute" => {
                 let Some(action_value) = params.get("action").cloned() else {
@@ -266,7 +287,7 @@ impl ProtocolState {
                     "event_count": self.events.len(),
                     "request_cache_entries": self.requests.len(),
                     "unique_request_ids": self.seen_request_ids.len(),
-                    "gateway": "disabled",
+                    "gateway": if self.gateway_enabled { "enabled" } else { "disabled" },
                     "native_window": false
                 }),
             ),
@@ -900,6 +921,7 @@ impl ProtocolState {
                     self.generation,
                     &self.events,
                     self.profile_path.as_deref(),
+                    self.gateway_enabled,
                 ) {
                     Ok(result) => {
                         self.record_event(
@@ -1383,6 +1405,7 @@ fn capture_screenshot(
     generation: u64,
     events: &VecDeque<Value>,
     profile_path: Option<&Path>,
+    gateway_enabled: bool,
 ) -> Result<Value, (&'static str, String)> {
     let path = Path::new(filename);
     if filename.is_empty()
@@ -1485,7 +1508,7 @@ fn capture_screenshot(
             "path": profile_path
         },
         "fixture": "isolated-headless-stdio",
-        "gateway": "disabled",
+        "gateway": if gateway_enabled { "enabled" } else { "disabled" },
         "actions": events,
         "screenshot": filename,
         "screenshot_sha256": screenshot_sha256,

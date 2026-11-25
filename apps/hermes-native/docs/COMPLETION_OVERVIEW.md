@@ -1,12 +1,27 @@
 # Hermes Native completion overview
 
-Snapshot: 2026-11-24. Target: downloaded Hermes Desktop source snapshot `8783054ef6cbafd86f10892241436862c1171a66`.
+Snapshot: 2026-11-25. Behavioral reference: downloaded Hermes source `8783054ef6cbafd86f10892241436862c1171a66`; DoofusDock remains pinned at its recorded source revision.
 
-## Current goal scope — 2026-11-24
+## Immediate delivery status
 
-The goal is a first usable, verified native UI for Hermes' agent workflows against the same pinned downloaded snapshot: model/provider connection, chat and prompt lifecycle, tool execution/progress/results and approvals, skills, plugins/MCP, and required supporting context/attachments. This is not a full Desktop replica. Visual presentation and unrelated administration can follow. Use the explicit [chat/tool scope](status/CHAT_TOOL_SCOPE.csv) and generated [progress overlay](status/CHAT_TOOL_PROGRESS.csv) as the detailed feature ledger; unrelated Desktop administration is outside this goal.
+**Goal:** a functional native application the operator can use as their primary AI coding agent. The acceptance target is one complete coding assignment through Hermes Native. The 24–72 hour window is an aggressive target, not a verified ETA. See [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md) for the release scope, deferred work, and preserved long-term objectives.
 
-Current chat/tool evidence: **1 implemented, 106 partial, 1 not implemented, 68 unknown**; **108/176** requirements have mapped evidence; **0/176** have live-runtime verification or source-paired acceptance. The separate broad implementation overlay reports **6 implemented, 136 partial, 1 not implemented, 356 unknown**, with 143 requirements carrying mapped evidence. These are evidence-coverage counts, not product completion. Visual pairs are not required by the feature goal.
+| Progress dimension | Current status | Evidence and remaining gate |
+|---|---|---|
+| Minimum usable release | **Not ready** | Real provider-backed coding assignment, extension workflows, cold restart/resume, concurrent live sessions, and portable Windows package are not all accepted. |
+| Critical functional workflows | **Implemented with substantial local coverage; live gaps remain** | Native model selection, chat/session lifecycle, tools/progress, approval/clarification, skills, Agent Plugins, MCP, attachments, and automation surfaces have code and headless/fixture evidence. Live behavior is verified only through isolated Gateway attach/session creation and a prompt reaching the model. |
+| Live end-to-end acceptance | **Failed at provider execution** | The 2026-11-25 isolated `deepseek-flash` turn returned HTTP 402 `Insufficient Balance` before a tool call. No controlled project file changed; no test ran. |
+| Release-blocking defects/dependencies | **One confirmed external blocker; additional acceptance gates open** | Provider entitlement blocks the coding workflow. Restart/resume, live extension use, concurrent sessions, and packaged Windows checks still need evidence. The repository-discovery Python-runtime diagnostic is separate and has not been shown to cause the provider failure. |
+| Broader feature parity | **Deferred, preserved** | The downloaded Hermes snapshot remains the behavioral reference for later feature work. Full parity is not the immediate release gate. |
+| Post-release backlog | **Preserved** | Electron Desktop plugin hosting, delegated-worker UI, voice, pixel matching, unrelated administration, and exhaustive edge cases remain follow-on work unless a concrete dependency appears. |
+
+- **Implementation evidence:** the current full locked workspace suite passes 766 library, 15 automation-protocol, and 3 launcher tests; all-target locked `cargo check`, rustfmt, and `git diff --check` pass. New terminal tests cover split ConPTY query responses, PTY output/resize/exit, and the UI waiting for an explicit start. This is implementation evidence, not live product acceptance.
+- **Live Gateway:** the current headless executable attached to the isolated local Gateway and created a native chat session. The profile-scope fix is present; the test prompt reached DeepSeek. The local Terminal panel is implemented separately from Gateway ownership.
+- **Local terminal:** implemented and Windows-tested as an explicitly user-started local PTY in the DoofusDock Terminal panel. Current controls send complete command lines; raw key-by-key/full-screen applications are not yet supported.
+- **Live coding assignment:** **not complete**. DeepSeek `deepseek-flash` returned HTTP 402 `Insufficient Balance` before tool execution. The controlled project remains unchanged and its test was not run.
+- **Other live finding:** repository-discovery settings could not load because the Gateway did not report its installed Python runtime; this is a separate follow-up.
+- **Release blockers:** usable model/provider access; one complete real tool-using coding assignment; live Skills/Agent Plugin/MCP smoke; restart/resume and concurrent-session proof; portable Windows build and cold launch.
+- **Critical path / ETA:** blocker dependencies and effort basis are listed in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md). A total ETA is unavailable because provider access depends on external account state and there are not comparable measured task-duration samples; the 24–72 hour window remains a target only.
 
 PAR-0518 has partial local support for MCP and connector setup operations: typed bounded requests, monotonic session-scoped updates, an accessible approval/setup card, and the `connection.respond` actor RPC. Session resume hydrates the matching pending operation without duplicating tool rows or rewinding newer updates; failed/expired connector and MCP targets can be reissued on the existing open operation, with plugin/skill catalog targets excluded from the connector retry path. Secret setup values stay in masked, zeroizing drafts. Connector-directory actions, authenticated live Gateway and packaged Windows/source-paired acceptance remain open.
 

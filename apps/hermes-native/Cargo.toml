@@ -36,6 +36,8 @@ pdfium-render = { version = "=0.9.5", default-features = false, features = ["pdf
 time = { version = "0.3.55", features = ["formatting", "local-offset", "parsing"] }
 qrcodegen = "1.8.0"
 ignore = "0.4.33"
+portable-pty = "0.9.0"
+vt100 = "0.18.1"
 
 [target.'cfg(windows)'.dependencies]
 wry = { version = "=0.57.2", default-features = false }
