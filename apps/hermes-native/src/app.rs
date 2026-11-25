@@ -875,6 +875,16 @@ struct PendingSkillUpdate {
 }
 
 #[derive(Clone, Debug)]
+struct PendingSkillBulkUpdate {
+    enabled: bool,
+    completed: usize,
+    remaining: VecDeque<String>,
+    profile_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
 struct PendingSkillContent {
     request_id: String,
     name: String,
@@ -2478,6 +2488,7 @@ pub struct HermesNativeApp {
     capabilities_pending: bool,
     capabilities_error: Option<String>,
     skills: Option<Vec<SkillInfo>>,
+    skills_owner: Option<(String, String, u64)>,
     selected_skill: Option<String>,
     skill_content: Option<SkillContent>,
     skill_content_owner: Option<(String, String, u64)>,
@@ -2556,6 +2567,7 @@ pub struct HermesNativeApp {
     pending_toolset_updates: BTreeMap<String, PendingToolsetUpdate>,
     pending_toolset_bulk_update: Option<PendingToolsetBulkUpdate>,
     pending_skill_updates: BTreeMap<String, PendingSkillUpdate>,
+    pending_skill_bulk_update: Option<PendingSkillBulkUpdate>,
     fonts_installed: bool,
     gateway_connected: bool,
     window_was_focused: bool,
@@ -5095,6 +5107,7 @@ fn render_message() -> &'static str {
             capabilities_pending: false,
             capabilities_error: None,
             skills: None,
+            skills_owner: None,
             selected_skill: None,
             skill_content: None,
             skill_content_owner: None,
@@ -5173,6 +5186,7 @@ fn render_message() -> &'static str {
             pending_toolset_updates: BTreeMap::new(),
             pending_toolset_bulk_update: None,
             pending_skill_updates: BTreeMap::new(),
+            pending_skill_bulk_update: None,
             fonts_installed: false,
             gateway_connected: false,
             window_was_focused: false,
@@ -13814,11 +13828,59 @@ fn render_message() -> &'static str {
                 let available_skills = skills.clone();
                 let has_query = !self.capabilities_query.trim().is_empty();
                 let visible = filter_installed_skills(&available_skills, &self.capabilities_query);
-                ui.label(
-                    RichText::new(format!("Installed Skills · {}", visible.len()))
-                        .strong()
-                        .color(TEXT),
-                );
+                let skill_updates_busy = self.pending_skill_bulk_update.is_some()
+                    || !self.pending_skill_updates.is_empty();
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("Installed Skills · {}", visible.len()))
+                            .strong()
+                            .color(TEXT),
+                    );
+                    let mut all_enabled = !available_skills.is_empty()
+                        && available_skills.iter().all(|skill| skill.enabled);
+                    let all_toggle = ui
+                        .add_enabled(
+                            self.gateway_connected
+                                && !skill_updates_busy
+                                && !available_skills.is_empty(),
+                            egui::Checkbox::new(&mut all_enabled, "All"),
+                        )
+                        .accessible_name("Toggle all Skills for this Hermes profile");
+                    if all_toggle.changed()
+                        && let Err(error) = self.set_skills_enabled_bulk(all_enabled)
+                    {
+                        self.capabilities_error = Some(error);
+                    }
+                    ui.menu_button("Actions", |ui| {
+                        let has_unused = available_skills
+                            .iter()
+                            .any(|skill| skill.enabled && skill.usage.unwrap_or(0) == 0);
+                        if ui
+                            .add_enabled(
+                                self.gateway_connected && !skill_updates_busy && has_unused,
+                                egui::Button::new("Disable unused Skills"),
+                            )
+                            .accessible_name("Disable all unused Skills in this profile")
+                            .clicked()
+                        {
+                            if let Err(error) = self.disable_unused_skills() {
+                                self.capabilities_error = Some(error);
+                            }
+                            ui.close();
+                        }
+                    });
+                });
+                if let Some(bulk) = self.pending_skill_bulk_update.as_ref() {
+                    ui.label(
+                        RichText::new(format!(
+                            "Updating Skills · {} of {} confirmed",
+                            bulk.completed,
+                            bulk.completed + bulk.remaining.len()
+                        ))
+                        .size(TOOL_TEXT_SIZE)
+                        .color(MUTED),
+                    );
+                }
                 if let Some(update) = self.pending_skill_hub_update.as_ref().filter(|update| {
                     self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
                         endpoint.profile_id == update.profile_id
@@ -13910,8 +13972,7 @@ fn render_message() -> &'static str {
                             {
                                 skill_to_open = Some(skill.name.clone());
                             }
-                            let update_pending =
-                                self.pending_skill_updates.contains_key(&skill.name);
+                            let update_pending = skill_updates_busy;
                             let mut enabled = skill.enabled;
                             let toggle = ui
                                 .add_enabled(
@@ -29716,6 +29777,13 @@ fn render_message() -> &'static str {
     }
 
     fn set_skill_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
+        if self.pending_skill_bulk_update.is_some() {
+            return Err("Wait for the current Skills update to finish".into());
+        }
+        self.set_skill_enabled_inner(name, enabled)
+    }
+
+    fn set_skill_enabled_inner(&mut self, name: String, enabled: bool) -> Result<(), String> {
         if !self.gateway_connected {
             return Err("Connect to Hermes before changing a Skill".into());
         }
@@ -29728,8 +29796,8 @@ fn render_message() -> &'static str {
         let Some(skill) = skills.iter().find(|skill| skill.name == name) else {
             return Err(format!("Skill {name:?} is not in the loaded inventory"));
         };
-        if self.pending_skill_updates.contains_key(&name) {
-            return Err(format!("Skill {name:?} already has an update in progress"));
+        if !self.pending_skill_updates.is_empty() {
+            return Err("Wait for the current Skills update to finish".into());
         }
         if skill.enabled == enabled {
             return Ok(());
@@ -29770,6 +29838,101 @@ fn render_message() -> &'static str {
             if enabled { "Enabling" } else { "Disabling" }
         );
         Ok(())
+    }
+
+    fn set_skills_enabled_bulk(&mut self, enabled: bool) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before changing Skills".into());
+        }
+        if !self.pending_skill_updates.is_empty() || self.pending_skill_bulk_update.is_some() {
+            return Err("Wait for the current Skills update to finish".into());
+        }
+        let skills = self
+            .skills
+            .as_ref()
+            .ok_or_else(|| "Load Skills before changing them".to_owned())?;
+        let remaining = skills
+            .iter()
+            .filter(|skill| skill.enabled != enabled)
+            .map(|skill| skill.name.clone())
+            .collect::<VecDeque<_>>();
+        self.start_skill_bulk_update(enabled, remaining)
+    }
+
+    fn disable_unused_skills(&mut self) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before changing Skills".into());
+        }
+        if !self.pending_skill_updates.is_empty() || self.pending_skill_bulk_update.is_some() {
+            return Err("Wait for the current Skills update to finish".into());
+        }
+        let skills = self
+            .skills
+            .as_ref()
+            .ok_or_else(|| "Load Skills before changing them".to_owned())?;
+        let remaining = skills
+            .iter()
+            .filter(|skill| skill.enabled && skill.usage.unwrap_or(0) == 0)
+            .map(|skill| skill.name.clone())
+            .collect::<VecDeque<_>>();
+        self.start_skill_bulk_update(false, remaining)
+    }
+
+    fn start_skill_bulk_update(
+        &mut self,
+        enabled: bool,
+        remaining: VecDeque<String>,
+    ) -> Result<(), String> {
+        if remaining.is_empty() {
+            return Ok(());
+        }
+        let endpoint = self
+            .gateway_endpoint
+            .as_ref()
+            .ok_or_else(|| "Hermes Gateway endpoint is unavailable".to_owned())?;
+        if endpoint.profile_id.eq_ignore_ascii_case("all") {
+            return Err("Choose a specific Hermes profile before changing Skills".into());
+        }
+        self.pending_skill_bulk_update = Some(PendingSkillBulkUpdate {
+            enabled,
+            completed: 0,
+            remaining,
+            profile_id: endpoint.profile_id.clone(),
+            instance_id: endpoint.instance_id.clone(),
+            authority_epoch: endpoint.authority_epoch,
+        });
+        if let Err(error) = self.advance_skill_bulk_update() {
+            self.pending_skill_bulk_update = None;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn advance_skill_bulk_update(&mut self) -> Result<(), String> {
+        let Some(bulk) = self.pending_skill_bulk_update.clone() else {
+            return Ok(());
+        };
+        let owner_matches = self.gateway_connected
+            && self.gateway_endpoint.as_ref().is_some_and(|endpoint| {
+                endpoint.profile_id == bulk.profile_id
+                    && endpoint.instance_id == bulk.instance_id
+                    && endpoint.authority_epoch == bulk.authority_epoch
+            });
+        if !owner_matches {
+            self.pending_skill_bulk_update = None;
+            self.status = "Skills update stopped because the active Hermes profile changed".into();
+            return Ok(());
+        }
+        let Some(name) = bulk.remaining.front().cloned() else {
+            self.pending_skill_bulk_update = None;
+            self.status = format!(
+                "{} {} Skills",
+                if bulk.enabled { "Enabled" } else { "Disabled" },
+                bulk.completed
+            );
+            return Ok(());
+        };
+        self.set_skill_enabled_inner(name, bulk.enabled)
     }
 
     fn set_mcp_server_enabled(&mut self, name: String, enabled: bool) -> Result<(), String> {
@@ -35491,6 +35654,7 @@ fn render_message() -> &'static str {
             return;
         };
         let mut continue_toolset_bulk_update = false;
+        let mut continue_skill_bulk_update = false;
         let mut load_capabilities_after_connect = false;
         let mut load_connectors_after_connect = false;
         let mut load_agent_plugins_after_connect = false;
@@ -37126,6 +37290,13 @@ fn render_message() -> &'static str {
                         .pending_skill_updates
                         .remove(&name)
                         .expect("pending Skill update checked");
+                    let is_bulk_target =
+                        self.pending_skill_bulk_update.as_ref().is_some_and(|bulk| {
+                            bulk.remaining.front() == Some(&name)
+                                && bulk.profile_id == pending.profile_id
+                                && bulk.instance_id == pending.instance_id
+                                && bulk.authority_epoch == pending.authority_epoch
+                        });
                     let owner_matches = profile_id == pending.profile_id
                         && instance_id == pending.instance_id
                         && authority_epoch == pending.authority_epoch
@@ -37135,10 +37306,45 @@ fn render_message() -> &'static str {
                                 && endpoint.authority_epoch == authority_epoch
                         });
                     if !owner_matches {
+                        if self.skills_owner.as_ref()
+                            == Some(&(
+                                pending.profile_id.clone(),
+                                pending.instance_id.clone(),
+                                pending.authority_epoch,
+                            ))
+                            && let Some(skill) = self.skills.as_mut().and_then(|skills| {
+                                skills.iter_mut().find(|skill| skill.name == name)
+                            })
+                        {
+                            skill.enabled = pending.previous_enabled;
+                        }
+                        if is_bulk_target {
+                            self.pending_skill_bulk_update = None;
+                            self.status =
+                                "Skills update stopped because the active Hermes profile changed"
+                                    .into();
+                        }
                         continue;
                     }
                     match result {
                         Ok(enabled) => {
+                            if is_bulk_target
+                                && self
+                                    .pending_skill_bulk_update
+                                    .as_ref()
+                                    .is_some_and(|bulk| bulk.enabled != enabled)
+                            {
+                                if let Some(skill) = self.skills.as_mut().and_then(|skills| {
+                                    skills.iter_mut().find(|skill| skill.name == name)
+                                }) {
+                                    skill.enabled = pending.previous_enabled;
+                                }
+                                self.pending_skill_bulk_update = None;
+                                self.capabilities_error = Some(
+                                    "Hermes did not confirm the requested Skills bulk state".into(),
+                                );
+                                continue;
+                            }
                             if let Some(skill) = self.skills.as_mut().and_then(|skills| {
                                 skills.iter_mut().find(|skill| skill.name == name)
                             }) {
@@ -37149,6 +37355,13 @@ fn render_message() -> &'static str {
                                 "{} Skill {name}",
                                 if enabled { "Enabled" } else { "Disabled" }
                             );
+                            if is_bulk_target
+                                && let Some(bulk) = self.pending_skill_bulk_update.as_mut()
+                            {
+                                bulk.remaining.pop_front();
+                                bulk.completed += 1;
+                                continue_skill_bulk_update = true;
+                            }
                         }
                         Err(error) => {
                             if let Some(skill) = self.skills.as_mut().and_then(|skills| {
@@ -37160,6 +37373,9 @@ fn render_message() -> &'static str {
                                 self.capabilities_error = Some(error.clone());
                             }
                             self.status = error;
+                            if is_bulk_target {
+                                self.pending_skill_bulk_update = None;
+                            }
                         }
                     }
                 }
@@ -39284,6 +39500,13 @@ fn render_message() -> &'static str {
                     match result {
                         Ok(CapabilitiesSnapshot { skills, toolsets }) => {
                             self.skills = Some(skills);
+                            self.skills_owner = self.gateway_endpoint.as_ref().map(|endpoint| {
+                                (
+                                    endpoint.profile_id.clone(),
+                                    endpoint.instance_id.clone(),
+                                    endpoint.authority_epoch,
+                                )
+                            });
                             self.toolsets = Some(toolsets);
                             self.capabilities_error = None;
                         }
@@ -41009,6 +41232,30 @@ fn render_message() -> &'static str {
                         self.capabilities_error = Some(note.into());
                         disconnect_uncertainty.push(note.into());
                     }
+                    if !self.pending_skill_updates.is_empty()
+                        || self.pending_skill_bulk_update.is_some()
+                    {
+                        let pending_updates = std::mem::take(&mut self.pending_skill_updates);
+                        let skills_owner = self.skills_owner.clone();
+                        for (name, pending) in pending_updates {
+                            if skills_owner.as_ref()
+                                == Some(&(
+                                    pending.profile_id.clone(),
+                                    pending.instance_id.clone(),
+                                    pending.authority_epoch,
+                                ))
+                                && let Some(skill) = self.skills.as_mut().and_then(|skills| {
+                                    skills.iter_mut().find(|skill| skill.name == name)
+                                })
+                            {
+                                skill.enabled = pending.previous_enabled;
+                            }
+                        }
+                        self.pending_skill_bulk_update = None;
+                        let note = "Skill update outcome is unknown after Gateway disconnect; refresh the inventory before retrying";
+                        self.capabilities_error = Some(note.into());
+                        disconnect_uncertainty.push(note.into());
+                    }
                     if let Some(pending) = self.pending_mcp_catalog_install.take() {
                         disconnect_uncertainty.push(format!(
                             "MCP install outcome for {} is unknown after Gateway disconnect; refresh the profile inventory before retrying",
@@ -41160,6 +41407,10 @@ fn render_message() -> &'static str {
         }
         if continue_toolset_bulk_update && let Err(error) = self.advance_toolset_bulk_update() {
             self.pending_toolset_bulk_update = None;
+            self.capabilities_error = Some(error);
+        }
+        if continue_skill_bulk_update && let Err(error) = self.advance_skill_bulk_update() {
+            self.pending_skill_bulk_update = None;
             self.capabilities_error = Some(error);
         }
         if load_capabilities_after_connect {
@@ -68346,7 +68597,17 @@ mod tests {
     fn installed_skills_page_exposes_update_action_and_action_log() {
         let (mut app, profile_dir) = isolated_app();
         app.capabilities_pending = false;
-        app.skills = Some(Vec::new());
+        app.gateway_connected = true;
+        app.skills_owner = Some(("fixture-profile".into(), "fixture-gateway".into(), 2));
+        app.skills = Some(vec![SkillInfo {
+            category: "research".into(),
+            description: "Unused installed Skill".into(),
+            enabled: true,
+            name: "unused-fixture".into(),
+            usage: Some(0),
+            provenance: Some("local".into()),
+        }]);
+        app.capabilities_query = "no match".into();
         app.capabilities_tab = CapabilitiesTab::Skills;
         app.gateway_endpoint = Some(GatewayEndpoint {
             profile_id: "fixture-profile".into(),
@@ -68372,11 +68633,24 @@ mod tests {
             error: None,
             completed: true,
         });
-        let harness = egui_kittest::Harness::builder()
+        let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1100.0, 800.0))
             .build_ui(|ui| app.capabilities_content(ui));
         assert!(harness.query_by_label("Update installed Skills").is_some());
         assert!(harness.query_by_label("Updated 2 Skills").is_some());
+        assert!(harness.query_by_label("Installed Skills · 0").is_some());
+        assert!(
+            harness
+                .query_by_label("Toggle all Skills for this Hermes profile")
+                .is_some()
+        );
+        harness.get_by_label("Actions").click();
+        harness.run();
+        assert!(
+            harness
+                .query_by_label("Disable all unused Skills in this profile")
+                .is_some()
+        );
         drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
@@ -68785,6 +69059,362 @@ mod tests {
         assert!(!app.skills.as_ref().unwrap()[0].enabled);
         assert!(app.pending_skill_updates.is_empty());
         assert_eq!(app.status, "Disabled Skill web-research");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn skills_bulk_toggle_serializes_whole_profile_inventory_not_search_results() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_skill_enabled();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.skills_owner = Some(("research".into(), "gateway-research".into(), 7));
+        app.capabilities_query = "visible-only".into();
+        app.skills = Some(vec![
+            SkillInfo {
+                category: "research".into(),
+                description: String::new(),
+                enabled: true,
+                name: "visible-only".into(),
+                usage: Some(3),
+                provenance: None,
+            },
+            SkillInfo {
+                category: "coding".into(),
+                description: String::new(),
+                enabled: false,
+                name: "hidden-by-search".into(),
+                usage: Some(0),
+                provenance: None,
+            },
+            SkillInfo {
+                category: "coding".into(),
+                description: String::new(),
+                enabled: false,
+                name: "another-hidden-skill".into(),
+                usage: None,
+                provenance: None,
+            },
+        ]);
+
+        app.set_skills_enabled_bulk(true)
+            .expect("start profile-wide enable");
+        let (first_request, first_name, first_enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first update is queued");
+        assert_eq!(first_name, "hidden-by-search");
+        assert!(first_enabled);
+        assert!(
+            app.skills.as_ref().unwrap()[1].enabled,
+            "first row is optimistically updated"
+        );
+        assert!(
+            !app.skills.as_ref().unwrap()[2].enabled,
+            "later rows wait for confirmation"
+        );
+        assert!(app.pending_skill_bulk_update.is_some());
+
+        events
+            .send(GatewayEvent::SkillEnabled {
+                request_id: first_request,
+                name: first_name,
+                profile_id: "research".into(),
+                instance_id: "gateway-research".into(),
+                authority_epoch: 7,
+                result: Ok(true),
+            })
+            .expect("confirm first update");
+        app.update_gateway_discovery(&egui::Context::default());
+        let (second_request, second_name, second_enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("second update starts only after first receipt");
+        assert_eq!(second_name, "another-hidden-skill");
+        assert!(second_enabled);
+
+        events
+            .send(GatewayEvent::SkillEnabled {
+                request_id: second_request,
+                name: second_name,
+                profile_id: "research".into(),
+                instance_id: "gateway-research".into(),
+                authority_epoch: 7,
+                result: Ok(true),
+            })
+            .expect("confirm second update");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            requests.try_recv().is_err(),
+            "bulk action submits no duplicate requests"
+        );
+        assert!(app.pending_skill_bulk_update.is_none());
+        assert!(
+            app.skills
+                .as_ref()
+                .unwrap()
+                .iter()
+                .all(|skill| skill.enabled)
+        );
+        assert_eq!(app.status, "Enabled 2 Skills");
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn disable_unused_skills_targets_only_enabled_zero_usage_and_stops_on_denial() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_skill_enabled();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.skills_owner = Some(("research".into(), "gateway-research".into(), 7));
+        app.skills = Some(vec![
+            SkillInfo {
+                category: String::new(),
+                description: String::new(),
+                enabled: true,
+                name: "used".into(),
+                usage: Some(4),
+                provenance: None,
+            },
+            SkillInfo {
+                category: String::new(),
+                description: String::new(),
+                enabled: true,
+                name: "unused-a".into(),
+                usage: Some(0),
+                provenance: None,
+            },
+            SkillInfo {
+                category: String::new(),
+                description: String::new(),
+                enabled: false,
+                name: "already-disabled".into(),
+                usage: Some(0),
+                provenance: None,
+            },
+            SkillInfo {
+                category: String::new(),
+                description: String::new(),
+                enabled: true,
+                name: "usage-missing".into(),
+                usage: None,
+                provenance: None,
+            },
+        ]);
+
+        app.disable_unused_skills().expect("start disable-unused");
+        let (first_request, first_name, first_enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first unused Skill update");
+        assert_eq!(first_name, "unused-a");
+        assert!(!first_enabled);
+        events
+            .send(GatewayEvent::SkillEnabled {
+                request_id: first_request,
+                name: first_name,
+                profile_id: "research".into(),
+                instance_id: "gateway-research".into(),
+                authority_epoch: 7,
+                result: Ok(false),
+            })
+            .expect("confirm first unused Skill");
+        app.update_gateway_discovery(&egui::Context::default());
+        let (second_request, second_name, second_enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("missing-usage Skill is treated as zero");
+        assert_eq!(second_name, "usage-missing");
+        assert!(!second_enabled);
+        events
+            .send(GatewayEvent::SkillEnabled {
+                request_id: second_request,
+                name: second_name,
+                profile_id: "research".into(),
+                instance_id: "gateway-research".into(),
+                authority_epoch: 7,
+                result: Err("permission denied".into()),
+            })
+            .expect("deny second unused Skill");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            !app.skills.as_ref().unwrap()[1].enabled,
+            "confirmed first change remains applied"
+        );
+        assert!(
+            !app.skills.as_ref().unwrap()[2].enabled,
+            "already disabled row is untouched"
+        );
+        assert!(
+            app.skills.as_ref().unwrap()[3].enabled,
+            "denied change rolls back"
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "the bulk sequence stops at first denial"
+        );
+        assert!(app.pending_skill_updates.is_empty());
+        assert!(app.pending_skill_bulk_update.is_none());
+        assert_eq!(app.capabilities_error.as_deref(), Some("permission denied"));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn stale_skill_bulk_receipt_cannot_mutate_the_new_profile_inventory() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_skill_enabled();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.skills_owner = Some(("research".into(), "gateway-research".into(), 7));
+        app.skills = Some(vec![SkillInfo {
+            category: String::new(),
+            description: String::new(),
+            enabled: true,
+            name: "shared-name".into(),
+            usage: Some(0),
+            provenance: None,
+        }]);
+        app.set_skills_enabled_bulk(false)
+            .expect("start old profile bulk update");
+        let (request_id, name, enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("old profile request");
+        assert_eq!(name, "shared-name");
+        assert!(!enabled);
+
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "personal".into(),
+            instance_id: "gateway-personal".into(),
+            authority_epoch: 3,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8766".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.skills_owner = Some(("personal".into(), "gateway-personal".into(), 3));
+        app.skills = Some(vec![SkillInfo {
+            category: String::new(),
+            description: String::new(),
+            enabled: true,
+            name: "shared-name".into(),
+            usage: Some(0),
+            provenance: None,
+        }]);
+        events
+            .send(GatewayEvent::SkillEnabled {
+                request_id,
+                name,
+                profile_id: "research".into(),
+                instance_id: "gateway-research".into(),
+                authority_epoch: 7,
+                result: Ok(false),
+            })
+            .expect("deliver stale old-profile response");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            app.skills.as_ref().unwrap()[0].enabled,
+            "new profile inventory is untouched"
+        );
+        assert!(app.pending_skill_updates.is_empty());
+        assert!(app.pending_skill_bulk_update.is_none());
+        assert!(
+            requests.try_recv().is_err(),
+            "stale receipt cannot advance the old sequence"
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn disconnected_skill_bulk_update_rolls_back_local_state_and_requires_refresh() {
+        let (mut app, profile_dir) = isolated_app();
+        let (gateway, requests, events) = GatewayDiscovery::for_test_skill_enabled();
+        app.gateway_discovery = Some(gateway);
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "research".into(),
+            instance_id: "gateway-research".into(),
+            authority_epoch: 7,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connected = true;
+        app.route = AppRoute::Capabilities;
+        app.skills_owner = Some(("research".into(), "gateway-research".into(), 7));
+        app.skills = Some(vec![SkillInfo {
+            category: String::new(),
+            description: String::new(),
+            enabled: true,
+            name: "disconnect-skill".into(),
+            usage: Some(0),
+            provenance: None,
+        }]);
+        app.set_skills_enabled_bulk(false)
+            .expect("start bulk operation");
+        let (_, name, enabled) = requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("first update is queued");
+        assert_eq!(name, "disconnect-skill");
+        assert!(!enabled);
+        assert!(
+            !app.skills.as_ref().unwrap()[0].enabled,
+            "pending change is optimistic"
+        );
+
+        events
+            .send(GatewayEvent::Disconnected("fixture disconnect".into()))
+            .expect("deliver Gateway disconnect");
+        app.update_gateway_discovery(&egui::Context::default());
+        assert!(
+            app.skills.as_ref().unwrap()[0].enabled,
+            "unknown result restores local state"
+        );
+        assert!(app.pending_skill_updates.is_empty());
+        assert!(app.pending_skill_bulk_update.is_none());
+        assert!(
+            app.capabilities_error
+                .as_deref()
+                .is_some_and(|error| error.contains("outcome is unknown"))
+        );
+        assert!(
+            requests.try_recv().is_err(),
+            "disconnect does not continue or retry the sequence"
+        );
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

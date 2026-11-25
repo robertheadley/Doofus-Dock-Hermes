@@ -66,7 +66,13 @@ Continue to preserve the prior broad Hermes functional-parity objective against 
 ## Visual direction for the post-feature-parity pass
 
 Use the operator-provided Doofus Design Guide as the visual target: warm charcoal and restrained earthy accents; compact, information-dense desktop geometry; cohesive docked workspaces; semantic user/agent/status colors; IRC-style conversation identity; keyboard access, reduced motion, and theme/function separation. Treat the guide's exact color and size tokens as proposed values to validate against DoofusDock APIs and contrast requirements. Preserve the operator's prior explicit JetBrains Mono and Fira Code selection as the typography override. Visual polish remains after the agent-workflow release.
-## Latest implementation update (2026-11-25 20:53 UTC)
+## Latest implementation update (2026-11-25T21:16:13Z)
+
+- PAR-0254 adds profile-wide Skill enable/disable and a disable-unused action. Updates use the full loaded inventory, independent of search, and serialize profile-scoped writes with confirmed receipts, rollback, stop-on-denial and stale-owner fencing.
+- Validation: Skills-focused suite passed 34/34; full Hermes Native library suite passed 792/792; all-target Cargo check and rustfmt check passed. The check reports one existing dead-code warning in `gateway_runtime.rs`. No live Gateway mutation or packaged Windows interaction was performed.
+- DoofusDock remains the reusable Rust/egui windowing layer: its workspace/docking owns window geometry and placement, while Hermes owns agent-specific panels and actions. This feature changes the Hermes Skills panel only.
+
+## Previous implementation update (2026-11-25 20:53 UTC)
 
 - PAR-0083 now has a Sessions menu action that sends the pinned profile-scoped `session.workspace.move` RPC. It filters out the current project, the no-project bucket, rootless entries, and other profiles; only a matching confirmed receipt updates cwd and triggers project-tree refresh. Busy, denied, stale, malformed, and unknown outcomes leave rows unchanged with no automatic retry.
 - Validation: five focused project-move tests passed; the previously timed-out image-paste test passed in isolation; the complete Hermes Native library suite passed 788/788 on rerun. The first full run's one egui Harness max-step timeout is recorded as a transient flake. Doofus task records validate at revision 1070.

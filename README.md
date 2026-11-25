@@ -16,6 +16,8 @@ Chat Markdown links now route safe web destinations through validated host navig
 
 First-run remote setup now refreshes near-expiry native OAuth tokens and stores OAuth sessions and static session tokens encrypted with Windows DPAPI under Hermes Native's isolated profile. Apply starts an authenticated remote WebSocket attach, and saved credentials can be loaded for reconnect at startup. If a selected remote has no matching stored credential, startup reports the problem and does not silently connect to the local gateway. Remote session/history/search/capability reads and session metadata/toolset writes now use the tested token or OAuth credential. Remaining gaps include other remote HTTP-backed features, live service verification, legacy embedded login, and local bootstrap.
 
+Installed Skills also support a profile-wide enable/disable control and a disable-unused action. These serialize confirmed profile-scoped Gateway updates and stop on a denied or uncertain receipt.
+
 ## Run on Windows
 
 Requirements: Rust 1.95 or later, Cargo, and a Windows desktop session.

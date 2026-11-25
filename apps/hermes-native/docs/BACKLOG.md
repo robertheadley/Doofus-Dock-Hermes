@@ -396,7 +396,7 @@ PAR-0062/0063 composer attachments (2026-11-19):
 
 - PAR-0252 now matches pinned field filtering and usage-descending/name ordering; remaining work is rendered search interaction, locale-sensitive ties, profile switching and live/source-paired acceptance.
 
-- PAR-0254 now covers one-at-a-time skill toggles with optimistic state, owner fencing and rollback. Bulk toggles, disable-unused, lock/edit/details, profile-switch UI behavior and live/source-paired acceptance remain open.
+- PAR-0254 now covers individual and profile-wide Skill enable/disable, plus disable-unused based on pinned usage counts. Bulk writes serialize one confirmed profile-scoped update at a time, stop on denial, and fence stale profile receipts. Skill edit/lock/archive, install/update gaps, live Gateway behavior, packaged Windows interaction and source-paired acceptance remain open.
 - PAR-0255 now opens the selected installed skill's content and source path through profile-scoped Gateway access. Skill edit/lock/archive, hub install/update, live Gateway behavior, packaged Windows interaction, and source-paired acceptance remain open.
 - PAR-0258 now provides the batch “Update installed” action with profile-scoped admission, bounded live action logs, receipt-PID/status fencing and a success refresh. Remaining: update checks and per-skill update controls, cancellation/recovery after uncertain admission, live Gateway/Windows/source-paired validation.
 

@@ -5795,3 +5795,15 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: No performance change claimed.
 - risks: A lost RPC reply is shown as unconfirmed and is not retried automatically. Full suite remains non-green because `app::tests::pasting_an_image_into_the_focused_composer_requests_a_scoped_gateway_attachment` exceeded the egui harness step budget (4 vs. 53); live Gateway, packaged Windows interaction and formal source-paired acceptance remain open.
 - follow_up: Run the complete native test suite, then exercise the move with a disposable authenticated Gateway profile and verify project grouping refresh.
+
+## Revision 386 — Profile-wide Skills enablement
+- id: hermes-par-0254-profile-wide-skills-20261125
+- timestamp: 2026-11-25T21:16:13Z
+- what: Added profile-wide enable/disable and disable-unused actions to Installed Skills, serialized Gateway updates, progress, receipt validation, rollback and stale-owner/disconnect fencing.
+- why: Hermes agent workflows need efficient Skills control while preserving profile authority and avoiding unconfirmed cascaded changes.
+- components: apps/hermes-native/src/app.rs; README.md; apps/hermes-native/docs/ARCHITECTURE.md; apps/hermes-native/docs/BACKLOG.md; apps/hermes-native/docs/DELIVERY_OBJECTIVE.md; apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv
+- type: feature and verification coverage
+- validation: focused Skills suite 34/34; full library suite 792/792; all-target Cargo check passed with one existing dead-code warning; rustfmt check and diff check passed.
+- performance: One profile-scoped Skill mutation is in flight at a time; no benchmark change claimed.
+- risks: Gateway outcome can become unknown on disconnect; local optimistic state is rolled back and the remaining sequence stops, but live service and packaged Windows behavior are not verified.
+- follow_up: Continue remaining agent capability gaps; verify Skills interactions against authenticated live Gateway and packaged Windows runtime when available.
