@@ -3793,3 +3793,31 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime behavior changed.
 - **risks:** Historical map inconsistencies remain and are not rewritten by this update.
 - **follow_up:** Reconcile historical map errors separately; complete live Gateway and packaged Windows acceptance.
+
+
+## Revision 391 — Verify live Agent output snapshot empty state — 2026-11-25
+
+- **id:** `hermes-par-0066-process-list-live-20261125T2257Z`
+- **timestamp:** `2026-11-25T22:57:42Z`
+- **what:** Exercised the fresh Hermes Native automation process against the isolated live Gateway, opened a saved session and Terminal Dock, and expanded Agent output. The resolved UI showed the empty process state with no process-list error or loading indicator.
+- **why:** Establish that the snapshot path works at the actual Gateway and rendered-pane boundary, beyond local fixtures.
+- **components:** Hermes Native agent output pane, Gateway `process.list`, headless `HermesPage` live-Gateway path.
+- **type:** Runtime verification.
+- **validation:** PASS; Gateway connected; saved session hydrated with two messages; Terminal Dock open; empty state rendered; no model prompt or screenshot. Execution detail is recorded under `docs/EXECUTION_LOGS.md#hermes-par-0066-process-list-live-20261125t2257z`.
+- **performance:** No benchmark was collected; this is a functional read-only check.
+- **risks:** Only an empty process snapshot was observed. Populated process output, live stream reconciliation, packaged Windows acceptance, and formal pinned-source acceptance remain open. The provider-backed coding workflow remains blocked by the observed HTTP 402 credit error.
+- **follow_up:** Produce a controlled Gateway-owned process without a provider/model call if the pinned interface supports it, then verify actual output and snapshot/stream continuity.
+
+
+## Revision 392 — Confirm Dock pin and background process creation boundary — 2026-11-25
+
+- **id:** `hermes-par-0066-process-spawn-contract-20261125T2302Z`
+- **timestamp:** `2026-11-25T23:02:30Z`
+- **what:** Verified the exact DoofusDock dependency pin against remote `main` and inspected pinned Hermes background-process lifecycle APIs.
+- **why:** Keep Hermes on the current reusable windowing library and determine whether a populated terminal stream can be tested without a provider-backed agent tool call.
+- **components:** `apps/hermes-native/Cargo.toml`, DoofusDock core/host/presentation/renderer pins, pinned Gateway process and terminal tool contracts.
+- **type:** Dependency and interface audit.
+- **validation:** PASS read-only comparison: remote DoofusDock `main` and all four Hermes crate pins are `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`. The pinned `process_manage` action enum has no spawn operation; `terminal(background=true)` is an agent tool call.
+- **performance:** No runtime behavior changed.
+- **risks:** Populated Agent output cannot be live-verified until a usable provider can execute the background terminal tool.
+- **follow_up:** Preserve the live empty-state result and continue another dependency-ready release item; do not inject synthetic process state or submit another model prompt.

@@ -77,3 +77,16 @@ Use the operator-provided Doofus Design Guide as the visual target: warm charcoa
 - PAR-0083 now has a Sessions menu action that sends the pinned profile-scoped `session.workspace.move` RPC. It filters out the current project, the no-project bucket, rootless entries, and other profiles; only a matching confirmed receipt updates cwd and triggers project-tree refresh. Busy, denied, stale, malformed, and unknown outcomes leave rows unchanged with no automatic retry.
 - Validation: five focused project-move tests passed; the previously timed-out image-paste test passed in isolation; the complete Hermes Native library suite passed 788/788 on rerun. The first full run's one egui Harness max-step timeout is recorded as a transient flake. Doofus task records validate at revision 1070.
 - Live project move, packaged Windows interaction, formal source-paired acceptance, and the provider-backed coding workflow remain unverified; the earlier provider HTTP 402 still blocks real tool execution.
+
+
+## Latest runtime verification (2026-11-25T22:57Z)
+
+- The freshly built headless Hermes Native process attached to the isolated local Gateway, opened the saved test session (two transcript messages), opened the Terminal Dock, and expanded the collapsed-by-default Agent output section. The resolved UI displayed “No background process output is available for this session yet.” with no process-list/snapshot error and no loading indicator. No model prompt was sent and no screenshot was taken.
+- This verifies the live Gateway snapshot request and empty-result presentation only. A populated process, live output tail, snapshot-to-stream merge under an active process, packaged Windows workflow, and pinned-source acceptance remain open. The broader coding acceptance remains blocked by the configured provider’s HTTP 402 credit response.
+- DoofusDock remains the reusable UI/windowing library; the Agent output section and its process/session semantics belong to Hermes.
+
+
+## Latest dependency and process contract check (2026-11-25T23:02Z)
+
+- Hermes Native pins all four DoofusDock crates (`core`, `host-egui`, `presentation`, `render-egui`) to `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`; a read-only remote ref check found DoofusDock `main` at the same commit. No dependency refresh is currently needed.
+- The pinned Hermes Gateway provides background-process list/stop/kill operations, but no process-spawn RPC. Spawning comes from Hermes' `terminal(background=true)` agent tool, so producing a populated live process pane without a model/tool turn is unsupported. No synthetic process was injected.
