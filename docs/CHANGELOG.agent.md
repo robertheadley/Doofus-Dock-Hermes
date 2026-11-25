@@ -5616,3 +5616,15 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: No runtime change.
 - risks: Capability map remains globally inconsistent due to existing historical evidence; no historical entries were rewritten.
 - follow_up: Reconcile older map records in a separate scoped task.
+
+## Revision 385 — Rendered inline skill focus handoff
+- id: hermes-par-0067-rendered-focus-handoff-20261125
+- timestamp: 2026-11-25T01:11:42Z
+- what: Added a two-pane rendered interaction regression and EV-0183 evidence; refreshed PAR-0067 progress references and documented the remaining live/late-result limits.
+- why: The prior evidence checked focus ownership with helpers but did not prove behavior across two simultaneously rendered session panes.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/docs/BACKLOG.md; apps/hermes-native/docs/PLAN.md; apps/hermes-native/tools/build_implementation_progress.py; capability map EV-0183
+- type: verification coverage
+- validation: focused slash suite 12/12; full locked suite 761 library + 15 protocol + 3 launcher; all-target cargo check, rustfmt, and diff checks pass.
+- performance: No runtime-path change; one headless UI test added.
+- risks: Gateway response arriving after blur still lacks a direct event-level regression; no live or packaged acceptance was performed.
+- follow_up: Verify authenticated live Gateway and add late-response fence coverage.

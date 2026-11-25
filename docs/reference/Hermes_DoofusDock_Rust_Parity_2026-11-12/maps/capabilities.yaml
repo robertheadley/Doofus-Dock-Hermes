@@ -1666,8 +1666,11 @@ capabilities:
     scenarios:
     - id: leading-and-inline-skill-suggestions-preserve-prose-and-never-send-a-prompt
       description: Inline skill suggestions work at the caret, preserve surrounding prose, and insert a selection without submitting the prompt.
+    - id: inline-skill-suggestion-focus-isolated-between-two-rendered-session-panes
+      description: Switching focus between rendered session panes transfers inline completion ownership and hides the previous pane's suggestions.
   evidence:
   - EV-0182
+  - EV-0183
 - id: ui-preview-directive-chip-actions-without-stealing-selection
   name: Preview directive chip actions without stealing selection
   area: chat-transcript

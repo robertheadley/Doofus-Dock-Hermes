@@ -1877,7 +1877,7 @@ EVIDENCE: dict[str, dict[str, object]] = {
     },
     "PAR-0067": {
         "state": "partial",
-        "level": "headless_panel_scoped_inline_skill_and_keyboard_slash_completion",
+        "level": "headless_rendered_two_pane_panel_scoped_inline_skill_completion",
         "refs": [
             ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/index.tsx#event.key === 'ArrowDown'",
             ".staging/hermes-pinned-878305/apps/desktop/src/app/chat/composer/index.tsx#event.key === 'ArrowUp'",
@@ -1888,10 +1888,13 @@ EVIDENCE: dict[str, dict[str, object]] = {
             "apps/hermes-native/src/app.rs#slash_suggestions_support_keyboard_selection_without_sending",
             "apps/hermes-native/src/app.rs#unfocused_composer_cannot_replace_focused_slash_completion_state",
             "apps/hermes-native/src/app.rs#identical_session_composers_have_distinct_panel_scoped_widget_ids",
+            "apps/hermes-native/src/app.rs#two_profile_sessions_render_side_by_side_without_crossing_owner_state",
             "apps/hermes-native/src/gateway.rs#slash_completion_actor_routes_catalog_and_typed_queries_to_the_scoped_gateway",
-            "apps/hermes-native/docs/PLAN.md#Revision 383",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0182.json#EV-0182",
+            "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0183.json#EV-0183",
+            "apps/hermes-native/docs/PLAN.md#Revision 385",
         ],
-        "gaps": ["directive-chip interaction, result caching/invalidation, and special local /skin and session commands remain incomplete", "authenticated live Gateway, full rendered multi-pane focus switching, packaged Windows, and source-paired acceptance remain unverified"],
+        "gaps": ["directive-chip interaction, result caching/invalidation, and special local /skin and session commands remain incomplete", "explicit late Gateway response after blur, authenticated live Gateway, packaged Windows, and source-paired acceptance remain unverified"],
     },
     "PAR-0511": {
         "state": "partial",
