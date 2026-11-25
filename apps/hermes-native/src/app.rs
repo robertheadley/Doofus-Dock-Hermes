@@ -9,7 +9,7 @@ use crate::fonts::{
 use crate::gateway::{
     ActiveSessionStatus, ActiveSessionStatusKind, AgentPluginAutoUpdateSettings, AgentPluginInfo,
     AgentPluginInspection, AgentPluginScanFinding, AgentPluginSettingField,
-    AgentPluginUpdateAllRow, AgentPluginUpdateOutcome, AgentPluginsSnapshot,
+    AgentPluginUpdateAllRow, AgentPluginUpdateOutcome, AgentPluginsSnapshot, AgentTerminalProcess,
     ArtifactFileDownloadRequest, ArtifactImagePreviewRequest, BotRosterSnapshot,
     CapabilitiesSnapshot, CommandCenterDebugShareResponse, CommandCenterMaintenanceAction,
     CommandCenterMaintenanceOperation, CommandCenterMaintenanceResult,
@@ -887,8 +887,21 @@ struct PendingSkillBulkUpdate {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct AgentTerminalOutput {
     process_id: String,
+    command: String,
     output: String,
+    last_snapshot: String,
     closed: bool,
+    exit_code: Option<i32>,
+}
+
+#[derive(Clone, Debug)]
+struct PendingAgentTerminalProcessSnapshot {
+    request_id: String,
+    owner_key: String,
+    session_id: String,
+    profile: Option<String>,
+    connection_id: Option<String>,
+    requested_at: std::time::Instant,
 }
 
 #[derive(Clone, Debug)]
@@ -2293,6 +2306,9 @@ pub struct HermesNativeApp {
     agent_terminal_outputs: BTreeMap<String, BTreeMap<String, AgentTerminalOutput>>,
     agent_terminal_output_order: BTreeMap<String, VecDeque<String>>,
     agent_terminal_output_owner_order: VecDeque<String>,
+    pending_agent_terminal_process_snapshot: Option<PendingAgentTerminalProcessSnapshot>,
+    agent_terminal_process_snapshot_requested_at: Option<(String, std::time::Instant)>,
+    agent_terminal_process_snapshot_error: Option<(String, String)>,
     local_terminal_cwd: String,
     local_terminal_input: String,
     local_terminal_error: Option<String>,
@@ -4913,6 +4929,9 @@ fn render_message() -> &'static str {
             agent_terminal_outputs: BTreeMap::new(),
             agent_terminal_output_order: BTreeMap::new(),
             agent_terminal_output_owner_order: VecDeque::new(),
+            pending_agent_terminal_process_snapshot: None,
+            agent_terminal_process_snapshot_requested_at: None,
+            agent_terminal_process_snapshot_error: None,
             local_terminal_cwd: std::env::current_dir()
                 .unwrap_or_default()
                 .to_string_lossy()
@@ -6171,7 +6190,7 @@ fn render_message() -> &'static str {
         }
     }
 
-    fn agent_terminal_output_panel(&self, ui: &mut Ui) {
+    fn agent_terminal_output_panel(&mut self, ui: &mut Ui) {
         let owner_key = self.active_agent_terminal_owner_key();
         let streams = owner_key
             .as_ref()
@@ -6187,14 +6206,28 @@ fn render_message() -> &'static str {
                 streams.len()
             )
         };
-        egui::CollapsingHeader::new(title)
+        let pending = self
+            .pending_agent_terminal_process_snapshot
+            .as_ref()
+            .is_some_and(|pending| owner_key.as_deref() == Some(pending.owner_key.as_str()));
+        let snapshot_error = owner_key.as_ref().and_then(|key| {
+            self.agent_terminal_process_snapshot_error
+                .as_ref()
+                .filter(|(owner, _)| owner == key)
+                .map(|(_, error)| error.clone())
+        });
+        let response = egui::CollapsingHeader::new(title)
             .id_salt("hermes-agent-terminal-output")
             .default_open(false)
             .show(ui, |ui| {
                 if owner_key.is_none() {
                     ui.label("Open a Hermes chat session to view its background process output.");
                 } else if streams.is_empty() {
-                    ui.label("Live output appears here when Hermes starts a background process.");
+                    if pending {
+                        ui.label("Loading Hermes process output…");
+                    } else {
+                        ui.label("No background process output is available for this session yet.");
+                    }
                 } else {
                     for stream in streams {
                         let status = if stream.closed {
@@ -6202,7 +6235,19 @@ fn render_message() -> &'static str {
                         } else {
                             "streaming"
                         };
-                        ui.collapsing(format!("Process {} · {status}", stream.process_id), |ui| {
+                        let title = if stream.command.trim().is_empty() {
+                            format!("Process {} · {status}", stream.process_id)
+                        } else {
+                            format!(
+                                "{} · {status}",
+                                stream.command.lines().next().unwrap_or_default()
+                            )
+                        };
+                        ui.collapsing(title, |ui| {
+                            ui.label(format!("Process {}", stream.process_id));
+                            if let Some(exit_code) = stream.exit_code {
+                                ui.label(format!("Exit code: {exit_code}"));
+                            }
                             if stream.output.is_empty() {
                                 ui.label("Waiting for process output…");
                             } else {
@@ -6225,7 +6270,15 @@ fn render_message() -> &'static str {
                         });
                     }
                 }
+                if let Some(error) = snapshot_error.as_deref() {
+                    ui.colored_label(Color32::from_rgb(232, 116, 116), error);
+                }
             });
+        if response.body_response.is_some() {
+            self.request_agent_terminal_process_snapshot(ui.ctx(), false);
+            ui.ctx()
+                .request_repaint_after(AGENT_TERMINAL_PROCESS_REFRESH_INTERVAL);
+        }
     }
 
     fn active_agent_terminal_owner_key(&self) -> Option<String> {
@@ -6234,6 +6287,152 @@ fn render_message() -> &'static str {
         }
         let runtime_session_id = self.active_runtime_session_id.as_deref()?;
         Some(self.session_identity_key(runtime_session_id, self.active_session_profile.as_deref()))
+    }
+
+    fn request_agent_terminal_process_snapshot(&mut self, ctx: &egui::Context, force: bool) {
+        let Some(owner_key) = self.active_agent_terminal_owner_key() else {
+            return;
+        };
+        let Some(session_id) = self.active_runtime_session_id.clone() else {
+            return;
+        };
+        if !self.gateway_connected {
+            return;
+        }
+        let now = std::time::Instant::now();
+        if let Some(pending) = self.pending_agent_terminal_process_snapshot.as_ref()
+            && pending.owner_key == owner_key
+            && now.duration_since(pending.requested_at) < std::time::Duration::from_secs(15)
+        {
+            return;
+        }
+        if !force
+            && self
+                .agent_terminal_process_snapshot_requested_at
+                .as_ref()
+                .is_some_and(|(owner, requested_at)| {
+                    owner == &owner_key
+                        && now.duration_since(*requested_at)
+                            < AGENT_TERMINAL_PROCESS_REFRESH_INTERVAL
+                })
+        {
+            return;
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return;
+        };
+        let request_id = agent_terminal_process_request_id();
+        let profile = self.active_session_profile.clone();
+        let connection_id = gateway.connection_id().map(str::to_owned);
+        match gateway.load_agent_terminal_processes(
+            request_id.clone(),
+            session_id.clone(),
+            profile.clone(),
+        ) {
+            Ok(()) => {
+                self.pending_agent_terminal_process_snapshot =
+                    Some(PendingAgentTerminalProcessSnapshot {
+                        request_id,
+                        owner_key: owner_key.clone(),
+                        session_id,
+                        profile,
+                        connection_id,
+                        requested_at: now,
+                    });
+                self.agent_terminal_process_snapshot_requested_at = Some((owner_key.clone(), now));
+                self.agent_terminal_process_snapshot_error = None;
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            }
+            Err(error) => {
+                self.agent_terminal_process_snapshot_error = Some((owner_key, error));
+            }
+        }
+    }
+
+    fn settle_agent_terminal_process_snapshot(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        profile: Option<&str>,
+        connection_id: Option<&str>,
+        result: Result<Vec<AgentTerminalProcess>, String>,
+    ) {
+        let Some(pending) = self.pending_agent_terminal_process_snapshot.as_ref() else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.session_id != session_id
+            || pending.profile.as_deref() != profile
+            || pending.connection_id.as_deref() != connection_id
+        {
+            return;
+        }
+        let pending = self
+            .pending_agent_terminal_process_snapshot
+            .take()
+            .expect("matched agent terminal process snapshot");
+        if self.active_agent_terminal_owner_key().as_deref() != Some(pending.owner_key.as_str()) {
+            return;
+        }
+        match result {
+            Ok(processes) => {
+                self.agent_terminal_process_snapshot_error = None;
+                self.reconcile_agent_terminal_process_snapshot(&pending.owner_key, processes);
+            }
+            Err(error) => {
+                self.agent_terminal_process_snapshot_error = Some((pending.owner_key, error));
+            }
+        }
+    }
+
+    fn ensure_agent_terminal_owner(&mut self, owner_key: &str) {
+        if self.agent_terminal_outputs.contains_key(owner_key) {
+            return;
+        }
+        self.agent_terminal_output_owner_order
+            .push_back(owner_key.to_owned());
+        while self.agent_terminal_output_owner_order.len() > MAX_AGENT_TERMINAL_SESSION_OWNERS {
+            if let Some(expired_owner) = self.agent_terminal_output_owner_order.pop_front() {
+                self.agent_terminal_outputs.remove(&expired_owner);
+                self.agent_terminal_output_order.remove(&expired_owner);
+            }
+        }
+    }
+
+    fn reconcile_agent_terminal_process_snapshot(
+        &mut self,
+        owner_key: &str,
+        processes: Vec<AgentTerminalProcess>,
+    ) {
+        self.ensure_agent_terminal_owner(owner_key);
+        let streams = self
+            .agent_terminal_outputs
+            .entry(owner_key.to_owned())
+            .or_default();
+        let order = self
+            .agent_terminal_output_order
+            .entry(owner_key.to_owned())
+            .or_default();
+        for process in processes {
+            if !streams.contains_key(&process.process_id) {
+                order.push_back(process.process_id.clone());
+                while order.len() > MAX_AGENT_TERMINAL_PROCESSES_PER_SESSION {
+                    if let Some(expired) = order.pop_front() {
+                        streams.remove(&expired);
+                    }
+                }
+            }
+            let stream = streams.entry(process.process_id.clone()).or_default();
+            stream.process_id = process.process_id;
+            stream.command = process.command;
+            stream.exit_code = process.exit_code;
+            stream.closed |= process.status == "exited";
+            merge_agent_terminal_snapshot(
+                stream,
+                &process.output_tail,
+                MAX_AGENT_TERMINAL_OUTPUT_BYTES,
+            );
+        }
     }
 
     fn agent_terminal_owner_key_for_event(
@@ -6305,16 +6504,7 @@ fn render_message() -> &'static str {
             return;
         };
         let process_id = process_id.to_owned();
-        if !self.agent_terminal_outputs.contains_key(&owner_key) {
-            self.agent_terminal_output_owner_order
-                .push_back(owner_key.clone());
-            while self.agent_terminal_output_owner_order.len() > MAX_AGENT_TERMINAL_SESSION_OWNERS {
-                if let Some(expired_owner) = self.agent_terminal_output_owner_order.pop_front() {
-                    self.agent_terminal_outputs.remove(&expired_owner);
-                    self.agent_terminal_output_order.remove(&expired_owner);
-                }
-            }
-        }
+        self.ensure_agent_terminal_owner(&owner_key);
         let streams = self
             .agent_terminal_outputs
             .entry(owner_key.clone())
@@ -6341,7 +6531,6 @@ fn render_message() -> &'static str {
             }
             let stream = streams.entry(process_id.clone()).or_default();
             stream.process_id = process_id;
-            stream.closed = false;
             append_bounded_agent_terminal_output(
                 &mut stream.output,
                 chunk,
@@ -40381,6 +40570,19 @@ fn render_message() -> &'static str {
                 } => {
                     self.settle_active_session_statuses(&request_id, &profile, result);
                 }
+                GatewayEvent::AgentTerminalProcessesLoaded {
+                    request_id,
+                    session_id,
+                    profile,
+                    connection_id,
+                    result,
+                } => self.settle_agent_terminal_process_snapshot(
+                    &request_id,
+                    &session_id,
+                    profile.as_deref(),
+                    connection_id.as_deref(),
+                    result,
+                ),
                 GatewayEvent::AgentPluginAutoUpdateLoaded {
                     request_id,
                     profile,
@@ -44173,6 +44375,8 @@ const MAX_AGENT_TERMINAL_CHUNK_BYTES: usize = 256 * 1024;
 const MAX_AGENT_TERMINAL_OUTPUT_BYTES: usize = 64 * 1024;
 const MAX_AGENT_TERMINAL_PROCESSES_PER_SESSION: usize = 12;
 const MAX_AGENT_TERMINAL_SESSION_OWNERS: usize = 32;
+const AGENT_TERMINAL_PROCESS_REFRESH_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(5);
 
 fn append_bounded_agent_terminal_output(output: &mut String, chunk: &str, max_bytes: usize) {
     output.push_str(chunk);
@@ -44184,6 +44388,63 @@ fn append_bounded_agent_terminal_output(output: &mut String, chunk: &str, max_by
         drop_bytes += 1;
     }
     output.drain(..drop_bytes);
+}
+
+fn bounded_agent_terminal_tail(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_owned();
+    }
+    let mut start = text.len() - max_bytes;
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    text[start..].to_owned()
+}
+
+fn merge_agent_terminal_snapshot(
+    stream: &mut AgentTerminalOutput,
+    snapshot: &str,
+    max_bytes: usize,
+) {
+    if snapshot.is_empty() {
+        return;
+    }
+    let snapshot = bounded_agent_terminal_tail(snapshot, max_bytes);
+    let current_len = stream.output.len();
+    let previous_len = stream.last_snapshot.len();
+    let matches_previous = snapshot == stream.last_snapshot;
+    let matches_current = snapshot == stream.output || stream.output.ends_with(&snapshot);
+    let extends_current = snapshot.starts_with(&stream.output);
+    let extends_previous = snapshot.starts_with(&stream.last_snapshot);
+    if matches_previous || matches_current {
+        stream.last_snapshot = snapshot;
+        return;
+    }
+    if extends_current {
+        append_bounded_agent_terminal_output(
+            &mut stream.output,
+            &snapshot[current_len..],
+            max_bytes,
+        );
+    } else if extends_previous {
+        append_bounded_agent_terminal_output(
+            &mut stream.output,
+            &snapshot[previous_len..],
+            max_bytes,
+        );
+    } else {
+        stream.output = snapshot.clone();
+    }
+    stream.last_snapshot = snapshot;
+}
+
+fn agent_terminal_process_request_id() -> String {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+    format!(
+        "native-agent-processes-{}-{}",
+        current_unix_millis(),
+        NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 fn terminal_selected_text(text: &str, range: egui::text::CCursorRange) -> Option<String> {
@@ -61657,6 +61918,13 @@ mod tests {
             "payload":{"process_id":"process-1"}
         }));
         assert!(app.agent_terminal_outputs[&active_key]["process-1"].closed);
+        app.handle_server_event(serde_json::json!({
+            "type":"agent.terminal.output",
+            "session_id":"runtime-session",
+            "profile":"research",
+            "payload":{"process_id":"process-1","chunk":"late final bytes"}
+        }));
+        assert!(app.agent_terminal_outputs[&active_key]["process-1"].closed);
 
         let mut bounded = String::new();
         append_bounded_agent_terminal_output(&mut bounded, "αβγδε", 5);
@@ -61682,8 +61950,112 @@ mod tests {
     }
 
     #[test]
+    fn agent_terminal_snapshot_merges_live_chunks_and_restores_finished_processes() {
+        let (mut app, profile_dir) = isolated_app();
+        let owner_key = app.session_identity_key_for_connection(
+            Some("connection-a"),
+            "runtime-session",
+            Some("research"),
+        );
+        app.reconcile_agent_terminal_process_snapshot(
+            &owner_key,
+            vec![AgentTerminalProcess {
+                process_id: "process-1".into(),
+                command: "cargo test".into(),
+                status: "running".into(),
+                output_tail: "running tests\n".into(),
+                exit_code: None,
+            }],
+        );
+        app.record_agent_terminal_server_event(
+            "agent.terminal.output",
+            "runtime-session",
+            Some("research"),
+            Some("connection-a"),
+            &serde_json::json!({
+                "process_id":"process-1",
+                "chunk":"test result: ok\n"
+            }),
+        );
+        app.reconcile_agent_terminal_process_snapshot(
+            &owner_key,
+            vec![AgentTerminalProcess {
+                process_id: "process-1".into(),
+                command: "cargo test".into(),
+                status: "running".into(),
+                output_tail: "running tests\ntest result: ok\nfinished\n".into(),
+                exit_code: None,
+            }],
+        );
+        let stream = &app.agent_terminal_outputs[&owner_key]["process-1"];
+        assert_eq!(stream.output, "running tests\ntest result: ok\nfinished\n");
+        assert_eq!(stream.command, "cargo test");
+
+        app.reconcile_agent_terminal_process_snapshot(
+            &owner_key,
+            vec![AgentTerminalProcess {
+                process_id: "process-1".into(),
+                command: "cargo test".into(),
+                status: "exited".into(),
+                output_tail: "running tests\ntest result: ok\nfinished\n".into(),
+                exit_code: Some(0),
+            }],
+        );
+        let stream = &app.agent_terminal_outputs[&owner_key]["process-1"];
+        assert!(stream.closed);
+        assert_eq!(stream.exit_code, Some(0));
+        assert_eq!(stream.output.matches("test result: ok").count(), 1);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn stale_agent_terminal_snapshot_cannot_clear_a_newer_owner_request() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("research".into());
+        app.gateway_connection_id = Some("connection-a".into());
+        let owner_key = app.active_agent_terminal_owner_key().expect("active owner");
+        app.pending_agent_terminal_process_snapshot = Some(PendingAgentTerminalProcessSnapshot {
+            request_id: "new-request".into(),
+            owner_key: owner_key.clone(),
+            session_id: "runtime-session".into(),
+            profile: Some("research".into()),
+            connection_id: Some("connection-a".into()),
+            requested_at: std::time::Instant::now(),
+        });
+
+        app.settle_agent_terminal_process_snapshot(
+            "old-request",
+            "runtime-session",
+            Some("research"),
+            Some("connection-a"),
+            Ok(vec![AgentTerminalProcess {
+                process_id: "stale-process".into(),
+                command: "stale".into(),
+                status: "running".into(),
+                output_tail: "stale".into(),
+                exit_code: None,
+            }]),
+        );
+        assert_eq!(
+            app.pending_agent_terminal_process_snapshot
+                .as_ref()
+                .map(|pending| pending.request_id.as_str()),
+            Some("new-request")
+        );
+        assert!(!app.agent_terminal_outputs.contains_key(&owner_key));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
     fn agent_terminal_output_section_is_collapsed_until_opened() {
         let (mut app, profile_dir) = isolated_app();
+        let (gateway, process_requests) = GatewayDiscovery::for_test_agent_terminal_processes();
+        app.gateway_discovery = Some(gateway.with_connection_id("connection-a"));
+        app.gateway_connected = true;
         app.route = AppRoute::Session("stored-session".into());
         app.active_runtime_session_id = Some("runtime-session".into());
         app.active_session_profile = Some("research".into());
@@ -61696,7 +62068,7 @@ mod tests {
                 AgentTerminalOutput {
                     process_id: "process-1".into(),
                     output: "agent-stream-marker".into(),
-                    closed: false,
+                    ..AgentTerminalOutput::default()
                 },
             )]),
         );
@@ -61707,10 +62079,22 @@ mod tests {
         let process_heading = "Process process-1 · streaming";
         assert!(harness.query_by_label(heading).is_some());
         assert!(harness.query_by_label(process_heading).is_none());
+        assert!(process_requests.try_recv().is_err());
         harness.get_by_label(heading).click();
         harness.run();
         assert!(harness.query_by_label(process_heading).is_some());
+        let (_request_id, session_id, profile) = process_requests
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("opening Agent output requests the active session process snapshot");
+        assert_eq!(session_id, "runtime-session");
+        assert_eq!(profile.as_deref(), Some("research"));
         drop(harness);
+        assert_eq!(
+            app.pending_agent_terminal_process_snapshot
+                .as_ref()
+                .map(|pending| pending.connection_id.as_deref()),
+            Some(Some("connection-a"))
+        );
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

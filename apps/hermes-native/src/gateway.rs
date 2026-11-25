@@ -679,6 +679,86 @@ pub struct ActiveSessionStatus {
     pub last_active: Option<f64>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentTerminalProcess {
+    pub process_id: String,
+    pub command: String,
+    pub status: String,
+    pub output_tail: String,
+    pub exit_code: Option<i32>,
+}
+
+const MAX_AGENT_TERMINAL_PROCESS_ROWS: usize = 256;
+const MAX_AGENT_TERMINAL_PROCESS_COMMAND_BYTES: usize = 4096;
+const MAX_AGENT_TERMINAL_PROCESS_TAIL_BYTES: usize = 256 * 1024;
+
+fn parse_agent_terminal_processes(
+    value: serde_json::Value,
+) -> Result<Vec<AgentTerminalProcess>, String> {
+    let rows = value
+        .get("processes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "Hermes returned an invalid process.list response".to_owned())?;
+    if rows.len() > MAX_AGENT_TERMINAL_PROCESS_ROWS {
+        return Err("Hermes returned too many background processes".into());
+    }
+    let mut seen = BTreeSet::new();
+    let mut processes = Vec::with_capacity(rows.len());
+    for row in rows {
+        let process_id = row
+            .get("session_id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| {
+                !value.trim().is_empty()
+                    && value.len() <= 256
+                    && !value.chars().any(char::is_control)
+            })
+            .ok_or_else(|| "Hermes returned an invalid background process ID".to_owned())?;
+        if !seen.insert(process_id.to_owned()) {
+            return Err("Hermes returned duplicate background process IDs".into());
+        }
+        let command = row
+            .get("command")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if command.len() > MAX_AGENT_TERMINAL_PROCESS_COMMAND_BYTES
+            || command.chars().any(|value| value == '\0')
+        {
+            return Err("Hermes returned an invalid background process command".into());
+        }
+        let status = row
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("running");
+        if status.is_empty() || status.len() > 32 || status.chars().any(char::is_control) {
+            return Err("Hermes returned an invalid background process status".into());
+        }
+        let output_tail = row
+            .get("output_tail")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if output_tail.len() > MAX_AGENT_TERMINAL_PROCESS_TAIL_BYTES {
+            return Err("Hermes returned an oversized background process output tail".into());
+        }
+        let exit_code = row
+            .get("exit_code")
+            .and_then(serde_json::Value::as_i64)
+            .map(|value| {
+                i32::try_from(value)
+                    .map_err(|_| "Hermes returned an invalid background process exit code")
+            })
+            .transpose()?;
+        processes.push(AgentTerminalProcess {
+            process_id: process_id.to_owned(),
+            command: command.to_owned(),
+            status: status.to_owned(),
+            output_tail: output_tail.to_owned(),
+            exit_code,
+        });
+    }
+    Ok(processes)
+}
+
 fn parse_active_session_statuses(
     value: serde_json::Value,
 ) -> Result<Vec<ActiveSessionStatus>, String> {
@@ -2706,6 +2786,13 @@ pub enum GatewayEvent {
         profile: String,
         result: Result<Vec<ActiveSessionStatus>, String>,
     },
+    AgentTerminalProcessesLoaded {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        result: Result<Vec<AgentTerminalProcess>, String>,
+    },
     AgentPluginAutoUpdateLoaded {
         request_id: String,
         profile: Option<String>,
@@ -2933,6 +3020,11 @@ enum GatewayCommand {
     LoadActiveSessionStatuses {
         request_id: String,
         profile: String,
+    },
+    LoadAgentTerminalProcesses {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
     },
     LoadProjectSessionColors {
         request_id: String,
@@ -4405,6 +4497,53 @@ impl GatewayDiscovery {
     }
 
     #[cfg(test)]
+    pub(crate) fn for_test_agent_terminal_processes()
+    -> (Self, Receiver<(String, String, Option<String>)>) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (_event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, _http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = command_receiver.recv() {
+                if let GatewayCommand::LoadAgentTerminalProcesses {
+                    request_id,
+                    session_id,
+                    profile,
+                } = command
+                    && request_sender
+                        .send((request_id, session_id, profile))
+                        .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn for_test_project_sessions() -> (Self, Receiver<(String, String, String)>) {
         let (_status_sender, status_receiver) = mpsc::channel();
         let (_event_sender, event_receiver) = mpsc::channel();
@@ -5454,6 +5593,9 @@ impl GatewayDiscovery {
                 *connection_id = self.connection_id.clone();
             }
             GatewayEvent::SessionCompressed { connection_id, .. } => {
+                *connection_id = self.connection_id.clone();
+            }
+            GatewayEvent::AgentTerminalProcessesLoaded { connection_id, .. } => {
                 *connection_id = self.connection_id.clone();
             }
             GatewayEvent::ServerEvent { connection_id, .. } => {
@@ -7206,6 +7348,27 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
+    pub fn load_agent_terminal_processes(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+    ) -> Result<(), String> {
+        if session_id.trim().is_empty()
+            || session_id.len() > 512
+            || session_id.chars().any(char::is_control)
+        {
+            return Err("Hermes background process session scope is invalid".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::LoadAgentTerminalProcesses {
+                request_id,
+                session_id,
+                profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn load_agent_plugin_auto_update(
         &self,
         request_id: String,
@@ -8866,6 +9029,49 @@ fn gateway_actor_with_replay(
                     .send(GatewayEvent::ActiveSessionStatusesLoaded {
                         request_id,
                         profile,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::LoadAgentTerminalProcesses {
+                request_id,
+                session_id,
+                profile,
+            }) => {
+                let event_profile = profile.clone();
+                let wire_profile = match endpoint.as_ref() {
+                    Some(endpoint) if profile.as_deref() == Some(endpoint.profile_id.as_str()) => {
+                        None
+                    }
+                    _ => profile,
+                };
+                let result = session_profile_params(
+                    serde_json::json!({"session_id": session_id}),
+                    wire_profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events_timeout_outcome_bounded(
+                        socket,
+                        next_request_id,
+                        "process.list",
+                        params,
+                        Duration::from_secs(12),
+                        Some(&events),
+                        Some(2 * 1024 * 1024),
+                    )
+                    .map_err(RpcOutcomeError::message)
+                })
+                .and_then(parse_agent_terminal_processes);
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::AgentTerminalProcessesLoaded {
+                        request_id,
+                        session_id,
+                        profile: event_profile,
+                        connection_id: None,
                         result,
                     })
                     .is_err()
@@ -24803,6 +25009,197 @@ mod tests {
         ] {
             assert!(parse_active_session_statuses(invalid).is_err());
         }
+    }
+
+    #[test]
+    fn agent_terminal_process_parser_validates_bounded_unique_rows() {
+        let processes = parse_agent_terminal_processes(json!({"processes":[
+            {"session_id":"proc-1","command":"cargo test","status":"running","output_tail":"compiling"},
+            {"session_id":"proc-2","command":"python script.py","status":"exited","exit_code":0}
+        ]}))
+        .expect("valid process list snapshot");
+        assert_eq!(processes.len(), 2);
+        assert_eq!(processes[0].process_id, "proc-1");
+        assert_eq!(processes[0].command, "cargo test");
+        assert_eq!(processes[0].output_tail, "compiling");
+        assert_eq!(processes[1].status, "exited");
+        assert_eq!(processes[1].exit_code, Some(0));
+
+        for invalid in [
+            json!({}),
+            json!({"processes":[{"session_id":"", "status":"running"}]}),
+            json!({"processes":[
+                {"session_id":"duplicate"},
+                {"session_id":"duplicate"}
+            ]}),
+            json!({"processes":[{"session_id":"proc","command":"x\0y"}]}),
+            json!({"processes":[{"session_id":"proc","status":"bad\nstatus"}]}),
+            json!({"processes":[{"session_id":"proc","output_tail":"x".repeat(MAX_AGENT_TERMINAL_PROCESS_TAIL_BYTES + 1)}]}),
+            json!({"processes":[{"session_id":"proc","exit_code":2147483648_i64}]}),
+        ] {
+            assert!(parse_agent_terminal_processes(invalid).is_err());
+        }
+        assert!(
+            parse_agent_terminal_processes(json!({"processes":vec![
+                json!({"session_id":"proc"}); MAX_AGENT_TERMINAL_PROCESS_ROWS + 1
+            ]}))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn agent_terminal_process_list_uses_pinned_session_rpc_and_preserves_owner_metadata() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind process-list fixture");
+        let address = listener.local_addr().expect("process-list fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept process-list client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read process-list request")
+            {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected process-list request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "process.list");
+            assert_eq!(
+                request["params"],
+                json!({
+                    "session_id":"runtime-session",
+                    "profile":"worker"
+                })
+            );
+            let id = request["id"].as_u64().expect("numeric RPC id");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":id,
+                        "result":{"processes":[{
+                            "session_id":"process-1",
+                            "command":"cargo test",
+                            "status":"running",
+                            "output_tail":"running tests"
+                        }]}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send process-list response");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::LoadAgentTerminalProcesses {
+                request_id: "agent-processes-1".into(),
+                session_id: "runtime-session".into(),
+                profile: Some("worker".into()),
+            })
+            .expect("queue process-list read");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("process-list result"),
+            GatewayEvent::AgentTerminalProcessesLoaded {
+                request_id, session_id, profile, result: Ok(processes), ..
+            } if request_id == "agent-processes-1"
+                && session_id == "runtime-session"
+                && profile.as_deref() == Some("worker")
+                && processes == vec![AgentTerminalProcess {
+                    process_id: "process-1".into(),
+                    command: "cargo test".into(),
+                    status: "running".into(),
+                    output_tail: "running tests".into(),
+                    exit_code: None,
+                }]
+        ));
+        drop(command_tx);
+        actor.join().expect("join gateway actor");
+        server.join().expect("join process-list fixture");
+    }
+
+    #[test]
+    fn agent_terminal_process_list_omits_attached_owner_profile_on_wire() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind owner process-list fixture");
+        let address = listener.local_addr().expect("owner process-list address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept process-list client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read process-list request")
+            {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse request"),
+                other => panic!("expected process-list request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "process.list");
+            assert_eq!(request["params"], json!({"session_id":"runtime-session"}));
+            let id = request["id"].as_u64().expect("numeric RPC id");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":id,
+                        "result":{"processes":[]}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send process-list response");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture timeout");
+        }
+        let endpoint = GatewayEndpoint {
+            profile_id: "owner-profile".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        };
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || {
+            let mut replay_cursors = HashMap::new();
+            gateway_actor_with_replay(
+                &mut socket,
+                &command_rx,
+                event_tx,
+                "",
+                Some(endpoint),
+                &mut replay_cursors,
+            );
+        });
+        command_tx
+            .send(GatewayCommand::LoadAgentTerminalProcesses {
+                request_id: "agent-processes-owner".into(),
+                session_id: "runtime-session".into(),
+                profile: Some("owner-profile".into()),
+            })
+            .expect("queue owner process-list read");
+        assert!(matches!(
+            event_rx.recv_timeout(Duration::from_secs(3)).expect("process-list result"),
+            GatewayEvent::AgentTerminalProcessesLoaded {
+                request_id, session_id, profile, result: Ok(processes), ..
+            } if request_id == "agent-processes-owner"
+                && session_id == "runtime-session"
+                && profile.as_deref() == Some("owner-profile")
+                && processes.is_empty()
+        ));
+        drop(command_tx);
+        actor.join().expect("join gateway actor");
+        server.join().expect("join process-list fixture");
     }
 
     #[test]

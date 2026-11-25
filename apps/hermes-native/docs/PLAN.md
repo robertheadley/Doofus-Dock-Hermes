@@ -13,7 +13,9 @@
 
 Immediate completion means the operator can finish a real coding assignment in Hermes Native without the original Desktop app. The feature ledger helps locate gaps but is not a completion percentage. The broad parity objective and architectural follow-on work remain preserved as later milestones. DoofusDock provides the UI framework; Hermes remains authoritative for Gateway, runtime, tools, and agent loops.
 
-## Working revision 388 — live workflow critical path (2026-11-25)
+## Working revision 389 — live workflow critical path (2026-11-25)
+
+PAR-0066 now hydrates Hermes background processes from bounded, owner-fenced `process.list` snapshots when its collapsed-by-default Agent output section opens and polls every five seconds while visible. Snapshot tails merge with live chunks without duplicate output and restore terminal process status. The locked workspace suite passes 802 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt and diff checks pass. Live Gateway, packaged Windows, and formal source-paired acceptance remain open.
 
 The current headless executable connects to the isolated Gateway, opens a session, and submits the controlled coding prompt. The provider returns HTTP 402 `Insufficient Balance` for `deepseek-flash` before any tool call, so the test project remains unchanged. The application rendered the provider error and returned to a non-pending state. This is the current external blocker; the previously recorded Python-runtime discovery diagnostic is separate and has not been shown to cause the failure.
 

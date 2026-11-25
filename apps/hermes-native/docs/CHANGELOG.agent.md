@@ -3769,3 +3769,27 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - performance: Output storage is bounded per chunk, process, and session owner; no benchmark claim.
 - risks: `process.list` snapshot hydration and live Gateway, packaged Windows, and formal source-paired behavior remain unverified.
 - follow_up: Add owner-fenced `process.list` hydration or an equivalent authoritative snapshot path, then validate stream reconnection and visible behavior against the pinned Gateway.
+
+## Revision 389 — Hydrate Hermes Agent terminal processes — 2026-11-25
+
+- **id:** `hermes-par-0066-process-snapshot-hydration-20261125`
+- **what:** Added bounded `process.list` snapshot parsing and owner-fenced loading for the collapsed-by-default Hermes Agent output section. Opening the section loads existing process tails; while open it refreshes every five seconds. Snapshot output merges with live chunks without duplication and restores finished process exit codes.
+- **why:** Streaming events alone omit processes already running when the panel opens or reconnects.
+- **components:** `apps/hermes-native/src/gateway.rs`, `apps/hermes-native/src/app.rs`, PAR-0066 docs and progress evidence.
+- **type:** Agent workflow reliability.
+- **validation:** Full locked workspace suite passed (802 library + 15 automation protocol + 3 launcher tests); all-target locked Cargo check, rustfmt check, and `git diff --check` passed.
+- **performance:** Snapshot requests are bounded to 12 seconds and 2 MiB; UI polling runs only while the section is open and is limited to one request per five seconds.
+- **risks:** Authenticated live Gateway, packaged Windows behavior, and formal source-paired acceptance remain unverified; PAR-0066 remains partial.
+- **follow_up:** Validate snapshot-to-stream continuity against an authenticated Gateway and confirm the packaged Windows surface.
+
+## Revision 390 — Record terminal workflow evidence — 2026-11-25
+
+- **id:** `hermes-par-0066-terminal-evidence-20261125`
+- **what:** Added PAR-0066 implementation evidence to the capability progress builder and the pinned-source capability map. The capability remains `partial` because authenticated live Gateway, packaged Windows, and formal source-paired acceptance remain open.
+- **why:** The previous generated status omitted the new process snapshot and terminal-selection tests, leaving the row `unknown` despite successful validation.
+- **components:** `apps/hermes-native/tools/build_implementation_progress.py`, `apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv`, `apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv`, capability map EV-0184.
+- **type:** Evidence and status reconciliation.
+- **validation:** Both progress generators pass. The scoped UCM report classifies the capability as partial with scenario coverage and reports no EV-0184-specific errors. The map-wide checker still exits nonzero for 187 pre-existing schema errors and eight reconciliation items.
+- **performance:** No runtime behavior changed.
+- **risks:** Historical map inconsistencies remain and are not rewritten by this update.
+- **follow_up:** Reconcile historical map errors separately; complete live Gateway and packaged Windows acceptance.

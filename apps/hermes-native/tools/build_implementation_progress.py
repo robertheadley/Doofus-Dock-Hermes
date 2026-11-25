@@ -1875,6 +1875,21 @@ EVIDENCE: dict[str, dict[str, object]] = {
         ],
         "gaps": ["tool-run lifecycle timestamp mapping from structured nested parts", "live Gateway behavior", "source-paired Windows acceptance"],
     },
+    "PAR-0066": {
+        "state": "partial",
+        "level": "headless_terminal_snapshot_and_draft_tests",
+        "refs": [
+            '.staging/hermes-pinned-878305/tui_gateway/contracts/tools_commands.py#method("process.list"',
+            "apps/hermes-native/src/gateway.rs#fn parse_agent_terminal_processes",
+            "apps/hermes-native/src/gateway.rs#agent_terminal_process_parser_validates_bounded_unique_rows",
+            "apps/hermes-native/src/gateway.rs#agent_terminal_process_list_uses_pinned_session_rpc_and_preserves_owner_metadata",
+            "apps/hermes-native/src/app.rs#agent_terminal_snapshot_merges_live_chunks_and_restores_finished_processes",
+            "apps/hermes-native/src/app.rs#stale_agent_terminal_snapshot_cannot_clear_a_newer_owner_request",
+            "apps/hermes-native/src/app.rs#agent_terminal_output_section_is_collapsed_until_opened",
+            "apps/hermes-native/src/app.rs#adding_terminal_selection_preserves_and_persists_the_unsent_chat_draft",
+        ],
+        "gaps": ["authenticated live Gateway behavior", "packaged Windows behavior", "formal pinned-source acceptance", "full-screen local terminal input and TUI interaction"],
+    },
     "PAR-0067": {
         "state": "partial",
         "level": "headless_rendered_two_pane_panel_scoped_inline_skill_completion",

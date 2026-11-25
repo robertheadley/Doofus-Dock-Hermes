@@ -1,0 +1,14 @@
+{
+  "uid": "EV-0184",
+  "capability_id": "ui-convert-selected-terminal-text-into-composer-draft",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-25",
+  "branch": "main",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Hermes Native locked workspace suite with agent-automation: 802 library + 15 automation protocol + 3 launcher tests; all-target cargo check passed.",
+  "scenario": "terminal-selection-to-draft-and-owner-fenced-agent-process-snapshot-continuity",
+  "locator": "../../../../apps/hermes-native/src/app.rs::adding_terminal_selection_preserves_and_persists_the_unsent_chat_draft; ../../../../apps/hermes-native/src/app.rs::agent_terminal_snapshot_merges_live_chunks_and_restores_finished_processes; ../../../../apps/hermes-native/src/gateway.rs::agent_terminal_process_parser_validates_bounded_unique_rows; ../../../../apps/hermes-native/src/gateway.rs::agent_terminal_process_list_uses_pinned_session_rpc_and_preserves_owner_metadata",
+  "notes": "Headless regressions prove selected terminal text is appended to and persisted with the unsent draft, bounded process.list rows parse correctly, the pinned profile-scoped RPC returns rows, and snapshots merge with live chunks while restoring process completion. Evidence establishes implementation-level behavior only. Authenticated live Gateway, packaged Windows acceptance, and formal pinned-source pairing remain open, so the capability is partial."
+}
