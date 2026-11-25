@@ -5596,3 +5596,7 @@ Native reconnect now turns Hermes' explicit `snapshot_required: true` response i
 - **performance:** Existing font-family registration only; no runtime I/O added.
 - **risks:** Platform-specific rendering and packaged Windows acceptance remain unverified.
 - **follow_up:** Evaluate platform and theme-specific font-stack differences separately.
+
+### Hermes Native typography documentation — 2026-11-25
+
+Corrected the font asset inventory so documented roles match the pinned source and the native implementation: proportional platform UI typography for regular interface/chat text, JetBrains Mono for monospace content, and Fira Code as its fallback. The two focused font contract tests pass. No runtime files changed.

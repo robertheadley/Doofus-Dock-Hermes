@@ -3709,3 +3709,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Uses the existing registered proportional font family; no frame-loop I/O or extra font loading.
 - **risks:** Cross-platform font rasterization and packaged Windows visual behavior remain unverified.
 - **follow_up:** Keep theme-configurable and platform-wide font-stack parity as distinct follow-up work.
+
+### Typography documentation correction — 2026-11-25
+
+- **id:** hermes-font-role-doc-correction-20261125
+- **what:** Corrected the bundled font inventory to document Segoe UI as the Windows proportional UI face and JetBrains Mono followed by Fira Code for monospace content.
+- **why:** The prior inventory described an obsolete monospace composer mapping that contradicted the pinned Hermes source and current implementation.
+- **components:** `apps/hermes-native/assets/fonts/README.md`.
+- **type:** documentation correction.
+- **validation:** Focused `fonts::tests` pass (2 tests); documentation assertions and `git diff --check` pass.
+- **performance:** No runtime or build behavior changed.
+- **risks:** Non-Windows font rasterization and packaged Windows visual acceptance remain unverified.
+- **follow_up:** None for this documentation correction.
