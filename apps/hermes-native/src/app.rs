@@ -6243,31 +6243,35 @@ fn render_message() -> &'static str {
                                 stream.command.lines().next().unwrap_or_default()
                             )
                         };
-                        ui.collapsing(title, |ui| {
-                            ui.label(format!("Process {}", stream.process_id));
-                            if let Some(exit_code) = stream.exit_code {
-                                ui.label(format!("Exit code: {exit_code}"));
-                            }
-                            if stream.output.is_empty() {
-                                ui.label("Waiting for process output…");
-                            } else {
-                                let mut read_only_output = stream.output.as_str();
-                                egui::ScrollArea::vertical()
-                                    .id_salt(("agent-process-output", &stream.process_id))
-                                    .stick_to_bottom(true)
-                                    .max_height(240.0)
-                                    .show(ui, |ui| {
-                                        egui::TextEdit::multiline(&mut read_only_output)
-                                            .id_salt((
-                                                "agent-process-output-text",
-                                                &stream.process_id,
-                                            ))
-                                            .font(egui::TextStyle::Monospace)
-                                            .desired_width(f32::INFINITY)
-                                            .show(ui);
-                                    });
-                            }
-                        });
+                        egui::CollapsingHeader::new(title)
+                            .id_salt(("agent-process-stream", &stream.process_id))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                ui.label(format!("Process {}", stream.process_id));
+                                if let Some(exit_code) = stream.exit_code {
+                                    ui.label(format!("Exit code: {exit_code}"));
+                                }
+                                if stream.output.is_empty() {
+                                    ui.label("Waiting for process output…");
+                                } else {
+                                    ui.label(RichText::new("Process output").color(MUTED).small());
+                                    let mut read_only_output = stream.output.as_str();
+                                    egui::ScrollArea::vertical()
+                                        .id_salt(("agent-process-output", &stream.process_id))
+                                        .stick_to_bottom(true)
+                                        .max_height(240.0)
+                                        .show(ui, |ui| {
+                                            egui::TextEdit::multiline(&mut read_only_output)
+                                                .id_salt((
+                                                    "agent-process-output-text",
+                                                    &stream.process_id,
+                                                ))
+                                                .font(egui::TextStyle::Monospace)
+                                                .desired_width(f32::INFINITY)
+                                                .show(ui);
+                                        });
+                                }
+                            });
                     }
                 }
                 if let Some(error) = snapshot_error.as_deref() {
@@ -62083,6 +62087,10 @@ mod tests {
         harness.get_by_label(heading).click();
         harness.run();
         assert!(harness.query_by_label(process_heading).is_some());
+        assert!(
+            harness.query_by_label("Process output").is_some(),
+            "expanding Agent output immediately reveals the process output viewer"
+        );
         let (_request_id, session_id, profile) = process_requests
             .recv_timeout(std::time::Duration::from_secs(1))
             .expect("opening Agent output requests the active session process snapshot");

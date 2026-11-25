@@ -3821,3 +3821,30 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime behavior changed.
 - **risks:** Populated Agent output cannot be live-verified until a usable provider can execute the background terminal tool.
 - **follow_up:** Preserve the live empty-state result and continue another dependency-ready release item; do not inject synthetic process state or submit another model prompt.
+
+
+## Revision 393 — Build portable Hermes Native Windows package — 2026-11-25
+
+- **id:** `hermes-native-portable-package-20261125T2324Z`
+- **timestamp:** `2026-11-25T23:24:30Z`
+- **what:** Added a reproducible, source-commit-qualified Windows x64 package script and built a local bundle containing the Hermes UI, headless automation executable/client, PDFium, notices, and hash/provenance metadata.
+- **why:** Give the operator a runnable Hermes Native package and preserve the agent-operated UI interface alongside the Rust app.
+- **components:** `apps/hermes-native/tools/package-windows-portable.ps1`, `PACKAGING_WINDOWS.md`, Hermes Native README/backlog/delivery records, local `artifacts/releases` bundle.
+- **type:** Release tooling and package artifact.
+- **validation:** PowerShell parser passes; locked release build passes; PDFium source/output hash matches; package file lengths/hashes and provenance validate; packaged `HermesPage.launchNative()` shows route `/` and Settings then closes; main exe rejects invalid child-window identity before any GUI opens. No screenshot or live Gateway/model prompt was used.
+- **performance:** Release build completed in 7m38s with thin LTO; this is build duration, not a runtime benchmark. Subsequent cached package build took under one second.
+- **risks:** Visible cold launch, packaged live-Gateway behavior and provider-backed coding acceptance remain open. Cargo metadata declares Hermes Native MIT but this repository snapshot has no app license text; external redistribution requires that gap to be resolved. A failed first assembly left a preserved incomplete staging folder under `artifacts/releases`; it is not referenced by the package manifest.
+- **follow_up:** Rebuild after the packaging tooling commit so the package source SHA includes the new script/docs; verify live Gateway and provider-backed tool behavior when account entitlement is available; resolve the app license file before external redistribution.
+
+## Revision 394 — Reveal Hermes process output on first expansion — 2026-11-25
+
+- **id:** `hermes-agent-output-first-expand-20261125T2332Z`
+- **timestamp:** `2026-11-25T23:32:51Z`
+- **what:** Kept the Terminal Dock's Hermes Agent output section collapsed by default, and made per-process cards open on the section's first expansion. Added a visible Process output marker and stable per-process widget identity.
+- **why:** One click should reveal the live stream while leaving the terminal uncluttered initially.
+- **components:** Hermes Agent output rendering, headless UI regression, README, architecture, delivery objective.
+- **type:** Agent workflow UI behavior and discoverability.
+- **validation:** `cargo test --locked -p hermes-native --features agent-automation agent_terminal_output_section_is_collapsed_until_opened -- --nocapture` passes; `cargo fmt --all -- --check` passes after formatting. An initial attempt without `agent-automation` failed because the optional `egui_kittest` dependency is feature-gated. A first stream-text accessibility assertion was invalid; the regression now asserts the visible Process output marker.
+- **performance:** No benchmark requested or changed; process output remains bounded and only requested while the section is open.
+- **risks:** A live populated Gateway stream was not available in this test; authenticated live and packaged behavior remain open.
+- **follow_up:** Rebuild the portable package after the package tooling and terminal UI changes are committed.

@@ -6,11 +6,11 @@
 4. **Project context and artifacts:** verify working directory, file/image attachment handling, terminal/file/artifact access in the same workflow.
 5. **Reliability/release:** restart and resume, isolate two concurrent sessions, then package and launch the Windows executable.
 
-The target window is 24–72 hours, not a measured ETA. The current model credit failure blocks provider-backed acceptance; implementation and headless validation continue where independent. Detailed capabilities and acceptance live in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md).
+The target window is 24–72 hours, not a measured ETA. The current model credit failure blocks provider-backed acceptance; implementation and headless validation continue where independent. Detailed capabilities and acceptance live in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md). A source-commit-qualified portable Windows package script now builds the release UI and headless agent-control binary, validates PDFium and bundled notices, and emits a provenance/hash manifest. A cold packaged launch and provider-backed coding task remain release gates.
 
 ## Terminal slice — local implementation, partial acceptance
 
-The existing Dock Terminal pane now exposes a configurable working folder and explicit **Start local shell** action. It runs a local `portable-pty` process independently of the Hermes Gateway, displays a bounded VT screen, accepts complete command lines, supports resize, Ctrl+C, and Stop, and never launches merely because the pane was rendered. Windows tests cover command output, query-response handling, resize, and clean exit. This is line-oriented; full key-by-key terminal input, full-screen TUI behavior, packaged-app interaction, and pinned-source acceptance remain open.
+The existing Dock Terminal pane now exposes a configurable working folder and explicit **Start local shell** action. It runs a local `portable-pty` process independently of the Hermes Gateway, displays a bounded VT screen, accepts complete command lines, supports resize, Ctrl+C, and Stop, and never launches merely because the pane was rendered. The separate Hermes **Agent output** section stays collapsed by default; opening it reveals each process output viewer immediately. Windows tests cover command output, query-response handling, resize, and clean exit. This is line-oriented; full key-by-key terminal input, full-screen TUI behavior, packaged-app interaction, and pinned-source acceptance remain open.
 
 ## Deferred until after first usable release
 

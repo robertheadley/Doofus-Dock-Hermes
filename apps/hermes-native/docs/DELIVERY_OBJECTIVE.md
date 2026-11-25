@@ -51,7 +51,7 @@ Continue to preserve the prior broad Hermes functional-parity objective against 
 - The current Hermes Native automation executable compiled and launched headlessly against an isolated local Hermes Gateway. The profile-scope fix is present; the live prompt reached the configured model.
 - The controlled coding assignment was attempted at 2026-11-25T17:25:29Z. DeepSeek returned HTTP 402 (`Insufficient Balance`) for `deepseek-flash` before tool execution. The assistant error appeared in the native transcript; no file changed and the unit test was not run. This is a provider blocker, not a UI approval or tool result.
 - The live agent runner also surfaced a separate repository-discovery diagnostic because Hermes did not report its installed Python runtime. This is recorded for follow-up, not assumed to have caused the model failure.
-- The Terminal Dock panel now offers an explicitly started local PTY, configurable working folder, command input, output, resize, interrupt, and stop. Windows PTY tests prove command output and clean exit; the terminal view is line-oriented, and full-screen character input/emulation plus packaged-app acceptance remain open.
+- The Terminal Dock panel offers an explicitly started local PTY, configurable working folder, command input, output, resize, interrupt, and stop, plus a collapsed-by-default Hermes Agent output section. Expanding Agent output shows its process cards and read-only streaming output immediately; the section loads bounded `process.list` snapshots and merges them with live session-scoped process events. Windows PTY tests prove command output and clean exit; the local terminal remains line-oriented, and full-screen character input/emulation plus packaged-app acceptance remain open.
 - The source workspace has pre-existing operator-owned continuity state, screenshots, and work artifacts. Preserve them and stage only files explicitly owned for this task.
 
 
@@ -90,3 +90,10 @@ Use the operator-provided Doofus Design Guide as the visual target: warm charcoa
 
 - Hermes Native pins all four DoofusDock crates (`core`, `host-egui`, `presentation`, `render-egui`) to `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`; a read-only remote ref check found DoofusDock `main` at the same commit. No dependency refresh is currently needed.
 - The pinned Hermes Gateway provides background-process list/stop/kill operations, but no process-spawn RPC. Spawning comes from Hermes' `terminal(background=true)` agent tool, so producing a populated live process pane without a model/tool turn is unsupported. No synthetic process was injected.
+
+
+## Portable package candidate (2026-11-25T23:24Z)
+
+- A local source-qualified Windows x64 bundle was built at `artifacts/releases/hermes-native-windows-x64-1765d78f01a9`. It contains `hermes-native.exe`, `hermes-automation.exe`, the pinned PDFium DLL, `HermesPage`, provenance/hash metadata, and the license files present in this checkout. The app itself declares MIT in Cargo metadata, but this checkout has no standalone Hermes Native license text; the bundle flags that gap.
+- Headless validation confirms the packaged native helper exposes `hermes-native-window/1`, renders the New session route with Settings visible, and closes cleanly. The main binary rejects an invalid child-window identity before opening a window. No screenshot, profile, credentials, Gateway prompt, or model call was used.
+- A cold visible launch, packaged live-Gateway connection, and provider-backed coding assignment remain unverified. The package is local and tied to the source commit in its `PACKAGE.json`; it is not a signed installer.
