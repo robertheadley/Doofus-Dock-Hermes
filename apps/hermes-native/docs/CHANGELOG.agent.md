@@ -3721,3 +3721,27 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No runtime or build behavior changed.
 - **risks:** Non-Windows font rasterization and packaged Windows visual acceptance remain unverified.
 - **follow_up:** None for this documentation correction.
+
+### Revision 383 — Panel-scoped inline skill suggestions — 2026-11-25
+
+- **id:** hermes-par-0067-inline-skill-suggestions-20261125
+- **what:** Added caret-aware inline skill suggestions after whitespace, token-only replacement, panel-scoped completion ownership and stale-caret clamping; request/response results are fenced by the focused composer ID.
+- **why:** Skill invocation is a core agent workflow, and visible session panes must not overwrite one another's completion state.
+- **components:** `apps/hermes-native/src/app.rs`, slash completion headless tests, PAR-0067 progress/evidence and architecture/backlog notes.
+- **type:** agent workflow feature
+- **validation:** Focused slash suite 12/12; full locked workspace tests 761+15+3; all-target check, rustfmt and diff checks pass. EV-0182 records partial implementation evidence.
+- **performance:** Existing 60 ms debounce remains; no additional worker or network request is introduced.
+- **risks:** Suggestions may remain visible on the last owning pane after blur; full rendered two-pane focus-switch and late-response UI tests remain open. Live Gateway and packaged Windows/source-paired behavior are unverified.
+- **follow_up:** Implement directive-chip interactions, suggestion caching/invalidation and local session/skin commands; validate with live Gateway and a rendered multi-pane focus-switch scenario.
+
+## Revision 384 — PAR-0067 UCM evidence correction
+- id: hermes-par-0067-ucm-evidence-fix-20261125
+- timestamp: 2026-11-25T00:59:03Z
+- what: Declared the inline skill completion scenario and made EV-0182's locator resolve from the capability map root.
+- why: The installed Universal Capability Map checker requires declared scenario IDs and repository-relative file locators.
+- components: maps/capabilities.yaml; maps/capabilities/evidence/EV-0182.json
+- type: evidence correction
+- validation: EV-0182 YAML/JSON, scenario, and locator checks pass. Full-map checking still reports 187 historical schema errors and 8 reconciliation items outside this entry.
+- performance: No runtime change.
+- risks: Capability map remains globally inconsistent due to existing historical evidence; no historical entries were rewritten.
+- follow_up: Reconcile older map records in a separate scoped task.

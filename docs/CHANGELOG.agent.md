@@ -5600,3 +5600,19 @@ Native reconnect now turns Hermes' explicit `snapshot_required: true` response i
 ### Hermes Native typography documentation — 2026-11-25
 
 Corrected the font asset inventory so documented roles match the pinned source and the native implementation: proportional platform UI typography for regular interface/chat text, JetBrains Mono for monospace content, and Fira Code as its fallback. The two focused font contract tests pass. No runtime files changed.
+
+### Hermes inline skill suggestions — 2026-11-25
+
+Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item replaces only the slash token, keeps surrounding prose, and never sends the prompt. Composer IDs now fence suggestion state and late results across docked panels. The feature remains partial pending directive chips, special local commands, live Gateway, and packaged/source-paired acceptance.
+
+## Revision 384 — PAR-0067 UCM evidence correction
+- id: hermes-par-0067-ucm-evidence-fix-20261125
+- timestamp: 2026-11-25T00:59:03Z
+- what: Declared the inline skill completion scenario and made EV-0182's locator resolve from the capability map root.
+- why: The installed Universal Capability Map checker requires declared scenario IDs and repository-relative file locators.
+- components: maps/capabilities.yaml; maps/capabilities/evidence/EV-0182.json
+- type: evidence correction
+- validation: EV-0182 YAML/JSON, scenario, and locator checks pass. Full-map checking still reports 187 historical schema errors and 8 reconciliation items outside this entry.
+- performance: No runtime change.
+- risks: Capability map remains globally inconsistent due to existing historical evidence; no historical entries were rewritten.
+- follow_up: Reconcile older map records in a separate scoped task.

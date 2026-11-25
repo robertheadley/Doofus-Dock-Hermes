@@ -1662,6 +1662,12 @@ capabilities:
     backend: unknown
     ui: partial
     tests: partial
+  verification:
+    scenarios:
+    - id: leading-and-inline-skill-suggestions-preserve-prose-and-never-send-a-prompt
+      description: Inline skill suggestions work at the caret, preserve surrounding prose, and insert a selection without submitting the prompt.
+  evidence:
+  - EV-0182
 - id: ui-preview-directive-chip-actions-without-stealing-selection
   name: Preview directive chip actions without stealing selection
   area: chat-transcript

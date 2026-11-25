@@ -2,7 +2,7 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 379 (implementation in progress).
+- **Working revision:** 383 (implementation in progress).
 - **Status:** in progress; current gate is a first usable, verified native agent-workflow UI, not a full Desktop replica.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87` (fetched `main` on 2026-11-24; exact commit pinned until explicitly refreshed).
@@ -2355,3 +2355,9 @@ PAR-0513 now converts only an explicit pinned `snapshot_required: true` replay r
 The main and message-edit composers now use the scaled proportional UI font, matching the pinned source. JetBrains Mono and Fira Code remain registered for monospace content. The chat body/tool/caption sizes, default 110% scale and transcript/list indents remain at their source-derived values.
 
 Validation: focused `chat_scale_and_transcript_rhythm_match_pinned_desktop_defaults` passes; `cargo fmt --all -- --check` and `git diff --check` pass. A gateway-isolated 1440×900 session-pane screenshot was captured and visually reviewed at `artifacts/agent-ui/typography-source-fonts-20261124.png`.
+
+### Revision 383 — Add panel-scoped inline skill suggestions — 2026-11-25
+
+PAR-0067 now recognizes a slash token after whitespace at the caret, limits inline results to skills, replaces only the token, and preserves surrounding prose. Click and keyboard selection update the draft without submitting. The request and response are fenced by the stable panel-scoped composer ID in addition to existing request/session/profile/connection identity; an unfocused pane cannot overwrite the active completion query. Stale caret indices are clamped to the shortened draft.
+
+Validation: focused slash suite passes 12 tests; full locked workspace suite passes 761 library + 15 automation protocol + 3 launcher tests; all-target locked check, `cargo fmt --all -- --check`, and `git diff --check` pass. EV-0182 records this implementation-level evidence and PAR-0067 remains partial. Limits: no authenticated live Gateway, full rendered two-pane focus-switch scenario, packaged Windows or formal pinned-source acceptance; directive chips, result caching and local session/skin commands remain open.
