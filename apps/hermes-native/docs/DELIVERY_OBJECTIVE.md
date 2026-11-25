@@ -55,13 +55,13 @@ Continue to preserve the prior broad Hermes functional-parity objective against 
 - The source workspace has pre-existing operator-owned continuity state, screenshots, and work artifacts. Preserve them and stage only files explicitly owned for this task.
 
 
-## Latest verified state (2026-11-25 19:19 UTC)
+## Latest verified state (2026-11-25 20:28 UTC)
 
 - The isolated live coding attempt used `deepseek-flash` and failed with HTTP 402 Insufficient Balance before any tool call. The persisted session has two messages, zero tool calls, and an unchanged fixture; the prompt was not resubmitted.
 - Native attach now merges canonical live and stored session scopes, preserving legacy TUI behavior. Headless runtime readback shows five sessions and successfully opens the previously hidden stored session with its two-message transcript.
 - The new-chat model picker exposes provider-qualified model names. Headless state readback verifies `deepseek` / `deepseek-chat` with `source=user_selected`; this proves selection only, not account availability.
 - The full workspace suite passed with 777 Hermes Native library tests; all-target check, automation build, runner test, formatting, diff check, and canonical task validation passed.
-- Current live diagnostics still show repository discovery HTTP 403 and session-recency HTTP 422. Provider-backed coding acceptance, restart/resume after a successful turn, packaged Windows behavior, concurrent sessions, and remaining feature workflows remain open.
+- Session-recency HTTP 422 is resolved: the pinned `/api/sessions` contract caps `limit` at 100, so native startup/refresh now requests 100 instead of 200. Focused regression, full workspace tests, all-target feature check, automation build, format/diff checks, and a headless live Gateway readback pass; the app reports five sessions with no load error. Workspace repository-discovery settings now load from the pinned Gateway after correcting config profile scope; the saved profile has discovery disabled and no roots, so scan execution remains unverified. Provider-backed coding acceptance (prior HTTP 402), restart/resume after a successful turn, packaged Windows behavior, concurrent sessions, and remaining feature workflows remain open.
 
 ## Visual direction for the post-feature-parity pass
 

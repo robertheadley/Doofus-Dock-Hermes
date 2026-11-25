@@ -5744,3 +5744,41 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: No performance change claimed.
 - risks: Original provider turn failed before tools with HTTP 402 and remains a failed acceptance; no prompt was retried. Repository discovery HTTP 403 and session recency HTTP 422 remain. Physical desktop/package behavior is not proven by headless rendering.
 - follow_up: Fix the remaining profile-scoped HTTP routes and continue attachments/tool-result/skills/plugins acceptance; run a fresh provider-backed coding assignment only after a usable provider is verified.
+
+### publish-agent-workflow-foundation-9510aeb
+
+- id: `publish-agent-workflow-foundation-9510aeb`
+- timestamp: `2026-11-25T19:22:34Z`
+- what: Published the validated Hermes Native agent-workflow foundation, local Terminal Dock integration, acceptance runner, and supporting documentation to `origin/main` at commit `9510aeb92732904e6abc2cafe86a1ce3754c8d27`.
+- why: The operator asked for the repository to remain current on main and authorized publication of completed work.
+- components: Native app, Gateway adapter, terminal module, headless automation protocol, live acceptance runner, delivery/architecture/backlog/docs.
+- type: Main-branch publication.
+- validation: Full workspace tests and all-target check passed before commit; automation build, runner test, formatting, diff check, and Doofus state validation passed. Post-push fetch confirms local main and origin/main both equal `9510aeb92732904e6abc2cafe86a1ce3754c8d27`.
+- performance: No performance change claimed.
+- risks: Provider-backed coding acceptance remains failed at HTTP 402; repository discovery 403 and session-recency 422 remain. Operator-owned `.doofus`, temporary work/lock files, and local screenshot artifacts were excluded from the commit.
+- follow_up: Continue functional agent-workflow gaps; run a new provider-backed assignment only after a usable account/model is established.
+
+## hermes-session-list-api-limit-20261125
+
+- id: `hermes-session-list-api-limit-20261125`
+- timestamp: 2026-11-25T20:11:30Z
+- what: Capped native requests to Hermes `/api/sessions` at 100 rows for both local and remote session loading, matching the pinned route validation.
+- why: The previous limit of 200 returned HTTP 422 and prevented the app from showing the session list on the live Gateway.
+- components: `apps/hermes-native/src/gateway.rs`; delivery status and headless verification artifact.
+- type: API contract compatibility fix.
+- validation: Focused session-list HTTP test passed; full workspace tests passed (800 total); `cargo check --workspace --all-targets --locked --features agent-automation`, automation binary build, Node completion-gate test, rustfmt, `git diff --check`, and headless app readback passed. Live state: Gateway connected, five sessions, no load error, no prompt submitted.
+- performance: Initial list is bounded to the API's supported 100 rows; no benchmark change claimed.
+- risks: The source API exposes pagination for more sessions; this first load only fetches its first page. Repository-discovery HTTP 403 and prior provider HTTP 402 remain unresolved. Packaged Windows behavior is not proven.
+- follow_up: Diagnose repository-discovery HTTP 403; continue offline agent-workflow gaps; attempt a live coding assignment only after usable model access is established.
+## hermes-repo-scan-config-profile-scope-20261125
+
+- id: `hermes-repo-scan-config-profile-scope-20261125`
+- timestamp: 2026-11-25T20:28:46Z
+- what: Use the attached Hermes profile owner correctly for `/api/config` reads and writes; the active owner path no longer gets sent as a logical profile name. Sidebar refresh maps owner paths to profile aliases, and API error details now omit server supplied text and unsafe path-like fields.
+- why: Gateway owner paths and HTTP profile selectors are different identities; sending the owner path produced a forbidden config request. Raw error strings could also echo sensitive user values.
+- components: `apps/hermes-native/src/gateway.rs`; config-selector and sidebar mapping tests; bounded HTTP error-detail tests.
+- type: Gateway profile-scope correctness and diagnostic data-safety fix.
+- validation: Config-scope and sidebar mapping unit tests; 223 Gateway tests; safe error-detail tests; full workspace tests (782 native, 15 automation, 3 binary); feature-enabled all-target check; automation build; Node acceptance-gate test; formatting and diff checks. Headless live UI confirms five sessions and a loaded workspace repository-discovery form with no visible 403.
+- performance: Profile aliases are resolved once per HTTP actor and cached; no benchmark change claimed.
+- risks: The live profile has repository discovery disabled and no scan roots, so scan behavior is not verified; provider HTTP 402 continues to block a real tool-turn acceptance.
+- follow_up: Continue offline tool, attachment, skill, and plugin workflows; verify repository scanning only after a project root is intentionally configured; use a usable provider before another live coding attempt.

@@ -1,0 +1,46 @@
+{
+  "schema": "hermes-native-session-list-limit-verification/1",
+  "captured_at_utc": "2026-11-25T20:29:20Z",
+  "request_id": "hermes-session-list-api-limit-20261125",
+  "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_commit": "f23ed02a99c7f8c57f83164d98feadb17cc4ed87",
+  "gateway_process_id": 13700,
+  "api_contract": {
+    "route": "/api/sessions",
+    "source": "apps/hermes-native/.staging/hermes-pinned-878305/hermes_cli/web_routers/sessions.py",
+    "maximum_limit": 100
+  },
+  "native_request_limit": 100,
+  "automated": {
+    "focused_http_limit_test": "passed",
+    "safe_error_detail_tests": "passed",
+    "gateway_tests": 223,
+    "workspace_rust_tests": {
+      "hermes_native": 782,
+      "automation": 15,
+      "binary": 3,
+      "failed": 0
+    },
+    "node_acceptance_runner_test": "passed",
+    "cargo_check_all_targets_with_agent_automation": "passed",
+    "automation_binary_build": "passed",
+    "format": "passed",
+    "diff_check": "passed"
+  },
+  "headless_live": {
+    "gateway": "connected",
+    "session_count": 5,
+    "session_list_error": null,
+    "workspace_settings": "loaded",
+    "repo_discovery_form_visible": true,
+    "repo_discovery_enabled": false,
+    "configured_root_count": 0,
+    "visible_http_403": false,
+    "prompt_submitted": false
+  },
+  "remaining": {
+    "provider_coding_turn": "blocked by HTTP 402 Insufficient Balance",
+    "repo_scan_execution": "not verified because saved settings are disabled with no roots",
+    "native_desktop_package": "not verified"
+  }
+}

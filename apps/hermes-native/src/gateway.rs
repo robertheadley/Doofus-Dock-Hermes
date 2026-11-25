@@ -13331,6 +13331,7 @@ fn gateway_http_actor(
     events: mpsc::Sender<GatewayEvent>,
 ) {
     let transcript_readers_in_flight = Arc::new(AtomicUsize::new(0));
+    let mut sidebar_profile_selector_cache = None;
     while let Ok(command) = commands.recv() {
         if let GatewayHttpCommand::LoadSessionTranscriptPage {
             request_id,
@@ -13790,7 +13791,11 @@ fn gateway_http_actor(
                 GatewayEvent::SessionsRefreshed {
                     request_id,
                     profile_id: endpoint.profile_id.clone(),
-                    result: load_command_center_sessions_http(&endpoint, limit),
+                    result: load_command_center_sessions_http_with_cache(
+                        &endpoint,
+                        limit,
+                        &mut sidebar_profile_selector_cache,
+                    ),
                 }
             }
             GatewayHttpCommand::LoadArchivedSessions { request_id } => {
@@ -14552,10 +14557,13 @@ fn load_all_profile_project_tree_http(
     Ok(tree)
 }
 
+// The pinned Hermes `/api/sessions` route validates `limit <= 100`.
+const SESSION_LIST_API_LIMIT: usize = 100;
+
 fn load_sessions_http(endpoint: &GatewayEndpoint) -> Result<Vec<SessionSummary>, String> {
     if endpoint.remote_auth.is_some() {
         let path = format!(
-            "{}/api/sessions?limit=200&offset=0&min_messages=0&archived=exclude&order=recent",
+            "{}/api/sessions?limit={SESSION_LIST_API_LIMIT}&offset=0&min_messages=0&archived=exclude&order=recent",
             endpoint.api_origin.trim_end_matches('/')
         );
         let mut sessions = request_remote_session_page(endpoint, &path)?.sessions;
@@ -14580,15 +14588,25 @@ fn load_sessions_http(endpoint: &GatewayEndpoint) -> Result<Vec<SessionSummary>,
     Ok(sessions)
 }
 
+#[cfg(test)]
 fn load_command_center_sessions_http(
     endpoint: &GatewayEndpoint,
     limit: usize,
+) -> Result<CommandCenterSessionSnapshot, String> {
+    load_command_center_sessions_http_with_cache(endpoint, limit, &mut None)
+}
+
+fn load_command_center_sessions_http_with_cache(
+    endpoint: &GatewayEndpoint,
+    limit: usize,
+    profile_selector_cache: &mut Option<String>,
 ) -> Result<CommandCenterSessionSnapshot, String> {
     const RECENTS_EXCLUDED: &str = "acp%2Ccron%2Ckanban%2Coneshot%2Csubagent%2Ctool%2Ctelegram%2Cdiscord%2Cslack%2Cmattermost%2Cmatrix%2Csignal%2Cwhatsapp%2Cbluebubbles%2Cphoton%2Chomeassistant%2Cemail%2Csms%2Cwebhook%2Capi_server%2Cweixin%2Cwecom%2Cqqbot%2Cyuanbao%2Cdingtalk%2Cfeishu";
     const MESSAGING_EXCLUDED: &str =
         "cron%2Cacp%2Ccli%2Ccodex%2Cdesktop%2Cgateway%2Ckanban%2Clocal%2Coneshot%2Ctui";
     let limit = limit.clamp(1, 2_000);
-    let profile = encode_query_component(&endpoint.profile_id);
+    let profile = resolve_sidebar_profile_selector(endpoint, profile_selector_cache)?;
+    let profile = encode_query_component(&profile);
     let url = format!(
         "{}/api/profiles/sessions/sidebar?recents_profile={profile}&recents_limit={limit}&cron_limit=50&messaging_limit=100&recents_exclude={RECENTS_EXCLUDED}&messaging_exclude={MESSAGING_EXCLUDED}",
         endpoint.api_origin.trim_end_matches('/')
@@ -14658,6 +14676,86 @@ fn load_command_center_sessions_http(
         failed_profiles,
         error: (!error.is_empty()).then(|| error.join("; ")),
     })
+}
+
+fn resolve_sidebar_profile_selector(
+    endpoint: &GatewayEndpoint,
+    cache: &mut Option<String>,
+) -> Result<String, String> {
+    if let Some(profile) = cache.as_deref() {
+        return Ok(profile.to_owned());
+    }
+    let owner = endpoint.profile_id.trim();
+    let profile = if owner.eq_ignore_ascii_case("all") {
+        "all".to_owned()
+    } else if owner.contains(['/', '\\', ':']) {
+        let registry = load_profile_registry_http(endpoint)?;
+        profile_selector_for_owner_path(owner, &registry)?
+    } else {
+        owner.to_owned()
+    };
+    if profile.is_empty()
+        || profile.len() > 128
+        || profile.chars().any(char::is_control)
+        || profile.contains(['/', '\\', ':'])
+    {
+        return Err("Hermes session sidebar profile scope is invalid".into());
+    }
+    *cache = Some(profile.clone());
+    Ok(profile)
+}
+
+fn profile_selector_for_owner_path(
+    owner_path: &str,
+    registry: &serde_json::Value,
+) -> Result<String, String> {
+    let profiles = registry
+        .get("profiles")
+        .and_then(serde_json::Value::as_array)
+        .filter(|profiles| profiles.len() <= 10_000)
+        .ok_or_else(|| "Hermes profile registry response is invalid".to_owned())?;
+    let exact = profiles
+        .iter()
+        .filter(|profile| {
+            profile.get("path").and_then(serde_json::Value::as_str) == Some(owner_path)
+        })
+        .collect::<Vec<_>>();
+    let matched = if exact.len() == 1 {
+        exact
+    } else if exact.is_empty() && is_windows_profile_path(owner_path) {
+        profiles
+            .iter()
+            .filter(|profile| {
+                profile
+                    .get("path")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|path| path.eq_ignore_ascii_case(owner_path))
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    if matched.len() != 1 {
+        return Err("Hermes could not map the Gateway owner to one session sidebar profile".into());
+    }
+    let name = matched[0]
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|name| {
+            !name.is_empty()
+                && name.len() <= 128
+                && !name.chars().any(char::is_control)
+                && !name.contains(['/', '\\', ':'])
+        })
+        .ok_or_else(|| {
+            "Hermes profile registry returned an invalid session profile name".to_owned()
+        })?;
+    Ok(name.to_owned())
+}
+
+fn is_windows_profile_path(path: &str) -> bool {
+    path.contains('\\') || path.as_bytes().get(1) == Some(&b':')
 }
 
 fn sidebar_response_has_valid_recent_slice(
@@ -14976,7 +15074,7 @@ fn request_session_list_page(
         return Err("Hermes session list received an unsupported archive filter".into());
     }
     let url = format!(
-        "{}/api/sessions?limit=200&offset={offset}&min_messages=0&archived={archived}&order=recent",
+        "{}/api/sessions?limit={SESSION_LIST_API_LIMIT}&offset={offset}&min_messages=0&archived={archived}&order=recent",
         api_origin.trim_end_matches('/')
     );
     let response: SessionListResponse = request_gateway_json(api_origin, ticket, &url)?;
@@ -17767,23 +17865,26 @@ fn update_messaging_platform_http(
 }
 
 fn load_profiles_http(endpoint: &GatewayEndpoint) -> Result<Vec<String>, String> {
+    parse_profile_names(load_profile_registry_http(endpoint)?)
+}
+
+fn load_profile_registry_http(endpoint: &GatewayEndpoint) -> Result<serde_json::Value, String> {
     let origin = endpoint.api_origin.trim_end_matches('/');
     let url = format!("{origin}/api/profiles");
-    let response = if endpoint.remote_auth.is_some() {
+    if endpoint.remote_auth.is_some() {
         request_remote_gateway_json_with_limit::<serde_json::Value>(
             endpoint,
             &url,
             GATEWAY_HTTP_RESPONSE_LIMIT,
-        )?
+        )
     } else {
         if !is_bare_loopback_origin(&endpoint.api_origin) {
             return Err("Hermes profile list requires the verified loopback API origin".into());
         }
         let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
         validate_http_ticket(&ticket)?;
-        load_profiles_http_with_local_ticket(endpoint, ticket.as_str())?
-    };
-    parse_profile_names(response)
+        load_profiles_http_with_local_ticket(endpoint, ticket.as_str())
+    }
 }
 
 fn load_profiles_http_with_local_ticket(
@@ -18576,11 +18677,12 @@ fn load_display_timestamps_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
 ) -> Result<bool, String> {
+    let profile_selector = config_profile_selector(&endpoint.profile_id, profile);
     if endpoint.remote_auth.is_some() {
         let url = format!(
             "{}/api/config{}",
             endpoint.api_origin.trim_end_matches('/'),
-            session_profile_suffix(profile.unwrap_or(&endpoint.profile_id))
+            optional_session_profile_suffix(profile_selector.as_deref())
         );
         let config: DisplayTimestampsConfig = request_remote_gateway_json(endpoint, &url)?;
         let value = config.display.and_then(|display| display.timestamps);
@@ -18596,7 +18698,7 @@ fn load_display_timestamps_http(
     read_display_timestamps(
         &endpoint.api_origin,
         ticket.as_str(),
-        profile.unwrap_or(&endpoint.profile_id),
+        profile_selector.as_deref(),
     )
 }
 
@@ -18604,11 +18706,12 @@ fn load_display_reasoning_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
 ) -> Result<bool, String> {
+    let profile_selector = config_profile_selector(&endpoint.profile_id, profile);
     if endpoint.remote_auth.is_some() {
         let url = format!(
             "{}/api/config{}",
             endpoint.api_origin.trim_end_matches('/'),
-            session_profile_suffix(profile.unwrap_or(&endpoint.profile_id))
+            optional_session_profile_suffix(profile_selector.as_deref())
         );
         let config: serde_json::Value = request_remote_gateway_json(endpoint, &url)?;
         return Ok(display_reasoning_enabled(&config));
@@ -18623,7 +18726,7 @@ fn load_display_reasoning_http(
     read_display_reasoning(
         &endpoint.api_origin,
         ticket.as_str(),
-        profile.unwrap_or(&endpoint.profile_id),
+        profile_selector.as_deref(),
     )
 }
 
@@ -18644,10 +18747,11 @@ fn save_display_reasoning_http(
     enabled: bool,
 ) -> Result<bool, String> {
     let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let profile_selector = config_profile_selector(&endpoint.profile_id, Some(profile_id));
     let url = format!(
         "{}/api/config{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile_selector.as_deref())
     );
     let response = if endpoint.remote_auth.is_some() {
         request_remote_gateway_mutation(
@@ -18663,7 +18767,12 @@ fn save_display_reasoning_http(
             );
         }
         let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
-        save_display_reasoning_local(&endpoint.api_origin, ticket.as_str(), profile_id, enabled)?
+        save_display_reasoning_local(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            profile_selector.as_deref(),
+            enabled,
+        )?
     };
     if response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
         return Err("Hermes did not confirm the reasoning setting was saved".into());
@@ -18674,7 +18783,7 @@ fn save_display_reasoning_http(
 fn save_display_reasoning_local(
     api_origin: &str,
     ticket: &str,
-    profile_id: &str,
+    profile: Option<&str>,
     enabled: bool,
 ) -> Result<serde_json::Value, String> {
     validate_http_ticket(ticket)?;
@@ -18686,7 +18795,7 @@ fn save_display_reasoning_local(
     let url = format!(
         "{}/api/config{}",
         api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile)
     );
     cron_local_gateway_http_request_with_ticket(
         api_origin,
@@ -18701,11 +18810,11 @@ fn load_repo_scan_config_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
 ) -> Result<RepoScanPolicy, String> {
-    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let profile_selector = config_profile_selector(&endpoint.profile_id, profile);
     let url = format!(
         "{}/api/config{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile_selector.as_deref())
     );
     if endpoint.remote_auth.is_some() {
         let config: serde_json::Value = request_remote_gateway_json(endpoint, &url)?;
@@ -18717,13 +18826,17 @@ fn load_repo_scan_config_http(
         );
     }
     let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
-    read_repo_scan_config_local(&endpoint.api_origin, ticket.as_str(), profile_id)
+    read_repo_scan_config_local(
+        &endpoint.api_origin,
+        ticket.as_str(),
+        profile_selector.as_deref(),
+    )
 }
 
 fn read_repo_scan_config_local(
     api_origin: &str,
     ticket: &str,
-    profile_id: &str,
+    profile: Option<&str>,
 ) -> Result<RepoScanPolicy, String> {
     validate_http_ticket(ticket)?;
     if !is_bare_loopback_origin(api_origin) {
@@ -18734,7 +18847,7 @@ fn read_repo_scan_config_local(
     let url = format!(
         "{}/api/config{}",
         api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile)
     );
     let config: serde_json::Value = request_gateway_json(api_origin, ticket, &url)?;
     Ok(repo_scan_policy_from_config(&config))
@@ -18749,10 +18862,11 @@ fn save_repo_scan_config_http(
         return Err("Hermes repo discovery settings exceed their bounded schema".into());
     }
     let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let profile_selector = config_profile_selector(&endpoint.profile_id, Some(profile_id));
     let url = format!(
         "{}/api/config{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile_selector.as_deref())
     );
     // Hermes config PUT deep-merges sparse patches. Sending only this section
     // preserves all unrelated profile settings and avoids a read/overwrite race.
@@ -18767,7 +18881,12 @@ fn save_repo_scan_config_http(
         }
         let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
         validate_http_ticket(&ticket)?;
-        save_repo_scan_config_local(&endpoint.api_origin, ticket.as_str(), profile_id, policy)?
+        save_repo_scan_config_local(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            profile_selector.as_deref(),
+            policy,
+        )?
     };
     if response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
         return Err("Hermes did not confirm repo discovery settings were saved".into());
@@ -18795,7 +18914,7 @@ fn repo_scan_config_patch(policy: &RepoScanPolicy) -> serde_json::Value {
 fn save_repo_scan_config_local(
     api_origin: &str,
     ticket: &str,
-    profile_id: &str,
+    profile: Option<&str>,
     policy: &RepoScanPolicy,
 ) -> Result<serde_json::Value, String> {
     validate_http_ticket(ticket)?;
@@ -18807,7 +18926,7 @@ fn save_repo_scan_config_local(
     let url = format!(
         "{}/api/config{}",
         api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile)
     );
     cron_local_gateway_http_request_with_ticket(
         api_origin,
@@ -18925,11 +19044,11 @@ fn load_fallback_providers_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let profile_selector = config_profile_selector(&endpoint.profile_id, profile);
     let url = format!(
         "{}/api/config{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile_selector.as_deref())
     );
     if endpoint.remote_auth.is_some() {
         let config: serde_json::Value = request_remote_gateway_json(endpoint, &url)?;
@@ -18941,13 +19060,17 @@ fn load_fallback_providers_http(
         );
     }
     let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
-    read_fallback_providers_local(&endpoint.api_origin, ticket.as_str(), profile_id)
+    read_fallback_providers_local(
+        &endpoint.api_origin,
+        ticket.as_str(),
+        profile_selector.as_deref(),
+    )
 }
 
 fn read_fallback_providers_local(
     api_origin: &str,
     ticket: &str,
-    profile_id: &str,
+    profile: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, String> {
     validate_http_ticket(ticket)?;
     if !is_bare_loopback_origin(api_origin) {
@@ -18958,7 +19081,7 @@ fn read_fallback_providers_local(
     let url = format!(
         "{}/api/config{}",
         api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile)
     );
     let config: serde_json::Value = request_gateway_json(api_origin, ticket, &url)?;
     fallback_providers_from_config(&config)
@@ -18974,10 +19097,11 @@ fn save_fallback_providers_http(
         return Err("Hermes fallback model settings exceed their bounded schema".into());
     }
     let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let profile_selector = config_profile_selector(&endpoint.profile_id, Some(profile_id));
     let url = format!(
         "{}/api/config{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile_selector.as_deref())
     );
     let body = fallback_providers_config_patch(&routes);
     let response: serde_json::Value = if endpoint.remote_auth.is_some() {
@@ -18990,7 +19114,12 @@ fn save_fallback_providers_http(
         }
         let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
         validate_http_ticket(&ticket)?;
-        save_fallback_providers_local(&endpoint.api_origin, ticket.as_str(), profile_id, &routes)?
+        save_fallback_providers_local(
+            &endpoint.api_origin,
+            ticket.as_str(),
+            profile_selector.as_deref(),
+            &routes,
+        )?
     };
     if response.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
         return Err("Hermes did not confirm fallback model settings were saved".into());
@@ -19001,7 +19130,7 @@ fn save_fallback_providers_http(
 fn save_fallback_providers_local(
     api_origin: &str,
     ticket: &str,
-    profile_id: &str,
+    profile: Option<&str>,
     routes: &[serde_json::Value],
 ) -> Result<serde_json::Value, String> {
     validate_http_ticket(ticket)?;
@@ -19017,7 +19146,7 @@ fn save_fallback_providers_local(
     let url = format!(
         "{}/api/config{}",
         api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile)
     );
     cron_local_gateway_http_request_with_ticket(
         api_origin,
@@ -19127,11 +19256,11 @@ fn load_redact_secrets_http(
     endpoint: &GatewayEndpoint,
     profile: Option<&str>,
 ) -> Result<bool, String> {
-    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let profile_selector = config_profile_selector(&endpoint.profile_id, profile);
     let url = format!(
         "{}/api/config{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile_selector.as_deref())
     );
     let config: serde_json::Value = if endpoint.remote_auth.is_some() {
         request_remote_gateway_json(endpoint, &url)?
@@ -19151,11 +19280,11 @@ fn save_redact_secrets_http(
     profile: Option<&str>,
     enabled: bool,
 ) -> Result<bool, String> {
-    let profile_id = profile.unwrap_or(&endpoint.profile_id);
+    let profile_selector = config_profile_selector(&endpoint.profile_id, profile);
     let url = format!(
         "{}/api/config{}",
         endpoint.api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile_selector.as_deref())
     );
     let body = redact_secrets_config_patch(enabled);
     let response: serde_json::Value = if endpoint.remote_auth.is_some() {
@@ -19183,7 +19312,7 @@ fn save_redact_secrets_http(
 fn read_display_timestamps(
     api_origin: &str,
     ticket: &str,
-    profile_id: &str,
+    profile: Option<&str>,
 ) -> Result<bool, String> {
     validate_http_ticket(ticket)?;
     if !is_bare_loopback_origin(api_origin) {
@@ -19194,7 +19323,7 @@ fn read_display_timestamps(
     let url = format!(
         "{}/api/config{}",
         api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile)
     );
     let config: DisplayTimestampsConfig = request_gateway_json(api_origin, ticket, &url)?;
     let value = config.display.and_then(|display| display.timestamps);
@@ -19204,7 +19333,7 @@ fn read_display_timestamps(
 fn read_display_reasoning(
     api_origin: &str,
     ticket: &str,
-    profile_id: &str,
+    profile: Option<&str>,
 ) -> Result<bool, String> {
     validate_http_ticket(ticket)?;
     if !is_bare_loopback_origin(api_origin) {
@@ -19215,7 +19344,7 @@ fn read_display_reasoning(
     let url = format!(
         "{}/api/config{}",
         api_origin.trim_end_matches('/'),
-        session_profile_suffix(profile_id)
+        optional_session_profile_suffix(profile)
     );
     let config: serde_json::Value = request_gateway_json(api_origin, ticket, &url)?;
     Ok(display_reasoning_enabled(&config))
@@ -19641,6 +19770,25 @@ fn session_profile_suffix(profile_id: &str) -> String {
     }
 }
 
+fn config_profile_selector(
+    owner_profile_id: &str,
+    requested_profile: Option<&str>,
+) -> Option<String> {
+    let profile = requested_profile.unwrap_or(owner_profile_id);
+    // GatewayEndpoint.profile_id is the canonical runtime owner identity and may be a home path.
+    // Hermes /api/config expects a logical profile selector; omitting it selects this Gateway's
+    // active profile. Keep explicit sibling names and the aggregate selector intact.
+    if profile == owner_profile_id && !profile.eq_ignore_ascii_case("all") {
+        None
+    } else {
+        Some(profile.to_owned())
+    }
+}
+
+fn optional_session_profile_suffix(profile: Option<&str>) -> String {
+    profile.map(session_profile_suffix).unwrap_or_default()
+}
+
 fn read_session_mutation_snapshot(
     api_origin: &str,
     ticket: &str,
@@ -19850,6 +19998,7 @@ fn request_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
         .proxy(None)
         .timeout_global(Some(timeout))
         .max_redirects(0)
+        .http_status_as_error(false)
         .build()
         .into();
     let response = agent
@@ -19858,6 +20007,7 @@ fn request_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
         .header("Accept", "application/json")
         .call()
         .map_err(|error| format!("Hermes API read request failed: {error}"))?;
+    let status = response.status();
     let mut bytes = Vec::new();
     response
         .into_body()
@@ -19867,6 +20017,13 @@ fn request_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
         .map_err(|_| "Could not read Hermes API response".to_owned())?;
     if bytes.len() as u64 > response_limit {
         return Err("Hermes API response exceeded its bounded read limit".into());
+    }
+    if !status.is_success() {
+        return Err(format!(
+            "Hermes API read request failed: http status: {}{}",
+            status.as_u16(),
+            bounded_http_error_detail(&bytes)
+        ));
     }
     serde_json::from_slice(&bytes).map_err(|_| "Hermes returned invalid API JSON".to_owned())
 }
@@ -19916,6 +20073,7 @@ fn request_remote_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(timeout))
         .max_redirects(0)
+        .http_status_as_error(false)
         .build()
         .into();
     let request = match endpoint.remote_auth.as_ref().expect("remote auth checked") {
@@ -19933,6 +20091,7 @@ fn request_remote_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
         .header("Accept", "application/json")
         .call()
         .map_err(|error| format!("Remote Hermes API read request failed: {error}"))?;
+    let status = response.status();
     let mut bytes = Vec::new();
     response
         .into_body()
@@ -19943,7 +20102,72 @@ fn request_remote_gateway_json_with_timeout_and_limit<T: DeserializeOwned>(
     if bytes.len() as u64 > response_limit {
         return Err("Remote Hermes API response exceeded its bounded read limit".into());
     }
+    if !status.is_success() {
+        return Err(format!(
+            "Remote Hermes API read request failed: http status: {}{}",
+            status.as_u16(),
+            bounded_http_error_detail(&bytes)
+        ));
+    }
     serde_json::from_slice(&bytes).map_err(|_| "Remote Hermes returned invalid API JSON".to_owned())
+}
+
+fn bounded_http_error_detail(bytes: &[u8]) -> String {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return String::new();
+    };
+    let Some(detail) = value.get("detail") else {
+        return String::new();
+    };
+    let mut messages = Vec::new();
+    match detail {
+        serde_json::Value::String(_) => return String::new(),
+        serde_json::Value::Array(entries) => {
+            for entry in entries.iter().take(8) {
+                let location = entry
+                    .get("loc")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(|part| {
+                                let value = match part {
+                                    serde_json::Value::String(value) => value.clone(),
+                                    serde_json::Value::Number(value) => value.to_string(),
+                                    _ => return None,
+                                };
+                                (!value.is_empty()
+                                    && value.len() <= 64
+                                    && value.chars().all(|character| {
+                                        character.is_ascii_alphanumeric()
+                                            || matches!(character, '_' | '-')
+                                    }))
+                                .then_some(value)
+                            })
+                            .collect::<Vec<_>>()
+                            .join(".")
+                    })
+                    .unwrap_or_default();
+                messages.push(if location.is_empty() {
+                    "request validation failed".to_owned()
+                } else {
+                    format!("{location}: request validation failed")
+                });
+            }
+        }
+        _ => return String::new(),
+    }
+    let detail = messages
+        .join("; ")
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(512)
+        .collect::<String>();
+    if detail.is_empty() {
+        String::new()
+    } else {
+        format!(" ({detail})")
+    }
 }
 
 fn remote_http_auth(endpoint: &GatewayEndpoint) -> Result<RemoteHttpAuth, String> {
@@ -27350,7 +27574,7 @@ mod tests {
             }
             let request = String::from_utf8(request).expect("request is ASCII");
             assert!(request.starts_with(
-                "GET /api/sessions?limit=200&offset=0&min_messages=0&archived=exclude&order=recent HTTP/1.1\r\n"
+                "GET /api/sessions?limit=100&offset=0&min_messages=0&archived=exclude&order=recent HTTP/1.1\r\n"
             ));
             assert!(
                 request
@@ -27463,6 +27687,87 @@ mod tests {
     }
 
     #[test]
+    fn command_center_sidebar_maps_gateway_owner_path_to_profile_name_and_caches_it() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind profile mapping fixture");
+        let address = listener
+            .local_addr()
+            .expect("profile mapping fixture address");
+        let server = thread::spawn(move || {
+            let (mut registry_stream, _) = listener.accept().expect("accept profile registry");
+            let registry_request = read_http_fixture_request(&mut registry_stream);
+            assert!(registry_request.starts_with("GET /api/profiles HTTP/1.1\r\n"));
+            assert!(
+                registry_request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-session-token: fixture-session-token\r\n")
+            );
+            let registry = json!({
+                "profiles": [
+                    {"name":"default","path":r"C:\Hermes\profiles\default"},
+                    {"name":"worker","path":r"C:\Hermes\profiles\worker"}
+                ]
+            })
+            .to_string();
+            write!(registry_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", registry.len(), registry)
+                .expect("write profile registry");
+
+            for _ in 0..2 {
+                let (mut sidebar_stream, _) = listener.accept().expect("accept sidebar request");
+                let request = read_http_fixture_request(&mut sidebar_stream);
+                assert!(
+                    request
+                        .starts_with("GET /api/profiles/sessions/sidebar?recents_profile=default&")
+                );
+                assert!(
+                    request
+                        .to_ascii_lowercase()
+                        .contains("x-hermes-session-token: fixture-session-token\r\n")
+                );
+                let body = r#"{"recents":{"sessions":[]}}"#;
+                write!(sidebar_stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                    .expect("write sidebar response");
+            }
+        });
+        let endpoint = GatewayEndpoint {
+            profile_id: r"C:\Hermes\profiles\default".into(),
+            instance_id: "profile-map-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: format!("http://{address}"),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new(
+                "fixture-session-token".into(),
+            ))),
+        };
+        let mut selector_cache = None;
+        for _ in 0..2 {
+            let snapshot =
+                load_command_center_sessions_http_with_cache(&endpoint, 20, &mut selector_cache)
+                    .expect("load owner-scoped sidebar");
+            assert!(snapshot.sessions.is_empty());
+        }
+        assert_eq!(selector_cache.as_deref(), Some("default"));
+        server.join().expect("profile mapping fixture exits");
+    }
+
+    #[test]
+    fn sidebar_profile_path_mapping_rejects_missing_or_ambiguous_owners() {
+        let owner = r"C:\Hermes\profiles\default";
+        assert!(profile_selector_for_owner_path(owner, &json!({"profiles":[]})).is_err());
+        assert!(
+            profile_selector_for_owner_path(
+                owner,
+                &json!({"profiles":[
+                    {"name":"default","path":owner},
+                    {"name":"alias","path":owner}
+                ]})
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn command_center_sidebar_rejects_incomplete_success_but_accepts_empty_and_explicit_failure() {
         for body in ["{}", r#"{"recents":{}}"#] {
             let result = serde_json::from_str::<SidebarSessionsResponse>(body)
@@ -27484,6 +27789,66 @@ mod tests {
         )
         .expect("decode explicit failed slice");
         assert!(sidebar_response_has_valid_recent_slice(&failed).is_ok());
+    }
+
+    #[test]
+    fn api_http_error_detail_is_bounded_and_does_not_echo_input_values() {
+        let bytes = json!({
+            "detail": [{
+                "loc": ["query", "recents_profile"],
+                "msg": "profile selector is invalid",
+                "input": r"C:\Users\private\profile"
+            }]
+        })
+        .to_string()
+        .into_bytes();
+        let detail = bounded_http_error_detail(&bytes);
+        assert_eq!(
+            detail,
+            " (query.recents_profile: request validation failed)"
+        );
+        assert!(!detail.contains("private"));
+        assert_eq!(bounded_http_error_detail(br#"{"detail":"denied"}"#), "");
+        assert_eq!(bounded_http_error_detail(b"not json"), "");
+        let unsafe_location = bounded_http_error_detail(
+            br#"{"detail":[{"loc":["query","profile","C:\\private\\value"],"msg":"echoed value"}]}"#,
+        );
+        assert_eq!(
+            unsafe_location,
+            " (query.profile: request validation failed)"
+        );
+    }
+
+    #[test]
+    fn gateway_json_read_omits_untrusted_server_validation_text() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind HTTP error fixture");
+        let address = listener.local_addr().expect("HTTP error fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept HTTP error request");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with("GET /api/profiles/sessions/sidebar HTTP/1.1\r\n"));
+            let body = json!({
+                "detail": [{
+                    "loc": ["query", "recents_profile"],
+                    "msg": "profile selector is invalid",
+                    "input": r"C:\Users\private\profile"
+                }]
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write HTTP error response");
+        });
+        let origin = format!("http://{address}");
+        let error = request_gateway_json::<serde_json::Value>(
+            &origin,
+            "fixture-native-http-ticket",
+            &format!("{origin}/api/profiles/sessions/sidebar"),
+        )
+        .expect_err("HTTP validation errors are surfaced");
+        assert!(error.contains("http status: 422"));
+        assert!(error.contains("query.recents_profile: request validation failed"));
+        assert!(!error.contains("private"));
+        server.join().expect("HTTP error fixture exits");
     }
 
     #[test]
@@ -27557,7 +27922,7 @@ mod tests {
         let enabled = read_display_timestamps(
             &format!("http://{address}"),
             "fixture-native-http-ticket",
-            "work profile",
+            Some("work profile"),
         )
         .expect("read source display config");
         assert!(enabled);
@@ -27609,7 +27974,7 @@ mod tests {
         let enabled = read_display_reasoning(
             &format!("http://{address}"),
             "fixture-native-http-ticket",
-            "work profile",
+            Some("work profile"),
         )
         .expect("read source display config");
         assert!(!enabled, "the CLI override wins over the global setting");
@@ -27617,7 +27982,7 @@ mod tests {
             save_display_reasoning_local(
                 &format!("http://{address}"),
                 "fixture-native-http-ticket",
-                "work profile",
+                Some("work profile"),
                 true,
             )
             .expect("save source display config")["ok"]
@@ -27984,14 +28349,14 @@ mod tests {
         let routes = read_fallback_providers_local(
             &api_origin,
             "fixture-native-http-ticket",
-            "work profile",
+            Some("work profile"),
         )
         .expect("read fallback provider config");
         assert_eq!(routes[0]["base_url"], "http://gw:8080/v1");
         let saved = save_fallback_providers_local(
             &api_origin,
             "fixture-native-http-ticket",
-            "work profile",
+            Some("work profile"),
             &routes,
         )
         .expect("save fallback provider config");
@@ -28109,7 +28474,7 @@ mod tests {
         let saved = save_repo_scan_config_local(
             &format!("http://{address}"),
             "fixture-native-http-ticket",
-            "work profile",
+            Some("work profile"),
             &RepoScanPolicy {
                 enabled: true,
                 roots: vec!["/work".into()],
@@ -28144,13 +28509,33 @@ mod tests {
         let policy = read_repo_scan_config_local(
             &format!("http://{address}"),
             "fixture-native-http-ticket",
-            "work profile",
+            Some("work profile"),
         )
         .expect("profile-scoped config read");
         assert_eq!(policy.enabled, false);
         assert_eq!(policy.roots, ["/work"]);
         assert!(policy.exclude_paths.is_empty());
         server.join().expect("repo config read fixture exits");
+    }
+
+    #[test]
+    fn config_scope_omits_owner_identity_but_preserves_explicit_profiles() {
+        let owner = r"C:\Hermes\profiles\default";
+        assert_eq!(config_profile_selector(owner, None), None);
+        assert_eq!(config_profile_selector(owner, Some(owner)), None);
+        assert_eq!(
+            config_profile_selector(owner, Some("worker")),
+            Some("worker".to_owned())
+        );
+        assert_eq!(
+            config_profile_selector("default", Some("all")),
+            Some("all".to_owned())
+        );
+        assert_eq!(optional_session_profile_suffix(None), "");
+        assert_eq!(
+            optional_session_profile_suffix(Some("worker")),
+            "?profile=worker"
+        );
     }
 
     #[test]
