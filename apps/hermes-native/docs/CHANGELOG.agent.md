@@ -3848,3 +3848,16 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** No benchmark requested or changed; process output remains bounded and only requested while the section is open.
 - **risks:** A live populated Gateway stream was not available in this test; authenticated live and packaged behavior remain open.
 - **follow_up:** Rebuild the portable package after the package tooling and terminal UI changes are committed.
+
+## Revision 395 — Rebuild portable Windows package from published source — 2026-11-25
+
+- **id:** `hermes-native-package-refresh-20261125T2343Z`
+- **timestamp:** `2026-11-25T23:43:10Z`
+- **what:** Built a fresh portable Windows x64 package from published commit `e6b2653c351f01fee133dcaf7b6ca5a2bbd019ae`, including the one-click Agent output expansion behavior.
+- **why:** Keep the runnable candidate aligned with the published Hermes source and packaging tool.
+- **components:** Release binaries, PDFium, HermesPage, package provenance and hashes.
+- **type:** Portable release artifact.
+- **validation:** Locked optimized release build passes; all four package file lengths/SHA-256 values, Hermes/DoofusDock source pins, and profile/credential exclusion validate. Packaged headless UI reports `hermes-native-window/1`, route `/`, and visible Settings/Terminal controls, then closes cleanly.
+- **performance:** Release build completed in 6m53s with thin LTO.
+- **risks:** Visible cold launch, live Gateway connection, and provider-backed coding acceptance remain open; no screenshot or model call was used.
+- **follow_up:** Launch the candidate visibly and complete an authorized real coding task when provider entitlement is usable; resolve the application license text gap before redistribution.

@@ -97,3 +97,9 @@ Use the operator-provided Doofus Design Guide as the visual target: warm charcoa
 - A local source-qualified Windows x64 bundle was built at `artifacts/releases/hermes-native-windows-x64-1765d78f01a9`. It contains `hermes-native.exe`, `hermes-automation.exe`, the pinned PDFium DLL, `HermesPage`, provenance/hash metadata, and the license files present in this checkout. The app itself declares MIT in Cargo metadata, but this checkout has no standalone Hermes Native license text; the bundle flags that gap.
 - Headless validation confirms the packaged native helper exposes `hermes-native-window/1`, renders the New session route with Settings visible, and closes cleanly. The main binary rejects an invalid child-window identity before opening a window. No screenshot, profile, credentials, Gateway prompt, or model call was used.
 - A cold visible launch, packaged live-Gateway connection, and provider-backed coding assignment remain unverified. The package is local and tied to the source commit in its `PACKAGE.json`; it is not a signed installer.
+
+
+## Portable package refresh (2026-11-25T23:43Z)
+
+- Rebuilt the Windows x64 package from published source commit `e6b2653c351f01fee133dcaf7b6ca5a2bbd019ae` at `artifacts/releases/hermes-native-windows-x64-e6b2653c351f`. The package manifest pins Hermes `8783054ef6cbafd86f10892241436862c1171a66` and DoofusDock `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`; all four file lengths and hashes validate, and no user profile or credentials are included.
+- The packaged off-screen `HermesPage` smoke reached route `/`, showed Settings and Terminal controls, and closed cleanly. No screenshot, Gateway prompt, or model call was used. This does not prove a visible cold launch, live Gateway attachment, or provider-backed agent coding.
