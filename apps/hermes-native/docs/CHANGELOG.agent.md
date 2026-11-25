@@ -3757,3 +3757,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - performance: No runtime-path change; one headless UI test added.
 - risks: Gateway response arriving after blur still lacks a direct event-level regression; no live or packaged acceptance was performed.
 - follow_up: Verify authenticated live Gateway and add late-response fence coverage.
+
+## Revision 388 — Hermes agent terminal output
+- id: `hermes-par-0066-agent-terminal-stream-20261125`
+- timestamp: 2026-11-25T21:50:32Z
+- what: Made native local terminal output selectable and appendable to the unsent chat draft; added a collapsed-by-default read-only Agent output panel for bounded, profile/session-scoped process output events; documented DoofusDock as the reusable windowing framework and Hermes as owner of agent-pane behavior.
+- why: Keep the coding agent's process output visible on demand while preserving the separation between the local shell and Hermes-managed processes. Clarify the app/library architecture from the operator's intended egui analogy.
+- components: `apps/hermes-native/src/app.rs`; `apps/hermes-native/docs/ARCHITECTURE.md`; `apps/hermes-native/docs/BACKLOG.md`; `apps/hermes-native/docs/PLAN.md`; `apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv`; `apps/hermes-native/README.md`.
+- type: Agent workflow feature and architecture clarification.
+- validation: Focused terminal suite 13/13; full locked workspace suite 797 library + 15 automation protocol + 3 launcher tests; rustfmt check and all-target Cargo check recorded in execution log.
+- performance: Output storage is bounded per chunk, process, and session owner; no benchmark claim.
+- risks: `process.list` snapshot hydration and live Gateway, packaged Windows, and formal source-paired behavior remain unverified.
+- follow_up: Add owner-fenced `process.list` hydration or an equivalent authoritative snapshot path, then validate stream reconnection and visible behavior against the pinned Gateway.

@@ -884,6 +884,13 @@ struct PendingSkillBulkUpdate {
     authority_epoch: u64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct AgentTerminalOutput {
+    process_id: String,
+    output: String,
+    closed: bool,
+}
+
 #[derive(Clone, Debug)]
 struct PendingSkillContent {
     request_id: String,
@@ -2283,6 +2290,9 @@ pub struct HermesNativeApp {
     files: FileBrowserState,
     file_previews: FilePreviewStore,
     local_terminal: Option<crate::terminal::LocalTerminal>,
+    agent_terminal_outputs: BTreeMap<String, BTreeMap<String, AgentTerminalOutput>>,
+    agent_terminal_output_order: BTreeMap<String, VecDeque<String>>,
+    agent_terminal_output_owner_order: VecDeque<String>,
     local_terminal_cwd: String,
     local_terminal_input: String,
     local_terminal_error: Option<String>,
@@ -4900,6 +4910,9 @@ fn render_message() -> &'static str {
             files: FileBrowserState::default(),
             file_previews,
             local_terminal: None,
+            agent_terminal_outputs: BTreeMap::new(),
+            agent_terminal_output_order: BTreeMap::new(),
+            agent_terminal_output_owner_order: VecDeque::new(),
             local_terminal_cwd: std::env::current_dir()
                 .unwrap_or_default()
                 .to_string_lossy()
@@ -5928,11 +5941,14 @@ fn render_message() -> &'static str {
     }
 
     fn terminal_panel(&mut self, ui: &mut Ui) {
+        self.agent_terminal_output_panel(ui);
+        ui.separator();
         let ctx = ui.ctx().clone();
         let mut stop = false;
         let mut start = false;
         let mut submit = false;
         let mut interrupt = false;
+        let mut terminal_output_changed = false;
 
         if let Some(terminal) = self.local_terminal.as_mut() {
             for event in terminal.take_events() {
@@ -5947,6 +5963,7 @@ fn render_message() -> &'static str {
                 }
             }
             if terminal.has_new_output() {
+                terminal_output_changed = true;
                 ctx.request_repaint();
             }
             if !terminal.is_exited() {
@@ -6044,19 +6061,70 @@ fn render_message() -> &'static str {
                 .as_ref()
                 .map(crate::terminal::LocalTerminal::screen_text)
                 .unwrap_or_default();
-            let mut screen = screen;
+            let mut read_only_screen = screen.as_str();
+            let mut selected_terminal_output = None;
+            let mut terminal_output_id = None;
             egui::ScrollArea::vertical()
                 .id_salt("local-terminal-output")
                 .stick_to_bottom(true)
                 .max_height(output_height)
                 .show(ui, |ui| {
-                    ui.add(
-                        egui::TextEdit::multiline(&mut screen)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(f32::INFINITY)
-                            .interactive(false),
-                    );
+                    let output = egui::TextEdit::multiline(&mut read_only_screen)
+                        .id_salt("local-terminal-output-text")
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY)
+                        .show(ui);
+                    terminal_output_id = Some(output.response.id);
+                    if terminal_output_changed {
+                        if let Some(mut state) = egui::widgets::text_edit::TextEditState::load(
+                            ui.ctx(),
+                            output.response.id,
+                        ) {
+                            state.cursor.set_char_range(None);
+                            state.store(ui.ctx(), output.response.id);
+                        }
+                    } else {
+                        selected_terminal_output = output
+                            .cursor_range
+                            .and_then(|range| terminal_selected_text(&screen, range));
+                    }
                 });
+
+            if let (Some(selected), Some(terminal_output_id)) =
+                (selected_terminal_output.as_deref(), terminal_output_id)
+            {
+                let selected_chars = selected.chars().count();
+                let selection_is_bounded = selected_chars <= MAX_TERMINAL_SELECTION_CHARS;
+                let has_chat_composer =
+                    matches!(&self.route, AppRoute::Session(_) | AppRoute::NewChat);
+                ui.horizontal(|ui| {
+                    ui.label(format!("Terminal selection · {selected_chars} characters"));
+                    let add = ui
+                        .add_enabled(
+                            selection_is_bounded && has_chat_composer,
+                            egui::Button::new("Add to chat"),
+                        )
+                        .accessible_name("Add selected terminal output to chat draft");
+                    if add.clicked() {
+                        let composer_id = self.composer_widget_id(ui);
+                        if let Err(error) = self.add_terminal_selection_to_composer(
+                            selected,
+                            &self.local_terminal_cwd.clone(),
+                            &screen,
+                            ui.ctx(),
+                            composer_id,
+                            terminal_output_id,
+                        ) {
+                            self.status = error;
+                        }
+                    }
+                    if !selection_is_bounded {
+                        ui.label("Select 32,000 characters or fewer.");
+                    } else if !has_chat_composer {
+                        ui.label("Open a chat or session first.");
+                    }
+                });
+            }
 
             let input_enabled = self
                 .local_terminal
@@ -6101,6 +6169,230 @@ fn render_message() -> &'static str {
                 }
             }
         }
+    }
+
+    fn agent_terminal_output_panel(&self, ui: &mut Ui) {
+        let owner_key = self.active_agent_terminal_owner_key();
+        let streams = owner_key
+            .as_ref()
+            .and_then(|key| self.agent_terminal_outputs.get(key))
+            .map(|streams| streams.values().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let active_count = streams.iter().filter(|stream| !stream.closed).count();
+        let title = if streams.is_empty() {
+            "Agent output".to_owned()
+        } else {
+            format!(
+                "Agent output · {active_count} streaming / {} total",
+                streams.len()
+            )
+        };
+        egui::CollapsingHeader::new(title)
+            .id_salt("hermes-agent-terminal-output")
+            .default_open(false)
+            .show(ui, |ui| {
+                if owner_key.is_none() {
+                    ui.label("Open a Hermes chat session to view its background process output.");
+                } else if streams.is_empty() {
+                    ui.label("Live output appears here when Hermes starts a background process.");
+                } else {
+                    for stream in streams {
+                        let status = if stream.closed {
+                            "finished"
+                        } else {
+                            "streaming"
+                        };
+                        ui.collapsing(format!("Process {} · {status}", stream.process_id), |ui| {
+                            if stream.output.is_empty() {
+                                ui.label("Waiting for process output…");
+                            } else {
+                                let mut read_only_output = stream.output.as_str();
+                                egui::ScrollArea::vertical()
+                                    .id_salt(("agent-process-output", &stream.process_id))
+                                    .stick_to_bottom(true)
+                                    .max_height(240.0)
+                                    .show(ui, |ui| {
+                                        egui::TextEdit::multiline(&mut read_only_output)
+                                            .id_salt((
+                                                "agent-process-output-text",
+                                                &stream.process_id,
+                                            ))
+                                            .font(egui::TextStyle::Monospace)
+                                            .desired_width(f32::INFINITY)
+                                            .show(ui);
+                                    });
+                            }
+                        });
+                    }
+                }
+            });
+    }
+
+    fn active_agent_terminal_owner_key(&self) -> Option<String> {
+        if !matches!(&self.route, AppRoute::Session(_)) {
+            return None;
+        }
+        let runtime_session_id = self.active_runtime_session_id.as_deref()?;
+        Some(self.session_identity_key(runtime_session_id, self.active_session_profile.as_deref()))
+    }
+
+    fn agent_terminal_owner_key_for_event(
+        &self,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+        connection_id: Option<&str>,
+    ) -> Option<String> {
+        let connection_id = connection_id.unwrap_or_else(|| self.active_gateway_connection_id());
+        if let Some(profile) = profile {
+            return Some(self.session_identity_key_for_connection(
+                Some(connection_id),
+                runtime_session_id,
+                Some(profile),
+            ));
+        }
+        if self.active_runtime_session_id.as_deref() == Some(runtime_session_id)
+            && self.active_gateway_connection_id() == connection_id
+        {
+            return Some(
+                self.session_identity_key(
+                    runtime_session_id,
+                    self.active_session_profile.as_deref(),
+                ),
+            );
+        }
+        let matches = self
+            .session_chat_views
+            .iter()
+            .filter_map(|(key, view)| {
+                if view.runtime_session_id.as_deref() != Some(runtime_session_id) {
+                    return None;
+                }
+                let candidate = self.session_identity_key_for_connection(
+                    Some(connection_id),
+                    runtime_session_id,
+                    view.profile.as_deref(),
+                );
+                (candidate == *key).then_some(candidate)
+            })
+            .collect::<BTreeSet<_>>();
+        (matches.len() == 1)
+            .then(|| matches.into_iter().next())
+            .flatten()
+    }
+
+    fn record_agent_terminal_server_event(
+        &mut self,
+        event_type: &str,
+        runtime_session_id: &str,
+        profile: Option<&str>,
+        connection_id: Option<&str>,
+        payload: &serde_json::Value,
+    ) {
+        let Some(owner_key) =
+            self.agent_terminal_owner_key_for_event(runtime_session_id, profile, connection_id)
+        else {
+            return;
+        };
+        let Some(process_id) = payload
+            .get("process_id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| {
+                !value.trim().is_empty()
+                    && value.len() <= 256
+                    && !value.chars().any(char::is_control)
+            })
+        else {
+            return;
+        };
+        let process_id = process_id.to_owned();
+        if !self.agent_terminal_outputs.contains_key(&owner_key) {
+            self.agent_terminal_output_owner_order
+                .push_back(owner_key.clone());
+            while self.agent_terminal_output_owner_order.len() > MAX_AGENT_TERMINAL_SESSION_OWNERS {
+                if let Some(expired_owner) = self.agent_terminal_output_owner_order.pop_front() {
+                    self.agent_terminal_outputs.remove(&expired_owner);
+                    self.agent_terminal_output_order.remove(&expired_owner);
+                }
+            }
+        }
+        let streams = self
+            .agent_terminal_outputs
+            .entry(owner_key.clone())
+            .or_default();
+        if event_type == "agent.terminal.output" {
+            let Some(chunk) = payload
+                .get("chunk")
+                .and_then(serde_json::Value::as_str)
+                .filter(|chunk| !chunk.is_empty() && chunk.len() <= MAX_AGENT_TERMINAL_CHUNK_BYTES)
+            else {
+                return;
+            };
+            if !streams.contains_key(&process_id) {
+                let order = self
+                    .agent_terminal_output_order
+                    .entry(owner_key.clone())
+                    .or_default();
+                order.push_back(process_id.clone());
+                while order.len() > MAX_AGENT_TERMINAL_PROCESSES_PER_SESSION {
+                    if let Some(expired) = order.pop_front() {
+                        streams.remove(&expired);
+                    }
+                }
+            }
+            let stream = streams.entry(process_id.clone()).or_default();
+            stream.process_id = process_id;
+            stream.closed = false;
+            append_bounded_agent_terminal_output(
+                &mut stream.output,
+                chunk,
+                MAX_AGENT_TERMINAL_OUTPUT_BYTES,
+            );
+        } else if event_type == "terminal.close"
+            && let Some(stream) = streams.get_mut(&process_id)
+        {
+            stream.closed = true;
+        }
+    }
+
+    fn add_terminal_selection_to_composer(
+        &mut self,
+        selected_text: &str,
+        cwd: &str,
+        terminal_screen: &str,
+        ctx: &egui::Context,
+        composer_id: egui::Id,
+        terminal_output_id: egui::Id,
+    ) -> Result<(), String> {
+        if !matches!(&self.route, AppRoute::Session(_) | AppRoute::NewChat) {
+            return Err("Open a chat or session before adding terminal output".into());
+        }
+        let context = format_terminal_selection_context(selected_text, cwd)?;
+        append_context_to_draft(&mut self.draft, &context);
+        let cursor = egui::text::CCursor::new(self.draft.chars().count());
+        if let Some(mut state) = egui::widgets::text_edit::TextEditState::load(ctx, composer_id) {
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(cursor)));
+            state.store(ctx, composer_id);
+        }
+        if let Some(mut state) =
+            egui::widgets::text_edit::TextEditState::load(ctx, terminal_output_id)
+        {
+            let end = egui::text::CCursor::new(terminal_screen.chars().count());
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(end)));
+            state.store(ctx, terminal_output_id);
+        }
+        ctx.memory_mut(|memory| memory.request_focus(composer_id));
+        self.persist_active_prepared_image_draft();
+        self.save_active_chat_view();
+        self.status = format!(
+            "Added {} terminal characters to the chat draft · not sent",
+            selected_text.trim().chars().count()
+        );
+        ctx.request_repaint();
+        Ok(())
     }
 
     fn bots_panel(&mut self, ui: &mut Ui) {
@@ -24743,6 +25035,18 @@ fn render_message() -> &'static str {
             .get("profile")
             .or_else(|| payload.get("profile"))
             .and_then(serde_json::Value::as_str);
+        if matches!(event_type, "agent.terminal.output" | "terminal.close") {
+            if let Some(runtime_session_id) = session_id {
+                self.record_agent_terminal_server_event(
+                    event_type,
+                    runtime_session_id,
+                    event_profile,
+                    connection_id_ref,
+                    &payload,
+                );
+            }
+            return;
+        }
         if matches!(event_type, "connection.request" | "connection.update") {
             if let Some(runtime_session_id) = session_id {
                 self.apply_connection_operation_server_event(
@@ -43864,6 +44168,95 @@ fn transcript_message_gap(
     TRANSCRIPT_TURN_GAP
 }
 
+const MAX_TERMINAL_SELECTION_CHARS: usize = 32_000;
+const MAX_AGENT_TERMINAL_CHUNK_BYTES: usize = 256 * 1024;
+const MAX_AGENT_TERMINAL_OUTPUT_BYTES: usize = 64 * 1024;
+const MAX_AGENT_TERMINAL_PROCESSES_PER_SESSION: usize = 12;
+const MAX_AGENT_TERMINAL_SESSION_OWNERS: usize = 32;
+
+fn append_bounded_agent_terminal_output(output: &mut String, chunk: &str, max_bytes: usize) {
+    output.push_str(chunk);
+    if output.len() <= max_bytes {
+        return;
+    }
+    let mut drop_bytes = output.len() - max_bytes;
+    while !output.is_char_boundary(drop_bytes) {
+        drop_bytes += 1;
+    }
+    output.drain(..drop_bytes);
+}
+
+fn terminal_selected_text(text: &str, range: egui::text::CCursorRange) -> Option<String> {
+    let sorted = range.as_sorted_char_range();
+    let start: usize = sorted.start.into();
+    let end: usize = sorted.end.into();
+    if start >= end {
+        return None;
+    }
+    let selected = text
+        .chars()
+        .skip(start)
+        .take(end - start)
+        .collect::<String>();
+    let trimmed = selected.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn format_terminal_selection_context(selected_text: &str, cwd: &str) -> Result<String, String> {
+    let selected = selected_text.trim();
+    if selected.is_empty() {
+        return Err("Select terminal output before adding it to chat".into());
+    }
+    let selected_chars = selected.chars().count();
+    if selected_chars > MAX_TERMINAL_SELECTION_CHARS {
+        return Err(format!(
+            "Terminal selection has {selected_chars} characters; select {MAX_TERMINAL_SELECTION_CHARS} or fewer"
+        ));
+    }
+    let mut longest_backtick_run = 0;
+    let mut current_backtick_run = 0;
+    for character in selected.chars() {
+        if character == '`' {
+            current_backtick_run += 1;
+            longest_backtick_run = longest_backtick_run.max(current_backtick_run);
+        } else {
+            current_backtick_run = 0;
+        }
+    }
+    let fence = "`".repeat(3.max(longest_backtick_run + 1));
+    let source = cwd
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_control() || character == '`' {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    let source = if source.trim().is_empty() {
+        "local shell"
+    } else {
+        source.trim()
+    };
+    Ok(format!(
+        "Terminal output from {source}:\n\n{fence}text\n{selected}\n{fence}"
+    ))
+}
+
+fn append_context_to_draft(draft: &mut String, context: &str) {
+    if !draft.is_empty() {
+        if !draft.ends_with("\n\n") {
+            if !draft.ends_with('\n') {
+                draft.push('\n');
+            }
+            draft.push('\n');
+        }
+    }
+    draft.push_str(context);
+}
+
 fn composer_file_drop_paths(
     paths: Vec<std::path::PathBuf>,
     pointer_position: Option<egui::Pos2>,
@@ -61155,6 +61548,169 @@ mod tests {
             app.local_terminal.is_none(),
             "rendering the pane must not spawn a shell"
         );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn terminal_selection_extracts_sorted_unicode_character_ranges() {
+        let text = "A😀B\nC";
+        let selected = terminal_selected_text(
+            text,
+            egui::text::CCursorRange::two(egui::text::CCursor::new(4), egui::text::CCursor::new(1)),
+        );
+        assert_eq!(selected.as_deref(), Some("😀B"));
+        assert_eq!(
+            terminal_selected_text(
+                text,
+                egui::text::CCursorRange::one(egui::text::CCursor::new(2))
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn terminal_context_uses_a_safe_code_fence_and_caps_selection_size() {
+        let context =
+            format_terminal_selection_context("  compiler said ```nope```  ", "C:\\work`tree")
+                .expect("format selected output");
+        assert!(context.starts_with("Terminal output from C:\\work tree:"));
+        assert!(context.contains("````text\ncompiler said ```nope```\n````"));
+        assert!(format_terminal_selection_context("  \n", "C:\\work").is_err());
+        assert!(
+            format_terminal_selection_context(
+                &"x".repeat(MAX_TERMINAL_SELECTION_CHARS + 1),
+                "C:\\work"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn adding_terminal_selection_preserves_and_persists_the_unsent_chat_draft() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::NewChat;
+        app.active_session_profile = Some("research".into());
+        app.draft = "Please diagnose this failure.".into();
+        let context = egui::Context::default();
+        app.add_terminal_selection_to_composer(
+            "error: test failed\nnext line",
+            "C:\\work",
+            "error: test failed\nnext line",
+            &context,
+            egui::Id::unique("chat-composer"),
+            egui::Id::unique("terminal-output"),
+        )
+        .expect("insert terminal context into draft");
+
+        assert!(app.draft.starts_with("Please diagnose this failure.\n\n"));
+        assert!(app.draft.contains("Terminal output from C:\\work:"));
+        assert!(app.draft.contains("error: test failed\nnext line"));
+        assert_eq!(app.new_chat_draft, app.draft);
+        assert!(app.pending_create.is_none());
+        assert!(app.pending_submissions.is_empty());
+        assert!(app.status.contains("not sent"));
+        let key = app.session_identity_key("__new__", Some("research"));
+        assert_eq!(
+            crate::composer_drafts::load(app.workspace.data_directory(), &key)
+                .expect("read persisted draft")
+                .as_deref(),
+            Some(app.draft.as_str())
+        );
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_terminal_stream_is_profile_scoped_bounded_and_closes_on_event() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("research".into());
+        app.gateway_connection_id = Some("connection-a".into());
+        let active_key = app.session_identity_key("runtime-session", Some("research"));
+        app.handle_server_event(serde_json::json!({
+            "type":"agent.terminal.output",
+            "session_id":"runtime-session",
+            "profile":"research",
+            "payload":{"process_id":"process-1","chunk":"building 😀"}
+        }));
+        let stream = app.agent_terminal_outputs[&active_key]["process-1"].clone();
+        assert_eq!(stream.output, "building 😀");
+        assert!(!stream.closed);
+
+        app.handle_server_event(serde_json::json!({
+            "type":"agent.terminal.output",
+            "session_id":"runtime-session",
+            "profile":"other-profile",
+            "payload":{"process_id":"process-1","chunk":"wrong owner"}
+        }));
+        assert_eq!(
+            app.agent_terminal_outputs[&active_key]["process-1"].output,
+            "building 😀"
+        );
+
+        app.handle_server_event(serde_json::json!({
+            "type":"terminal.close",
+            "session_id":"runtime-session",
+            "profile":"research",
+            "payload":{"process_id":"process-1"}
+        }));
+        assert!(app.agent_terminal_outputs[&active_key]["process-1"].closed);
+
+        let mut bounded = String::new();
+        append_bounded_agent_terminal_output(&mut bounded, "αβγδε", 5);
+        assert!(bounded.len() <= 5);
+        assert_eq!(bounded, "δε");
+
+        for index in 0..=MAX_AGENT_TERMINAL_SESSION_OWNERS {
+            app.record_agent_terminal_server_event(
+                "agent.terminal.output",
+                &format!("runtime-session-{index}"),
+                Some("research"),
+                Some("connection-a"),
+                &serde_json::json!({"process_id":"bounded","chunk":"x"}),
+            );
+        }
+        assert_eq!(
+            app.agent_terminal_outputs.len(),
+            MAX_AGENT_TERMINAL_SESSION_OWNERS
+        );
+        assert!(!app.agent_terminal_outputs.contains_key(&active_key));
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn agent_terminal_output_section_is_collapsed_until_opened() {
+        let (mut app, profile_dir) = isolated_app();
+        app.route = AppRoute::Session("stored-session".into());
+        app.active_runtime_session_id = Some("runtime-session".into());
+        app.active_session_profile = Some("research".into());
+        app.gateway_connection_id = Some("connection-a".into());
+        let key = app.session_identity_key("runtime-session", Some("research"));
+        app.agent_terminal_outputs.insert(
+            key,
+            BTreeMap::from([(
+                "process-1".into(),
+                AgentTerminalOutput {
+                    process_id: "process-1".into(),
+                    output: "agent-stream-marker".into(),
+                    closed: false,
+                },
+            )]),
+        );
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(900.0, 700.0))
+            .build_ui(|ui| app.terminal_panel(ui));
+        let heading = "Agent output · 1 streaming / 1 total";
+        let process_heading = "Process process-1 · streaming";
+        assert!(harness.query_by_label(heading).is_some());
+        assert!(harness.query_by_label(process_heading).is_none());
+        harness.get_by_label(heading).click();
+        harness.run();
+        assert!(harness.query_by_label(process_heading).is_some());
+        drop(harness);
         drop(app);
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }

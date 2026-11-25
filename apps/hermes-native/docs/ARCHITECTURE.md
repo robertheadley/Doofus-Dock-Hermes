@@ -2,7 +2,13 @@
 
 ## Local terminal ownership
 
-The Terminal Dock panel owns one explicitly started local `portable-pty` process for the app lifetime. It does not infer that a local shell is a remote Hermes session and remains separately labeled when the Gateway is disconnected or remote. A worker thread owns process input/resize/stop; a reader thread parses bounded VT output and answers supported ConPTY device-status queries; egui polls the rendered screen. Closing or switching the Dock pane does not implicitly stop the shell. App shutdown or the explicit Stop action releases it. The current command entry is line-oriented, so full-screen TUI and key-by-key input remain unimplemented.
+The Terminal Dock panel owns one explicitly started local `portable-pty` process for the app lifetime. It does not infer that a local shell is a remote Hermes session and remains separately labeled when the Gateway is disconnected or remote. A worker thread owns process input/resize/stop; a reader thread parses bounded VT output and answers supported ConPTY device-status queries; egui polls the rendered screen. Closing or switching the Dock pane does not implicitly stop the shell. App shutdown or the explicit Stop action releases it. The current command entry is line-oriented, so full-screen TUI and key-by-key input remain unimplemented. Local terminal text is selectable and can be appended to the chat draft without submitting it.
+
+## DoofusDock as the UI framework
+
+Hermes consumes DoofusDock as a Rust UI library, in the same way an application consumes egui: Hermes owns its domain behavior and supplies panels and actions; DoofusDock owns reusable windowing and docking behavior. In this pinned build, `doofusdock-core` provides the canonical `LayoutDocument` and `DockingService`, `doofusdock-presentation` shapes presentation state, and `doofusdock-render-egui` renders the workspace into egui. Hermes maps chat, files, terminal, skills, and other feature panes into that workspace and retains ownership of their data, Gateway calls, and agent semantics. Windowing improvements belong in the library where they can benefit other applications; Hermes-specific streaming and agent controls belong in Hermes panels built on that library.
+
+The Hermes Agent output section is collapsed by default inside the Terminal Dock. It displays profile/session-scoped `agent.terminal.output` chunks and marks a process finished on `terminal.close`. Per-process buffers, process counts, and retained session owners are bounded. It is a read-only view of Hermes background-process output; it does not replace or conflate the explicitly started local shell. Process-list snapshot hydration and authenticated live Gateway behavior remain open.
 
 ## Current completion boundary
 

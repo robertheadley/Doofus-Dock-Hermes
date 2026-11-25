@@ -2389,3 +2389,11 @@ The Terminal Dock pane now provides an explicit local-shell start, editable work
 Validation: full locked workspace suite passes 766 library + 15 automation-protocol + 3 launcher tests; all-target locked `cargo check`, `cargo fmt --all -- --check`, and `git diff --check` pass. Headless panel test proves no shell starts without an explicit action.
 
 Limits: terminal commands are currently line-oriented; raw key-by-key input and full-screen interactive TUI behavior are not implemented. Live Hermes coding acceptance remains blocked by the configured provider credit error; packaged Windows and source-paired acceptance remain open.
+
+### Revision 388 — Agent terminal streaming and DoofusDock ownership boundary (2026-11-25)
+
+PAR-0066 now uses the real native terminal surface: terminal text is selectable and can be appended to the active chat draft without submitting. The Terminal Dock also shows a collapsed-by-default Hermes Agent output section, fed by `agent.terminal.output` and `terminal.close`; state is fenced by Gateway connection/profile/session and bounded across chunks, processes, and retained session owners. This is a read-only agent-process view beside the explicitly started local shell.
+
+DoofusDock is the reusable Rust UI framework, analogous to using egui: canonical workspace layout and docking/windowing live in DoofusDock, while Hermes owns agent-specific panes and workflow semantics. The pinned core, presentation, and egui renderer crates are already consumed by Hermes. Process-list snapshot hydration, live Gateway acceptance, packaged Windows behavior, and formal source-paired acceptance remain open.
+
+Validation: `cargo test --workspace --locked --features agent-automation -- --test-threads=1` passes 797 library, 15 automation-protocol, and 3 launcher tests; the focused terminal suite passes 13/13. Earlier checks without `agent-automation` fail because existing test modules use the optional `egui_kittest` dependency; the focused and full test commands were rerun with the required feature.
