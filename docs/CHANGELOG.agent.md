@@ -5782,3 +5782,16 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: Profile aliases are resolved once per HTTP actor and cached; no benchmark change claimed.
 - risks: The live profile has repository discovery disabled and no scan roots, so scan behavior is not verified; provider HTTP 402 continues to block a real tool-turn acceptance.
 - follow_up: Continue offline tool, attachment, skill, and plugin workflows; verify repository scanning only after a project root is intentionally configured; use a usable provider before another live coding attempt.
+
+## hermes-par-0083-workspace-move-20261125
+
+- id: `hermes-par-0083-workspace-move-20261125`
+- timestamp: 2026-11-25T20:47:39Z
+- what: Added a Sessions menu action that moves a chat to a same-profile project workspace through the pinned `session.workspace.move` Gateway contract. The UI updates session cwd and project grouping only after a valid receipt on the original session/profile/connection request.
+- why: Coding chats need to be re-homed into another project while Hermes remains the authoritative runtime and session store.
+- components: `apps/hermes-native/src/app.rs`; `apps/hermes-native/src/gateway.rs`; PAR-0083 backlog/progress and architecture documentation.
+- type: Agent workflow feature slice.
+- validation: Five focused tests passed with `cargo test --manifest-path apps\hermes-native\Cargo.toml --features agent-automation workspace_move --lib`; `cargo fmt -- --check` and `git diff --check` passed. Full library suite ran: 787 passed and one unrelated existing image-paste harness test failed after exceeding its four-step UI budget; live Gateway was not run.
+- performance: No performance change claimed.
+- risks: A lost RPC reply is shown as unconfirmed and is not retried automatically. Full suite remains non-green because `app::tests::pasting_an_image_into_the_focused_composer_requests_a_scoped_gateway_attachment` exceeded the egui harness step budget (4 vs. 53); live Gateway, packaged Windows interaction and formal source-paired acceptance remain open.
+- follow_up: Run the complete native test suite, then exercise the move with a disposable authenticated Gateway profile and verify project grouping refresh.

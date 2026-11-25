@@ -129,6 +129,36 @@ pub struct SessionCwdSetResult {
     pub branch: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct SessionWorkspaceMoveResult {
+    pub cwd: String,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub git_repo_root: Option<String>,
+}
+
+fn parse_session_workspace_move(
+    value: serde_json::Value,
+) -> Result<SessionWorkspaceMoveResult, String> {
+    let result: SessionWorkspaceMoveResult = serde_json::from_value(value)
+        .map_err(|_| "Hermes returned an invalid session.workspace.move response".to_owned())?;
+    if result.cwd.trim().is_empty()
+        || result.cwd.len() > 4096
+        || result.cwd.chars().any(char::is_control)
+        || result
+            .branch
+            .as_ref()
+            .is_some_and(|branch| branch.len() > 1024 || branch.chars().any(char::is_control))
+        || result.git_repo_root.as_ref().is_some_and(|root| {
+            root.trim().is_empty() || root.len() > 4096 || root.chars().any(char::is_control)
+        })
+    {
+        return Err("Hermes returned an invalid workspace move receipt".into());
+    }
+    Ok(result)
+}
+
 fn parse_session_cwd_set(value: serde_json::Value) -> Result<SessionCwdSetResult, String> {
     let result: SessionCwdSetResult = serde_json::from_value(value)
         .map_err(|_| "Hermes returned an invalid session.cwd.set response".to_owned())?;
@@ -2106,6 +2136,14 @@ pub enum GatewayEvent {
         connection_id: Option<String>,
         result: Result<SessionCwdSetResult, String>,
     },
+    SessionWorkspaceMoved {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        target_cwd: String,
+        result: Result<SessionWorkspaceMoveResult, String>,
+    },
     OlderTranscriptLoaded {
         request_id: String,
         session_id: String,
@@ -2963,6 +3001,13 @@ enum GatewayCommand {
         connection_id: Option<String>,
         cwd: String,
     },
+    MoveSessionToProject {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        cwd: String,
+    },
     CompleteSlash {
         request_id: String,
         query: String,
@@ -3564,6 +3609,13 @@ pub(crate) enum TestGatewayCommand {
         connection_id: Option<String>,
         cwd: String,
     },
+    MoveSessionToProject {
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        cwd: String,
+    },
     BranchStoredSession {
         request_id: String,
         session_id: String,
@@ -4123,6 +4175,19 @@ impl GatewayDiscovery {
                         request_id,
                         session_id,
                         stored_session_id,
+                        profile,
+                        connection_id,
+                        cwd,
+                    },
+                    GatewayCommand::MoveSessionToProject {
+                        request_id,
+                        session_id,
+                        profile,
+                        connection_id,
+                        cwd,
+                    } => TestGatewayCommand::MoveSessionToProject {
+                        request_id,
+                        session_id,
                         profile,
                         connection_id,
                         cwd,
@@ -5489,6 +5554,38 @@ impl GatewayDiscovery {
                 request_id,
                 session_id,
                 stored_session_id,
+                profile,
+                connection_id,
+                cwd,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn move_session_to_project(
+        &self,
+        request_id: String,
+        session_id: String,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        cwd: String,
+    ) -> Result<(), String> {
+        if !valid_bounded_tree_id(&session_id)
+            || profile
+                .as_deref()
+                .is_some_and(|profile| !valid_bounded_tree_id(profile))
+            || connection_id
+                .as_deref()
+                .is_some_and(|id| !valid_bounded_tree_id(id))
+        {
+            return Err("Hermes workspace move requires a valid session owner".into());
+        }
+        if cwd.trim().is_empty() || cwd.len() > 4096 || cwd.chars().any(char::is_control) {
+            return Err("Hermes project workspace must have a valid root path".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::MoveSessionToProject {
+                request_id,
+                session_id,
                 profile,
                 connection_id,
                 cwd,
@@ -9358,6 +9455,44 @@ fn gateway_actor_with_replay(
                         stored_session_id,
                         profile,
                         connection_id,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::MoveSessionToProject {
+                request_id,
+                session_id,
+                profile,
+                connection_id,
+                cwd,
+            }) => {
+                let event_session_id = session_id.clone();
+                let target_cwd = cwd.clone();
+                let result = session_profile_params(
+                    serde_json::json!({"session_key": session_id, "cwd": cwd}),
+                    profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "session.workspace.move",
+                        params,
+                        Some(&events),
+                    )
+                })
+                .and_then(parse_session_workspace_move);
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::SessionWorkspaceMoved {
+                        request_id,
+                        session_id: event_session_id,
+                        profile,
+                        connection_id,
+                        target_cwd,
                         result,
                     })
                     .is_err()
@@ -20869,6 +21004,29 @@ mod tests {
     }
 
     #[test]
+    fn workspace_move_receipt_requires_valid_paths() {
+        assert_eq!(
+            parse_session_workspace_move(
+                json!({"cwd":"/workspace/target", "branch":"main", "git_repo_root":"/workspace"})
+            )
+            .unwrap(),
+            SessionWorkspaceMoveResult {
+                cwd: "/workspace/target".into(),
+                branch: Some("main".into()),
+                git_repo_root: Some("/workspace".into())
+            }
+        );
+        assert!(parse_session_workspace_move(json!({"cwd":" "})).is_err());
+        assert!(
+            parse_session_workspace_move(json!({"cwd":"/workspace", "branch":"bad\nbranch"}))
+                .is_err()
+        );
+        assert!(
+            parse_session_workspace_move(json!({"cwd":"/workspace", "git_repo_root":""})).is_err()
+        );
+    }
+
+    #[test]
     fn set_session_cwd_command_preserves_session_profile_and_connection_owner() {
         let (gateway, commands, _) = GatewayDiscovery::for_test_session_resume();
         assert!(
@@ -20912,6 +21070,95 @@ mod tests {
             commands.try_recv().is_err(),
             "invalid path must not reach the actor"
         );
+    }
+
+    #[test]
+    fn move_session_to_project_command_preserves_owner_and_rejects_rootless_path() {
+        let (gateway, commands, _) = GatewayDiscovery::for_test_session_resume();
+        gateway
+            .move_session_to_project(
+                "move-request-1".into(),
+                "stored-1".into(),
+                Some("work".into()),
+                Some("conn-a".into()),
+                "D:/projects/target".into(),
+            )
+            .expect("queue workspace move");
+        assert_eq!(
+            commands
+                .recv_timeout(Duration::from_secs(1))
+                .expect("workspace command"),
+            TestGatewayCommand::MoveSessionToProject {
+                request_id: "move-request-1".into(),
+                session_id: "stored-1".into(),
+                profile: Some("work".into()),
+                connection_id: Some("conn-a".into()),
+                cwd: "D:/projects/target".into(),
+            }
+        );
+        assert!(
+            gateway
+                .move_session_to_project(
+                    "bad".into(),
+                    "stored-1".into(),
+                    Some("work".into()),
+                    Some("conn-a".into()),
+                    "  ".into()
+                )
+                .is_err()
+        );
+        assert!(commands.try_recv().is_err());
+    }
+
+    #[test]
+    fn workspace_move_actor_sends_pinned_rpc_contract_and_returns_receipt() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read workspace request") {
+                Message::Text(text) => {
+                    serde_json::from_str(&text).expect("parse workspace request")
+                }
+                other => panic!("expected workspace request, got {other:?}"),
+            };
+            assert_eq!(request["method"], "session.workspace.move");
+            assert_eq!(request["params"]["session_key"], "stored-1");
+            assert_eq!(request["params"]["cwd"], "D:/projects/target");
+            assert_eq!(request["params"]["profile"], "work");
+            socket.send(Message::Text(json!({"jsonrpc":"2.0", "id":request["id"], "result":{"cwd":"D:/projects/target", "branch":"feature/target", "git_repo_root":"D:/projects/target"}}).to_string().into())).expect("send receipt");
+            socket.close(None).expect("close fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(100)))
+                .expect("set timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        command_tx
+            .send(GatewayCommand::MoveSessionToProject {
+                request_id: "move-request-1".into(),
+                session_id: "stored-1".into(),
+                profile: Some("work".into()),
+                connection_id: Some("conn-a".into()),
+                cwd: "D:/projects/target".into(),
+            })
+            .expect("queue move");
+        drop(command_tx);
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
+        assert!(
+            matches!(event_rx.recv_timeout(Duration::from_secs(2)).expect("move event"),
+            GatewayEvent::SessionWorkspaceMoved { request_id, session_id, profile, connection_id, target_cwd, result: Ok(SessionWorkspaceMoveResult { cwd, branch: Some(branch), git_repo_root: Some(root) }) }
+            if request_id == "move-request-1" && session_id == "stored-1" && profile.as_deref() == Some("work")
+                && connection_id.as_deref() == Some("conn-a") && target_cwd == "D:/projects/target"
+                && cwd == target_cwd && branch == "feature/target" && root == "D:/projects/target")
+        );
+        actor.join().expect("actor exits");
+        server.join().expect("fixture server exits");
     }
 
     #[test]

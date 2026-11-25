@@ -645,6 +645,83 @@ fn project_session_color(value: &str) -> Option<Color32> {
     Some(Color32::from_rgb(channel(0)?, channel(2)?, channel(4)?))
 }
 
+fn project_workspace_root(project: &ProjectTreeProject) -> Option<&str> {
+    project
+        .path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+        .or_else(|| {
+            project
+                .repos
+                .iter()
+                .find_map(|repo| repo.path.as_deref().filter(|path| !path.trim().is_empty()))
+        })
+}
+
+fn project_contains_session(project: &ProjectTreeProject, session: &SessionSummary) -> bool {
+    let ids = [session.id.as_str(), session.durable_session_id()];
+    project
+        .session_ids
+        .iter()
+        .any(|id| ids.contains(&id.as_str()))
+        || project
+            .repos
+            .iter()
+            .flat_map(|repo| &repo.groups)
+            .flat_map(|group| &group.sessions)
+            .any(|candidate| {
+                candidate.id == session.id || candidate.id == session.durable_session_id()
+            })
+}
+
+fn project_workspace_targets(
+    tree: &ProjectTreeSnapshot,
+    session: &SessionSummary,
+    profile: &str,
+) -> Vec<(String, String)> {
+    tree.projects
+        .iter()
+        .filter_map(|project| {
+            if project.is_no_project
+                || project
+                    .profile
+                    .as_deref()
+                    .is_some_and(|owner| owner != profile)
+                || project_contains_session(project, session)
+            {
+                return None;
+            }
+            let cwd = project_workspace_root(project)?.trim();
+            if session
+                .cwd
+                .as_deref()
+                .is_some_and(|current| same_workspace_path(current, cwd))
+            {
+                return None;
+            }
+            let label = if project.label.trim().is_empty() {
+                project.id.clone()
+            } else {
+                project.label.clone()
+            };
+            Some((label, cwd.to_owned()))
+        })
+        .collect()
+}
+
+fn same_workspace_path(left: &str, right: &str) -> bool {
+    let left = left.trim().trim_end_matches(['/', '\\']);
+    let right = right.trim().trim_end_matches(['/', '\\']);
+    #[cfg(windows)]
+    {
+        left.eq_ignore_ascii_case(right)
+    }
+    #[cfg(not(windows))]
+    {
+        left == right
+    }
+}
+
 fn resolve_session_dot_color(
     explicit_session_color: Option<&str>,
     inherited_project_color: Option<&str>,
@@ -1257,6 +1334,16 @@ struct PendingSessionCwdChange {
     profile: Option<String>,
     connection_id: String,
     owner_key: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingSessionWorkspaceMove {
+    request_id: String,
+    session_id: String,
+    profile: Option<String>,
+    connection_id: String,
+    owner_key: String,
+    target_cwd: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -2500,6 +2587,7 @@ pub struct HermesNativeApp {
     session_chat_view_order: VecDeque<String>,
     session_cwd_dialog: Option<SessionCwdDialog>,
     pending_session_cwd_change: Option<PendingSessionCwdChange>,
+    pending_session_workspace_moves: BTreeMap<String, PendingSessionWorkspaceMove>,
     prompt_timelines: BTreeMap<String, PromptTimelineState>,
     new_chat_draft: String,
     new_chat_draft_scope: Option<String>,
@@ -5116,6 +5204,7 @@ fn render_message() -> &'static str {
             session_chat_view_order: VecDeque::new(),
             session_cwd_dialog: None,
             pending_session_cwd_change: None,
+            pending_session_workspace_moves: BTreeMap::new(),
             prompt_timelines: BTreeMap::new(),
             new_chat_draft: String::new(),
             new_chat_draft_scope: None,
@@ -7538,6 +7627,9 @@ fn render_message() -> &'static str {
             let archive_pending = self
                 .pending_session_archives
                 .contains_key(&self.session_summary_identity_key(&session));
+            let workspace_pending = self
+                .pending_session_workspace_moves
+                .contains_key(&action_key);
             let rename_pending = self.pending_session_renames.contains_key(&action_key);
             let branch_pending = self.pending_session_branches.contains_key(&action_key)
                 && !self.uncertain_session_branches.contains_key(&action_key);
@@ -7581,6 +7673,16 @@ fn render_message() -> &'static str {
             } else {
                 format!("Archive session {}", session.id)
             };
+            let workspace_profile = session.profile.as_deref().or_else(|| {
+                self.gateway_endpoint
+                    .as_ref()
+                    .map(|endpoint| endpoint.profile_id.as_str())
+            });
+            let workspace_targets = workspace_profile
+                .and_then(|profile| self.project_trees.get(profile).map(|tree| (profile, tree)))
+                .map(|(profile, tree)| project_workspace_targets(tree, &session, profile))
+                .unwrap_or_default();
+            let mut selected_workspace_target = None;
             let menu = ui.menu_button("⋯", |ui| {
                 let rename_label = if scoped_profile_row {
                     format!("Rename profile {profile_label} session {}", session.id)
@@ -7658,6 +7760,34 @@ fn render_message() -> &'static str {
                     self.start_session_archive_update(session.clone(), !session.archived);
                     ui.close();
                 }
+                ui.menu_button("Move to project", |ui| {
+                    if workspace_pending {
+                        ui.label(
+                            RichText::new("Waiting for Hermes to confirm the workspace move")
+                                .size(TOOL_TEXT_SIZE)
+                                .color(MUTED),
+                        );
+                    } else if !self.gateway_connected {
+                        ui.label(
+                            RichText::new("Connect to Hermes to move this chat")
+                                .size(TOOL_TEXT_SIZE)
+                                .color(MUTED),
+                        );
+                    } else if workspace_targets.is_empty() {
+                        ui.label(
+                            RichText::new("No other project workspaces available")
+                                .size(TOOL_TEXT_SIZE)
+                                .color(MUTED),
+                        );
+                    } else {
+                        for (label, cwd) in &workspace_targets {
+                            if ui.button(label).clicked() {
+                                selected_workspace_target = Some(cwd.clone());
+                                ui.close();
+                            }
+                        }
+                    }
+                });
                 ui.menu_button("Appearance", |ui| {
                     let color_id = session.durable_session_id();
                     let selected_color = self.workspace.session_color(color_id).map(str::to_owned);
@@ -7711,6 +7841,9 @@ fn render_message() -> &'static str {
                 format!("Session actions session {}", session.id)
             };
             menu.response.accessible_name(menu_name);
+            if let Some(target_cwd) = selected_workspace_target {
+                self.start_session_workspace_move(session.clone(), target_cwd);
+            }
             if !session.preview.is_empty() {
                 ui.label(
                     RichText::new(&session.preview)
@@ -33899,6 +34032,147 @@ fn render_message() -> &'static str {
         }
     }
 
+    fn start_session_workspace_move(&mut self, session: SessionSummary, target_cwd: String) {
+        let Some(profile) = session
+            .profile
+            .clone()
+            .or_else(|| self.gateway_endpoint.as_ref().map(|e| e.profile_id.clone()))
+        else {
+            self.status = "This chat has no resolved Hermes profile owner".into();
+            return;
+        };
+        if profile.eq_ignore_ascii_case("all") {
+            self.status = "Choose a specific Hermes profile before moving this chat".into();
+            return;
+        }
+        let Some(connection_id) = session
+            .connection_id
+            .clone()
+            .or_else(|| self.gateway_connection_id.clone())
+        else {
+            self.status = "This chat has no resolved Hermes connection owner".into();
+            return;
+        };
+        if self.gateway_connection_id.as_deref() != Some(connection_id.as_str()) {
+            self.status = "This chat belongs to a different Hermes connection".into();
+            return;
+        }
+        let owner_key = self.session_identity_key_for_connection(
+            Some(&connection_id),
+            &session.id,
+            Some(&profile),
+        );
+        if self
+            .pending_session_workspace_moves
+            .contains_key(&owner_key)
+        {
+            return;
+        }
+        let request_id = operation_id("session-workspace-move");
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            self.status = "Hermes gateway is unavailable".into();
+            return;
+        };
+        match gateway.move_session_to_project(
+            request_id.clone(),
+            session.id.clone(),
+            Some(profile.clone()),
+            Some(connection_id.clone()),
+            target_cwd.clone(),
+        ) {
+            Ok(()) => {
+                self.pending_session_workspace_moves.insert(
+                    owner_key.clone(),
+                    PendingSessionWorkspaceMove {
+                        request_id,
+                        session_id: session.id,
+                        profile: Some(profile),
+                        connection_id,
+                        owner_key,
+                        target_cwd,
+                    },
+                );
+                self.status = "Waiting for Hermes to confirm the project workspace move".into();
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    fn settle_session_workspace_move(
+        &mut self,
+        request_id: &str,
+        session_id: &str,
+        profile: Option<String>,
+        connection_id: Option<String>,
+        target_cwd: &str,
+        result: Result<crate::gateway::SessionWorkspaceMoveResult, String>,
+    ) {
+        let Some(connection_id) = connection_id else {
+            return;
+        };
+        let owner_key = self.session_identity_key_for_connection(
+            Some(&connection_id),
+            session_id,
+            profile.as_deref(),
+        );
+        let Some(pending) = self
+            .pending_session_workspace_moves
+            .get(&owner_key)
+            .cloned()
+        else {
+            return;
+        };
+        if pending.request_id != request_id
+            || pending.session_id != session_id
+            || pending.profile != profile
+            || pending.connection_id != connection_id
+            || pending.target_cwd != target_cwd
+        {
+            return;
+        }
+        self.pending_session_workspace_moves.remove(&owner_key);
+        if self.gateway_connection_id.as_deref() != Some(connection_id.as_str()) {
+            return;
+        }
+        match result {
+            Ok(receipt) => {
+                let mut updated = false;
+                for row in self
+                    .sessions
+                    .iter_mut()
+                    .chain(self.archived_sessions.iter_mut())
+                {
+                    if row.id == pending.session_id
+                        && row.profile == pending.profile
+                        && row
+                            .connection_id
+                            .as_deref()
+                            .is_none_or(|owner| owner == pending.connection_id)
+                    {
+                        row.cwd = Some(receipt.cwd.clone());
+                        updated = true;
+                    }
+                }
+                if let Some(view) = self.session_chat_views.get_mut(&pending.owner_key)
+                    && view.profile == pending.profile
+                {
+                    view.backend_cwd = Some(receipt.cwd.clone());
+                    view.backend_branch.clone_from(&receipt.branch);
+                }
+                self.status = if updated {
+                    format!("Hermes confirmed project workspace: {}", receipt.cwd)
+                } else {
+                    "Hermes confirmed the project workspace; refreshing sessions".into()
+                };
+                self.refresh_project_tree_colors(pending.profile.as_deref());
+            }
+            Err(error) => {
+                // Unknown, denied, stale, and busy outcomes are visible and never retried automatically.
+                self.status = format!("Hermes did not confirm the project workspace move: {error}");
+            }
+        }
+    }
+
     fn open_session_cwd_dialog(&mut self) {
         let (Some(runtime_session_id), Some(stored_session_id), Some(connection_id)) = (
             self.active_runtime_session_id.clone(),
@@ -35514,6 +35788,21 @@ fn render_message() -> &'static str {
                     &stored_session_id,
                     profile,
                     connection_id,
+                    result,
+                ),
+                GatewayEvent::SessionWorkspaceMoved {
+                    request_id,
+                    session_id,
+                    profile,
+                    connection_id,
+                    target_cwd,
+                    result,
+                } => self.settle_session_workspace_move(
+                    &request_id,
+                    &session_id,
+                    profile,
+                    connection_id,
+                    &target_cwd,
                     result,
                 ),
                 GatewayEvent::ProfilesLoaded {
@@ -61738,6 +62027,189 @@ mod tests {
         assert!(app.pending_session_cwd_change.is_none());
         assert!(app.session_cwd_dialog.is_none());
         let _ = std::fs::remove_dir_all(profile_dir);
+    }
+
+    #[test]
+    fn workspace_move_targets_exclude_current_no_project_and_rootless_projects() {
+        let session = SessionSummary {
+            id: "stored-1".into(),
+            connection_id: Some("conn-a".into()),
+            cwd: Some("D:/projects/current".into()),
+            profile: Some("work".into()),
+            title: "Current chat".into(),
+            preview: String::new(),
+            message_count: 0,
+            source: "desktop".into(),
+            started_at: 0.0,
+            last_active: None,
+            pinned: false,
+            unread: false,
+            archived: false,
+            lineage_root_id: None,
+        };
+        let tree: ProjectTreeSnapshot = serde_json::from_value(json!({"projects":[
+            {"id":"current","label":"Current","path":"D:/projects/current","profile":"work","sessionIds":["stored-1"]},
+            {"id":"home","label":"No project","isNoProject":true,"path":"D:/projects/home","profile":"work"},
+            {"id":"rootless","label":"Rootless","profile":"work"},
+            {"id":"target","label":"Target","path":"D:/projects/target","profile":"work"},
+            {"id":"sibling-profile","label":"Other profile","path":"D:/other","profile":"personal"}
+        ]})).expect("valid project tree");
+        assert_eq!(
+            project_workspace_targets(&tree, &session, "work"),
+            vec![("Target".into(), "D:/projects/target".into())]
+        );
+    }
+
+    #[test]
+    fn workspace_move_receipt_is_owner_fenced_and_updates_only_after_confirmation() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connection_id = Some("conn-a".into());
+        let owner_key =
+            app.session_identity_key_for_connection(Some("conn-a"), "stored-1", Some("work"));
+        app.sessions = vec![
+            SessionSummary {
+                id: "stored-1".into(),
+                connection_id: Some("conn-a".into()),
+                cwd: Some("D:/old".into()),
+                lineage_root_id: None,
+                profile: Some("work".into()),
+                title: String::new(),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            },
+            SessionSummary {
+                id: "stored-1".into(),
+                connection_id: Some("conn-b".into()),
+                cwd: Some("E:/other".into()),
+                lineage_root_id: None,
+                profile: Some("work".into()),
+                title: String::new(),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            },
+        ];
+        app.pending_session_workspace_moves.insert(
+            owner_key.clone(),
+            PendingSessionWorkspaceMove {
+                request_id: "move-1".into(),
+                session_id: "stored-1".into(),
+                profile: Some("work".into()),
+                connection_id: "conn-a".into(),
+                owner_key,
+                target_cwd: "D:/target".into(),
+            },
+        );
+        app.settle_session_workspace_move(
+            "move-1",
+            "stored-1",
+            Some("work".into()),
+            Some("conn-b".into()),
+            "D:/target",
+            Ok(crate::gateway::SessionWorkspaceMoveResult {
+                cwd: "D:/target".into(),
+                branch: Some("main".into()),
+                git_repo_root: Some("D:/target".into()),
+            }),
+        );
+        assert_eq!(
+            app.sessions[0].cwd.as_deref(),
+            Some("D:/old"),
+            "no optimistic movement and wrong owner receipt ignored"
+        );
+        assert_eq!(app.sessions[1].cwd.as_deref(), Some("E:/other"));
+        assert_eq!(app.pending_session_workspace_moves.len(), 1);
+        app.settle_session_workspace_move(
+            "move-1",
+            "stored-1",
+            Some("work".into()),
+            Some("conn-a".into()),
+            "D:/target",
+            Ok(crate::gateway::SessionWorkspaceMoveResult {
+                cwd: "D:/target".into(),
+                branch: Some("main".into()),
+                git_repo_root: Some("D:/target".into()),
+            }),
+        );
+        assert_eq!(app.sessions[0].cwd.as_deref(), Some("D:/target"));
+        assert_eq!(app.sessions[1].cwd.as_deref(), Some("E:/other"));
+        assert!(app.pending_session_workspace_moves.is_empty());
+        let _ = std::fs::remove_dir_all(profile_dir);
+    }
+
+    #[test]
+    fn workspace_move_busy_denied_stale_and_unknown_failures_never_mutate_or_retry() {
+        for error in [
+            "Hermes session_busy: active turn",
+            "Hermes denied: policy refused",
+            "Hermes stale: session changed",
+            "outcome unknown after connection loss",
+        ] {
+            let (mut app, profile_dir) = isolated_app();
+            app.gateway_connection_id = Some("conn-a".into());
+            app.sessions.push(SessionSummary {
+                id: "stored-1".into(),
+                connection_id: Some("conn-a".into()),
+                cwd: Some("D:/old".into()),
+                lineage_root_id: None,
+                profile: Some("work".into()),
+                title: String::new(),
+                preview: String::new(),
+                message_count: 0,
+                source: "desktop".into(),
+                started_at: 0.0,
+                last_active: None,
+                pinned: false,
+                unread: false,
+                archived: false,
+            });
+            let owner_key =
+                app.session_identity_key_for_connection(Some("conn-a"), "stored-1", Some("work"));
+            app.pending_session_workspace_moves.insert(
+                owner_key.clone(),
+                PendingSessionWorkspaceMove {
+                    request_id: "move-1".into(),
+                    session_id: "stored-1".into(),
+                    profile: Some("work".into()),
+                    connection_id: "conn-a".into(),
+                    owner_key,
+                    target_cwd: "D:/target".into(),
+                },
+            );
+            app.settle_session_workspace_move(
+                "move-1",
+                "stored-1",
+                Some("work".into()),
+                Some("conn-a".into()),
+                "D:/target",
+                Err(error.into()),
+            );
+            assert_eq!(
+                app.sessions[0].cwd.as_deref(),
+                Some("D:/old"),
+                "failed move {error} changed the row"
+            );
+            assert!(
+                app.pending_session_workspace_moves.is_empty(),
+                "failed move {error} remains queued for retry"
+            );
+            assert!(
+                app.status.contains(error),
+                "failure reason {error} was not surfaced"
+            );
+            let _ = std::fs::remove_dir_all(profile_dir);
+        }
     }
 
     #[test]
