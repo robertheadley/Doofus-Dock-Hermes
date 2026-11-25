@@ -57660,9 +57660,11 @@ mod tests {
             .expect("split the profile sessions into visible columns");
         app.workspace.save_layout();
 
+        let app = std::rc::Rc::new(std::cell::RefCell::new(app));
+        let frame_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1800.0, 1200.0))
-            .build_ui(|ui| app.draw(ui));
+            .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
         for text in ["Work-only transcript", "Personal-only transcript"] {
             assert!(
                 harness
@@ -57732,8 +57734,104 @@ mod tests {
                 })),
             "typing into the personal composer stays in its profile: {edited_values:?}"
         );
+
+        harness
+            .query_all_by(|node| {
+                node.value()
+                    .is_some_and(|value| value.contains("Work-only draft"))
+            })
+            .next()
+            .expect("work composer for inline skill suggestions")
+            .click();
+        harness.run();
+        harness
+            .query_all_by(|node| {
+                node.value()
+                    .is_some_and(|value| value.contains("Work-only draft"))
+            })
+            .next()
+            .expect("focused work composer")
+            .type_text(" /review");
+        harness.run();
+        let work_completion_owner = {
+            let mut app = app.borrow_mut();
+            app.slash_completion_due = None;
+            assert_eq!(app.slash_completion_query.as_deref(), Some("/review"));
+            app.slash_completion_composer_id
+                .expect("focused work composer owns inline completion")
+        };
+        app.borrow_mut().slash_completion_items = vec![SlashCompletionItem {
+            text: "/review".into(),
+            display: "/review".into(),
+            meta: "Review the working tree".into(),
+            group: "Skills".into(),
+        }];
+        harness.run();
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref()
+                        == Some("Insert /review into the message draft without sending")
+                })
+                .next()
+                .is_some(),
+            "the focused work pane displays its skill suggestion"
+        );
+
+        harness
+            .query_all_by(|node| {
+                node.value()
+                    .is_some_and(|value| value.contains("Personal-only draft"))
+            })
+            .next()
+            .expect("personal composer for completion focus switch")
+            .click();
+        harness.run();
+        let personal_completion_owner = {
+            let mut app = app.borrow_mut();
+            app.slash_completion_due = None;
+            assert_ne!(
+                app.slash_completion_composer_id,
+                Some(work_completion_owner),
+                "focus switches slash completion ownership to the personal pane"
+            );
+            app.slash_completion_composer_id
+                .expect("focused personal composer owns inline completion")
+        };
+        assert_ne!(work_completion_owner, personal_completion_owner);
+        assert!(
+            harness
+                .query_all_by(|node| {
+                    node.label().as_deref()
+                        == Some("Insert /review into the message draft without sending")
+                })
+                .next()
+                .is_none(),
+            "the previous pane's suggestion is not rendered in the newly focused pane"
+        );
+        harness
+            .query_all_by(|node| {
+                node.value()
+                    .is_some_and(|value| value.contains("Personal-only draft"))
+            })
+            .next()
+            .expect("focused personal composer")
+            .type_text(" /research");
+        harness.run();
+        {
+            let mut app = app.borrow_mut();
+            app.slash_completion_due = None;
+            assert_eq!(
+                app.slash_completion_composer_id,
+                Some(personal_completion_owner)
+            );
+            assert_eq!(app.slash_completion_query.as_deref(), Some("/research"));
+            assert!(app.pending_submissions.is_empty());
+        }
+
         drop(harness);
 
+        let app = app.borrow();
         let owners = app.workspace.open_session_pane_owner_identities();
         assert!(owners.contains(&(
             Some(connection_id.clone()),
@@ -57747,11 +57845,11 @@ mod tests {
         )));
         assert_eq!(
             app.session_chat_views[&work_key].draft,
-            "Work-only draftwork edit"
+            "Work-only draftwork edit /review"
         );
         assert_eq!(
             app.session_chat_views[&personal_key].draft,
-            "Personal-only draftpersonal edit"
+            "Personal-only draftpersonal edit /research"
         );
         assert_eq!(
             app.session_chat_views[&work_key].transcript[0]["content"],
