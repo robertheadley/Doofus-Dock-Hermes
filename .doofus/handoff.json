@@ -761,50 +761,56 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
       "path": "apps/hermes-native/docs/ARCHITECTURE.md",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "codex",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/src/app.rs",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/src/gateway.rs",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0150Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0153Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0157Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-refresh-20261126T0135Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-refresh-rebuilt-20261126T0140Z.json",
+      "status": "??"
     },
     {
       "change_type": "untracked",
@@ -990,6 +996,12 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-waited-2026-11-25.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-prompt-timeline-profile-scope-20261126T0130Z.json",
       "status": "??"
     },
     {
@@ -1554,11 +1566,11 @@
   "checkpoint": {
     "command": "cargo test --locked -p hermes-native --features agent-automation",
     "evidence": [
-      "apps/hermes-native/src/gateway.rs#older_transcript_page_omits_profile_for_ticket_scoped_local_read"
+      "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0157Z.json#outcome"
     ],
     "state": "in_progress",
-    "summary": "Fixed local Hermes native HTTP transcript/profile routing, added scope and URL regressions, stabilized async composer image test frame stepping, and verified the full app target set. Live Gateway refresh and provider-backed write acceptance remain unverified.",
-    "verified_at": "2026-11-26T01:26:09Z"
+    "summary": "Fixed and live-verified local transcript refresh after streamed rows differed from persisted Hermes rows: durable message rows now replace matching ephemeral rows by stable row ID or role/content when one side lacks the ID. Full Rust suite passed; live pinned-qwen reply displayed two messages without refresh errors. Overall agent-workflow scope remains incomplete.",
+    "verified_at": "2026-11-26T01:58:17Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1656,7 +1668,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-26T02:26:09Z",
+    "lease_expires_at": "2026-11-26T02:58:17Z",
     "lease_id": "76f784e3-a8ec-425c-911b-34b010e70e62",
     "model": null,
     "ownership_state": "active",
@@ -1857,6 +1869,48 @@
         "provider": "codex"
       },
       "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-refresh-20261126T0135Z.json#outcome"
+      ],
+      "kind": "live_gateway_chat_smoke",
+      "note": "The smoke reported HTTP 403, but inspection found it launched target/debug/hermes-automation.exe built at 18:37, before fix commit 244cf52 at 19:27. This result is from a stale executable and is invalid for current source; the current headless binary has since been rebuilt. No installed Hermes profile was touched.",
+      "observed_at": "2026-11-26T01:40:11Z",
+      "operation_id": "hermes-native-live-chat-transcript-smoke-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0157Z.json#outcome"
+      ],
+      "kind": "live_gateway_chat_smoke",
+      "note": "After replacing ephemeral streamed rows with matching persisted Gateway rows, rebuilt hermes-automation and verified a settled READY reply through the pinned local qwen provider; Hermes transcript displayed two messages with no API refresh error. Test used a dedicated TEMP HERMES_HOME and the pinned-source Hermes CLI on PATH; the installed Hermes CLI was not used. Full Rust tests pass: 805 library, 16 automation and 3 app tests.",
+      "observed_at": "2026-11-26T01:56:20Z",
+      "operation_id": "hermes-native-live-chat-transcript-smoke-rebuilt-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/artifacts/agent-ui/live-prompt-timeline-profile-scope-20261126T0130Z.json#outcome"
+      ],
+      "kind": "live_gateway_readonly_smoke",
+      "note": "Gateway connected, but clicking New session on an untouched primary draft only reused that draft; no stored session was created and no prompt-history HTTP request was reached. No model prompt was submitted. Profile-scoped live process was verified at PID 39636 with zero active agents and is retained only for the next bounded smoke.",
+      "observed_at": "2026-11-26T01:37:31Z",
+      "operation_id": "hermes-native-live-prompt-timeline-smoke-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
     },
     {
       "evidence": [],
@@ -3802,9 +3856,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "8091a92f-3dd7-4780-bc81-a44ddec4be82",
+  "last_event_id": "hermes-native-transcript-reconcile-20261126T0158Z",
   "last_operation": {
-    "request_id": "8091a92f-3dd7-4780-bc81-a44ddec4be82",
+    "request_id": "hermes-native-transcript-reconcile-20261126T0158Z",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -3840,7 +3894,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Run a temporary isolated live Gateway transcript refresh against the fixed build; then resume the provider-backed coding acceptance and continue remaining agent workflow requirements.",
+  "recommended_next_action": "Continue evidence review and implementation for the remaining Hermes agent workflow requirements, prioritizing tool execution/progress/results/approvals and provider-backed coding acceptance.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4255,7 +4309,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "10bd1dbca4c9e1128df036618968a2b37e8795b3dbaf38417963e657ae37641e",
+    "change_fingerprint": "e5a4edac1fb4bfd820ec511b911ffe8f9a84b312075c736fa9a1af2f5cd6c4ba",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -4266,19 +4320,7 @@
         "status": " M"
       },
       {
-        "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/README.md",
-        "status": " M"
-      },
-      {
         "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
         "status": " M"
       },
       {
@@ -4290,12 +4332,28 @@
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/src/gateway.rs",
+        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
-        "path": "docs/EXECUTION_LOGS.md",
-        "status": " M"
+        "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0150Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0153Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0157Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-refresh-20261126T0135Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-refresh-rebuilt-20261126T0140Z.json",
+        "status": "??"
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T17-25-29-902Z.json",
@@ -4419,6 +4477,10 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-waited-2026-11-25.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-prompt-timeline-profile-scope-20261126T0130Z.json",
         "status": "??"
       },
       {
@@ -4794,14 +4856,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "adbe55ab4f069e3aeddc18bede0a7c7cdf161953",
+    "head_commit": "244cf52328471799060a97116c8c58f81a8586d6",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1120,
+  "revision": 1127,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1120,
+  "state_revision": 1127,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
   "task_ledger_revision": 192,
@@ -7184,5 +7246,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-26T01:26:09Z"
+  "updated_at": "2026-11-26T01:58:17Z"
 }

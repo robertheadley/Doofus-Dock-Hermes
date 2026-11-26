@@ -42109,23 +42109,35 @@ fn merge_refreshed_transcript_tail(
     if refreshed.is_empty() {
         return Ok(current);
     }
-    if let Some(start) = current
-        .windows(refreshed.len())
-        .position(|window| window == refreshed.as_slice())
-        && start + refreshed.len() == current.len()
+    if let Some(start) = current.windows(refreshed.len()).position(|window| {
+        window
+            .iter()
+            .zip(&refreshed)
+            .all(|(current, refreshed)| transcript_refresh_rows_match(current, refreshed))
+    }) && start + refreshed.len() == current.len()
     {
-        return Ok(current);
+        let mut merged = current.into_iter().take(start).collect::<Vec<_>>();
+        merged.extend(refreshed);
+        return Ok(merged);
     }
     if complete_snapshot
-        && refreshed
-            .windows(current.len())
-            .any(|window| window == current.as_slice())
+        && refreshed.windows(current.len()).any(|window| {
+            window
+                .iter()
+                .zip(&current)
+                .all(|(refreshed, current)| transcript_refresh_rows_match(refreshed, current))
+        })
     {
         return Ok(refreshed);
     }
     let overlap = (1..=refreshed.len().min(current.len()))
         .rev()
-        .find(|length| current[current.len() - length..] == refreshed[..*length])
+        .find(|length| {
+            current[current.len() - length..]
+                .iter()
+                .zip(&refreshed[..*length])
+                .all(|(current, refreshed)| transcript_refresh_rows_match(current, refreshed))
+        })
         .unwrap_or(0);
     if overlap == 0 {
         return Err("Hermes transcript refresh has no safe overlap with the loaded history".into());
@@ -42135,6 +42147,38 @@ fn merge_refreshed_transcript_tail(
     merged.extend(current.into_iter().take(historical_prefix_len));
     merged.extend(refreshed);
     Ok(merged)
+}
+
+fn transcript_refresh_rows_match(
+    current: &serde_json::Value,
+    refreshed: &serde_json::Value,
+) -> bool {
+    if current == refreshed {
+        return true;
+    }
+    let current_row_id = current.get("row_id").and_then(serde_json::Value::as_u64);
+    let refreshed_row_id = refreshed.get("row_id").and_then(serde_json::Value::as_u64);
+    if let (Some(current_row_id), Some(refreshed_row_id)) = (current_row_id, refreshed_row_id) {
+        return current_row_id > 0 && current_row_id == refreshed_row_id;
+    }
+    if let (Some(current_tool_id), Some(refreshed_tool_id)) = (
+        current
+            .get("tool_call_id")
+            .and_then(serde_json::Value::as_str),
+        refreshed
+            .get("tool_call_id")
+            .and_then(serde_json::Value::as_str),
+    ) {
+        if !current_tool_id.is_empty() && current_tool_id == refreshed_tool_id {
+            return true;
+        }
+    }
+    current
+        .get("role")
+        .and_then(serde_json::Value::as_str)
+        .is_some()
+        && current.get("role") == refreshed.get("role")
+        && current.get("content") == refreshed.get("content")
 }
 
 fn transcript_contains_local_pending_or_error(transcript: &[serde_json::Value]) -> bool {
@@ -56371,6 +56415,28 @@ mod tests {
             merge_refreshed_transcript_tail(
                 vec![json!({"id":90})],
                 vec![json!({"id":1}), json!({"id":2})],
+                false,
+            )
+            .unwrap_err()
+            .contains("no safe overlap")
+        );
+        let streamed = vec![
+            json!({"role":"user","content":"Reply READY","timestamp":1.0}),
+            json!({"role":"assistant","content":"READY","streaming":false,"interim":true}),
+        ];
+        let durable = vec![
+            json!({"row_id":4,"role":"user","content":"Reply READY","timestamp":2.0}),
+            json!({"row_id":5,"role":"assistant","content":"READY","timestamp":3.0}),
+        ];
+        assert_eq!(
+            merge_refreshed_transcript_tail(durable.clone(), streamed, false)
+                .expect("persisted rows reconcile streamed rows"),
+            durable
+        );
+        assert!(
+            merge_refreshed_transcript_tail(
+                vec![json!({"row_id":40,"role":"user","content":"same"})],
+                vec![json!({"row_id":41,"role":"user","content":"same"})],
                 false,
             )
             .unwrap_err()

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-11-26T01:54:37.295Z",
+  "outcome": "chat_turn_settled_no_transcript_403",
+  "gateway_connected": true,
+  "session_created": true,
+  "prompt_submitted": true,
+  "model_prompt": "Reply with exactly READY. Do not inspect files or use tools.",
+  "assistant_settled": true,
+  "transcript_refresh_error": null,
+  "finished_at": "2026-11-26T01:54:58.448Z",
+  "gateway_state": "connected",
+  "transcript_count": 2,
+  "status": "Hermes response complete",
+  "pending": false
+}

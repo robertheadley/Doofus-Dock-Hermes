@@ -3917,3 +3917,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Test-only; no product runtime impact.
 - **risks:** Explicit one-frame stepping is bounded by the existing image-preview wait loop and does not wait for unrelated spinner quiescence.
 - **follow_up:** Keep future asynchronous image UI tests on explicit frame stepping.
+
+- **id:** `hermes-native-transcript-reconcile-20261126T0155Z`
+- **timestamp:** `2026-11-26T01:55:58Z`
+- **what:** Reconciled completed streamed chat messages with their persisted Hermes transcript rows, replacing matching ephemeral rows with durable rows that carry `row_id`.
+- **why:** A successful live Hermes response was being rejected because its stream representation and authenticated HTTP representation differed in metadata despite containing the same role and content.
+- **components:** Active transcript refresh merge, regression coverage, headless Hermes Gateway acceptance.
+- **type:** Correctness and live validation.
+- **validation:** Focused merge regression passes; full `cargo test --locked -p hermes-native --features agent-automation` passes (805 library, 16 automation, 3 app tests); `cargo fmt --all -- --check` passes; pinned local qwen live chat returns `READY`, settles with two transcript messages, and reports `Hermes response complete` without a transcript refresh error.
+- **performance:** Transcript merge remains linear in the bounded page and current transcript lengths; no Gateway requests added.
+- **risks:** Role/content matching is used only when at least one representation lacks a durable row ID; mismatching durable IDs and pages without a provable overlap still fail closed.
+- **follow_up:** Continue source-paired acceptance for tools, approvals, skills, plugins/MCP, provider/model configuration, and attachments; current scope evidence remains incomplete.
