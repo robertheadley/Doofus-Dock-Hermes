@@ -1,12 +1,52 @@
 {
   "active_processes": [
     {
+      "kind": "antigravity_headless_read_only_audit",
+      "model": null,
+      "note": "CLI returned only its opening statement and no findings. No edits were made; the audit is unusable. No permission bypass used.",
+      "observed_at": "2026-11-23T19:21:04Z",
+      "pid": null,
+      "process_id": "agy-readonly-vault-prompts-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "cli_agent",
+      "model": null,
+      "note": "Antigravity TUI review was interrupted after hanging while reading dock_view.rs; CLI returned to prompt and exited. No final report or edits were produced; manual code review was not performed.",
+      "observed_at": "2026-11-23T21:50:25Z",
+      "pid": null,
+      "process_id": "agy:doofusdock-group-minimize-review-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
       "kind": "cli_agent",
       "model": null,
       "note": "Antigravity plan-mode audit exited with no report because headless command permission was denied; no edits were observed. Do not retry with global permission bypass.",
       "observed_at": "2026-11-22T02:25:16Z",
       "pid": null,
       "process_id": "agy:p0-inline-diff-audit-20261122",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "cli_agent",
+      "model": null,
+      "note": "Antigravity CLI accepted the headless plan request but auto-denied its command tool because no headless command permission rule exists; it returned no report and made no edits. Not retried with global permission bypass, consistent with prior audit record.",
+      "observed_at": "2026-11-23T18:42:02Z",
+      "pid": null,
+      "process_id": "agy:p0-vault-request-audit-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "cli_agent",
+      "model": null,
+      "note": "Session-only allow rules for rg/cat/pwd/ls did not authorize the Antigravity Bash command tool. It returned only an audit-start message and no findings; no edits were observed. No global permission bypass used.",
+      "observed_at": "2026-11-23T18:54:41Z",
+      "pid": null,
+      "process_id": "agy:p0-vault-request-audit-20261123-readonlyallow",
       "provider": "codex",
       "state": "stopped"
     },
@@ -21,12 +61,92 @@
       "state": "stopped"
     },
     {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "Stopped owned idle Gateway process for isolated TEMP acceptance profile HermesNative-Delivery-Test-20261126-0055 after terminal admission and zero active workers; retained profile and fixture for evidence.",
+      "observed_at": "2026-11-26T00:54:28Z",
+      "pid": 14904,
+      "process_id": "hermes-native-acceptance-gateway-0055-pid-14904",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "Stopped owned idle Gateway process for isolated TEMP acceptance profile HermesNative-Delivery-Test-20261126-0055 after terminal admission and zero active workers; retained profile and fixture for evidence.",
+      "observed_at": "2026-11-26T00:54:30Z",
+      "pid": 36412,
+      "process_id": "hermes-native-acceptance-gateway-0055-pid-36412",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "Stopped owned idle Gateway process for isolated TEMP acceptance profile HermesNative-Delivery-Test-20261126-0100 after terminal admission and zero active workers; retained profile and fixture for evidence.",
+      "observed_at": "2026-11-26T00:54:32Z",
+      "pid": 23636,
+      "process_id": "hermes-native-acceptance-gateway-0100-pid-23636",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "Stopped owned idle Gateway process for isolated TEMP acceptance profile HermesNative-Delivery-Test-20261126-0100 after terminal admission and zero active workers; retained profile and fixture for evidence.",
+      "observed_at": "2026-11-26T00:54:34Z",
+      "pid": 6072,
+      "process_id": "hermes-native-acceptance-gateway-0100-pid-6072",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "isolated_gateway_supervisor",
+      "model": null,
+      "note": "Read-only Hermes gateway status identified this Hermes CLI process as the external supervisor; the actual HTTP/WebSocket Gateway is the child service process PID 15660. Both are preserved.",
+      "observed_at": "2026-11-25T22:43:40Z",
+      "pid": 13700,
+      "process_id": "hermes-test-gateway-pid-13700",
+      "provider": "codex",
+      "state": "running"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "Confirmed by hermes gateway status --deep and loopback listeners 127.0.0.1:49194 and :49195. Preserve for native UI process.list validation.",
+      "observed_at": "2026-11-25T22:43:42Z",
+      "pid": 15660,
+      "process_id": "hermes-test-gateway-server-pid-15660",
+      "provider": "codex",
+      "state": "running"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Pinned source and scope audit completed; identified clipboard image paste as the other high-value attachment gap. No edits, tests, or live requests.",
+      "observed_at": "2026-11-22T23:46:10Z",
+      "pid": null,
+      "process_id": "subagent:agent-scope-priority-20261122",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
       "kind": "delegated_agent",
       "model": null,
       "note": "Bounded source-contract audit was interrupted after pinned use-prompt-actions and upload path inspection; native attachment implementation not started. Exact upload methods and path-vs-bytes policy were partially confirmed directly.",
       "observed_at": "2026-11-19T17:07:00Z",
       "pid": null,
       "process_id": "subagent:attachment-contract-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Pinned-source and native upload audit completed; identified stale-runtime attachment retry as the bounded next slice. No edits, tests, or live requests.",
+      "observed_at": "2026-11-22T23:46:04Z",
+      "pid": null,
+      "process_id": "subagent:attachment-gap-audit-20261122",
       "provider": "codex",
       "state": "stopped"
     },
@@ -53,10 +173,40 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only composer scope audit completed; no edits.",
+      "observed_at": "2026-11-24T23:12:37Z",
+      "pid": null,
+      "process_id": "subagent:composer-scale-audit-20261124",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "code_agent",
+      "model": null,
+      "note": "Completed bounded typed connection-operation parser/reducer and registered module; 5 focused tests passed. No live Gateway or source changes outside assigned module/lib.rs.",
+      "observed_at": "2026-11-23T22:19:49Z",
+      "pid": null,
+      "process_id": "subagent:connection-operation-model-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only saved-Gateway picker audit completed: found descriptor persistence, active owner fail-closed checks, draft/session cache, and single-discovery lifecycle; identified stale old actor completion fencing and pending-submit switch guard as risks. No edits or tests.",
       "observed_at": "2026-11-21T23:38:20Z",
       "pid": null,
       "process_id": "subagent:connection-picker-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "code_agent",
+      "model": null,
+      "note": "Completed connection.respond Gateway actor transport and receipt handling; 4 focused tests passed, credential values omitted from receipts/debug. No live Gateway.",
+      "observed_at": "2026-11-23T22:20:26Z",
+      "pid": null,
+      "process_id": "subagent:connection-respond-transport-20261123",
       "provider": "codex",
       "state": "stopped"
     },
@@ -103,6 +253,26 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "PAR-0090 app implementation subagent completed owner-fenced cursor fallback, explicit retry, and focused UI tests; no child process remains.",
+      "observed_at": "2026-11-24T22:55:23Z",
+      "pid": null,
+      "process_id": "subagent:hermes-par0090-app-20261124",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "PAR-0090 Gateway implementation subagent completed bounded separate reader lane and observer tests; no child process remains.",
+      "observed_at": "2026-11-24T22:55:25Z",
+      "pid": null,
+      "process_id": "subagent:hermes-par0090-gateway-20261124",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Completed apps/hermes-native/src/layout.rs descriptor/migration slice; agent reports 4 focused tests and formatting/diff checks passed, no other files touched.",
       "observed_at": "2026-11-19T02:24:51Z",
       "pid": null,
@@ -113,10 +283,50 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Runner completion classifier and focused node test completed; no Gateway request was made and no provider prompt was sent.",
+      "observed_at": "2026-11-25T18:45:36Z",
+      "pid": null,
+      "process_id": "subagent:live-coding-runner-fix-20261125",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only audit completed; no repository edits or test processes remain from this delegate.",
       "observed_at": "2026-11-21T01:17:39Z",
       "pid": null,
       "process_id": "subagent:markdown_file_preview_audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Completed read-only pinned source audit: MCP setup is the resumable connection.request/update event plus connection.respond RPC, not a JSON-RPC server request. No edits or live calls.",
+      "observed_at": "2026-11-23T22:00:21Z",
+      "pid": null,
+      "process_id": "subagent:mcp-setup-contract-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Implemented provider-qualified model labels and sanitized selected-model state with offline regression tests; final source validation passed; no prompts or credentials accessed.",
+      "observed_at": "2026-11-25T19:17:56Z",
+      "pid": null,
+      "process_id": "subagent:model-selection-observability-20261125",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Read-only next P0 gap audit completed; recommends PAR-0508 Gateway reconnect/backoff with replay/resume and no duplicate submit. No edits.",
+      "observed_at": "2026-11-22T22:27:01Z",
+      "pid": null,
+      "process_id": "subagent:next-agent-gap-audit-20261122",
       "provider": "codex",
       "state": "stopped"
     },
@@ -203,6 +413,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only pinned auth and agent-init audit completed; no edits or live requests.",
+      "observed_at": "2026-11-23T17:48:35Z",
+      "pid": null,
+      "process_id": "subagent:par0064-auth-gap-audit-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0064 source contract completed; identified event-order-independent deduplicated assistant error bubble as next slice. No repository edits.",
       "observed_at": "2026-11-19T18:03:02Z",
       "pid": null,
@@ -213,10 +433,30 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only pinned source audit identified the fixed TLS setup-guide URL; no edits or live requests.",
+      "observed_at": "2026-11-23T18:01:57Z",
+      "pid": null,
+      "process_id": "subagent:par0064-next-recovery-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only sessions audit completed and returned source paths, existing implementation evidence, and remaining import/fork/cursor/reference gaps; no process remains.",
       "observed_at": "2026-11-20T16:00:00Z",
       "pid": null,
       "process_id": "subagent:par0069-0094-session-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "UCM evidence, progress reports, project docs, and validators completed; no child process remains.",
+      "observed_at": "2026-11-24T22:55:32Z",
+      "pid": null,
+      "process_id": "subagent:par0090-evidence-docs",
       "provider": "codex",
       "state": "stopped"
     },
@@ -283,6 +523,26 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only pinned-source audit completed. Native follows pinned Desktop main-window gateway ensure plus host-scoped ticket, but does not invoke the separate public gateway attach --json CLI; that CLI returns only a profile-scoped ticket and cannot be substituted without checking host-scope profile registry operations.",
+      "observed_at": "2026-11-22T23:20:43Z",
+      "pid": null,
+      "process_id": "subagent:par0503-attach-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Read-only pinned reconnect contract audit completed; confirmed 300ms to 15s full-jitter retry, 5s stable-open reset, session.events.since replay, and never retry prompt.submit.",
+      "observed_at": "2026-11-22T22:31:38Z",
+      "pid": null,
+      "process_id": "subagent:par0508-pinned-contract",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only priority audit completed and recommended PAR-0049 stale-runtime Stop recovery; no repository edits or tests.",
       "observed_at": "2026-11-20T23:45:40Z",
       "pid": null,
@@ -303,6 +563,16 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Profile scope audit and focused exact-owner session.resume fix completed and validated; no external Gateway operation was performed by the agent.",
+      "observed_at": "2026-11-25T18:45:38Z",
+      "pid": null,
+      "process_id": "subagent:profile-scope-audit-20261125",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only task-state and changed-file audit completed; no edits, tests, or live Gateway requests.",
       "observed_at": "2026-11-22T03:04:24Z",
       "pid": null,
@@ -313,10 +583,120 @@
     {
       "kind": "delegated_agent",
       "model": null,
+      "note": "Read-only trace complete: local model options use GET /api/model/options?explicit_only=1 without owner profile query and send a native-http ticket header. The corrected private module runtime resolver should unblock catalog reads if ticket minting is the sole fault; live proof remains required.",
+      "observed_at": "2026-11-25T18:18:06Z",
+      "pid": null,
+      "process_id": "subagent:release-package-model-catalog-audit-20261125",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Audit finished; confirmed contract and no secret-specific test coverage. No edits.",
+      "observed_at": "2026-11-23T19:52:43Z",
+      "pid": null,
+      "process_id": "subagent:secret-contract-audit-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
       "note": "Read-only PAR-0069..0094 audit completed; identified broad existing partial support, no session branch/fork command, and mapped owner/reconnect gaps. No edits.",
       "observed_at": "2026-11-19T16:57:56Z",
       "pid": null,
       "process_id": "subagent:session-lifecycle-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Audit finished; identified session import and branch as distinct missing flows and shared exact contracts/test locators. No edits.",
+      "observed_at": "2026-11-23T19:52:46Z",
+      "pid": null,
+      "process_id": "subagent:session-lifecycle-audit-20261123",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Implemented canonical live+stored session-list merge and legacy compatibility; focused WebSocket tests and formatting passed; no Gateway prompt submitted.",
+      "observed_at": "2026-11-25T19:17:58Z",
+      "pid": null,
+      "process_id": "subagent:session-list-audit-20261125",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Read-only reconciliation complete: latest log records 3/3 passing after the DSR response fix, but the test searches for a marker also echoed in the typed command; stdout proof is not robust. Recommend distinguishing generated output from echoed input before claiming conclusive PTY stdout acceptance.",
+      "observed_at": "2026-11-25T18:17:51Z",
+      "pid": null,
+      "process_id": "subagent:terminal-pty-evidence-audit-20261125",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Runtime-ticket resolver patch and focused tests complete; 5 tests pass with agent-automation; only gateway.rs changed by delegate. No Gateway command launched.",
+      "observed_at": "2026-11-25T18:21:42Z",
+      "pid": null,
+      "process_id": "subagent:terminal-slice-audit-runtime-resolver-20261125",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Independent review identified composer scale, Markdown line-height and spacing gaps; review completed before fixes.",
+      "observed_at": "2026-11-24T23:12:33Z",
+      "pid": null,
+      "process_id": "subagent:typography-final-review-20261124",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Typography implementation and focused tests completed; workspace validation passed.",
+      "observed_at": "2026-11-24T22:55:30Z",
+      "pid": null,
+      "process_id": "subagent:typography-implementation",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Read-only pinned source typography audit completed with source token and font findings.",
+      "observed_at": "2026-11-24T22:55:27Z",
+      "pid": null,
+      "process_id": "subagent:typography-source-audit",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Implemented source-aligned composer/Markdown typography corrections; focused tests and full suite completed.",
+      "observed_at": "2026-11-24T23:12:35Z",
+      "pid": null,
+      "process_id": "subagent:typography-source-fix-20261124",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "delegated_agent",
+      "model": null,
+      "note": "Read-only pinned/native audit completed. Confirmed exact contracts, same-request response shape, owner fencing, cancellation, outcome-unknown no-resend rule, pending-session guards, and test matrix. No files edited; no tests run.",
+      "observed_at": "2026-11-23T19:00:44Z",
+      "pid": null,
+      "process_id": "subagent:vault-server-request-review-20261123",
       "provider": "codex",
       "state": "stopped"
     }
@@ -345,6 +725,18 @@
       "id": "96234b66-47c9-4909-bd3b-6ecd59c3b423",
       "recorded_at": "2026-11-22T02:38:45Z",
       "state": "blocked"
+    },
+    {
+      "description": "The isolated Hermes provider returned a DeepSeek payment/credit error before executing tools; full coding-workflow acceptance cannot proceed until a usable provider responds.",
+      "id": "5491cec8-049d-43db-a288-fb442385d488",
+      "recorded_at": "2026-11-25T17:09:54Z",
+      "state": "blocked"
+    },
+    {
+      "description": "Provider-backed coding/live process output acceptance remains blocked by the prior isolated DeepSeek HTTP 402 Insufficient Balance response; no provider prompt was sent in this turn.",
+      "id": "241d686c-7759-4771-baef-64c725de50d0",
+      "recorded_at": "2026-11-25T23:47:04Z",
+      "state": "blocked"
     }
   ],
   "changed_files": [
@@ -367,82 +759,166 @@
       "status": " M"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/README.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T17-25-29-902Z.json",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T17-25-29-902Z.png",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T18-27-06-951Z.json",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T18-27-06-951Z.png",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T17-25-29-902Z.json",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T17-25-29-902Z.png",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T18-27-06-951Z.json",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T18-27-06-951Z.png",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/tools/build_implementation_progress.py",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-reconcile-20261125.json",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-session-readback-20261125.json",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-fixed-2026-11-25.json",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-fixed-2026-11-25.png",
+      "status": "??"
     },
     {
-      "change_type": "modified",
+      "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-      "status": " M"
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-loaded-2026-11-25.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-loaded-2026-11-25.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-open-2026-11-25.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-open-2026-11-25.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-ticket-fix-20261125T1820Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-ticket-fix-20261125T1820Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-waited-2026-11-25.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-waited-2026-11-25.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-session-resumed-after-scope-merge-20261125.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-session-resumed-after-scope-merge-20261125.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-diagnostic-20261125.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-diagnostic-20261125.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-selection-runtime-readback-20261125.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/reconcile-live-coding-session-20261125T1830Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/reconcile-live-coding-session-20261125T1830Z.png",
+      "status": "??"
     },
     {
       "change_type": "untracked",
@@ -470,22 +946,503 @@
     },
     {
       "change_type": "untracked",
-      "owner": "codex",
-      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0118.json",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/connectors-directory-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/delivery-baseline-capabilities-20261125.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/live-coding-result-2026-11-25T17-25-29-902Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/live-coding-result-2026-11-25T18-27-06-951Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/live-coding-review-2026-11-25T17-25-29-902Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/live-headless-long-session-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/plugin-install-review-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/plugins-catalog-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/session-profile-gateway-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/typography-chat-scale-110-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/typography-chat-scale-composer-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/typography-pinned-hermes-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/typography-source-aligned-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/.hermes-native-windows-x64-1765d78f01a9.staging-34588/hermes-automation.exe",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/.hermes-native-windows-x64-1765d78f01a9.staging-34588/hermes-native.exe",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/.hermes-native-windows-x64-1765d78f01a9.staging-34588/pdfium-8125.dll",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/PACKAGE.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/README.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/DoofusDock/core-LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/DoofusDock/presentation-LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/DoofusDock/render-egui-LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/FiraCode/LICENSE.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/Hermes-Native-license-status.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/JetBrainsMono/OFL.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/abseil.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/agg23.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Apache2-LLVM.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Boost.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/fast_float.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/freetype.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/harfbuzz.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/highway.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/icu.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/lcms.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.ijg",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.md",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libopenjpeg.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libpng.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/llvm-libc.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/pdfium.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/simdutf.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/zlib.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-APACHE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-MIT",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/agent/hermes-page.mjs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/hermes-automation.exe",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/hermes-native.exe",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/pdfium-8125.dll",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/PACKAGE.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/README.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/DoofusDock/core-LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/DoofusDock/presentation-LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/DoofusDock/render-egui-LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/FiraCode/LICENSE.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/Hermes-Native-license-status.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/JetBrainsMono/OFL.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/LICENSE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/abseil.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/agg23.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Apache2-LLVM.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Boost.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/fast_float.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/freetype.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/harfbuzz.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/highway.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/icu.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/lcms.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.ijg",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.md",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libopenjpeg.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libpng.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/llvm-libc.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/pdfium.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/simdutf.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/zlib.txt",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-APACHE",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-MIT",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/agent/hermes-page.mjs",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/hermes-automation.exe",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/hermes-native.exe",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/pdfium-8125.dll",
       "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
-    "evidence": [
-      "apps/hermes-native/src/app.rs#batch_clarify_answer_action_locks_profile_owned_answers_in_question_order",
-      "apps/hermes-native/src/app.rs#batch_clarify_skip_answers_the_originating_server_request",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0118.json#EV-0118",
-      "apps/hermes-native/docs/PLAN.md#Revision 338"
-    ],
-    "state": "tested",
-    "summary": "PAR-0515 existing batch clarify card is verified at the app-to-Gateway command boundary for ordered single/multi-select answer locks and exact-request Skip. EV-0118 records partial evidence; no runtime behavior was replaced.",
-    "verified_at": "2026-11-22T13:42:35Z"
+    "command": "resume",
+    "evidence": [],
+    "state": "in_progress",
+    "summary": "Taking over the expired Codex lease after inspection: no unresolved operations; only pre-existing registered Gateway supervisor/server processes 13700 and 15660 are running and are intentionally preserved. This worktree contains focused, uncommitted automation overflow and live-acceptance runner fixes with regression coverage and documentation. Headless local Ollama runs were isolated under TEMP, all admissions were terminal before stopping, and no installed profile or shared Ollama process was changed. A copied profile run had no file edits; fresh clean profiles returned an assistant final response without fixture edits and showed HTTP 403 on Rust UI transcript refresh. Live coding/tool acceptance remains unverified; continue toward the pinned-source agent workflow.",
+    "verified_at": "2026-11-26T00:52:24Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -517,8 +1474,17 @@
     "hermes-par-0063",
     "hermes-par-0064",
     "hermes-par-0065",
+    "hermes-par-0066",
     "hermes-par-0067",
     "hermes-par-0074",
+    "hermes-par-0082",
+    "hermes-par-0083",
+    "hermes-par-0084",
+    "hermes-par-0085",
+    "hermes-par-0086",
+    "hermes-par-0088",
+    "hermes-par-0090",
+    "hermes-par-0134",
     "hermes-par-0214",
     "hermes-par-0215",
     "hermes-par-0216",
@@ -546,10 +1512,23 @@
     "hermes-par-0268",
     "hermes-par-0333",
     "hermes-par-0334",
+    "hermes-par-0503",
+    "hermes-par-0504",
+    "hermes-par-0505",
+    "hermes-par-0506",
+    "hermes-par-0507",
+    "hermes-par-0508",
+    "hermes-par-0509",
+    "hermes-par-0510",
     "hermes-par-0511",
     "hermes-par-0512",
+    "hermes-par-0513",
     "hermes-par-0514",
     "hermes-par-0515",
+    "hermes-par-0516",
+    "hermes-par-0517",
+    "hermes-par-0518",
+    "hermes-par-0520",
     "hermes-par-0521",
     "hermes-par-0522",
     "hermes-par-0523",
@@ -561,8 +1540,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-22T14:42:35Z",
-    "lease_id": "6b1f3c96-e673-4159-a8b0-a3a75518c675",
+    "lease_expires_at": "2026-11-26T01:52:24Z",
+    "lease_id": "76f784e3-a8ec-425c-911b-34b010e70e62",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -694,6 +1673,35 @@
     },
     {
       "evidence": [
+        "apps/hermes-native/src/app.rs#agent_terminal_output_section_is_collapsed_until_opened"
+      ],
+      "kind": "cargo_test",
+      "note": "Agent output stays collapsed by default; expanding it shows the per-process output viewer in one action. Focused egui headless test passed with agent-automation feature; rustfmt and diff checks pass.",
+      "observed_at": "2026-11-25T23:35:23Z",
+      "operation_id": "hermes-agent-stream-first-expand-20261125",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/fonts.rs#chat_scale_and_transcript_rhythm_match_pinned_desktop_defaults",
+        "apps/hermes-native/src/app.rs#transcript_spacing_matches_source_tool_and_scaffold_rhythms"
+      ],
+      "kind": "implementation",
+      "note": "Applied pinned chat scale to primary and message-edit composers, matched assistant Markdown line-height, corrected tool/scaffold spacing, and passed focused plus full workspace tests.",
+      "observed_at": "2026-11-24T23:12:30Z",
+      "operation_id": "hermes-chat-composer-source-typography-20261124",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "docs/EXECUTION_LOGS.md#hermes-chat-tool-progress-publish-main-20261120"
       ],
       "kind": "git_push_main",
@@ -735,6 +1743,58 @@
       "state": "succeeded"
     },
     {
+      "evidence": [],
+      "kind": "live_coding_acceptance",
+      "note": "Hermes rejected Qwen3's detected 40,960-token context below its 64K minimum before inference. Read-only pinned Gateway state shows terminal/failed admission and no worker; the native UI retained stale submission-pending state, so the isolated runner process tree was stopped after that canonical readback. No project files changed.",
+      "observed_at": "2026-11-26T00:08:48Z",
+      "operation_id": "hermes-native-ollama-coding-20261125",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/artifacts/agent-ui/live-coding-reconcile-20261126T0025Z.json#gateway"
+      ],
+      "kind": "live_coding_acceptance",
+      "note": "Gateway completed the isolated turn, but qwen3:8b repeatedly emitted malformed deferred-tool calls and changed no project files; the headless app then exceeded its 256 KiB UI response bound while polling the tree. No tests ran. See the structured reconciliation record.",
+      "observed_at": "2026-11-26T00:27:52Z",
+      "operation_id": "hermes-native-ollama-coding-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [],
+      "kind": "cargo_release_package",
+      "note": "Release build succeeded in 7m38s, but package assembly stopped because the repository has no root LICENSE file; the script failed closed before publication and left only its own staged copies in the exact package staging directory. Script now uses license files confirmed in the checkout and records the missing app license text transparently.",
+      "observed_at": "2026-11-25T23:22:18Z",
+      "operation_id": "hermes-native-portable-package-1765d78",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-portable-package-verify-20261125T2324Z"
+      ],
+      "kind": "cargo_release_package",
+      "note": "Built and validated local source-qualified package; release executable and headless HermesPage UI protocol checks passed.",
+      "observed_at": "2026-11-25T23:25:54Z",
+      "operation_id": "hermes-native-portable-package-1765d78-retry1",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
       "evidence": [
         "docs/CHANGELOG.agent.md#Hermes Native Command Center navigation and overlay framing"
       ],
@@ -758,6 +1818,20 @@
       "operation_id": "hermes-navigation-validation-20261118",
       "owner": {
         "model": "gpt-6.2-astra",
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-package-refresh-20261125T2343Z"
+      ],
+      "kind": "package_build",
+      "note": "Rebuilt the portable package from e6b2653, verified all manifest file lengths and SHA-256 values/source pins/profile exclusion, and launched the packaged headless UI to route / with Settings and Terminal controls before clean close.",
+      "observed_at": "2026-11-25T23:45:59Z",
+      "operation_id": "hermes-package-refresh-e6b2653",
+      "owner": {
+        "model": null,
         "provider": "codex"
       },
       "state": "succeeded"
@@ -840,6 +1914,20 @@
       "note": "Pushed PAR-0067 implementation and EV-0031 evidence commits; fresh fetch verified HEAD equals origin/main at a97592e9a74eee6b50439e3833d072225c1d732f with clean worktree.",
       "observed_at": "2026-11-19T19:14:14Z",
       "operation_id": "hermes-par-0067-main-publish-20261119",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par-0083-publish-main-20261125"
+      ],
+      "kind": "git_push_main",
+      "note": "Fresh fetch confirms local main and origin/main both equal c7c9a5a8df1e4aa7591d2b5c29c89d185a3d689f; only reviewed owned files were included.",
+      "observed_at": "2026-11-25T20:55:33Z",
+      "operation_id": "hermes-par-0083-push-c7c9a5a",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -1143,6 +2231,58 @@
       "note": "Pushed tested session metadata implementation and EV-0075 docs; fresh fetch confirmed local main and origin/main both 9decbef493a131922261723be26ce82b1dd04ce3.",
       "observed_at": "2026-11-20T20:53:50Z",
       "operation_id": "hermes-par0062-publish-main-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0137.json#EV-0137"
+      ],
+      "kind": "git_push_main",
+      "note": "Published evidence/docs commit 49524258731e479143e76125185189495362e904 to origin/main. Fresh fetch confirmed local main and origin/main exactly equal this commit. Source implementation commit 2a6fb534 is its parent.",
+      "observed_at": "2026-11-23T16:11:45Z",
+      "operation_id": "hermes-par0064-evidence-push-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_push_main",
+      "note": "Published implementation 98fcec7 and evidence/docs c9d1094; fresh fetch confirms local and origin/main equality at c9d10945fac188a55fd49732628da3a5691497c4. Operator state was excluded.",
+      "observed_at": "2026-11-23T02:18:05Z",
+      "operation_id": "hermes-par0064-model-picker-publish-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_push_main",
+      "note": "Published provider-settings source f60e97e and evidence/docs 79fa78d; fresh fetch confirms local and origin/main both equal 79fa78d5dbda914c586eb9a925474d439bd3c75d. Operator state was excluded.",
+      "observed_at": "2026-11-23T02:28:32Z",
+      "operation_id": "hermes-par0064-provider-settings-publish-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#scheduled_failed_retry_dispatches_once_at_reset_for_exact_current_owner"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed source commit 2a6fb534 to origin/main. Fresh fetch confirmed local main and origin/main exactly equal 2a6fb5341fad5d035f0622bd26a8a520bed3bcce. Evidence/docs publication remains pending.",
+      "observed_at": "2026-11-23T16:10:00Z",
+      "operation_id": "hermes-par0064-source-push-2a6fb53-20261123",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -1555,6 +2695,61 @@
     },
     {
       "evidence": [
+        "apps/hermes-native/artifacts/agent-ui/live-coding-session-readback-20261125.json#gateway_state_db",
+        "apps/hermes-native/artifacts/agent-ui/live-coding-session-readback-20261125.json#ui_readback"
+      ],
+      "kind": "isolated_provider_coding_assignment",
+      "note": "Supplemented the terminal HTTP 402 reconciliation with a query-only state.db read: the session persists with two messages, zero tool calls, model deepseek-flash, and ws_orphan_reap; the current headless app sees Gateway connected but session_count=0. No prompt sent during readback.",
+      "observed_at": "2026-11-25T18:56:38Z",
+      "operation_id": "live-coding-assignment-chat-20261125",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [],
+      "kind": "isolated_gateway_model_catalog_smoke",
+      "note": "Headless attach succeeded and model picker was opened. The observation script ended with the screenshot API rejecting a filename that included the artifacts directory; it emitted no catalog state and wrote no screenshot. No prompt was sent; retry with the protocol's required basename-only screenshot name.",
+      "observed_at": "2026-11-25T18:23:37Z",
+      "operation_id": "live-model-catalog-smoke-20261125",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/artifacts/agent-ui/live-model-picker-ticket-fix-20261125T1820Z.json#screenshot_sha256"
+      ],
+      "kind": "isolated_gateway_model_catalog_smoke",
+      "note": "PASS: rebuilt native headless app attached to isolated Gateway, minted scoped native-http ticket with Hermes' supported private runtime resolver, and rendered configured DeepSeek choices. Screenshot displays deepseek-chat selected and deepseek-flash available. No prompt was sent. Repository-discovery HTTP 403 and session-recency HTTP 422 remain separate diagnostics.",
+      "observed_at": "2026-11-25T18:26:18Z",
+      "operation_id": "live-model-catalog-smoke-retry-20261125",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/target/debug/hermes-automation.exe#file"
+      ],
+      "kind": "cargo_build",
+      "note": "PASS: cargo build --locked -p hermes-native --features agent-automation --bin hermes-automation; Windows debug executable rebuilt. An initial ledger command from the crate directory used the wrong relative CLI path and failed; retried from repository root and recorded this result. No Hermes runtime connection.",
+      "observed_at": "2026-11-23T21:58:19Z",
+      "operation_id": "native-ui-headless-build-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id"
       ],
       "kind": "cargo_test",
@@ -1850,6 +3045,62 @@
     },
     {
       "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0136.json#EV-0136"
+      ],
+      "kind": "git_push_main",
+      "note": "Evidence/docs commit fc99d4f352fb893f0028ce80165fc6f79ebbe575 was pushed. Fresh fetch confirms local main and origin/main exact SHA equality. Package validator passes; UCM global map issues are separately documented.",
+      "observed_at": "2026-11-23T15:39:28Z",
+      "operation_id": "par0064-context-compression-evidence-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/gateway.rs#context_compression_uses_revision_fenced_mutation_and_resumes_transcript"
+      ],
+      "kind": "git_push_main",
+      "note": "Push of source commit eb1af5f35bbfa498d9e055819d6a9bd74aeedbdf completed. A fresh fetch confirms local main and origin/main exact SHA equality. A first state-finalization attempt reused the running request ID with different contents and was rejected; this separate request records the observed terminal success.",
+      "observed_at": "2026-11-23T15:37:01Z",
+      "operation_id": "par0064-context-compression-source-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#failed_turn_error_card_edits_policy_refusal_and_never_retries_unconfirmed_owner"
+      ],
+      "kind": "cargo_test",
+      "note": "Full locked agent-automation suite passed: 637 library + 15 protocol + 3 launcher tests; all-target check, rustfmt, and diff check passed.",
+      "observed_at": "2026-11-23T01:57:51Z",
+      "operation_id": "par0064-full-suite-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0131.json#EV-0131"
+      ],
+      "kind": "capability_validation",
+      "note": "PAR-0064 UCM declared scenarios all pass; full map still reports pre-existing schema errors and unrelated reconciliation items. Package validator passed 565 target behaviors and 117 implementation receipts.",
+      "observed_at": "2026-11-23T01:57:53Z",
+      "operation_id": "par0064-map-validation-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0084.json#uid"
       ],
       "kind": "git_commit",
@@ -1974,6 +3225,35 @@
     },
     {
       "evidence": [
+        "apps/hermes-native/src/app.rs#unresolved_session_uses_read_only_transcript_then_requires_explicit_profile_resume",
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0179.json#EV-0179"
+      ],
+      "kind": "implementation",
+      "note": "PAR-0088 owner-resolution fallback implemented, fully headless-validated, documented as partial, and source commit pushed to main; live gateway/package/source acceptance remains open.",
+      "observed_at": "2026-11-24T21:46:14Z",
+      "operation_id": "par0088-owner-fallback-implementation-20261124",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#read_only_cursor_history_uses_id_only_pages_and_merges_duplicate_boundaries"
+      ],
+      "kind": "implementation",
+      "note": "Implemented bounded opaque-cursor transcript reads for unresolved-owner read-only history; preserved ID-only fallback scope, added explicit retry and source-aligned chat typography. Full workspace tests and evidence/docs validation passed.",
+      "observed_at": "2026-11-24T22:53:11Z",
+      "operation_id": "par0090-opaque-transcript-cursor-20261124",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "docs/EXECUTION_LOGS.md#hermes-par0218-catalog-retry-20261120"
       ],
       "kind": "git_push_main",
@@ -1994,6 +3274,22 @@
       "note": "Pushed PAR-0219 code b9da9a7 and evidence/docs adc10b6. Fresh fetch confirms local main and origin/main equal adc10b644083364e7e6a4564c4b66a314badb762.",
       "observed_at": "2026-11-20T17:41:12Z",
       "operation_id": "par0219-publish-main-20261120",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/gateway.rs#reconnect_replays_only_read_events_and_never_resubmits_an_unknown_prompt",
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0122.json#EV-0122",
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0123.json#EV-0123"
+      ],
+      "kind": "implementation_and_validation",
+      "note": "PAR-0508 bounded Gateway reconnect and PAR-0511 session event replay are implemented on main; evidence and generated progress maps are reconciled. Full 617+15+3 suite was run at source commit 1412ed8; package validation, UCM scoped check, continuity 19/19, progress generation and diff checks pass. Live Gateway and packaged Windows acceptance remain open.",
+      "observed_at": "2026-11-22T23:09:32Z",
+      "operation_id": "par0508-implementation-20261122",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -2082,6 +3378,49 @@
     },
     {
       "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0515-clarify-evidence-20261122"
+      ],
+      "kind": "git_push_main",
+      "note": "Published PAR-0515 app/Gateway clarification regressions in bc8afd4 and EV-0118/progress/docs in e120c8c; fresh fetch confirms local main and origin/main both equal e120c8c6e44bd86621c30e82e9f674282e046fbd. Operator-owned work directory was excluded.",
+      "observed_at": "2026-11-22T13:43:17Z",
+      "operation_id": "par0515-publish-main-20261122",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0119.json#EV-0119"
+      ],
+      "kind": "git_push_main",
+      "note": "Published source commit d0d6942b033ebea0fc301d91522bdecddf5ae42d and evidence/docs commit cacdb9f9fe20eb34bb2752e3eb1c9c0569ab226b; fresh fetch confirms local main equals origin/main at cacdb9f9fe20eb34bb2752e3eb1c9c0569ab226b. Operator-owned work directory was excluded.",
+      "observed_at": "2026-11-22T14:18:31Z",
+      "operation_id": "par0516-publish-main-20261122",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#vault_unlock_prompt_is_masked_ephemeral_and_uses_its_gateway_request",
+        "apps/hermes-native/src/gateway.rs#client_capabilities_advertise_server_requests_without_claiming_remote_locality"
+      ],
+      "kind": "implementation_and_validation",
+      "note": "PAR-0517 vault.unlock_prompt and PAR-0520 explicit server request capability implemented; full locked suite 613 library + 15 protocol + 3 launcher, all-target check, fmt, diff, 19 continuity checks passed. Source commit d34c761 local; evidence/docs publication pending.",
+      "observed_at": "2026-11-22T22:26:59Z",
+      "operation_id": "par0517-implementation-20261122",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "apps/hermes-native/src/app.rs#profile_main_model_settings_confirm_before_saving_and_keep_chat_overrides_separate",
         "apps/hermes-native/src/gateway.rs#main_model_assignment_uses_profile_scope_and_requires_explicit_server_confirmation"
       ],
@@ -2103,6 +3442,198 @@
       "note": "Published implementation 294a88e and EV-0115/checkpoint commit 1a7f222; fresh fetch confirms local main and origin/main both equal 1a7f222a211e65745208dad0e7b3507a199360f6.",
       "observed_at": "2026-11-22T12:47:53Z",
       "operation_id": "par0528-publish-main-model-20261122",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-agent-stream-first-expand-20261125T2332Z"
+      ],
+      "kind": "git_push_main",
+      "note": "Commit e6b2653 includes the collapsed-by-default Agent output improvement and portable packaging tool/docs; a post-push fetch confirmed local main equals origin/main.",
+      "observed_at": "2026-11-25T23:45:57Z",
+      "operation_id": "publish-hermes-agent-stream-e6b2653",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/fonts.rs#apply_source_typography"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed 5f64c07be1f9822fd0c78de2e38392ba2da7d90b to origin/main; post-push fetch confirmed local and remote main match.",
+      "observed_at": "2026-11-24T17:12:05Z",
+      "operation_id": "publish-hermes-gateway-typography-5f64c07",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0066-main-publication-f066cc2-20261125"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed implementation commit f066cc2 and publication record commit 61637d8; fresh fetch confirmed local main and origin/main both equal 61637d8861e02396f4ec44c037fbcedae8332201.",
+      "observed_at": "2026-11-25T22:40:35Z",
+      "operation_id": "publish-hermes-par0066-61637d8",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_push_main",
+      "note": "Published terminal streaming implementation and architecture/progress documentation as faa8e99c7af291415cb5f7f496dc5b7d476ca4b5; post-push fetch confirmed local main and origin/main match.",
+      "observed_at": "2026-11-25T21:54:46Z",
+      "operation_id": "publish-hermes-par0066-faa8e99",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [],
+      "kind": "git_push_main",
+      "note": "Pushed the append-only final publication record as 3e686a2177f61ff408a64570cf4f9d8e8f601e6c; post-push fetch confirmed local main and origin/main match.",
+      "observed_at": "2026-11-25T21:55:39Z",
+      "operation_id": "publish-hermes-par0066-log-3e686a2",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0165.json#EV-0165"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed bb2f4d9 successfully; post-push fetch verified local main and origin/main both equal bb2f4d927fc6aa12cb879e09b1d934af0b14ccca.",
+      "observed_at": "2026-11-23T21:45:23Z",
+      "operation_id": "publish-hermes-par0082-audit-log-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0165.json#EV-0165"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed main successfully; post-push fetch verified local main and origin/main both equal 0b1d0c64df3deeadf2d9360c41f824092593c258. Only operator-owned .doofus state and apps/hermes-native/work remain uncommitted and preserved.",
+      "observed_at": "2026-11-23T21:41:38Z",
+      "operation_id": "publish-hermes-par0082-main-20261123",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par0090-typography-20261124"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed source commit a1cb784 and evidence/docs commit ac977f0 to origin/main; post-push fetch confirmed local main and origin/main both equal ac977f0c24cb1eeb72d6cb6ac67fc3d0dc32486d.",
+      "observed_at": "2026-11-24T22:58:29Z",
+      "operation_id": "publish-hermes-par0090-ac977f0",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par-0254-publish-main-20261125"
+      ],
+      "kind": "git_push_main",
+      "note": "Execution evidence commit pushed to origin/main; fresh fetch confirmed exact local/remote SHA equality.",
+      "observed_at": "2026-11-25T21:19:29Z",
+      "operation_id": "publish-hermes-par0254-execution-log",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-par-0254-publish-main-20261125"
+      ],
+      "kind": "git_push_main",
+      "note": "Commit baa0e74eac2642692b3324d28215dca193a3173f pushed to origin/main; fresh fetch confirmed local main and origin/main have the same SHA.",
+      "observed_at": "2026-11-25T21:19:04Z",
+      "operation_id": "publish-hermes-par0254-profile-skills",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-package-refresh-20261125T2343Z"
+      ],
+      "kind": "git_push_main",
+      "note": "Published terminal and current package verification evidence; fresh fetch confirmed local main and origin/main at 66f4ef0674d39c771142bf5f66737605ad4b2c65.",
+      "observed_at": "2026-11-25T23:47:01Z",
+      "operation_id": "publish-hermes-terminal-package-docs-66f4ef0",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "docs/EXECUTION_LOGS.md#hermes-chat-composer-source-typography-final-validation-20261124"
+      ],
+      "kind": "git_push_main",
+      "note": "Pushed follow-up composer/Markdown typography fix commit e04770c to origin/main; post-push fetch confirmed exact local and remote SHA equality.",
+      "observed_at": "2026-11-24T23:14:07Z",
+      "operation_id": "publish-hermes-typography-e04770c",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#vault_agent_stopped_session_requests_are_declined_without_prompts"
+      ],
+      "kind": "git_push_main",
+      "note": "Commit d327bc818ea998767a4215392286bcc483f600ab pushed to origin/main; post-push fetch confirmed local main and origin/main match.",
+      "observed_at": "2026-11-23T19:38:07Z",
+      "operation_id": "publish-vault-agent-prompts-d327bc8",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/docs/EXECUTION_LOGS.md#publish-vault-agent-prompts-d327bc8"
+      ],
+      "kind": "git_push_main",
+      "note": "Commit ae7a84539da19628ecd598e78c5faa3d570d0ab0 pushed; post-push fetch confirmed local main equals origin/main.",
+      "observed_at": "2026-11-23T19:39:03Z",
+      "operation_id": "publish-vault-agent-publish-record-ae7a845",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -2141,13 +3672,25 @@
       "id": "0bd459d2-c211-4285-aa7f-fe4380875e7f",
       "recorded_at": "2026-11-22T13:09:12Z",
       "state": "failed"
+    },
+    {
+      "description": "doofus_task reconcile --operation-id publish-hermes-par0254-profile-skills --outcome committed rejected with prepared operation ID not found; operation was an external_operation record already terminal, whereas reconcile only handles prepared task.state_updated events. Repository push itself was verified by fresh fetch and is recorded as succeeded.",
+      "id": "e8bca1bf-978d-46ab-a941-8949fffff1d4",
+      "recorded_at": "2026-11-25T21:28:18Z",
+      "state": "failed"
+    },
+    {
+      "description": "First live-runner invocation omitted HERMES_TEST_EXE and exited before UI startup; corrected. Corrected live-mode UI remained isolated after a 60-second attach check.",
+      "id": "9d2a60e2-2c6a-4bd4-a14c-758f993d15f5",
+      "recorded_at": "2026-11-25T22:42:03Z",
+      "state": "failed"
     }
   ],
-  "last_event_id": "6147d7ee-8535-4397-9faf-c85caa572f50",
+  "last_event_id": "hermes-agent-run-gateway-stop-0100-pid-6072",
   "last_operation": {
-    "request_id": "6147d7ee-8535-4397-9faf-c85caa572f50",
+    "request_id": "hermes-agent-run-gateway-stop-0100-pid-6072",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "process.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -2157,14 +3700,31 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "02-gateway",
-  "phase_effort_samples": [],
+  "phase": "03-chat",
+  "phase_effort_samples": [
+    {
+      "duration_minutes": 8.0,
+      "observed_at": "2026-11-24T17:33:26Z",
+      "phase": "02-gateway",
+      "size_units": 1.0,
+      "started_at": "2026-11-24T17:20:00Z",
+      "task_id": "hermes-par-0505"
+    },
+    {
+      "duration_minutes": 8.0,
+      "observed_at": "2026-11-24T17:44:53Z",
+      "phase": "02-gateway",
+      "size_units": 1.0,
+      "started_at": "2026-11-24T17:36:59Z",
+      "task_id": "hermes-par-0506"
+    }
+  ],
   "previous_agent": {
     "model": null,
-    "provider": null
+    "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Commit/publish implementation and evidence/docs to main; reconcile Git/task state and continue the next dependency-ready agent-workflow P0 gap.",
+  "recommended_next_action": "Continue release gaps: run a visible cold launch, then a real provider-backed coding/tool task when authorized model entitlement is usable; preserve the package/app-license redistribution blocker and do not claim live Gateway or populated stream acceptance from the offline smoke.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -2204,7 +3764,6 @@
     "hermes-par-0038",
     "hermes-par-0051",
     "hermes-par-0057",
-    "hermes-par-0066",
     "hermes-par-0068",
     "hermes-par-0069",
     "hermes-par-0070",
@@ -2218,15 +3777,8 @@
     "hermes-par-0079",
     "hermes-par-0080",
     "hermes-par-0081",
-    "hermes-par-0082",
-    "hermes-par-0083",
-    "hermes-par-0084",
-    "hermes-par-0085",
-    "hermes-par-0086",
     "hermes-par-0087",
-    "hermes-par-0088",
     "hermes-par-0089",
-    "hermes-par-0090",
     "hermes-par-0091",
     "hermes-par-0092",
     "hermes-par-0093",
@@ -2270,7 +3822,6 @@
     "hermes-par-0131",
     "hermes-par-0132",
     "hermes-par-0133",
-    "hermes-par-0134",
     "hermes-par-0135",
     "hermes-par-0136",
     "hermes-par-0137",
@@ -2546,20 +4097,7 @@
     "hermes-par-0500",
     "hermes-par-0501",
     "hermes-par-0502",
-    "hermes-par-0503",
-    "hermes-par-0504",
-    "hermes-par-0505",
-    "hermes-par-0506",
-    "hermes-par-0507",
-    "hermes-par-0508",
-    "hermes-par-0509",
-    "hermes-par-0510",
-    "hermes-par-0513",
-    "hermes-par-0516",
-    "hermes-par-0517",
-    "hermes-par-0518",
     "hermes-par-0519",
-    "hermes-par-0520",
     "hermes-par-0527",
     "hermes-par-0529",
     "hermes-par-0530",
@@ -2601,7 +4139,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "81cd06b562d6777a16aab876a02ca6fb099acdb92fbe32fabcf8ba02dea126bb",
+    "change_fingerprint": "bbf868e47e8480912a8cdd773ce179eb53a0bb0eeac6c4649d4ca2ad5f144f5a",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -2620,11 +4158,15 @@
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "path": "apps/hermes-native/agent/acceptance/live-coding-assignment.mjs",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "path": "apps/hermes-native/agent/acceptance/live-coding-assignment.test.mjs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md",
         "status": " M"
       },
       {
@@ -2632,27 +4174,7 @@
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/COMPLETION_OVERVIEW.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/tools/build_implementation_progress.py",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
+        "path": "apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs",
         "status": " M"
       },
       {
@@ -2660,12 +4182,156 @@
         "status": " M"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
-        "status": " M"
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T17-25-29-902Z.json",
+        "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
-        "status": " M"
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T17-25-29-902Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T18-27-06-951Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T18-27-06-951Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T17-25-29-902Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T17-25-29-902Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T18-27-06-951Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T18-27-06-951Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T23-58-28-777Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-25T23-58-28-777Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-12-38-311Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-12-38-311Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-38-00-001Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-38-00-001Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-44-04-192Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-44-04-192Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-47-44-651Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T00-47-44-651Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-reconcile-20261125.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-reconcile-20261126T0025Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-session-readback-20261125.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-fixed-2026-11-25.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-fixed-2026-11-25.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-loaded-2026-11-25.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-loaded-2026-11-25.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-open-2026-11-25.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-open-2026-11-25.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-ticket-fix-20261125T1820Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-ticket-fix-20261125T1820Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-waited-2026-11-25.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-model-picker-waited-2026-11-25.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-session-resumed-after-scope-merge-20261125.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-session-resumed-after-scope-merge-20261125.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-diagnostic-20261125.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-diagnostic-20261125.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-selection-runtime-readback-20261125.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/reconcile-live-coding-session-20261125T1830Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/reconcile-live-coding-session-20261125T1830Z.png",
+        "status": "??"
       },
       {
         "path": "apps/hermes-native/work/.hermes-update-in-progress",
@@ -2684,21 +4350,345 @@
         "status": "??"
       },
       {
-        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0118.json",
+        "path": "artifacts/agent-ui/connectors-directory-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/delivery-baseline-capabilities-20261125.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/live-coding-result-2026-11-25T17-25-29-902Z.json",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/live-coding-result-2026-11-25T18-27-06-951Z.json",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/live-coding-review-2026-11-25T17-25-29-902Z.json",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/live-headless-long-session-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/plugin-install-review-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/plugins-catalog-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/session-profile-gateway-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/typography-chat-scale-110-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/typography-chat-scale-composer-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/typography-pinned-hermes-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/typography-source-aligned-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/.hermes-native-windows-x64-1765d78f01a9.staging-34588/hermes-automation.exe",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/.hermes-native-windows-x64-1765d78f01a9.staging-34588/hermes-native.exe",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/.hermes-native-windows-x64-1765d78f01a9.staging-34588/pdfium-8125.dll",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/PACKAGE.json",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/README.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/DoofusDock/core-LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/DoofusDock/presentation-LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/DoofusDock/render-egui-LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/FiraCode/LICENSE.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/Hermes-Native-license-status.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/JetBrainsMono/OFL.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/abseil.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/agg23.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Apache2-LLVM.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Boost.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/fast_float.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/freetype.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/harfbuzz.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/highway.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/icu.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/lcms.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.ijg",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.md",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libopenjpeg.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libpng.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/llvm-libc.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/pdfium.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/simdutf.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/zlib.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-APACHE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-MIT",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/agent/hermes-page.mjs",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/hermes-automation.exe",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/hermes-native.exe",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-1765d78f01a9/pdfium-8125.dll",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/PACKAGE.json",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/README.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/DoofusDock/core-LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/DoofusDock/presentation-LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/DoofusDock/render-egui-LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/FiraCode/LICENSE.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/Hermes-Native-license-status.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/JetBrainsMono/OFL.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/LICENSE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/abseil.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/agg23.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Apache2-LLVM.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/dragonbox-Boost.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/fast_float.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/freetype.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/harfbuzz.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/highway.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/icu.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/lcms.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.ijg",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libjpeg_turbo.md",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libopenjpeg.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/libpng.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/llvm-libc.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/pdfium.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/simdutf.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/PDFium-chromium-8125/licenses/zlib.txt",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-APACHE",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/THIRD_PARTY_NOTICES/egui-commonmark-backend/LICENSE-MIT",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/agent/hermes-page.mjs",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/hermes-automation.exe",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/hermes-native.exe",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/pdfium-8125.dll",
         "status": "??"
       }
     ],
-    "head_commit": "bc8afd447f0972f5b83e25e92634808445447ca2",
+    "head_commit": "66f4ef0674d39c771142bf5f66737605ad4b2c65",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 811,
+  "revision": 1116,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 811,
+  "state_revision": 1116,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0515",
-  "task_ledger_revision": 144,
+  "task_id": "hermes-par-0066",
+  "task_ledger_revision": 191,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -4559,9 +6549,464 @@
       "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
       "result": "PASS 598 library + 15 protocol + 3 launcher; all-target cargo check; fmt/diff; 19 task continuity; root/archival package validators.",
       "timestamp": "2026-11-22T13:09:12Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS 606 library + 15 protocol + 3 launcher tests; cargo check, fmt, diff and task continuity passed.",
+      "timestamp": "2026-11-22T14:16:04Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --all-targets --features agent-automation --locked --quiet",
+      "result": "PASS 606 library + 15 protocol + 3 launcher tests; all-target check, fmt, diff and 19 task continuity checks passed.",
+      "timestamp": "2026-11-22T14:18:33Z"
+    },
+    {
+      "command": "locked agent-automation full suite",
+      "result": "PASS 613 library + 15 protocol + 3 launcher; all-target check, fmt, diff, 19 continuity tests",
+      "timestamp": "2026-11-22T22:27:33Z"
+    },
+    {
+      "command": "full locked agent-automation suite",
+      "result": "PASS 617 library + 15 protocol + 3 launcher; all-target check; fmt/diff; continuity 19/19",
+      "timestamp": "2026-11-22T22:56:08Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked",
+      "result": "PASS 622 library + 15 protocol + 3 launcher; 0 failed. All-target check passes (existing dead-code warnings only); fmt/diff and 19 task continuity tests pass.",
+      "timestamp": "2026-11-23T00:01:19Z"
+    },
+    {
+      "command": "626 library + 15 automation protocol + 3 launcher pass; all-target check and package validator pass; continuity 19/19 pass.",
+      "result": "recorded",
+      "timestamp": "2026-11-23T00:35:29Z"
+    },
+    {
+      "command": "629 library + 15 automation protocol + 3 launcher; continuity 19/19",
+      "result": "passed",
+      "timestamp": "2026-11-23T00:58:22Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1",
+      "result": "PASS 635 library + 15 automation protocol + 3 launcher tests, zero failures; reasoning-filter 21/21; all-target cargo check and rustfmt pass.",
+      "timestamp": "2026-11-23T01:31:03Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1; cargo check -p hermes-native --features agent-automation --all-targets --locked; cargo fmt --all -- --check; git diff --check",
+      "result": "PASS 637 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt and diff check pass.",
+      "timestamp": "2026-11-23T01:59:12Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1; cargo check -p hermes-native --features agent-automation --all-targets --locked; cargo fmt --all -- --check; git diff --check; python apps/hermes-native/tools/test_doofus_task.py; uv run --with pyyaml python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS 638 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt/diff; task continuity 19/19; package validator 565/565 behaviors and UI inventory, 15 source receipts, 117 implementation receipts.",
+      "timestamp": "2026-11-23T02:19:42Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1; cargo check -p hermes-native --features agent-automation --all-targets --locked; cargo fmt --all -- --check; git diff --check; python apps/hermes-native/tools/test_doofus_task.py; uv run --with pyyaml python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS 638 library + 15 automation protocol + 3 launcher; all-target check; rustfmt/diff; continuity 19/19; package 565 behaviors/565 UI inventory, 15 source receipts, 119 implementation receipts.",
+      "timestamp": "2026-11-23T02:29:26Z"
+    },
+    {
+      "command": "full locked Hermes Native agent-automation suite",
+      "result": "PASS 644 library + 15 protocol + 3 launcher; all-target check; rustfmt/diff; continuity 19/19; progress generators (499 rows: 6 implemented/113 partial/1 not implemented/379 unknown; 176 agent rows: 1 implemented/84 partial/1 not implemented/90 unknown); package validation 565 behaviors/UI/pending tests, 15 source receipts, 120 implementation receipts; desktop build passed. UCM targeted report recognizes all four PAR-0064 scenarios and has no EV-0136-specific errors; global validator exits 1 with 160 legacy errors unrelated to EV-0136.",
+      "timestamp": "2026-11-23T15:40:04Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1",
+      "result": "PASS 648 library + 15 automation protocol + 3 launcher; build/check/fmt/diff/continuity/progress/package/task validators pass. UCM targeted all five PAR-0064 scenarios true with no EV-0137 errors; 160 unrelated legacy global errors remain.",
+      "timestamp": "2026-11-23T16:09:23Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1; cargo check -p hermes-native --features agent-automation --all-targets --locked; cargo build -p hermes-native --locked; cargo fmt --all -- --check; git diff --check; python apps/hermes-native/tools/test_doofus_task.py; progress generators; validate_package.py; doofus_task.py validate",
+      "result": "PASS 648 library + 15 automation protocol + 3 launcher; all-target check/build/fmt/diff and 19 continuity tests pass; package validator reports 121 implementation receipts; task state valid; local main equals origin/main at 2efda033. Targeted UCM has all five PAR-0064 scenarios and no EV-0137 errors; global 160 legacy errors remain.",
+      "timestamp": "2026-11-23T16:14:00Z"
+    },
+    {
+      "command": "usage_window_model_retry_waits_for_applied_session_mutation_receipt; failed_turn_recovery_actions_follow_pinned_codes_and_block_uncertain_retry; scheduled_retry_respects_reset_codes_timer_bounds_and_countdown",
+      "result": "649 library, 15 protocol, 3 launcher passed; all-target check/build/fmt/diff pass; continuity 19/19; package validator 122 receipts; task state valid; origin/main equals 2529cf5",
+      "timestamp": "2026-11-23T16:40:46Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1",
+      "result": "PASS 565 target behaviors, 565 inventory rows, 565 pending acceptance rows, 15 source inspection receipts, 123 implementation receipts; optional YAML parse skipped (PyYAML absent)",
+      "timestamp": "2026-11-23T17:11:27Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation --locked",
+      "result": "PASS 565 target behaviors, 565 inventory rows, 565 pending acceptance rows, 15 source inspection receipts, 123 implementation receipts; optional YAML parse skipped (PyYAML absent)",
+      "timestamp": "2026-11-23T17:11:27Z"
+    },
+    {
+      "command": "cargo build -p hermes-native --locked",
+      "result": "PASS 565 target behaviors, 565 inventory rows, 565 pending acceptance rows, 15 source inspection receipts, 123 implementation receipts; optional YAML parse skipped (PyYAML absent)",
+      "timestamp": "2026-11-23T17:11:27Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS 565 target behaviors, 565 inventory rows, 565 pending acceptance rows, 15 source inspection receipts, 123 implementation receipts; optional YAML parse skipped (PyYAML absent)",
+      "timestamp": "2026-11-23T17:11:27Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1",
+      "result": "PASS 19/19 continuity tests",
+      "timestamp": "2026-11-23T17:15:31Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS 19/19 continuity tests",
+      "timestamp": "2026-11-23T17:15:31Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS 19/19 continuity tests",
+      "timestamp": "2026-11-23T17:15:31Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1",
+      "result": "PASS 565 source behavior rows, 565 UI rows, 565 pending acceptance rows, 15 inspections, 124 implementation receipts; optional YAML parse skipped because PyYAML is absent",
+      "timestamp": "2026-11-23T17:27:44Z"
+    },
+    {
+      "command": "cargo check -p hermes-native --all-targets --features agent-automation --locked",
+      "result": "PASS 565 source behavior rows, 565 UI rows, 565 pending acceptance rows, 15 inspections, 124 implementation receipts; optional YAML parse skipped because PyYAML is absent",
+      "timestamp": "2026-11-23T17:27:44Z"
+    },
+    {
+      "command": "cargo build -p hermes-native --locked",
+      "result": "PASS 565 source behavior rows, 565 UI rows, 565 pending acceptance rows, 15 inspections, 124 implementation receipts; optional YAML parse skipped because PyYAML is absent",
+      "timestamp": "2026-11-23T17:27:44Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS 565 source behavior rows, 565 UI rows, 565 pending acceptance rows, 15 inspections, 124 implementation receipts; optional YAML parse skipped because PyYAML is absent",
+      "timestamp": "2026-11-23T17:27:44Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1",
+      "result": "PASS 19/19 continuity tests",
+      "timestamp": "2026-11-23T17:29:27Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS 19/19 continuity tests",
+      "timestamp": "2026-11-23T17:29:27Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS 19/19 continuity tests",
+      "timestamp": "2026-11-23T17:29:27Z"
+    },
+    {
+      "command": "cargo test -p hermes-native --features agent-automation --locked -- --test-threads=1; cargo check -p hermes-native --all-targets --features agent-automation --locked; cargo build -p hermes-native --locked; cargo fmt --check; validate_package.py; test_doofus_task.py",
+      "result": "PASS 654 library + 15 protocol + 3 launcher; all-target check and Windows build; formatting/diff; package 125 receipts; task continuity 19/19",
+      "timestamp": "2026-11-23T17:48:38Z"
+    },
+    {
+      "command": "Hermes Native agent-automation locked suite and package/task validators",
+      "result": "PASS: 658 library + 15 protocol + 3 launcher; all-target check; Windows debug build; rustfmt and diff checks; package 129 implementation receipts; task continuity 19/19; task state valid revision 895.",
+      "timestamp": "2026-11-23T18:23:41Z"
+    },
+    {
+      "command": "Focused Hermes Native session list/archive/create/resume tests and capability validators",
+      "result": "PASS: four list tests, archived-page test, seven resume-family tests, new-chat first prompt, and saved-session open; progress 88/176 mapped; package 131 implementation receipts; persisted task state valid revision 896.",
+      "timestamp": "2026-11-23T18:31:07Z"
+    },
+    {
+      "command": "Task checkpoint and published repository state",
+      "result": "PASS: local main equals origin/main at 487499d791f1b88f7522f327da14b3981fc15486; task state validated previously at revision 897; PAR-0069/0070 map partial with EV-0146/EV-0147.",
+      "timestamp": "2026-11-23T18:33:24Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS: 565 target behaviors, 565 UI inventory items, 15 source receipts, 141 implementation receipts; YAML/JSON parse and task validation pass; local main equals origin/main at e38a42719e35589d0ad06729d8f2e1e4f189636d.",
+      "timestamp": "2026-11-23T18:52:05Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS: 565 targets/UI/test rows, 15 source receipts, 141 implementation receipts; local main equals origin/main at 0ea85ea20fb4901bf1c444d451e4a5c744e4196f.",
+      "timestamp": "2026-11-23T18:53:02Z"
+    },
+    {
+      "command": "Rust full suite: 667 library + 15 protocol + 3 launcher; cargo check --locked --all-targets --features agent-automation; rustfmt; diff; UCM package; task validate",
+      "result": "PASS: all tests/checks/validators succeeded; package validator: 565 target/UI/test rows, 15 source receipts, 141 implementation receipts; task state valid.",
+      "timestamp": "2026-11-23T19:36:34Z"
+    },
+    {
+      "command": "Hermes Native full Rust suite",
+      "result": "PASS: 670 library + 15 protocol + 3 launcher tests; package validator 565 target/UI/test rows, 15 source receipts, 141 implementation receipts; persisted task state validation passes.",
+      "timestamp": "2026-11-23T20:06:47Z"
+    },
+    {
+      "command": "foreign-session subset 9/9; stale-response regressions 2/2; full suite 684+15+3",
+      "result": "PASS; UCM scenario coverage true; package validator 565 target/UI/test rows, 15 source receipts, 149 implementation receipts; repo-wide UCM baseline 178 errors, 9 reconciliations, 236 warnings",
+      "timestamp": "2026-11-23T21:40:04Z"
+    },
+    {
+      "command": "684 library + 15 protocol + 3 launcher; UCM scenario coverage true; all 669+372 execution records parse as JSON; main ref equality verified",
+      "result": "PASS; PAR-0082 remains partial pending authenticated live Gateway, packaged Windows and source-paired acceptance.",
+      "timestamp": "2026-11-23T21:45:26Z"
+    },
+    {
+      "command": "695 library + 15 automation protocol + 3 launcher tests",
+      "result": "PASS",
+      "timestamp": "2026-11-23T22:37:20Z"
+    },
+    {
+      "command": "Doofus task continuity suite",
+      "result": "PASS: 565 target behaviors, 15 source inspections, 151 implementation receipts; PAR-0518 partial with EV-0167.",
+      "timestamp": "2026-11-24T16:22:19Z"
+    },
+    {
+      "command": "UCM package validation with Python 3.14/PyYAML",
+      "result": "PASS: 565 target behaviors, 15 source inspections, 151 implementation receipts; PAR-0518 partial with EV-0167.",
+      "timestamp": "2026-11-24T16:22:19Z"
+    },
+    {
+      "command": "713 library + 15 automation protocol + 3 launcher tests",
+      "result": "PASS",
+      "timestamp": "2026-11-24T17:08:37Z"
+    },
+    {
+      "command": "cargo test --locked --workspace --features agent-automation reselecting_the_active_sidebar_session_forces_a_profile_scoped_reattach_without_submit",
+      "result": "PASS: 1 library test; 712 filtered; formatter and diff checks pass",
+      "timestamp": "2026-11-24T18:30:46Z"
+    },
+    {
+      "command": "cargo test --locked --workspace --features agent-automation thumbnail",
+      "result": "PASS: 3 library tests; 712 filtered; all-target cargo check, rustfmt, diff and task/UCM validators pass",
+      "timestamp": "2026-11-24T18:41:57Z"
+    },
+    {
+      "command": "cargo test --locked --workspace --features agent-automation",
+      "result": "PASS: 716 library + 15 automation protocol + 3 launcher; all-target check, rustfmt/diff and 19/19 task continuity; UCM validator and YAML parse pass.",
+      "timestamp": "2026-11-24T19:03:08Z"
+    },
+    {
+      "command": "cargo check --locked --workspace --all-targets --features agent-automation",
+      "result": "PASS: 716 library + 15 automation protocol + 3 launcher; all-target check, rustfmt/diff and 19/19 task continuity; UCM validator and YAML parse pass.",
+      "timestamp": "2026-11-24T19:03:08Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/test_doofus_task.py",
+      "result": "PASS: 716 library + 15 automation protocol + 3 launcher; all-target check, rustfmt/diff and 19/19 task continuity; UCM validator and YAML parse pass.",
+      "timestamp": "2026-11-24T19:03:08Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation fonts::tests::installs_source_typography_and_user_code_fonts_with_fallbacks; cargo run --locked --features agent-automation --bin hermes-automation -- --markdown-fixture --viewport 1220x800 --screenshot artifacts/agent-ui/typography-source-aligned-20261124.png; cargo fmt --all --check; git diff --check; python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS focused font test (1/1), headless 1220x800 capture, rustfmt/diff checks and task-state validation. Initial test invocation omitted agent-automation and failed to compile a pre-existing feature-gated test; rerun with feature passed.",
+      "timestamp": "2026-11-24T19:12:59Z"
+    },
+    {
+      "command": "cargo test --workspace --locked --features agent-automation",
+      "result": "PASS; one pre-existing dead-code warning",
+      "timestamp": "2026-11-24T19:47:18Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked --features agent-automation",
+      "result": "PASS; one pre-existing dead-code warning",
+      "timestamp": "2026-11-24T19:47:18Z"
+    },
+    {
+      "command": "cargo test --workspace --locked --features agent-automation",
+      "result": "PASS; one pre-existing dead-code warning",
+      "timestamp": "2026-11-24T19:55:48Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked --features agent-automation",
+      "result": "PASS; one pre-existing dead-code warning",
+      "timestamp": "2026-11-24T19:55:48Z"
+    },
+    {
+      "command": "cargo test --workspace --locked --features agent-automation",
+      "result": "PASS: 565 target/UI/test rows, 15 source receipts, 163 implementation receipts",
+      "timestamp": "2026-11-24T21:46:16Z"
+    },
+    {
+      "command": "cargo check --workspace --all-targets --locked --features agent-automation",
+      "result": "PASS: 565 target/UI/test rows, 15 source receipts, 163 implementation receipts",
+      "timestamp": "2026-11-24T21:46:16Z"
+    },
+    {
+      "command": "python docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/tools/validate_package.py",
+      "result": "PASS: 565 target/UI/test rows, 15 source receipts, 163 implementation receipts",
+      "timestamp": "2026-11-24T21:46:16Z"
+    },
+    {
+      "command": "workspace Rust suite",
+      "result": "PASS: 752 library, 15 automation protocol, 3 launcher tests",
+      "timestamp": "2026-11-24T22:55:47Z"
+    },
+    {
+      "command": "post-push ref equality",
+      "result": "PASS: local main and origin/main both ac977f0c24cb1eeb72d6cb6ac67fc3d0dc32486d",
+      "timestamp": "2026-11-24T22:58:31Z"
+    },
+    {
+      "command": "final workspace Rust suite",
+      "result": "PASS: 753 library + 15 automation protocol + 3 launcher tests",
+      "timestamp": "2026-11-24T23:12:40Z"
+    },
+    {
+      "command": "post-push ref equality",
+      "result": "PASS: local main and origin/main both e04770c6cce2e4d8c86a5df5ee786e63c03b3f5b",
+      "timestamp": "2026-11-24T23:14:10Z"
+    },
+    {
+      "command": "cargo test --locked --workspace --features agent-automation -- --test-threads=1",
+      "result": "PASS: 754 library + 15 automation protocol + 3 launcher; all-target check and package/progress/task validators passed.",
+      "timestamp": "2026-11-24T23:26:37Z"
+    },
+    {
+      "command": "slash focused suite; full locked workspace suite; all-target cargo check; Rustfmt; UCM targeted scenario/locator check",
+      "result": "PASS focused 12/12; workspace 761 library + 15 protocol + 3 launcher; all-target check passed. Full map checker remains blocked by historical schema errors.",
+      "timestamp": "2026-11-25T00:59:46Z"
+    },
+    {
+      "command": "focused slash suite; full workspace suite; all-target cargo check; rustfmt; diff check; capability scenario and locator validation",
+      "result": "PASS: focused slash 12/12; full workspace 761 library + 15 protocol + 3 launcher; all-target cargo check, rustfmt and diff check passed.",
+      "timestamp": "2026-11-25T01:14:00Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate; cargo test --locked --workspace --features agent-automation -- --test-threads=1; cargo check --locked --workspace --all-targets --features agent-automation",
+      "result": "PASS task-state validation; 761 library + 15 protocol + 3 launcher tests, all-target check, rustfmt, and diff checks. EV-0183 scenario and locator validate; full UCM checker remains affected by old records.",
+      "timestamp": "2026-11-25T01:15:02Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: canonical state validates; full workspace 766 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt and diff check pass; focused terminal tests 3/3 and explicit-start UI test 1/1.",
+      "timestamp": "2026-11-25T17:09:54Z"
+    },
+    {
+      "command": "canonical state validation and read-only Hermes CLI/runtime helper probes",
+      "result": "PASS: task state valid; pinned gateway attach is supported; private helper returns runtime JSON; unsupported top-level runtime flag confirmed; isolated Gateway process remains alive but listener was not observed. No chat prompt sent.",
+      "timestamp": "2026-11-25T18:13:39Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation gateway::tests::attached_owner_resume_omits_wire_profile_but_preserves_owner_identity",
+      "result": "PASS focused Rust tests 6 total; Node test 1/1; runner self-check 7 cases; formatting, syntax, and diff checks pass. Live provider acceptance failed externally with HTTP 402; read-only app session list still omits persisted test session.",
+      "timestamp": "2026-11-25T18:56:45Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation gateway::tests::hermes_",
+      "result": "PASS focused Rust tests 6 total; Node test 1/1; runner self-check 7 cases; formatting, syntax, and diff checks pass. Live provider acceptance failed externally with HTTP 402; read-only app session list still omits persisted test session.",
+      "timestamp": "2026-11-25T18:56:45Z"
+    },
+    {
+      "command": "node --test apps/hermes-native/agent/acceptance/live-coding-assignment.test.mjs",
+      "result": "PASS focused Rust tests 6 total; Node test 1/1; runner self-check 7 cases; formatting, syntax, and diff checks pass. Live provider acceptance failed externally with HTTP 402; read-only app session list still omits persisted test session.",
+      "timestamp": "2026-11-25T18:56:45Z"
+    },
+    {
+      "command": "cargo test --locked --workspace --features agent-automation -- --test-threads=1",
+      "result": "PASS: full workspace test process exit code 0 with 777 hermes-native tests; all-target check, automation build, Node completion-gate test, formatting, and diff checks pass. Headless UI readback confirms stored session merge/resume (2 messages), exact model selection, and no prompt submission. Live coding acceptance failed at provider HTTP 402; repository discovery 403 and session recency 422 remain.",
+      "timestamp": "2026-11-25T19:18:03Z"
+    },
+    {
+      "command": "cargo check --locked --workspace --all-targets --features agent-automation",
+      "result": "PASS: full workspace test process exit code 0 with 777 hermes-native tests; all-target check, automation build, Node completion-gate test, formatting, and diff checks pass. Headless UI readback confirms stored session merge/resume (2 messages), exact model selection, and no prompt submission. Live coding acceptance failed at provider HTTP 402; repository discovery 403 and session recency 422 remain.",
+      "timestamp": "2026-11-25T19:18:03Z"
+    },
+    {
+      "command": "cargo build --locked -p hermes-native --bins --features agent-automation",
+      "result": "PASS: full workspace test process exit code 0 with 777 hermes-native tests; all-target check, automation build, Node completion-gate test, formatting, and diff checks pass. Headless UI readback confirms stored session merge/resume (2 messages), exact model selection, and no prompt submission. Live coding acceptance failed at provider HTTP 402; repository discovery 403 and session recency 422 remain.",
+      "timestamp": "2026-11-25T19:18:03Z"
+    },
+    {
+      "command": "node --test apps/hermes-native/agent/acceptance/live-coding-assignment.test.mjs",
+      "result": "PASS: full workspace test process exit code 0 with 777 hermes-native tests; all-target check, automation build, Node completion-gate test, formatting, and diff checks pass. Headless UI readback confirms stored session merge/resume (2 messages), exact model selection, and no prompt submission. Live coding acceptance failed at provider HTTP 402; repository discovery 403 and session recency 422 remain.",
+      "timestamp": "2026-11-25T19:18:03Z"
+    },
+    {
+      "command": "gateway::tests::profile_session_list_reads_last_active_with_a_native_http_ticket",
+      "result": "PASS; workspace: 782 native + 15 automation + 3 binary tests, 0 failures; Node completion gate PASS; all-target feature check and headless live readback PASS.",
+      "timestamp": "2026-11-25T20:12:38Z"
+    },
+    {
+      "command": "gateway::tests::profile_session_list_reads_last_active_with_a_native_http_ticket; gateway::tests::api_http_error_detail_is_bounded_and_does_not_echo_input_values; gateway::tests::gateway_json_read_omits_untrusted_server_validation_text",
+      "result": "PASS; 223 Gateway tests; full workspace 800 tests; all-target feature check and automation build pass; headless live session and settings readback pass.",
+      "timestamp": "2026-11-25T20:30:08Z"
+    },
+    {
+      "command": "223 Gateway tests; 800 workspace tests; headless live session/config readback; all-target check; automation build; node completion gate; formatting",
+      "result": "All pass; HEAD and origin/main both 57fd76124e9784c30b9e442ff0d5237892f6edfd; task records validate at revision 1067.",
+      "timestamp": "2026-11-25T20:31:52Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --lib",
+      "result": "PASS 788/788; focused workspace_move 5/5; prior isolated egui image-paste case 1/1; cargo fmt --check, git diff --check and doofus_task validate pass at revision 1070.",
+      "timestamp": "2026-11-25T20:54:06Z"
+    },
+    {
+      "command": "cargo test --manifest-path apps/hermes-native/Cargo.toml --features agent-automation --lib",
+      "result": "PASS 788/788; focused workspace_move 5/5; isolated image-paste retry 1/1; cargo fmt --check, git diff --check, doofus_task validate pass; origin/main equals published c7c9a5a.",
+      "timestamp": "2026-11-25T20:56:06Z"
+    },
+    {
+      "command": "skills_bulk_toggle_serializes_whole_profile_inventory_not_search_results",
+      "result": "PASS 34/34 focused Skills tests; full library 792/792; cargo check all-targets passed with existing dead_code warning; rustfmt, diff check, and doofus_task validate passed",
+      "timestamp": "2026-11-25T21:17:44Z"
+    },
+    {
+      "command": "disable_unused_skills_targets_only_enabled_zero_usage_and_stops_on_denial",
+      "result": "PASS 34/34 focused Skills tests; full library 792/792; cargo check all-targets passed with existing dead_code warning; rustfmt, diff check, and doofus_task validate passed",
+      "timestamp": "2026-11-25T21:17:44Z"
+    },
+    {
+      "command": "stale_skill_bulk_receipt_cannot_mutate_the_new_profile_inventory",
+      "result": "PASS 34/34 focused Skills tests; full library 792/792; cargo check all-targets passed with existing dead_code warning; rustfmt, diff check, and doofus_task validate passed",
+      "timestamp": "2026-11-25T21:17:44Z"
+    },
+    {
+      "command": "disconnected_skill_bulk_update_rolls_back_local_state_and_requires_refresh",
+      "result": "PASS 34/34 focused Skills tests; full library 792/792; cargo check all-targets passed with existing dead_code warning; rustfmt, diff check, and doofus_task validate passed",
+      "timestamp": "2026-11-25T21:17:44Z"
+    },
+    {
+      "command": "installed_skills_page_exposes_update_action_and_action_log",
+      "result": "PASS 34/34 focused Skills tests; full library 792/792; cargo check all-targets passed with existing dead_code warning; rustfmt, diff check, and doofus_task validate passed",
+      "timestamp": "2026-11-25T21:17:44Z"
+    },
+    {
+      "command": "PASS 797 library + 15 automation protocol + 3 launcher",
+      "result": "pass",
+      "timestamp": "2026-11-25T21:53:51Z"
+    },
+    {
+      "command": "PASS 797 library + 15 automation protocol + 3 launcher; 13 terminal-focused",
+      "result": "pass",
+      "timestamp": "2026-11-25T21:56:01Z"
+    },
+    {
+      "command": "cargo test --workspace --locked --features agent-automation -- --test-threads=1",
+      "result": "PASS 802 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt and diff check pass.",
+      "timestamp": "2026-11-25T22:33:06Z"
+    },
+    {
+      "command": "cargo test --workspace --locked --features agent-automation -- --test-threads=1",
+      "result": "PASS 802 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt and diff check pass. Live attach remains unverified.",
+      "timestamp": "2026-11-25T22:42:03Z"
+    },
+    {
+      "command": "HermesPage live Gateway readback in isolated HermesNative-Delivery-Test-20261125 profile",
+      "result": "PASS: connected; stored session hydrated (2 messages); terminal pane open; Agent output showed resolved empty state with no process-list error; no prompt or screenshot. Setup failures and retry corrections are detailed in docs/EXECUTION_LOGS.md.",
+      "timestamp": "2026-11-25T23:02:22Z"
+    },
+    {
+      "command": "Read-only pinned Gateway/process contract audit plus DoofusDock remote-main ref comparison",
+      "result": "PASS: no no-model spawn API; current DoofusDock main equals Hermes pinned dependency; live Gateway empty Agent output state recorded in preceding checkpoint.",
+      "timestamp": "2026-11-25T23:05:52Z"
+    },
+    {
+      "command": "pwsh -NoProfile -File apps/hermes-native/tools/package-windows-portable.ps1; Node HermesPage.launchNative packaged smoke; PACKAGE.json hash verification",
+      "result": "PASS: locked optimized release build; PDFium SHA matched; manifest file lengths/hashes validated; packaged helper rendered route / and Settings then closed; main executable invalid-window guard passed. No screenshot or model prompt.",
+      "timestamp": "2026-11-25T23:25:38Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation agent_terminal_output_section_is_collapsed_until_opened -- --nocapture",
+      "result": "PASS one focused egui headless UI regression, 801 other library tests filtered; cargo fmt --all -- --check, git diff --check, and doofus_task validate pass.",
+      "timestamp": "2026-11-25T23:47:04Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-22T13:42:35Z"
+  "updated_at": "2026-11-26T00:54:34Z"
 }
