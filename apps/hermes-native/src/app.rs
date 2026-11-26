@@ -19968,7 +19968,7 @@ fn render_message() -> &'static str {
                 merge_refreshed_transcript_tail(
                     page.messages,
                     self.transcript.clone(),
-                    page.replace_all,
+                    page.replace_all || !page.has_more,
                 )?
             };
             Ok((messages, page.has_more, page.replace_all))
@@ -42130,6 +42130,9 @@ fn merge_refreshed_transcript_tail(
     {
         return Ok(refreshed);
     }
+    if complete_snapshot && transcript_refresh_matches_latest_prompt(&current, &refreshed) {
+        return Ok(refreshed);
+    }
     let overlap = (1..=refreshed.len().min(current.len()))
         .rev()
         .find(|length| {
@@ -42147,6 +42150,39 @@ fn merge_refreshed_transcript_tail(
     merged.extend(current.into_iter().take(historical_prefix_len));
     merged.extend(refreshed);
     Ok(merged)
+}
+
+fn transcript_refresh_matches_latest_prompt(
+    current: &[serde_json::Value],
+    refreshed: &[serde_json::Value],
+) -> bool {
+    let Some(current_user) = current
+        .iter()
+        .rev()
+        .find(|message| message.get("role").and_then(serde_json::Value::as_str) == Some("user"))
+    else {
+        return false;
+    };
+    let Some(refreshed_user) = refreshed
+        .iter()
+        .rev()
+        .find(|message| message.get("role").and_then(serde_json::Value::as_str) == Some("user"))
+    else {
+        return false;
+    };
+    if current_user.get("content") != refreshed_user.get("content") {
+        return false;
+    }
+    let refreshed_row_ids = refreshed
+        .iter()
+        .filter_map(|message| message.get("row_id").and_then(serde_json::Value::as_u64))
+        .filter(|row_id| *row_id > 0)
+        .collect::<std::collections::HashSet<_>>();
+    current
+        .iter()
+        .filter_map(|message| message.get("row_id").and_then(serde_json::Value::as_u64))
+        .filter(|row_id| *row_id > 0)
+        .all(|row_id| refreshed_row_ids.contains(&row_id))
 }
 
 fn transcript_refresh_rows_match(
@@ -56432,6 +56468,22 @@ mod tests {
             merge_refreshed_transcript_tail(durable.clone(), streamed, false)
                 .expect("persisted rows reconcile streamed rows"),
             durable
+        );
+        let tool_stream = vec![
+            json!({"role":"user","content":"Please fix add for negative values"}),
+            json!({"type":"tool_call","name":"read_file","status":"complete"}),
+            json!({"role":"assistant","content":"The function handles positive values."}),
+        ];
+        let durable_tool_history = vec![
+            json!({"row_id":7,"role":"user","content":"Please fix add for negative values"}),
+            json!({"row_id":8,"role":"assistant","content":null,"tool_calls":[{"id":"call-read"}]}),
+            json!({"row_id":9,"role":"tool","tool_call_id":"call-read","content":"file contents"}),
+            json!({"row_id":10,"role":"assistant","content":"The function handles positive values."}),
+        ];
+        assert_eq!(
+            merge_refreshed_transcript_tail(durable_tool_history.clone(), tool_stream, true,)
+                .expect("complete durable history reconciles a matching prompt with tool rows"),
+            durable_tool_history
         );
         assert!(
             merge_refreshed_transcript_tail(

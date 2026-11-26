@@ -3928,3 +3928,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Transcript merge remains linear in the bounded page and current transcript lengths; no Gateway requests added.
 - **risks:** Role/content matching is used only when at least one representation lacks a durable row ID; mismatching durable IDs and pages without a provable overlap still fail closed.
 - **follow_up:** Continue source-paired acceptance for tools, approvals, skills, plugins/MCP, provider/model configuration, and attachments; current scope evidence remains incomplete.
+
+- **id:** `hermes-native-tool-transcript-refresh-20261126T0209Z`
+- **timestamp:** `2026-11-26T02:09:32Z`
+- **what:** Reconciled tool-event-heavy transcripts from a complete Gateway history page when the newest user prompt and all extant durable row IDs prove the page belongs to the loaded history; clarified the live coding acceptance model prompt to use full reads followed by a targeted patch.
+- **why:** Hermes tool events can reshape ephemeral transcript rows, so the prior overlap-only refresh guard rejected the completed persisted conversation. The first local model attempt also showed that the acceptance prompt did not specify a concrete safe edit sequence clearly enough.
+- **components:** Active transcript refresh, live coding acceptance runner, acceptance/backlog documentation.
+- **type:** Correctness and acceptance coverage.
+- **validation:** Focused merge regression passes; full `cargo test --locked -p hermes-native --features agent-automation` passes (805 library, 16 automation, 3 app tests); the acceptance runner self-check passes (9 cases); binaries build. Isolated qwen tool events refreshed into seven transcript messages without a transcript error. The model failed the requested edit by choosing `write_file`; Hermes blocked the stale write, no fixture files changed, and project tests did not run.
+- **performance:** Matching complete transcript rows is bounded by the existing transcript page and loaded history; no extra Gateway requests were added.
+- **risks:** A successful coding edit has not been verified. The complete-page fallback requires exact latest user content and every existing durable row ID to be present; partial pages and conflicting IDs still fail closed.
+- **follow_up:** Retry the isolated tool-edit workflow with a tool-capable provider/model that follows the pinned Hermes patch schema; continue approval, skill, plugin/MCP, attachment, and provider acceptance.

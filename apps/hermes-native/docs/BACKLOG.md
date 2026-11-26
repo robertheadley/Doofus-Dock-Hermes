@@ -1,7 +1,7 @@
 # Immediate release critical path (2026-11-25)
 
-1. **Live model response — blocked externally:** the isolated `deepseek-flash` request returned HTTP 402 `Insufficient Balance`; proceed after an already-authorized provider has usable entitlement. Acceptance is a streamed assistant response from an actual provider.
-2. **Tool-using coding task — attempted, blocked before tools:** the live prompt and failure rendered in the native transcript, but no tool call occurred and the isolated project did not change. Acceptance is a Hermes tool edit plus passing project tests and an accurate summary.
+1. **Live model response — partial:** isolated local `qwen3:8b` through Ollama returned a settled `READY` response and the native transcript displayed it. A prior isolated `deepseek-flash` request returned HTTP 402 `Insufficient Balance`; provider-backed coding acceptance remains open.
+2. **Tool-using coding task — attempted, not passed:** Hermes `read_file` calls completed and the native UI displayed seven transcript messages without refresh errors. `qwen3:8b` then chose `write_file` instead of the instructed `patch`; Hermes correctly blocked the stale write, no fixture file changed, and fixture tests were not run. Acceptance remains an actual Hermes tool edit, passing project tests, and an accurate summary.
 3. **Approval/clarification, stop/recovery, and session resume:** exercise the existing UI actions against live runtime events; acceptance requires correct owner scoping and no duplicate prompt admission.
 4. **Project context and artifacts:** verify working directory, file/image attachment handling, terminal/file/artifact access in the same workflow.
 5. **Reliability/release:** restart and resume, isolate two concurrent sessions, then package and launch the Windows executable.
