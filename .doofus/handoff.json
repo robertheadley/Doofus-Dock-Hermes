@@ -4045,6 +4045,20 @@
     },
     {
       "evidence": [
+        "apps/hermes-native/src/gateway.rs#load_chat_model_options_rpc"
+      ],
+      "kind": "git_push_main",
+      "note": "Committed the verified Hermes Native owner-scope fix and focused OpenRouter live evidence as 505917f72bedb0b7c23508f23e0684863a02f192, pushed to origin/main, fetched origin, and verified local main equals origin/main.",
+      "observed_at": "2026-11-26T23:47:29Z",
+      "operation_id": "publish-openrouter-profile-scope-505917f-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "apps/hermes-native/src/app.rs#vault_agent_stopped_session_requests_are_declined_without_prompts"
       ],
       "kind": "git_push_main",
@@ -4145,11 +4159,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "4e9d6928-c34d-46a0-964c-58c32987590a",
+  "last_event_id": "6e61735a-025a-4975-bf3b-78786a0f72b5",
   "last_operation": {
-    "request_id": "4e9d6928-c34d-46a0-964c-58c32987590a",
+    "request_id": "6e61735a-025a-4975-bf3b-78786a0f72b5",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "external_operation.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -5241,10 +5255,10 @@
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1163,
+  "revision": 1164,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1163,
+  "state_revision": 1164,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
   "task_ledger_revision": 193,
@@ -7667,5 +7681,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-26T23:44:53Z"
+  "updated_at": "2026-11-26T23:47:29Z"
 }
