@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-11-26T02:16:18.946Z",
+  "finished_at": "2026-11-26T02:16:43.956Z",
+  "model": "qwen3:8b",
+  "provider": "Ollama custom provider at loopback",
+  "gateway_connected": true,
+  "active_runtime_session_id": "local-d4a33aca01eeb477e81e153303d470bf9f3f394933731746fbed7cfc2e6384ce",
+  "prompt_submitted": true,
+  "prompt": "Use the Hermes terminal tool exactly once to run python -c \"print('HERMES_TOOL_OK')\" in the isolated project directory. Do not read or change files or use other tools.",
+  "app_readback": {
+    "status": "Hermes response complete",
+    "submission_pending": false,
+    "transcript_message_count": 4,
+    "transcript_refresh_error": null
+  },
+  "gateway_database_readback": {
+    "session_id": "local-d4a33aca01eeb477e81e153303d470bf9f3f394933731746fbed7cfc2e6384ce",
+    "assistant_tool_call_message_id": 24,
+    "tool_result_message_id": 25,
+    "tool_name": "terminal",
+    "tool_exit_code": 0,
+    "tool_output": "HERMES_TOOL_OK",
+    "approval": "Command was flagged (script execution via -e/-c flag) and auto-approved by smart approval."
+  },
+  "assistant_final_response": "It seems there is no specific request and asks for clarification.",
+  "assistant_final_accurate": false,
+  "transcript_refresh_error": null,
+  "outcome": "terminal_tool_invocation_and_result_passed_assistant_final_inaccurate",
+  "screenshot": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.png"
+}

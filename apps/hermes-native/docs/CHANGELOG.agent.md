@@ -3939,3 +3939,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Matching complete transcript rows is bounded by the existing transcript page and loaded history; no extra Gateway requests were added.
 - **risks:** A successful coding edit has not been verified. The complete-page fallback requires exact latest user content and every existing durable row ID to be present; partial pages and conflicting IDs still fail closed.
 - **follow_up:** Retry the isolated tool-edit workflow with a tool-capable provider/model that follows the pinned Hermes patch schema; continue approval, skill, plugin/MCP, attachment, and provider acceptance.
+
+- **id:** `hermes-native-terminal-tool-live-acceptance-20261126T0218Z`
+- **timestamp:** `2026-11-26T02:18:26Z`
+- **what:** Verified an actual pinned Hermes terminal tool call through the headless Hermes Native UI and captured its persisted result and screenshot.
+- **why:** Source and UI tests needed a live check that a model-selected tool could execute and its real result would be shown in the native transcript after transcript reconciliation changes.
+- **components:** Hermes Native composer, tool transcript card, local Gateway, headless runner.
+- **type:** Live acceptance.
+- **validation:** Local qwen3:8b invoked `terminal` once; pinned Hermes recorded exit code 0 and `HERMES_TOOL_OK`; Hermes Native showed a completed transcript with four messages and no transcript refresh error. The assistant's final text incorrectly asked for clarification, so final-response accuracy and tool-using coding acceptance remain open.
+- **performance:** One local model turn; no changes to project files.
+- **risks:** This bounded tool smoke proves terminal dispatch/result display only. It does not prove coding edits, approvals, provider reliability, or complete agent workflow coverage.
+- **follow_up:** Verify a complete tool-edit-test-summary workflow with a provider/model that follows Hermes tool schemas and reports tool results accurately.

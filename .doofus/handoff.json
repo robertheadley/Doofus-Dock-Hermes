@@ -749,24 +749,6 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/events.jsonl",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": ".doofus/handoff.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/agent/acceptance/live-coding-assignment.mjs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/docs/ARCHITECTURE.md",
       "status": " M"
     },
@@ -780,12 +762,6 @@
       "change_type": "modified",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/src/app.rs",
       "status": " M"
     },
     {
@@ -858,12 +834,6 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.json",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.png",
       "status": "??"
     },
     {
@@ -1073,6 +1043,24 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-20261126T0215Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/model-picker-diagnostic-20261125.json",
       "status": "??"
     },
@@ -1152,12 +1140,6 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "artifacts/agent-ui/live-coding-result-2026-11-26T02-01-12-392Z.json",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "artifacts/agent-ui/live-coding-result-2026-11-26T02-07-01-211Z.json",
       "status": "??"
     },
     {
@@ -1630,14 +1612,13 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked -p hermes-native --features agent-automation",
+    "command": "isolated headless Hermes terminal tool smoke",
     "evidence": [
-      "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0157Z.json#outcome",
-      "artifacts/agent-ui/live-coding-result-2026-11-26T02-07-01-211Z.json#outcome"
+      "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-20261126T0215Z.json#outcome"
     ],
     "state": "in_progress",
-    "summary": "The transcript refresh fix is verified for ordinary chat and tool-event rows. A local Qwen tool attempt displayed seven messages and no transcript refresh error, but the model selected a stale write operation and Hermes safely refused it; the coding acceptance gate remains open.",
-    "verified_at": "2026-11-26T02:14:05Z"
+    "summary": "Live local qwen successfully invoked Hermes terminal once: the isolated command returned HERMES_TOOL_OK with exit code 0, and Hermes Native rendered the tool result with no transcript refresh error. The model's final answer incorrectly asked for clarification, and the separate coding edit still fails at model tool selection. Overall workflow remains incomplete.",
+    "verified_at": "2026-11-26T02:19:42Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1735,7 +1716,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-26T03:14:05Z",
+    "lease_expires_at": "2026-11-26T03:19:42Z",
     "lease_id": "76f784e3-a8ec-425c-911b-34b010e70e62",
     "model": null,
     "ownership_state": "active",
@@ -3923,9 +3904,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-native-tool-transcript-refresh-validation-20261126T0213Z",
+  "last_event_id": "hermes-native-terminal-tool-live-acceptance-20261126T0218Z",
   "last_operation": {
-    "request_id": "hermes-native-tool-transcript-refresh-validation-20261126T0213Z",
+    "request_id": "hermes-native-terminal-tool-live-acceptance-20261126T0218Z",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -3961,7 +3942,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Obtain a successful Hermes tool edit and fixture test with an authorized capable provider/model, then continue source-paired acceptance of approvals, skills, plugins/MCP, attachments, and provider flows.",
+  "recommended_next_action": "Complete a tool-backed code edit, run its project tests, and verify an accurate final summary; then continue approvals, skills, plugins/MCP, attachments, and provider acceptance.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4376,20 +4357,8 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "c0d0658c0cdf60a92da64b9390de7d66c9e9777c261e4aeeb3677ac681aa806f",
+    "change_fingerprint": "c95891db1a2737b35bea9e1a608ef255715bdb094f784b452484927e4b641bef",
     "changed_files": [
-      {
-        "path": ".doofus/events.jsonl",
-        "status": " M"
-      },
-      {
-        "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/agent/acceptance/live-coding-assignment.mjs",
-        "status": " M"
-      },
       {
         "path": "apps/hermes-native/docs/ARCHITECTURE.md",
         "status": " M"
@@ -4400,10 +4369,6 @@
       },
       {
         "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/app.rs",
         "status": " M"
       },
       {
@@ -4452,10 +4417,6 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.json",
-        "status": "??"
-      },
-      {
-        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.png",
         "status": "??"
       },
       {
@@ -4595,6 +4556,18 @@
         "status": "??"
       },
       {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-20261126T0215Z.json",
+        "status": "??"
+      },
+      {
         "path": "apps/hermes-native/artifacts/agent-ui/model-picker-diagnostic-20261125.json",
         "status": "??"
       },
@@ -4648,10 +4621,6 @@
       },
       {
         "path": "artifacts/agent-ui/live-coding-result-2026-11-26T02-01-12-392Z.json",
-        "status": "??"
-      },
-      {
-        "path": "artifacts/agent-ui/live-coding-result-2026-11-26T02-07-01-211Z.json",
         "status": "??"
       },
       {
@@ -4967,14 +4936,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "21d869fe7590392c7558d679c2d33789192c76f1",
+    "head_commit": "5cbcbfe9d93b96eec5e785a074a75b694a474c79",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1129,
+  "revision": 1130,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1129,
+  "state_revision": 1130,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
   "task_ledger_revision": 192,
@@ -7373,9 +7342,24 @@
       "command": "cargo build --locked -p hermes-native --bins --features agent-automation",
       "result": "PASS: formatting; 805 library + 16 automation + 3 app tests; 9-case acceptance self-check; headless binaries build. Live coding attempt remains failed at qwen tool selection; transcript UI settled with 7 messages, no file changed, fixture tests not run.",
       "timestamp": "2026-11-26T02:14:05Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation",
+      "result": "Rust suite and 9-case runner self-check pass. Terminal tool execution/result and UI rendering pass (HERMES_TOOL_OK, exit 0, four transcript rows); assistant final response is inaccurate, so full workflow acceptance remains open.",
+      "timestamp": "2026-11-26T02:19:42Z"
+    },
+    {
+      "command": "node apps/hermes-native/agent/acceptance/live-coding-assignment.mjs --self-check",
+      "result": "Rust suite and 9-case runner self-check pass. Terminal tool execution/result and UI rendering pass (HERMES_TOOL_OK, exit 0, four transcript rows); assistant final response is inaccurate, so full workflow acceptance remains open.",
+      "timestamp": "2026-11-26T02:19:42Z"
+    },
+    {
+      "command": "isolated pinned Hermes terminal tool smoke through Hermes Native",
+      "result": "Rust suite and 9-case runner self-check pass. Terminal tool execution/result and UI rendering pass (HERMES_TOOL_OK, exit 0, four transcript rows); assistant final response is inaccurate, so full workflow acceptance remains open.",
+      "timestamp": "2026-11-26T02:19:42Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-26T02:14:05Z"
+  "updated_at": "2026-11-26T02:19:42Z"
 }
