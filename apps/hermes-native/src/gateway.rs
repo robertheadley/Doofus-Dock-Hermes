@@ -2976,7 +2976,10 @@ enum GatewayCommand {
     },
     DiscoverRemoteRepos {
         request_id: String,
+        /// Identity retained for local result fencing.
         profile: String,
+        /// Explicit sibling-profile selector, absent for the attached owner.
+        wire_profile: Option<String>,
     },
     LoadProjectList {
         request_id: String,
@@ -6885,7 +6888,25 @@ impl GatewayDiscovery {
         self.command_sender
             .send(GatewayCommand::DiscoverRemoteRepos {
                 request_id,
+                wire_profile: Some(profile.clone()),
                 profile,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
+    pub fn discover_remote_repos_for_attached_owner(
+        &self,
+        request_id: String,
+        owner_id: String,
+    ) -> Result<(), String> {
+        if !valid_bounded_tree_id(&owner_id) || owner_id.eq_ignore_ascii_case("all") {
+            return Err("Remote repo discovery requires one explicit owner".into());
+        }
+        self.command_sender
+            .send(GatewayCommand::DiscoverRemoteRepos {
+                request_id,
+                profile: owner_id,
+                wire_profile: None,
             })
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
@@ -8670,6 +8691,9 @@ fn gateway_actor_with_replay(
                 policy,
                 repos,
             }) => {
+                // The Gateway ticket already scopes this owner-only operation. `profile` is
+                // retained below for stale-result fencing, but it is an owner identity (often
+                // a home path), not a Hermes sibling-profile selector for the wire request.
                 let result = session_profile_params(
                     serde_json::json!({
                         "discovery_policy": policy,
@@ -8678,7 +8702,7 @@ fn gateway_actor_with_replay(
                             "root": repo.root,
                         })).collect::<Vec<_>>(),
                     }),
-                    Some(&profile),
+                    None,
                 )
                 .and_then(|params| {
                     rpc_with_events(
@@ -8724,29 +8748,34 @@ fn gateway_actor_with_replay(
             Ok(GatewayCommand::DiscoverRemoteRepos {
                 request_id,
                 profile,
+                wire_profile,
             }) => {
-                let result =
-                    session_profile_params(serde_json::json!({"scan": true}), Some(&profile))
-                        .and_then(|params| {
-                            rpc_with_events(
-                                socket,
-                                next_request_id,
-                                "projects.discover_repos",
-                                params,
-                                Some(&events),
-                            )
-                        })
-                        .and_then(|response| {
-                            if response
-                                .get("repos")
-                                .and_then(serde_json::Value::as_array)
-                                .is_none()
-                            {
-                                Err("projects.discover_repos returned no repository list".into())
-                            } else {
-                                Ok(())
-                            }
-                        });
+                // Keep the owner identity for event fencing; a genuine sibling-profile read
+                // retains its selector while attached-owner reads use the Gateway ticket.
+                let result = session_profile_params(
+                    serde_json::json!({"scan": true}),
+                    wire_profile.as_deref(),
+                )
+                .and_then(|params| {
+                    rpc_with_events(
+                        socket,
+                        next_request_id,
+                        "projects.discover_repos",
+                        params,
+                        Some(&events),
+                    )
+                })
+                .and_then(|response| {
+                    if response
+                        .get("repos")
+                        .and_then(serde_json::Value::as_array)
+                        .is_none()
+                    {
+                        Err("projects.discover_repos returned no repository list".into())
+                    } else {
+                        Ok(())
+                    }
+                });
                 next_request_id = next_request_id.saturating_add(1);
                 if events
                     .send(GatewayEvent::RepoDiscoveryCompleted {
@@ -9926,13 +9955,8 @@ fn gateway_actor_with_replay(
                 session_id,
                 profile,
             }) => {
-                let result = load_chat_model_options_rpc(
-                    socket,
-                    &events,
-                    &mut next_request_id,
-                    &session_id,
-                    profile.as_deref(),
-                );
+                let result =
+                    load_chat_model_options_rpc(socket, &events, &mut next_request_id, &session_id);
                 if events
                     .send(GatewayEvent::ChatModelOptionsLoaded {
                         request_id,
@@ -11648,12 +11672,11 @@ fn load_chat_model_options_rpc(
     events: &mpsc::Sender<GatewayEvent>,
     next_request_id: &mut u64,
     session_id: &str,
-    profile: Option<&str>,
 ) -> Result<ModelOptionsSnapshot, String> {
-    let params = session_profile_params(
-        serde_json::json!({ "session_id": session_id, "explicit_only": true }),
-        profile,
-    )?;
+    // The session id is the authority for this owner-scoped read. Keep the logical profile
+    // on the request/event fence, but omit it from the wire payload so a non-default HERMES_HOME
+    // is not misinterpreted as a sibling-profile selector by the Gateway.
+    let params = serde_json::json!({ "session_id": session_id, "explicit_only": true });
     let value = rpc_with_events(
         socket,
         *next_request_id,
@@ -29286,10 +29309,78 @@ mod tests {
             .expect("queue concrete-profile remote scan");
         assert!(matches!(
             commands.try_recv(),
-            Ok(GatewayCommand::DiscoverRemoteRepos { request_id, profile })
-                if request_id == "work-request" && profile == "work"
+            Ok(GatewayCommand::DiscoverRemoteRepos { request_id, profile, wire_profile })
+                if request_id == "work-request" && profile == "work" && wire_profile.as_deref() == Some("work")
         ));
         assert!(commands.try_recv().is_err());
+    }
+
+    #[test]
+    fn owner_repo_record_omits_profile_selector_but_preserves_event_owner() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind repo record fixture");
+        let address = listener.local_addr().expect("repo record fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept repo record client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read record RPC") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse record RPC"),
+                other => panic!("expected record RPC, got {other:?}"),
+            };
+            assert_eq!(request["method"], "projects.record_repos");
+            assert_eq!(
+                request["params"],
+                json!({
+                    "discovery_policy":{"enabled":true,"roots":[],"exclude_paths":[]},
+                    "repos":[{"label":"repo","root":"/work/repo"}]
+                })
+            );
+            let id = request["id"].as_u64().expect("numeric record RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"result":{
+                        "accepted":true,
+                        "repos":[{"id":"repo-a","root":"/work/repo"}]
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send record result");
+            socket.close(None).expect("close record fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (commands, command_receiver) = mpsc::channel();
+        let (events, event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
+
+        commands
+            .send(GatewayCommand::RecordDiscoveredRepos {
+                request_id: "owner-record".into(),
+                profile: "C:\\Hermes\\profiles\\default".into(),
+                policy: RepoScanPolicy {
+                    enabled: true,
+                    roots: vec![],
+                    exclude_paths: vec![],
+                },
+                repos: vec![crate::repo_discovery::DiscoveredRepo {
+                    label: "repo".into(),
+                    root: "/work/repo".into(),
+                }],
+            })
+            .expect("queue owner repo record");
+        assert!(matches!(
+            event_receiver
+                .recv_timeout(Duration::from_secs(3))
+                .expect("owner repo record event"),
+            GatewayEvent::RepoDiscoveryCompleted {
+                request_id,
+                profile,
+                result: Ok(()),
+            } if request_id == "owner-record" && profile == "C:\\Hermes\\profiles\\default"
+        ));
+        drop(commands);
+        actor.join().expect("repo record actor exits");
+        server.join().expect("repo record fixture exits");
     }
 
     #[test]
@@ -29346,6 +29437,7 @@ mod tests {
             .send(GatewayCommand::DiscoverRemoteRepos {
                 request_id: "remote-scan-ok".into(),
                 profile: "fixture-profile".into(),
+                wire_profile: Some("fixture-profile".into()),
             })
             .expect("queue successful remote scan");
         assert!(matches!(
@@ -29363,6 +29455,7 @@ mod tests {
             .send(GatewayCommand::DiscoverRemoteRepos {
                 request_id: "remote-scan-malformed".into(),
                 profile: "fixture-profile".into(),
+                wire_profile: Some("fixture-profile".into()),
             })
             .expect("queue malformed remote scan");
         assert!(matches!(
@@ -29380,6 +29473,49 @@ mod tests {
         drop(commands);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("repo discovery fixture exits");
+    }
+
+    #[test]
+    fn attached_owner_remote_repo_discovery_omits_owner_identity_from_selector() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind owner repo fixture");
+        let address = listener.local_addr().expect("owner repo fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept owner repo client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read owner repo RPC") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse owner repo RPC"),
+                other => panic!("expected owner repo RPC, got {other:?}"),
+            };
+            assert_eq!(request["method"], "projects.discover_repos");
+            assert_eq!(request["params"], json!({"scan":true}));
+            let id = request["id"].as_u64().expect("numeric owner repo RPC id");
+            socket
+                .send(Message::Text(
+                    json!({"jsonrpc":"2.0","id":id,"result":{
+                        "repos":[{"id":"repo-a","root":"/work/repo-a"}]
+                    }})
+                    .to_string()
+                    .into(),
+                ))
+                .expect("send owner repo result");
+            socket.close(None).expect("close owner repo fixture socket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
+        let (gateway, command_receiver) = GatewayDiscovery::for_test_repo_discovery_commands();
+        let (events, _event_receiver) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_receiver, events));
+        gateway
+            .discover_remote_repos_for_attached_owner(
+                "owner-scan".into(),
+                "C:\\Hermes\\profiles\\default".into(),
+            )
+            .expect("queue attached-owner remote scan");
+        drop(gateway);
+        actor
+            .join()
+            .expect("owner scan actor exits after peer close");
+        server.join().expect("owner scan fixture exits");
     }
 
     #[test]
@@ -33166,7 +33302,7 @@ mod tests {
     }
 
     #[test]
-    fn chat_model_options_read_uses_profile_session_and_provider_capabilities() {
+    fn chat_model_options_read_uses_session_scope_without_profile_selector() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
         let address = listener.local_addr().expect("fixture address");
         let server = thread::spawn(move || {
@@ -33178,7 +33314,7 @@ mod tests {
             };
             assert_eq!(request["method"], "model.options");
             assert_eq!(request["params"]["session_id"], "runtime-1");
-            assert_eq!(request["params"]["profile"], "work");
+            assert!(request["params"].get("profile").is_none());
             assert_eq!(request["params"]["explicit_only"], true);
             let request_id = request["id"].as_u64().expect("options RPC id");
             socket
@@ -33204,14 +33340,8 @@ mod tests {
             tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture");
         let (events, _) = mpsc::channel();
         let mut rpc_id = 31;
-        let options = load_chat_model_options_rpc(
-            &mut socket,
-            &events,
-            &mut rpc_id,
-            "runtime-1",
-            Some("work"),
-        )
-        .expect("profile-scoped model options");
+        let options = load_chat_model_options_rpc(&mut socket, &events, &mut rpc_id, "runtime-1")
+            .expect("session-scoped model options");
         assert_eq!(options.model.as_deref(), Some("m1"));
         assert_eq!(options.provider.as_deref(), Some("custom:local-ollama"));
         assert_eq!(options.providers[0].slug, "custom:local-ollama");

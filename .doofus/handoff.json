@@ -1,6 +1,16 @@
 {
   "active_processes": [
     {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "PID 5960 is absent from the Windows process table. This was the previously recorded Gateway for the isolated HermesNative-Delivery-Test-20261126-0130 profile; it exited after the model-menu readback and before this reconciliation.",
+      "observed_at": "2026-11-26T21:04:22Z",
+      "pid": 5960,
+      "process_id": "acceptance-probe-gateway-5960",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
       "kind": "antigravity_headless_read_only_audit",
       "model": null,
       "note": "CLI returned only its opening statement and no findings. No edits were made; the audit is unusable. No permission bypass used.",
@@ -63,6 +73,16 @@
     {
       "kind": "isolated_test_gateway",
       "model": null,
+      "note": "Confirmed PID 24712 is absent. Its test-profile gateway_state.json reports stopped with clean idle exit after no UI client attached.",
+      "observed_at": "2026-11-26T19:47:35Z",
+      "pid": 24712,
+      "process_id": "dolphin-test-gateway-24712",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
       "note": "Stopped owned idle Gateway process for isolated TEMP acceptance profile HermesNative-Delivery-Test-20261126-0055 after terminal admission and zero active workers; retained profile and fixture for evidence.",
       "observed_at": "2026-11-26T00:54:28Z",
       "pid": 14904,
@@ -101,6 +121,26 @@
       "state": "stopped"
     },
     {
+      "kind": "isolated_test_gateway",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "note": "Gateway home matched the isolated TEMP Hermes test profile and was stopped after the completed live coding acceptance. No installed Hermes process was targeted.",
+      "observed_at": "2026-11-26T21:00:20Z",
+      "pid": 18400,
+      "process_id": "hermes-openrouter-test-gateway-18400",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "note": "Headless model-picker/profile-scope repro used only the isolated TEMP profile. Gateway home matched that profile; the probe gateway was stopped after status/tree capture. No prompt was sent.",
+      "observed_at": "2026-11-26T21:54:26Z",
+      "pid": 16732,
+      "process_id": "hermes-profile-repro-gateway-16732",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
       "kind": "isolated_gateway_supervisor",
       "model": null,
       "note": "Verified on 2026-11-26 after expired-lease takeover: Get-Process PID 13700 returned no process, and isolated Gateway listeners :49194/:49195 are closed. No active supervisor remains; prior process state reconciled to stopped.",
@@ -117,6 +157,16 @@
       "observed_at": "2026-11-26T15:19:24Z",
       "pid": 15660,
       "process_id": "hermes-test-gateway-server-pid-15660",
+      "provider": "codex",
+      "state": "stopped"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "Reconciled after it exited naturally following config restore: PID 11744 was absent on fresh process-table read, and temp config SHA256 matched captured backup exactly.",
+      "observed_at": "2026-11-26T23:39:52Z",
+      "pid": 11744,
+      "process_id": "openrouter-picker-gateway-11744",
       "provider": "codex",
       "state": "stopped"
     },
@@ -759,6 +809,30 @@
       "status": " M"
     },
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-chat-transcript-after-merge-20261126T0150Z.json",
@@ -822,6 +896,18 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T20-49-37-265Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T20-49-37-265Z.png",
       "status": "??"
     },
     {
@@ -930,6 +1016,18 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T02-07-01-211Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T20-49-37-265Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T20-49-37-265Z.png",
       "status": "??"
     },
     {
@@ -1067,6 +1165,42 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-existing-session-retry-2026-11-26.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-existing-session-retry-2026-11-26.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-2026-11-26.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-2026-11-26.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-retry-2026-11-26.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-retry-2026-11-26.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/model-selection-runtime-readback-20261125.json",
       "status": "??"
     },
@@ -1139,6 +1273,12 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/live-coding-result-2026-11-26T20-49-37-265Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
       "path": "artifacts/agent-ui/live-coding-review-2026-11-25T17-25-29-902Z.json",
       "status": "??"
     },
@@ -1146,6 +1286,12 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "artifacts/agent-ui/live-headless-long-session-20261124.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/openrouter-model-picker-2026-11-26.json",
       "status": "??"
     },
     {
@@ -1608,12 +1754,13 @@
   "checkpoint": {
     "command": "cargo test --locked -p hermes-native --features agent-automation",
     "evidence": [
-      "apps/hermes-native/docs/PLAN.md#Revision 389",
-      "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0185.json#EV-0185"
+      "docs/EXECUTION_LOGS.md#hermes-native-openrouter-profile-scope-all-targets-20261126T2340Z",
+      "artifacts/agent-ui/live-coding-result-2026-11-26T20-49-37-265Z.json#outcome",
+      "artifacts/agent-ui/openrouter-model-picker-2026-11-26.json#newChatOptionListed"
     ],
-    "state": "in_progress",
-    "summary": "MCP setup import was implemented, regression-hardened, validated, documented, and published to main as d4ba6c0 + 36cca75. EV-0185 is commit-bound; capability remains partial, and repo-wide UCM validation retains legacy errors.",
-    "verified_at": "2026-11-26T18:48:57Z"
+    "state": "tested",
+    "summary": "OpenRouter key worked for the live Hermes Native coding assignment; provider openrouter and model deepseek/deepseek-v4.1-flash-1017 persisted. The profile-scope model options and attached-owner repo discovery fixes pass full validation: 819 library + 16 automation + 3 app tests, rustfmt, diff check, and task-state schema. New-chat OpenRouter catalog visible. Manual model override and existing-session selection still unverified. TEMP config restored byte-for-byte; isolated Gateway absent.",
+    "verified_at": "2026-11-26T23:44:53Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1711,8 +1858,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-26T19:48:57Z",
-    "lease_id": "23969a39-2c11-4736-8b49-a9b9a11b3120",
+    "lease_expires_at": "2026-11-27T00:44:53Z",
+    "lease_id": "77d25f20-54a8-44ed-8501-2988354e9927",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -1791,6 +1938,48 @@
       "note": "PASS: cargo check --workspace --all-targets --locked; only existing dead-code warnings.",
       "observed_at": "2026-11-18T21:40:04Z",
       "operation_id": "codex-workspace-check-20261118",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/agent/acceptance/live-coding-assignment.mjs#attached.gateway"
+      ],
+      "kind": "isolated_live_coding_acceptance",
+      "note": "The headless runner timed out after 60 seconds with gateway.state=isolated and submitted no prompt. Pinned Gateway loaded the Dolphin context, then exited cleanly after 600 seconds idle because no UI client attached. The isolated calc.py/test_calc.py hashes remain unchanged.",
+      "observed_at": "2026-11-26T19:49:22Z",
+      "operation_id": "dolphin-live-coding-acceptance-20261126-1852",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#new_chat_model_controls"
+      ],
+      "kind": "isolated_model_catalog_readback",
+      "note": "Headless session attached and opened New session, but the 1.5-second model-menu readback did not expose a model entry. No prompt was sent. Need wait for or retry the model catalog before selecting Dolphin.",
+      "observed_at": "2026-11-26T20:16:27Z",
+      "operation_id": "dolphin-model-menu-readback-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "failed"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/src/app.rs#new_chat_model_controls"
+      ],
+      "kind": "isolated_model_catalog_readback",
+      "note": "Headless readback attached successfully. New-session model state is ready with profile default qwen3:8b; the menu lists CognitiveComputations/dolphin-mistral-nemo:latest under custom and deepseek-flash under deepseek. No prompt was sent. OpenRouter is not present in this test profile's cached provider list.",
+      "observed_at": "2026-11-26T20:31:11Z",
+      "operation_id": "dolphin-model-menu-retry-readback-20261126",
       "owner": {
         "model": null,
         "provider": "codex"
@@ -2963,6 +3152,21 @@
     },
     {
       "evidence": [
+        "apps/hermes-native/agent/acceptance/live-coding-assignment.mjs#classifyTurnCompletion",
+        "artifacts/agent-ui/live-coding-result-2026-11-26T20-49-37-265Z.json#outcome"
+      ],
+      "kind": "live_coding_assignment_acceptance",
+      "note": "Headless Hermes Native live coding assignment used the dedicated OpenRouter credential only in the isolated Hermes test process. Gateway session record confirms provider openrouter and exact DeepSeek Flash model. Tool reads, scoped patch to calc.py, terminal unittest (4/4), and assistant final summary all passed. The test profile config was restored and its owned Gateway was stopped; credential value was not written to artifacts or logs.",
+      "observed_at": "2026-11-26T21:00:53Z",
+      "operation_id": "openrouter-live-coding-acceptance-20261126",
+      "owner": {
+        "model": "deepseek/deepseek-v4.1-flash-1017",
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
         "apps/hermes-native/src/app.rs#new_chat_send_creates_session_then_submits_draft_on_runtime_id"
       ],
       "kind": "cargo_test",
@@ -3866,6 +4070,34 @@
         "provider": "codex"
       },
       "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "apps/hermes-native/agent/acceptance/live-coding-assignment.mjs#attached.gateway"
+      ],
+      "kind": "isolated_gateway_attach_probe",
+      "note": "The initialized TEMP profile attached successfully headlessly; gateway.state=connected, first_run_setup_visible=false, status='Gateway connected · 7 sessions', and active_session=null. No prompt was sent.",
+      "observed_at": "2026-11-26T20:11:57Z",
+      "operation_id": "reuse-profile-gateway-attach-probe-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
+    },
+    {
+      "evidence": [
+        "artifacts/agent-ui/openrouter-model-picker-2026-11-26.json#connected"
+      ],
+      "kind": "isolated_gateway_cleanup",
+      "note": "Restored isolated profile config byte-for-byte; Gateway PID 11744 exited naturally and was absent at final process check. Profile config hash equals captured pre-probe backup.",
+      "observed_at": "2026-11-26T23:39:54Z",
+      "operation_id": "stop-remaining-openrouter-picker-gateway-20261126",
+      "owner": {
+        "model": null,
+        "provider": "codex"
+      },
+      "state": "succeeded"
     }
   ],
   "intended_recipient": null,
@@ -3913,9 +4145,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "4820fcd8-a879-4702-be78-51d361f20248",
+  "last_event_id": "4e9d6928-c34d-46a0-964c-58c32987590a",
   "last_operation": {
-    "request_id": "4820fcd8-a879-4702-be78-51d361f20248",
+    "request_id": "4e9d6928-c34d-46a0-964c-58c32987590a",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -3951,7 +4183,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Run the isolated pinned-source coding workflow with the already-installed Dolphin Mistral Nemo model; record exact tool/edit/test/final-response outcomes and continue toward first usable primary agent workflow.",
+  "recommended_next_action": "Finish headless manual OpenRouter model override and existing-session model picker verification; continue remaining agent feature gaps.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4366,7 +4598,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "363c7afb55ba3fda02768e2e0fbd811526ba24b5921f85991a0a195ea338f5e7",
+    "change_fingerprint": "a9abd1b5198695ddadae47f39b9b49da9e49de89ca0d83530f4a95358968253a",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -4374,6 +4606,22 @@
       },
       {
         "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
+        "status": " M"
+      },
+      {
+        "path": "docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -4418,6 +4666,14 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T20-49-37-265Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T20-49-37-265Z.png",
         "status": "??"
       },
       {
@@ -4490,6 +4746,14 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T02-07-01-211Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T20-49-37-265Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T20-49-37-265Z.png",
         "status": "??"
       },
       {
@@ -4581,6 +4845,30 @@
         "status": "??"
       },
       {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-existing-session-retry-2026-11-26.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-existing-session-retry-2026-11-26.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-2026-11-26.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-2026-11-26.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-retry-2026-11-26.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-retry-2026-11-26.png",
+        "status": "??"
+      },
+      {
         "path": "apps/hermes-native/artifacts/agent-ui/model-selection-runtime-readback-20261125.json",
         "status": "??"
       },
@@ -4629,11 +4917,19 @@
         "status": "??"
       },
       {
+        "path": "artifacts/agent-ui/live-coding-result-2026-11-26T20-49-37-265Z.json",
+        "status": "??"
+      },
+      {
         "path": "artifacts/agent-ui/live-coding-review-2026-11-25T17-25-29-902Z.json",
         "status": "??"
       },
       {
         "path": "artifacts/agent-ui/live-headless-long-session-20261124.png",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/openrouter-model-picker-2026-11-26.json",
         "status": "??"
       },
       {
@@ -4941,14 +5237,14 @@
         "status": "??"
       }
     ],
-    "head_commit": "36cca75a8855ef66f743d4eced668e3c7d725423",
+    "head_commit": "e2623d9bca9fa64e208fda4c8e138bc7e65180fc",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1139,
+  "revision": 1163,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1139,
+  "state_revision": 1163,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
   "task_ledger_revision": 193,
@@ -7362,9 +7658,14 @@
       "command": "isolated pinned Hermes terminal tool smoke through Hermes Native",
       "result": "Rust suite and 9-case runner self-check pass. Terminal tool execution/result and UI rendering pass (HERMES_TOOL_OK, exit 0, four transcript rows); assistant final response is inaccurate, so full workflow acceptance remains open.",
       "timestamp": "2026-11-26T02:19:42Z"
+    },
+    {
+      "command": "Hermes Native OpenRouter live coding acceptance",
+      "result": "PASS; exact provider/model confirmed in Gateway session data; scoped patch and four unit tests passed; final summary accurate. Existing-session model-options/profile identity remains a separate gap.",
+      "timestamp": "2026-11-26T21:51:29Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-26T18:48:57Z"
+  "updated_at": "2026-11-26T23:44:53Z"
 }

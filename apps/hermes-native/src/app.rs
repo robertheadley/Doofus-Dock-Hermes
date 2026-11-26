@@ -31877,7 +31877,7 @@ fn render_message() -> &'static str {
             .wrapping_add(1);
         let remote = endpoint.remote_auth.is_some();
         let result = if remote {
-            gateway.discover_remote_repos(request_id.clone(), profile.clone())
+            gateway.discover_remote_repos_for_attached_owner(request_id.clone(), profile.clone())
         } else {
             let home_dir = std::env::var_os("USERPROFILE")
                 .or_else(|| std::env::var_os("HOME"))

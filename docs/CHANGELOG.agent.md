@@ -5807,3 +5807,26 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: One profile-scoped Skill mutation is in flight at a time; no benchmark change claimed.
 - risks: Gateway outcome can become unknown on disconnect; local optimistic state is rolled back and the remaining sequence stops, but live service and packaged Windows behavior are not verified.
 - follow_up: Continue remaining agent capability gaps; verify Skills interactions against authenticated live Gateway and packaged Windows runtime when available.
+
+## Revision 387 — OpenRouter live coding acceptance
+- id: openrouter-flash-live-coding-20261126
+- timestamp: 2026-11-26T21:06:07Z
+- what: Recorded a headless Hermes Native live coding workflow using OpenRouter DeepSeek Flash in an isolated Hermes profile.
+- why: Verify that a real provider connection can drive file reading, a scoped patch, terminal execution and an accurate completion summary.
+- components: apps/hermes-native/agent/acceptance/live-coding-assignment.mjs; apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T20-49-37-265Z.png; apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T20-49-37-265Z.png; artifacts/agent-ui/live-coding-result-2026-11-26T20-49-37-265Z.json; docs/EXECUTION_LOGS.md
+- type: Live acceptance evidence
+- validation: Persisted session data confirms provider openrouter and model deepseek/deepseek-v4.1-flash-1017. The agent patched only the isolated calc.py, left test_calc.py unchanged, ran four passing unit tests, and returned a correct summary. The test profile was restored and its owned Gateway was stopped.
+- performance: Workflow completed in approximately 42 seconds; no benchmark claim.
+- risks: This verifies one configured provider/model and one coding workflow. It does not prove the model picker can discover or switch to every OpenRouter catalog entry, nor does it close the remaining agent-feature gaps.
+- follow_up: Verify native model-picker discovery and selection for this OpenRouter model, then continue the prioritized remaining chat/tool/skills/plugins gaps.
+## Revision 388 — OpenRouter owner-scope model options
+- id: hermes-native-openrouter-profile-scope-20261126
+- timestamp: 2026-11-26T23:38:00Z
+- what: Removed filesystem owner paths from session-scoped `model.options` and attached-owner repository discovery RPC selectors while retaining explicit selectors for sibling-profile discovery and preserving local result-fencing identities.
+- why: The pinned Hermes Gateway interprets a supplied `profile` as a sibling-profile selector; the filesystem home path identifies the attached owner locally but is not a valid wire selector for these owner-scoped RPCs.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/src/gateway.rs; apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-retry-2026-11-26.png; apps/hermes-native/artifacts/agent-ui/model-picker-openrouter-new-chat-retry-2026-11-26.json; artifacts/agent-ui/openrouter-model-picker-2026-11-26.json; docs/EXECUTION_LOGS.md
+- type: bug fix and provider acceptance
+- validation: `cargo fmt --manifest-path apps/hermes-native/Cargo.toml -- --check` passed; `cargo test --manifest-path apps/hermes-native/Cargo.toml --lib --features agent-automation` passed 819/819. Headless OpenRouter picker showed `deepseek/deepseek-v4.1-flash-1017`; live coding assignment passed its four fixture tests. The isolated profile config was restored byte-for-byte and its Gateway PID is absent.
+- performance: No performance change claimed.
+- risks: The new-chat picker catalog is visible, but the probe did not yet prove a manual model override or existing-session model menu selection. One model/provider workflow does not establish complete Hermes agent-feature parity.
+- follow_up: Complete a headless manual OpenRouter model-selection and existing-session picker interaction; continue the remaining tools, skills and plugins capability gaps.

@@ -1,0 +1,43 @@
+{
+  "connected": true,
+  "newChatModel": {
+    "status": "ready",
+    "source": "profile_default",
+    "provider_slug": "openrouter",
+    "model": "deepseek/deepseek-v4.1-flash-1017"
+  },
+  "newChatSelectionApplied": false,
+  "existingSessionModelListed": false,
+  "existingSessionProfileMismatch": false,
+  "screenshots": [
+    {
+      "path": "\\\\?\\D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\model-picker-openrouter-new-chat-retry-2026-11-26.png",
+      "metadata_path": "\\\\?\\D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\model-picker-openrouter-new-chat-retry-2026-11-26.json",
+      "screenshot_sha256": "d08d31c9ab12a605236b613ff7938f21c86a97b9ba4f91c9aa61fff67e69f392",
+      "width": 1440,
+      "height": 900,
+      "bytes": 186941,
+      "state_generation": 1,
+      "route": "/",
+      "permission_class": "artifact_write",
+      "outcome": "succeeded"
+    },
+    {
+      "path": "\\\\?\\D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\model-picker-openrouter-existing-session-retry-2026-11-26.png",
+      "metadata_path": "\\\\?\\D:\\AI\\AIProjects\\Doofus Dock Doofus Hermes\\apps\\hermes-native\\artifacts\\agent-ui\\model-picker-openrouter-existing-session-retry-2026-11-26.json",
+      "screenshot_sha256": "a8f7aa8774a18bbcf0d5e40d6bbdc9f1495aaa836a0e77a790acb7f427c10a80",
+      "width": 1440,
+      "height": 900,
+      "bytes": 316256,
+      "state_generation": 4,
+      "route": "/local-c1426da5e06dd0a8d5087675019d44e567787b5df62b981e4fb4bf6356dc3b53",
+      "permission_class": "artifact_write",
+      "outcome": "succeeded"
+    }
+  ],
+  "initialStatus": "Gateway connected · 8 sessions",
+  "newChatOptionListed": true,
+  "existingSession": "local-c1426da5e06dd0a8d5087675019d44e567787b5df62b981e4fb4bf6356dc3b53",
+  "existingSessionControls": [],
+  "finalStatus": "Session open · 9 messages"
+}
