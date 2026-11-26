@@ -1,0 +1,15 @@
+{
+  "uid": "EV-0185",
+  "capability_id": "ui-add-mcp-server-via-http-or-stdio",
+  "kind": "test_result",
+  "outcome": "pass",
+  "date": "2026-11-26",
+  "branch": "main",
+  "commit": "d4ba6c0fc24a318550cd64ea2105de99064d63f7",
+  "version": "pinned-hermes-source-8783054ef6cbafd86f10892241436862c1171a66",
+  "platform": "Windows 11 x86_64",
+  "environment": "Headless Hermes Native harness; cargo test --locked -p hermes-native --features agent-automation (817 library + 16 automation protocol + 3 app tests); cargo check --all-targets --locked --features agent-automation; cargo fmt --all -- --check; git diff --check.",
+  "scenario": "bounded-mcp-configuration-import-review-before-save-and-lossless-transport-validation",
+  "locator": "../../../../apps/hermes-native/src/mcp_import.rs#parses_wrapped_and_bare_json_maps; ../../../../apps/hermes-native/src/mcp_import.rs#parses_claude_stdio_http_and_headers; ../../../../apps/hermes-native/src/mcp_import.rs#cursor_link_values_are_redacted_and_clearable; ../../../../apps/hermes-native/src/app.rs#mcp_import_prefills_review_form_and_routes_bearer_secret_separately; ../../../../apps/hermes-native/src/app.rs#mcp_import_ui_previews_multiple_servers_and_loads_without_saving; ../../../../apps/hermes-native/src/app.rs#mcp_import_rejects_configs_the_review_form_cannot_preserve",
+  "notes": "Headless tests prove bounded local parsing, safe name/transport preview, editable review-before-save, bearer authorization routing into the dedicated secret field, and rejection of unknown or transport-incompatible settings that the form would otherwise discard. Parser intermediates are guarded for zeroization and sensitive line buffers are built without formatted secret copies. This proves implementation-level behavior only. Profile secret persistence, OAuth, server startup, environment passthrough editing, live Gateway behavior, packaged Windows interaction, and pinned-source paired acceptance remain open; capability remains partial."
+}

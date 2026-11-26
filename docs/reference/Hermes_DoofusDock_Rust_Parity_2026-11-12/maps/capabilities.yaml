@@ -5563,6 +5563,10 @@ capabilities:
   area: skills-plugins
   claim: In the new native Rust DoofusDock UI, a user can add MCP server via HTTP or stdio.
   status: partial
+  verification:
+    scenarios:
+    - id: bounded-mcp-configuration-import-review-before-save-and-lossless-transport-validation
+      description: Parse supported MCP inputs locally, preview them safely, reject settings that the form cannot preserve, and require explicit save.
   depends_on:
   - hermes-gateway
   - dock-layout-transactions
@@ -5570,6 +5574,8 @@ capabilities:
   - rust-port
   - parity
   - p2
+  evidence:
+  - EV-0185
   sources:
   - type: user_requirement
     locator: Hermes DoofusDock one-to-one UI migration request (2026-11-12)
