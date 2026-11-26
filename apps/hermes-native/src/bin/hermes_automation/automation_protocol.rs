@@ -1675,9 +1675,16 @@ fn read_bounded_line(reader: &mut impl BufRead) -> io::Result<Option<Vec<u8>>> {
 
 fn write_message(writer: &mut impl Write, message: &Value) -> Result<(), String> {
     let encoded = serde_json::to_vec(message).map_err(|error| error.to_string())?;
-    if encoded.len() > MAX_RESPONSE_BYTES {
-        return Err("response exceeds 256 KiB bound".into());
-    }
+    let encoded = if encoded.len() > MAX_RESPONSE_BYTES {
+        let bounded_error = failure(
+            message.get("id").cloned().unwrap_or(Value::Null),
+            "response_too_large",
+            "response exceeds the 256 KiB protocol limit; use state.get or a narrower query".into(),
+        );
+        serde_json::to_vec(&bounded_error).map_err(|error| error.to_string())?
+    } else {
+        encoded
+    };
     writer
         .write_all(&encoded)
         .and_then(|_| writer.write_all(b"\n"))
@@ -1718,6 +1725,28 @@ fn unix_time_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_responses_return_a_bounded_error_without_poisoning_stdio() {
+        let oversized = json!({"version":1,"id":"tree-1","status":"succeeded","result":{"text":"x".repeat(MAX_RESPONSE_BYTES)}});
+        let mut bytes = Vec::new();
+        write_message(&mut bytes, &oversized).expect("bounded error response");
+        write_message(
+            &mut bytes,
+            &success(json!("state-2"), json!({"ready":true})),
+        )
+        .expect("later response on the same stream");
+
+        let lines = bytes.split(|byte| *byte == b'\n').collect::<Vec<_>>();
+        let first: Value = serde_json::from_slice(lines[0]).expect("oversized response error JSON");
+        let second: Value = serde_json::from_slice(lines[1]).expect("subsequent success JSON");
+        assert_eq!(first["id"], "tree-1");
+        assert_eq!(first["status"], "failed");
+        assert_eq!(first["error"]["code"], "response_too_large");
+        assert!(lines[0].len() < 1024);
+        assert_eq!(second["id"], "state-2");
+        assert_eq!(second["status"], "succeeded");
+    }
 
     #[test]
     fn typed_app_action_and_human_widget_share_the_registered_handler() {

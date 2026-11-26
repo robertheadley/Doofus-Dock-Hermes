@@ -25,14 +25,18 @@ export function hasPendingWork(state) {
     || sendingStatus(state);
 }
 
-export function classifyTurnCompletion({ state, priorAssistantCount, liveAssistantCount, explicitError = false }) {
+export function classifyTurnCompletion({ state, priorTranscriptCount, liveTranscriptCount, priorRuntimeSessionId, liveRuntimeSessionId, explicitError = false }) {
   const chat = state?.chat ?? {};
   if (hasPendingWork(state)) return { kind: "wait", reason: "pending_work" };
   if (chat.submission_uncertain === true) return { kind: "unknown", reason: "submission_uncertain" };
   if (chat.approval_pending_count > 0) return { kind: "approval_required" };
   if (chat.clarify_pending_count > 0) return { kind: "clarification_required" };
   if (explicitError) return { kind: "error" };
-  if (liveAssistantCount > priorAssistantCount) return { kind: "settled" };
+  // A completed text turn must add both the submitted user prompt and a Hermes response.
+  // This state-only check avoids reserializing the entire, potentially huge transcript every poll.
+  const baseline = priorRuntimeSessionId !== liveRuntimeSessionId ? 0 : priorTranscriptCount;
+  if (Number.isSafeInteger(baseline) && Number.isSafeInteger(liveTranscriptCount)
+    && liveTranscriptCount >= baseline + 2) return { kind: "settled" };
   return { kind: "wait", reason: "assistant_terminal_not_observed" };
 }
 
@@ -48,26 +52,34 @@ function selfCheck() {
       clarify_pending_count: 0,
     },
   };
-  const priorAssistantCount = 2;
+  const priorTranscriptCount = 2;
   const checks = [
-    ["user row growth alone", { state: base, priorAssistantCount, liveAssistantCount: 2 }, "wait"],
+    ["user row growth alone", { state: base, priorTranscriptCount, liveTranscriptCount: 3 }, "wait"],
     ["assistant row while sending", {
-      state: { ...base, status: "Sending message to Hermes…" }, priorAssistantCount, liveAssistantCount: 3,
+      state: { ...base, status: "Sending message to Hermes…" }, priorTranscriptCount, liveTranscriptCount: 4,
     }, "wait"],
     ["assistant row with pending submission", {
       state: { ...base, chat: { ...base.chat, submission_pending: true, submission_pending_count: 1 } },
-      priorAssistantCount, liveAssistantCount: 3,
+      priorTranscriptCount, liveTranscriptCount: 4,
     }, "wait"],
     ["approval while submission is pending", {
       state: { ...base, chat: { ...base.chat, submission_pending: true, submission_pending_count: 1, approval_pending_count: 1 } },
-      priorAssistantCount, liveAssistantCount: 2,
+      priorTranscriptCount, liveTranscriptCount: 2,
     }, "wait"],
-    ["new terminal assistant row", { state: base, priorAssistantCount, liveAssistantCount: 3 }, "settled"],
+    ["new terminal assistant response", { state: base, priorTranscriptCount, liveTranscriptCount: 4 }, "settled"],
+    ["new session after prior transcript", {
+      state: base, priorTranscriptCount: 43, liveTranscriptCount: 5,
+      priorRuntimeSessionId: "old-session", liveRuntimeSessionId: "new-session",
+    }, "settled"],
     ["explicit approval with no pending work", {
-      state: { ...base, chat: { ...base.chat, approval_pending_count: 1 } }, priorAssistantCount, liveAssistantCount: 2,
+      state: { ...base, chat: { ...base.chat, approval_pending_count: 1 } }, priorTranscriptCount, liveTranscriptCount: 2,
     }, "approval_required"],
     ["explicit error with no pending work", {
-      state: base, priorAssistantCount, liveAssistantCount: 2, explicitError: true,
+      state: base, priorTranscriptCount, liveTranscriptCount: 2, explicitError: true,
+    }, "error"],
+    ["transcript API authorization failure", {
+      state: { ...base, status: "Could not refresh the active transcript: Hermes API read request failed: http status: 403" },
+      priorTranscriptCount, liveTranscriptCount: 0, explicitError: true,
     }, "error"],
   ];
   for (const [label, input, expected] of checks) {
@@ -159,33 +171,48 @@ try {
   const afterScreenshot = `live-coding-after-${stamp}.png`;
   await page.screenshot(beforeScreenshot);
 
+  const calcPath = path.join(project, "calc.py");
+  const testPath = path.join(project, "test_calc.py");
   const prompt = [
-    "In this isolated coding test project only, inspect calc.py and test_calc.py.",
-    "Fix add(a, b) so it performs ordinary integer addition for positive and negative values.",
-    "Keep the existing regression test. Use Hermes tools to inspect and edit these project files.",
-    "Use the terminal only to run `python -m unittest -q` from this project directory.",
-    "Do not read or change files outside this project and do not use network access.",
+    `The only authorized project root is ${project}. The active session may start in another working directory.`,
+    `Use Hermes tools on these exact absolute paths: ${calcPath} and ${testPath}.`,
+    "Fix add(a, b) in calc.py so it performs ordinary integer addition for positive and negative values.",
+    "Keep the existing regression test. Use Hermes tools to inspect and edit the named files.",
+    `Use the terminal only to run ` + "`python -m unittest -q`" + ` with working directory ${project}.`,
+    `Do not read or change files outside ${project} and do not use network access.`,
     "Then summarize files changed and the test result.",
   ].join(" ");
   await page.getByRole("MultilineTextInput", { name: "Message composer" }).fill(prompt);
   const beforeSubmit = await page.state();
-  const priorAssistantCount = collect(await page.tree())
-    .filter((item) => item.role === "Group" && /^assistant\s*:/i.test(item.name ?? "")).length;
+  const priorTranscriptCount = beforeSubmit.chat?.transcript_total_message_count
+    ?? beforeSubmit.chat?.transcript_visible_message_count
+    ?? beforeSubmit.transcript_message_count;
+  if (!Number.isSafeInteger(priorTranscriptCount)) {
+    throw new Error("state.get did not provide a transcript message count before submission");
+  }
   promptSent = true;
   await page.getByRole("Button", { name: "Send" }).click();
 
   const deadline = Date.now() + 5 * 60_000;
   let warnedPendingTimeout = false;
+  let nextStateNoticeAt = Date.now() + 30_000;
   while (true) {
     finalState = await page.state();
-    const liveControls = collect(await page.tree());
-    const liveAssistantCount = liveControls
-      .filter((item) => item.role === "Group" && /^assistant\s*:/i.test(item.name ?? "")).length;
-    const liveError = liveControls.some((item) => /billing or credits exhausted|HTTP 402|insufficient balance/i.test(item.value ?? item.name ?? ""));
+    const liveTranscriptCount = finalState.chat?.transcript_total_message_count
+      ?? finalState.chat?.transcript_visible_message_count
+      ?? finalState.transcript_message_count;
+    const liveError = /billing or credits exhausted|HTTP 402|insufficient balance|payment.*failed|http status:\s*4\d{2}|could not refresh.*transcript/i
+      .test([
+        finalState.status,
+        finalState.load_error,
+        finalState.chat?.transcript_page_error,
+      ].filter(Boolean).join(" "));
     const completion = classifyTurnCompletion({
       state: finalState,
-      priorAssistantCount,
-      liveAssistantCount,
+      priorTranscriptCount,
+      liveTranscriptCount,
+      priorRuntimeSessionId: beforeSubmit.chat?.active_runtime_session_id ?? null,
+      liveRuntimeSessionId: finalState.chat?.active_runtime_session_id ?? null,
       explicitError: liveError,
     });
     if (completion.kind !== "wait") {
@@ -198,6 +225,18 @@ try {
       })[completion.kind];
       break;
     }
+    if (Date.now() >= nextStateNoticeAt) {
+      process.stderr.write(`${JSON.stringify({
+        event: "acceptance_waiting",
+        reason: completion.reason,
+        status: finalState?.status ?? null,
+        submission_pending: finalState?.chat?.submission_pending ?? null,
+        submission_pending_count: finalState?.chat?.submission_pending_count ?? null,
+        transcript_total_message_count: finalState?.chat?.transcript_total_message_count ?? null,
+        approval_pending_count: finalState?.chat?.approval_pending_count ?? 0,
+      })}\n`);
+      nextStateNoticeAt = Date.now() + 30_000;
+    }
     if (Date.now() >= deadline && !warnedPendingTimeout) {
       warnedPendingTimeout = true;
       process.stderr.write("No terminal assistant/approval/error state after five minutes; keeping Hermes Native attached until pending work settles.\n");
@@ -205,8 +244,12 @@ try {
     await sleep(1_000);
   }
 
-  const tree = await page.tree();
-  controls = collect(tree);
+  let treeReadError = null;
+  try {
+    controls = collect(await page.tree());
+  } catch (error) {
+    treeReadError = { code: error?.code ?? "tree_read_failed", message: String(error?.message ?? error).slice(0, 300) };
+  }
   const assistantError = controls
     .map((item) => item.value ?? item.name ?? "")
     .find((value) => /assistant.*error|billing or credits exhausted|payment.*failed|HTTP 402|insufficient balance/i.test(value)) ?? null;
@@ -248,7 +291,10 @@ try {
     failure_summary: assistantError?.slice(0, 500) ?? null,
     gateway_state: finalState?.gateway?.state ?? "connected",
     active_runtime_session_id: finalState?.chat?.active_runtime_session_id ?? null,
-    transcript_message_count: finalState?.transcript_message_count ?? null,
+    transcript_message_count: finalState?.chat?.transcript_total_message_count
+      ?? finalState?.transcript_message_count
+      ?? null,
+    tree_read_error: treeReadError,
     app_status: finalState?.status ?? null,
     submission_pending: finalState?.chat?.submission_pending ?? null,
     submission_pending_count: finalState?.chat?.submission_pending_count ?? null,

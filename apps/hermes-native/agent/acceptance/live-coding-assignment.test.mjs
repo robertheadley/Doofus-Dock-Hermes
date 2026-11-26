@@ -16,6 +16,6 @@ test("live coding completion gate ignores user-row growth and waits for idle ass
   });
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /self-check passed \(7 cases\)/);
+  assert.match(result.stdout, /self-check passed \(9 cases\)/);
   assert.doesNotMatch(result.stdout + result.stderr, /Gateway|HERMES_TEST_PROFILE/);
 });

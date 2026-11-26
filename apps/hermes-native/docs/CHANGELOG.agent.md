@@ -3861,3 +3861,31 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Release build completed in 6m53s with thin LTO.
 - **risks:** Visible cold launch, live Gateway connection, and provider-backed coding acceptance remain open; no screenshot or model call was used.
 - **follow_up:** Launch the candidate visibly and complete an authorized real coding task when provider entitlement is usable; resolve the application license text gap before redistribution.
+
+
+## Hermes agent UI automation response bounds — 2026-11-26
+
+- id: `hermes-agent-stdio-overflow-recovery-20261126T0034Z`
+- timestamp: `2026-11-26T00:34:08Z`
+- what: Oversized stdio replies now return a bounded `response_too_large` error without ending the helper process. Live coding acceptance polls compact transcript counts from `state.get` rather than serializing the full accessibility tree every second, and treats a final tree read as optional diagnostics.
+- why: Long tool transcripts could exceed the 256 KiB frame limit, killing the automation process and disconnecting an otherwise active Hermes turn.
+- components: `src/bin/hermes_automation/automation_protocol.rs`; `agent/acceptance/live-coding-assignment.mjs`; protocol and runner documentation.
+- type: Automation reliability and acceptance instrumentation.
+- validation: Rust regression test verifies oversized response error is bounded and a subsequent request succeeds on the same stream; acceptance gate self-check passes (7 cases); JavaScript syntax and Rust formatting checks pass.
+- performance: Polling now reads compact state rather than the transcript accessibility tree each second; no benchmark claimed.
+- risks: A final transcript tree larger than 256 KiB remains unavailable to the client; the runner records the structured error and proceeds with state and filesystem evidence. The underlying provider tool-argument failure is separate and remains open.
+- follow_up: Consider a paginated or query-scoped accessibility tree if large-transcript locator inspection becomes necessary.
+
+
+## Hermes acceptance state fencing and failure diagnostics — 2026-11-26
+
+- id: `hermes-native-acceptance-runner-state-fencing-20261126T0055Z`
+- timestamp: `2026-11-26T00:55:37Z`
+- what: Acceptance polling now compares transcript counts within the same runtime session, includes exact absolute fixture paths in the coding assignment, emits bounded state-only wait diagnostics, and treats transcript API HTTP 4xx/refresh failures as terminal errors. Added regression coverage for new-session baselines and transcript HTTP 403.
+- why: A cloned profile could carry a larger prior transcript than a newly created session, and a transcript 403 left the acceptance loop waiting indefinitely despite a terminal Gateway response.
+- components: `agent/acceptance/live-coding-assignment.mjs`; `agent/acceptance/live-coding-assignment.test.mjs`; protocol docs; acceptance evidence artifact.
+- type: Acceptance runner correctness and live-runtime diagnostics.
+- validation: Node acceptance test passes (9 completion-gate scenarios); Rust response-bound test passes; syntax, rustfmt, and diff checks pass. Three isolated qwen3:8b runs reached terminal assistant responses but emitted read-file calls only and changed neither fixture file. Fresh-profile live runs also reported HTTP 403 during UI transcript refresh.
+- performance: Poll loop reads compact state once per second; full tree is read only once for optional final diagnostics.
+- risks: Live coding acceptance remains failed: the local model did not issue a write tool call and the UI could not refresh its transcript (HTTP 403); no fixture test was run.
+- follow_up: Diagnose ticket/profile scope for active transcript reads, then retry with a provider/model that executes native Hermes tools reliably.

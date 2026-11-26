@@ -1,0 +1,59 @@
+{
+  "schema": "hermes-native-live-coding-reconciliation/1",
+  "timestamp_utc": "2026-11-26T00:55:37Z",
+  "request_id": "hermes-native-acceptance-runner-recovery-20261126T0050Z",
+  "hermes_source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "repo_commit": "66f4ef0674d39c771142bf5f66737605ad4b2c65",
+  "provider": "local Ollama custom endpoint",
+  "model": "qwen3:8b",
+  "tool_search": "disabled in clean-profile attempts",
+  "attempts": [
+    {
+      "profile": "TEMP HermesNative-Delivery-Test-20261126-0040",
+      "isolation": "copied isolated profile and fixture",
+      "result": "FAILED_NO_FILE_CHANGE",
+      "gateway_admission": "terminal_completed",
+      "assistant_finish_reason": "stop",
+      "tool_calls": [
+        "read_file",
+        "read_file"
+      ],
+      "active_workers": 0,
+      "notes": "Old copied profile state made the UI polling baseline ambiguous; runner was stopped only after the Gateway admission completed."
+    },
+    {
+      "profile": "TEMP HermesNative-Delivery-Test-20261126-0055",
+      "isolation": "new profile with config.yaml only and copied fixture",
+      "result": "FAILED_NO_FILE_CHANGE",
+      "gateway_admission": "terminal_completed",
+      "assistant_finish_reason": "stop",
+      "tool_calls": [
+        "read_file",
+        "read_file"
+      ],
+      "active_workers": 0,
+      "ui_status": "HTTP 403 while refreshing active transcript",
+      "notes": "UI state reported zero transcript messages after an API 403; assistant final response existed in the isolated Gateway store."
+    },
+    {
+      "profile": "TEMP HermesNative-Delivery-Test-20261126-0100",
+      "isolation": "new profile with config.yaml only and copied fixture",
+      "result": "FAILED_NO_FILE_CHANGE",
+      "gateway_admission": "terminal_completed",
+      "assistant_finish_reason": "stop",
+      "tool_calls": [
+        "read_file",
+        "read_file"
+      ],
+      "active_workers": 0,
+      "ui_status": "HTTP 403 while refreshing active transcript",
+      "notes": "The model claimed a test file was created, but the Gateway recorded only two read_file calls, no write call, and the fixture directory still contained only calc.py and test_calc.py."
+    }
+  ],
+  "fixture_sha256_unchanged": {
+    "calc.py": "e1a894022d1a082987b87adecb623438c9e386d86b2b621cff4a5fe7fdf7edc8",
+    "test_calc.py": "599fbb4f9bd85a76951240a6b60911b5b84e26c677dcd31fb88ded67f6a1c7c9"
+  },
+  "side_effects": "No fixture edits; no files created in the user home; installed Hermes profile and shared Ollama process untouched. All six temporary Gateway child processes for these attempts are stopped. Existing registered Gateway processes 13700/15660 and installed Gateway 18724 are preserved.",
+  "acceptance": "NOT_PASSED; no file change or fixture test result; provider/model tool-use quality and local UI transcript HTTP 403 remain blockers."
+}
