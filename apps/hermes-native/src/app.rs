@@ -955,18 +955,53 @@ struct McpServerRemovalConfirmation {
     authority_epoch: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct McpServerAddDraft {
     name: String,
     transport: String,
     command: String,
-    args: String,
-    env: String,
+    args: Zeroizing<String>,
+    env: Zeroizing<String>,
     cwd: String,
-    url: String,
-    headers: String,
+    url: Zeroizing<String>,
+    headers: Zeroizing<String>,
     auth: String,
-    bearer_token: String,
+    bearer_token: Zeroizing<String>,
+}
+
+struct SensitiveStringMap(BTreeMap<String, String>);
+
+impl std::ops::Deref for SensitiveStringMap {
+    type Target = BTreeMap<String, String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SensitiveStringMap {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Drop for SensitiveStringMap {
+    fn drop(&mut self) {
+        for value in self.0.values_mut() {
+            value.zeroize();
+        }
+    }
+}
+
+impl std::fmt::Debug for McpServerAddDraft {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("McpServerAddDraft")
+            .field("name", &self.name)
+            .field("transport", &self.transport)
+            .field("config_values", &"[redacted]")
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1050,15 +1085,204 @@ impl Default for McpServerAddDraft {
             name: String::new(),
             transport: "stdio".into(),
             command: String::new(),
-            args: String::new(),
-            env: String::new(),
+            args: Zeroizing::new(String::new()),
+            env: Zeroizing::new(String::new()),
             cwd: String::new(),
-            url: String::new(),
-            headers: String::new(),
+            url: Zeroizing::new(String::new()),
+            headers: Zeroizing::new(String::new()),
             auth: "none".into(),
-            bearer_token: String::new(),
+            bearer_token: Zeroizing::new(String::new()),
         }
     }
+}
+
+fn mcp_import_entry_to_draft(
+    entry: &crate::mcp_import::McpImportEntry,
+) -> Result<McpServerAddDraft, String> {
+    let config = entry
+        .config
+        .as_object()
+        .ok_or_else(|| "Imported MCP configuration must be an object".to_owned())?;
+    let supported = [
+        "transport",
+        "command",
+        "args",
+        "env",
+        "cwd",
+        "url",
+        "headers",
+        "auth",
+    ];
+    if config.keys().any(|key| !supported.contains(&key.as_str())) {
+        return Err("This MCP configuration has fields the native form cannot preserve".into());
+    }
+    let text = |key: &str| -> Result<String, String> {
+        match config.get(key) {
+            None => Ok(String::new()),
+            Some(serde_json::Value::String(value)) => Ok(value.clone()),
+            Some(_) => Err(format!("Imported MCP {key} must be text")),
+        }
+    };
+    let string_map = |key: &str| -> Result<SensitiveStringMap, String> {
+        let Some(value) = config.get(key) else {
+            return Ok(SensitiveStringMap(BTreeMap::new()));
+        };
+        let Some(object) = value.as_object() else {
+            return Err(format!("Imported MCP {key} must be an object"));
+        };
+        let mut values = BTreeMap::<String, String>::new();
+        for (name, value) in object {
+            let Some(value) = value.as_str() else {
+                for value in values.values_mut() {
+                    value.zeroize();
+                }
+                return Err(format!("Imported MCP {key} values must be text"));
+            };
+            if name.contains(['\n', '\r']) || value.contains(['\n', '\r']) {
+                for value in values.values_mut() {
+                    value.zeroize();
+                }
+                return Err(format!("Imported MCP {key} cannot contain newline values"));
+            }
+            values.insert(name.clone(), value.to_owned());
+        }
+        Ok(SensitiveStringMap(values))
+    };
+    let args = match config.get("args") {
+        None => Vec::new(),
+        Some(serde_json::Value::Array(values)) => values
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(|value| Zeroizing::new(value.to_owned()))
+                    .ok_or_else(|| "Imported MCP arguments must be text".to_owned())
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        Some(_) => return Err("Imported MCP arguments must be an array".into()),
+    };
+    if args.iter().any(|arg| arg.contains(['\n', '\r'])) {
+        return Err("Imported MCP arguments cannot contain newline values".into());
+    }
+    let command = text("command")?;
+    let url = Zeroizing::new(text("url")?);
+    let transport = text("transport")?;
+    let inferred_transport = if !url.is_empty() {
+        if transport.is_empty() {
+            "http"
+        } else {
+            &transport
+        }
+    } else if transport.is_empty() {
+        "stdio"
+    } else {
+        &transport
+    };
+    if !matches!(inferred_transport, "stdio" | "http" | "sse") {
+        return Err("Imported MCP transport is not supported by the native form".into());
+    }
+    if inferred_transport == "stdio" && (command.is_empty() || !url.is_empty()) {
+        return Err("Imported stdio servers need a command and cannot include a URL".into());
+    }
+    if inferred_transport != "stdio" && (url.is_empty() || !command.is_empty()) {
+        return Err("Imported HTTP or SSE servers need a URL and cannot include a command".into());
+    }
+    if inferred_transport == "stdio" && config.contains_key("headers") {
+        return Err(
+            "Imported stdio servers contain HTTP headers the native form cannot preserve".into(),
+        );
+    }
+    if inferred_transport != "stdio"
+        && ["args", "env", "cwd"]
+            .iter()
+            .any(|key| config.contains_key(*key))
+    {
+        return Err(
+            "Imported HTTP or SSE settings include stdio fields the native form cannot preserve"
+                .into(),
+        );
+    }
+    let env = string_map("env")?;
+    let mut headers = string_map("headers")?;
+    let mut auth = text("auth")?;
+    let mut bearer_token = Zeroizing::new(String::new());
+    if inferred_transport != "stdio" {
+        if let Some(key) = headers
+            .iter()
+            .find(|(key, value)| {
+                key.eq_ignore_ascii_case("authorization")
+                    && value
+                        .get(..7)
+                        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("Bearer "))
+            })
+            .map(|(key, _)| key.clone())
+        {
+            let mut value = Zeroizing::new(headers.remove(&key).unwrap_or_default());
+            bearer_token = Zeroizing::new(value.get(7..).unwrap_or_default().trim().to_owned());
+            value.zeroize();
+            if auth.is_empty() {
+                auth = "bearer".into();
+            }
+        }
+        if auth.is_empty() {
+            auth = "none".into();
+        }
+        if !matches!(auth.as_str(), "none" | "oauth" | "bearer") {
+            return Err("Imported MCP authentication mode is not supported".into());
+        }
+    } else if !auth.is_empty() {
+        return Err("Imported MCP stdio servers cannot use HTTP authentication".into());
+    }
+    // The source import is zeroized by the caller after this transfer. Clear
+    // temporary map copies after projecting them into the masked form fields.
+    let mut env_text = Zeroizing::new(String::new());
+    for (index, (key, value)) in env.iter().enumerate() {
+        if index > 0 {
+            env_text.push('\n');
+        }
+        env_text.push_str(key);
+        env_text.push('=');
+        env_text.push_str(value);
+    }
+    let mut headers_text = Zeroizing::new(String::new());
+    for (index, (key, value)) in headers.iter().enumerate() {
+        if index > 0 {
+            headers_text.push('\n');
+        }
+        headers_text.push_str(key);
+        headers_text.push('=');
+        headers_text.push_str(value);
+    }
+    let mut args_text = Zeroizing::new(String::new());
+    for (index, arg) in args.iter().enumerate() {
+        if index > 0 {
+            args_text.push('\n');
+        }
+        args_text.push_str(arg.as_str());
+    }
+    Ok(McpServerAddDraft {
+        name: entry.name.clone(),
+        transport: inferred_transport.to_owned(),
+        command,
+        args: args_text,
+        env: env_text,
+        cwd: text("cwd")?,
+        url,
+        headers: headers_text,
+        auth,
+        bearer_token,
+    })
+}
+
+fn clear_mcp_import_state(
+    text: &mut Zeroizing<String>,
+    entries: &mut Vec<crate::mcp_import::McpImportEntry>,
+) {
+    text.zeroize();
+    for entry in entries.iter_mut() {
+        entry.clear_sensitive();
+    }
+    entries.clear();
 }
 
 fn parse_mcp_key_value_lines(
@@ -1127,7 +1351,7 @@ fn mcp_server_add_draft_payload(
             );
         }
         (serde_json::Value::Object(config), None)
-    } else if draft.transport == "http" {
+    } else if matches!(draft.transport.as_str(), "http" | "sse") {
         let url = draft.url.trim();
         if !(url.starts_with("https://") || url.starts_with("http://")) {
             return Err("Enter an HTTP or HTTPS MCP server URL".into());
@@ -1135,6 +1359,9 @@ fn mcp_server_add_draft_payload(
         let headers = parse_mcp_key_value_lines(&draft.headers, "Header")?;
         let mut config = serde_json::Map::new();
         config.insert("url".into(), serde_json::Value::String(url.to_owned()));
+        if draft.transport == "sse" {
+            config.insert("transport".into(), serde_json::Value::String("sse".into()));
+        }
         if !headers.is_empty() {
             config.insert("headers".into(), serde_json::Value::Object(headers));
         }
@@ -1154,7 +1381,7 @@ fn mcp_server_add_draft_payload(
         };
         (serde_json::Value::Object(config), token)
     } else {
-        return Err("Choose stdio or HTTP transport".into());
+        return Err("Choose stdio, HTTP, or SSE transport".into());
     };
     Ok((name, config.0, config.1))
 }
@@ -2543,7 +2770,12 @@ pub struct HermesNativeApp {
     pending_mcp_server_tests: BTreeMap<String, PendingMcpServerTest>,
     mcp_server_add_open: bool,
     mcp_server_add_draft: McpServerAddDraft,
+    mcp_server_add_show_secrets: bool,
     mcp_server_add_error: Option<String>,
+    mcp_server_import_text: Zeroizing<String>,
+    mcp_server_import_entries: Vec<crate::mcp_import::McpImportEntry>,
+    mcp_server_import_selection: usize,
+    mcp_server_import_error: Option<String>,
     pending_mcp_server_add: Option<PendingMcpServerAdd>,
     mcp_server_removal_confirmation: Option<McpServerRemovalConfirmation>,
     pending_mcp_server_removals: BTreeMap<String, PendingMcpServerRemoval>,
@@ -5168,7 +5400,12 @@ fn render_message() -> &'static str {
             pending_mcp_server_tests: BTreeMap::new(),
             mcp_server_add_open: false,
             mcp_server_add_draft: McpServerAddDraft::default(),
+            mcp_server_add_show_secrets: false,
             mcp_server_add_error: None,
+            mcp_server_import_text: Zeroizing::new(String::new()),
+            mcp_server_import_entries: Vec::new(),
+            mcp_server_import_selection: 0,
+            mcp_server_import_error: None,
             pending_mcp_server_add: None,
             mcp_server_removal_confirmation: None,
             pending_mcp_server_removals: BTreeMap::new(),
@@ -15886,22 +16123,129 @@ fn render_message() -> &'static str {
                     self.mcp_server_add_error = None;
                     if !self.mcp_server_add_open {
                         self.mcp_server_add_draft = McpServerAddDraft::default();
+                        self.mcp_server_add_show_secrets = false;
+                        self.mcp_server_import_error = None;
+                        clear_mcp_import_state(
+                            &mut self.mcp_server_import_text,
+                            &mut self.mcp_server_import_entries,
+                        );
                     }
                 }
                 let mut add_server_payload = None;
                 if self.mcp_server_add_open {
                     ui.group(|ui| {
                         ui.label(RichText::new("Add MCP server").strong().color(TEXT));
+                        ui.label("Paste an MCP setup command, URL, or JSON configuration to prefill this form.");
+                        ui.add(
+                            egui::TextEdit::multiline(&mut *self.mcp_server_import_text)
+                                .desired_rows(3)
+                                .hint_text("Paste setup text or JSON · input is hidden")
+                                .password(true),
+                        )
+                        .accessible_name("MCP configuration to import");
+                        let mut parse_import = false;
+                        let mut load_import = false;
+                        ui.horizontal(|ui| {
+                            if ui.button("Parse import").clicked() {
+                                parse_import = true;
+                            }
+                            if !self.mcp_server_import_entries.is_empty() {
+                                if ui.button("Clear import").clicked() {
+                                    clear_mcp_import_state(
+                                        &mut self.mcp_server_import_text,
+                                        &mut self.mcp_server_import_entries,
+                                    );
+                                    self.mcp_server_import_error = None;
+                                    self.mcp_server_import_selection = 0;
+                                }
+                            }
+                        });
+                        if let Some(error) = &self.mcp_server_import_error {
+                            ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+                        }
+                        if !self.mcp_server_import_entries.is_empty() {
+                            ui.label(format!(
+                                "Import preview · {} server(s). Nothing is saved until you choose Save server.",
+                                self.mcp_server_import_entries.len()
+                            ));
+                            self.mcp_server_import_selection = self
+                                .mcp_server_import_selection
+                                .min(self.mcp_server_import_entries.len().saturating_sub(1));
+                            egui::ComboBox::from_label("Imported MCP server")
+                                .selected_text(
+                                    self.mcp_server_import_entries
+                                        [self.mcp_server_import_selection]
+                                        .summary(),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for (index, entry) in
+                                        self.mcp_server_import_entries.iter().enumerate()
+                                    {
+                                        ui.selectable_value(
+                                            &mut self.mcp_server_import_selection,
+                                            index,
+                                            entry.summary(),
+                                        );
+                                    }
+                                });
+                            load_import = ui.button("Load selected server into form").clicked();
+                        }
+                        if parse_import {
+                            for entry in &mut self.mcp_server_import_entries {
+                                entry.clear_sensitive();
+                            }
+                            self.mcp_server_import_entries.clear();
+                            self.mcp_server_import_selection = 0;
+                            self.mcp_server_import_error = None;
+                            match crate::mcp_import::parse_mcp_import(
+                                &self.mcp_server_import_text,
+                            ) {
+                                Ok(entries) => {
+                                    self.mcp_server_import_text.zeroize();
+                                    self.mcp_server_import_entries = entries;
+                                }
+                                Err(error) => {
+                                    self.mcp_server_import_error = Some(error.to_string());
+                                }
+                            }
+                        }
+                        if load_import {
+                            let result = self
+                                .mcp_server_import_entries
+                                .get(self.mcp_server_import_selection)
+                                .ok_or_else(|| "Choose an imported MCP server".to_owned())
+                                .and_then(mcp_import_entry_to_draft);
+                            match result {
+                                Ok(draft) => {
+                                    self.mcp_server_add_draft = draft;
+                                    self.mcp_server_add_show_secrets = false;
+                                    self.mcp_server_add_error = None;
+                                    clear_mcp_import_state(
+                                        &mut self.mcp_server_import_text,
+                                        &mut self.mcp_server_import_entries,
+                                    );
+                                    self.mcp_server_import_error = None;
+                                    self.mcp_server_import_selection = 0;
+                                }
+                                Err(error) => {
+                                    self.mcp_server_import_error = Some(error);
+                                }
+                            }
+                        }
+                        ui.checkbox(
+                            &mut self.mcp_server_add_show_secrets,
+                            "Show argument, environment, URL, and header values",
+                        );
                         ui.horizontal(|ui| {
                             ui.label("Name");
                             ui.text_edit_singleline(&mut self.mcp_server_add_draft.name)
                                 .accessible_name("MCP server name");
                         });
                         egui::ComboBox::from_label("Transport")
-                            .selected_text(if self.mcp_server_add_draft.transport == "http" {
-                                "HTTP"
-                            } else {
-                                "stdio"
+                            .selected_text(match self.mcp_server_add_draft.transport.as_str() {
+                                "http" => "HTTP",
+                                "sse" => "SSE",
+                                _ => "stdio",
                             })
                             .show_ui(ui, |ui| {
                                 ui.selectable_value(
@@ -15914,6 +16258,11 @@ fn render_message() -> &'static str {
                                     "http".into(),
                                     "HTTP",
                                 );
+                                ui.selectable_value(
+                                    &mut self.mcp_server_add_draft.transport,
+                                    "sse".into(),
+                                    "SSE",
+                                );
                             });
                         if self.mcp_server_add_draft.transport == "stdio" {
                             ui.label("Command");
@@ -15921,16 +16270,18 @@ fn render_message() -> &'static str {
                                 .accessible_name("MCP server command");
                             ui.label("Arguments (one per line)");
                             ui.add(
-                                egui::TextEdit::multiline(&mut self.mcp_server_add_draft.args)
+                                egui::TextEdit::multiline(&mut *self.mcp_server_add_draft.args)
                                     .desired_rows(2)
-                                    .hint_text("One argument per line"),
+                                    .hint_text("One argument per line")
+                                    .password(!self.mcp_server_add_show_secrets),
                             )
                             .accessible_name("MCP server arguments");
                             ui.label("Environment variables (KEY=VALUE, one per line)");
                             ui.add(
-                                egui::TextEdit::multiline(&mut self.mcp_server_add_draft.env)
+                                egui::TextEdit::multiline(&mut *self.mcp_server_add_draft.env)
                                     .desired_rows(2)
-                                    .hint_text("KEY=VALUE, one per line"),
+                                    .hint_text("KEY=VALUE, one per line")
+                                    .password(!self.mcp_server_add_show_secrets),
                             )
                             .accessible_name("MCP server environment variables");
                             ui.horizontal(|ui| {
@@ -15941,14 +16292,20 @@ fn render_message() -> &'static str {
                         } else {
                             ui.horizontal(|ui| {
                                 ui.label("URL");
-                                ui.text_edit_singleline(&mut self.mcp_server_add_draft.url)
-                                    .accessible_name("MCP server URL");
+                                ui.add(
+                                    egui::TextEdit::singleline(
+                                        &mut *self.mcp_server_add_draft.url,
+                                    )
+                                    .password(!self.mcp_server_add_show_secrets),
+                                )
+                                .accessible_name("MCP server URL");
                             });
                             ui.label("Headers (KEY=VALUE, one per line)");
                             ui.add(
-                                egui::TextEdit::multiline(&mut self.mcp_server_add_draft.headers)
+                                egui::TextEdit::multiline(&mut *self.mcp_server_add_draft.headers)
                                     .desired_rows(2)
-                                    .hint_text("KEY=VALUE, one per line"),
+                                    .hint_text("KEY=VALUE, one per line")
+                                    .password(!self.mcp_server_add_show_secrets),
                             )
                             .accessible_name("MCP server HTTP headers");
                             egui::ComboBox::from_label("Authentication")
@@ -15980,7 +16337,7 @@ fn render_message() -> &'static str {
                                 );
                                 ui.add(
                                     egui::TextEdit::singleline(
-                                        &mut self.mcp_server_add_draft.bearer_token,
+                                        &mut *self.mcp_server_add_draft.bearer_token,
                                     )
                                     .password(true),
                                 )
@@ -71387,8 +71744,8 @@ mod tests {
             name: "local-docs".into(),
             transport: "stdio".into(),
             command: "uvx".into(),
-            args: "mcp-server-docs\n--read-only".into(),
-            env: "DOCS_ROOT=C:/docs\nAPI_MODE=readonly".into(),
+            args: Zeroizing::new("mcp-server-docs\n--read-only".into()),
+            env: Zeroizing::new("DOCS_ROOT=C:/docs\nAPI_MODE=readonly".into()),
             cwd: "C:/project".into(),
             ..McpServerAddDraft::default()
         };
@@ -71403,10 +71760,10 @@ mod tests {
         let draft = McpServerAddDraft {
             name: "remote-docs".into(),
             transport: "http".into(),
-            url: "https://mcp.example/mcp".into(),
-            headers: "X-Team=engineering".into(),
+            url: Zeroizing::new("https://mcp.example/mcp".into()),
+            headers: Zeroizing::new("X-Team=engineering".into()),
             auth: "bearer".into(),
-            bearer_token: "secret-value".into(),
+            bearer_token: Zeroizing::new("secret-value".into()),
             ..McpServerAddDraft::default()
         };
         let (name, config, token) = mcp_server_add_draft_payload(&draft).unwrap();
@@ -71417,7 +71774,7 @@ mod tests {
         assert_eq!(token.as_deref(), Some("secret-value"));
 
         let invalid = McpServerAddDraft {
-            env: "DUP=first\nDUP=second".into(),
+            env: Zeroizing::new("DUP=first\nDUP=second".into()),
             ..McpServerAddDraft {
                 name: "bad".into(),
                 command: "node".into(),
@@ -71425,6 +71782,114 @@ mod tests {
             }
         };
         assert!(mcp_server_add_draft_payload(&invalid).is_err());
+    }
+
+    #[test]
+    fn mcp_import_prefills_review_form_and_routes_bearer_secret_separately() {
+        let mut entries = crate::mcp_import::parse_mcp_import(
+            "claude mcp add --transport sse docs -H \"Authorization: Bearer imported-secret\" https://mcp.example/sse",
+        )
+        .expect("parse MCP setup command");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].summary(), "docs · sse");
+        assert!(!format!("{:?}", entries[0]).contains("imported-secret"));
+
+        let draft = mcp_import_entry_to_draft(&entries[0]).expect("map import to review form");
+        assert_eq!(draft.name, "docs");
+        assert_eq!(draft.transport, "sse");
+        assert_eq!(draft.url.as_str(), "https://mcp.example/sse");
+        assert_eq!(draft.auth, "bearer");
+        assert_eq!(draft.bearer_token.as_str(), "imported-secret");
+        assert!(draft.headers.is_empty());
+
+        let (name, config, token) =
+            mcp_server_add_draft_payload(&draft).expect("build secure add payload");
+        assert_eq!(name, "docs");
+        assert_eq!(config["transport"], "sse");
+        assert_eq!(config["url"], "https://mcp.example/sse");
+        assert!(config.to_string().find("imported-secret").is_none());
+        assert_eq!(token.as_deref(), Some("imported-secret"));
+
+        entries[0].clear_sensitive();
+        assert!(entries[0].config.is_null());
+    }
+
+    #[test]
+    fn mcp_import_rejects_configs_the_review_form_cannot_preserve() {
+        let entries = crate::mcp_import::parse_mcp_import(
+            r#"{"mcpServers":{"docs":{"command":"npx","args":["-y","docs-mcp"],"restart":true}}}"#,
+        )
+        .expect("parse server config");
+        assert_eq!(entries.len(), 1);
+        assert!(mcp_import_entry_to_draft(&entries[0]).is_err());
+
+        for input in [
+            r#"{"url":"https://mcp.example/mcp","headers":{"X-Key":"secret"},"env":{"TOKEN":"secret"}}"#,
+            r#"{"command":"node","headers":{"X-Key":"secret"}}"#,
+            r#"{"url":"https://mcp.example/mcp","args":["--unsafe"]}"#,
+            r#"{"url":"https://mcp.example/mcp","cwd":"C:/project"}"#,
+        ] {
+            let entries =
+                crate::mcp_import::parse_mcp_import(input).expect("source JSON is parseable");
+            assert!(
+                mcp_import_entry_to_draft(&entries[0]).is_err(),
+                "import with transport-incompatible fields must not be savable: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn mcp_import_ui_previews_multiple_servers_and_loads_without_saving() {
+        let (mut app, profile_dir) = isolated_app();
+        app.load_connectors_fixture_for_automation();
+        app.route = AppRoute::Capabilities;
+        app.capabilities_tab = CapabilitiesTab::Connectors;
+        app.gateway_connected = true;
+        app.mcp_servers = Some(McpServersSnapshot {
+            servers: Vec::new(),
+        });
+        app.mcp_server_add_open = true;
+        let input = r#"{"mcpServers":{"alpha":{"command":"npx","args":["-y","alpha-mcp"],"env":{"ALPHA_KEY":"sensitive-value"}},"bravo":{"url":"https://mcp.example/sse","transport":"sse"}}}"#;
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3000.0))
+            .build_ui(|ui| app.draw(ui));
+        harness.get_by_label("MCP configuration to import").click();
+        harness.run();
+        harness
+            .get_by_label("MCP configuration to import")
+            .type_text(input);
+        harness.run();
+        harness.get_by_label("Parse import").click();
+        harness.run();
+        drop(harness);
+
+        assert_eq!(app.mcp_server_import_entries.len(), 2);
+        assert!(app.mcp_server_import_text.is_empty());
+        assert_eq!(app.mcp_server_import_entries[0].name, "alpha");
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3000.0))
+            .build_ui(|ui| app.draw(ui));
+        assert!(harness.query_by_label("Imported MCP server").is_some());
+        harness
+            .get_by_label("Load selected server into form")
+            .click();
+        harness.run();
+        drop(harness);
+
+        assert_eq!(app.mcp_server_add_draft.name, "alpha");
+        assert_eq!(app.mcp_server_add_draft.command, "npx");
+        assert_eq!(app.mcp_server_add_draft.args.as_str(), "-y\nalpha-mcp");
+        assert_eq!(
+            app.mcp_server_add_draft.env.as_str(),
+            "ALPHA_KEY=sensitive-value"
+        );
+        assert!(app.mcp_server_import_entries.is_empty());
+        assert_eq!(app.mcp_servers.as_ref().unwrap().servers.len(), 0);
+        assert!(app.pending_mcp_server_add.is_none());
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]
@@ -71448,6 +71913,16 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(
             labels.iter().any(|label| label == "Save server"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels.iter().any(|label| label == "Parse import"),
+            "labels: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label == "MCP configuration to import"),
             "labels: {labels:?}"
         );
         assert!(

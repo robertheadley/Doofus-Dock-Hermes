@@ -103,22 +103,22 @@
     {
       "kind": "isolated_gateway_supervisor",
       "model": null,
-      "note": "Read-only Hermes gateway status identified this Hermes CLI process as the external supervisor; the actual HTTP/WebSocket Gateway is the child service process PID 15660. Both are preserved.",
-      "observed_at": "2026-11-25T22:43:40Z",
+      "note": "Verified on 2026-11-26 after expired-lease takeover: Get-Process PID 13700 returned no process, and isolated Gateway listeners :49194/:49195 are closed. No active supervisor remains; prior process state reconciled to stopped.",
+      "observed_at": "2026-11-26T15:19:15Z",
       "pid": 13700,
       "process_id": "hermes-test-gateway-pid-13700",
       "provider": "codex",
-      "state": "running"
+      "state": "stopped"
     },
     {
       "kind": "isolated_test_gateway",
       "model": null,
-      "note": "Confirmed by hermes gateway status --deep and loopback listeners 127.0.0.1:49194 and :49195. Preserve for native UI process.list validation.",
-      "observed_at": "2026-11-25T22:43:42Z",
+      "note": "Verified on 2026-11-26 after expired-lease takeover: Get-Process PID 15660 returned no process, and isolated Gateway listeners :49194/:49195 are closed. No active Gateway server remains; prior process state reconciled to stopped.",
+      "observed_at": "2026-11-26T15:19:24Z",
       "pid": 15660,
       "process_id": "hermes-test-gateway-server-pid-15660",
       "provider": "codex",
-      "state": "running"
+      "state": "stopped"
     },
     {
       "kind": "delegated_agent",
@@ -749,13 +749,25 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "path": ".doofus/events.jsonl",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
       "status": " M"
     },
     {
@@ -767,7 +779,55 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/lib.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/tools/build_implementation_progress.py",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
       "status": " M"
     },
     {
@@ -1043,19 +1103,25 @@
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-reasoning-off-2026-11-26T02-24-58-819Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-reasoning-off-2026-11-26T02-24-58-819Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-reasoning-off-20261126T0223Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.json",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.png",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-20261126T0215Z.json",
       "status": "??"
     },
     {
@@ -1086,6 +1152,12 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/reconcile-live-coding-session-20261125T1830Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/src/mcp_import.rs",
       "status": "??"
     },
     {
@@ -1609,16 +1681,23 @@
       "owner": "unattributed_preexisting",
       "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/pdfium-8125.dll",
       "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0185.json",
+      "status": "??"
     }
   ],
   "checkpoint": {
-    "command": "isolated headless Hermes terminal tool smoke",
+    "command": "cargo test --locked -p hermes-native --features agent-automation",
     "evidence": [
-      "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-20261126T0215Z.json#outcome"
+      "apps/hermes-native/docs/PLAN.md#Revision 389",
+      "apps/hermes-native/src/app.rs#mcp_import_rejects_configs_the_review_form_cannot_preserve"
     ],
-    "state": "in_progress",
-    "summary": "Live local qwen successfully invoked Hermes terminal once: the isolated command returned HERMES_TOOL_OK with exit code 0, and Hermes Native rendered the tool result with no transcript refresh error. The model's final answer incorrectly asked for clarification, and the separate coding edit still fails at model tool selection. Overall workflow remains incomplete.",
-    "verified_at": "2026-11-26T02:19:42Z"
+    "state": "tested",
+    "summary": "MCP import implementation and review-before-save path pass focused and full validation; incompatible transport settings fail closed. EV-0185 and generated progress docs added; importer review fixed a silent-loss case.",
+    "verified_at": "2026-11-26T18:04:23Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1716,8 +1795,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-26T03:19:42Z",
-    "lease_id": "76f784e3-a8ec-425c-911b-34b010e70e62",
+    "lease_expires_at": "2026-11-26T19:04:23Z",
+    "lease_id": "23969a39-2c11-4736-8b49-a9b9a11b3120",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -3904,11 +3983,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-native-terminal-tool-live-acceptance-20261126T0218Z",
+  "last_event_id": "f3c03e6a-8482-425d-a643-284006f1fa88",
   "last_operation": {
-    "request_id": "hermes-native-terminal-tool-live-acceptance-20261126T0218Z",
+    "request_id": "f3c03e6a-8482-425d-a643-284006f1fa88",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "task.state_updated"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -3942,7 +4021,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Complete a tool-backed code edit, run its project tests, and verify an accurate final summary; then continue approvals, skills, plugins/MCP, attachments, and provider acceptance.",
+  "recommended_next_action": "Commit the tested MCP import change and its implementation docs; then attach commit-bound EV-0185 and validate capability map, continue primary live coding acceptance.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4357,14 +4436,22 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "c95891db1a2737b35bea9e1a608ef255715bdb094f784b452484927e4b641bef",
+    "change_fingerprint": "820931ff0aba4ac424478a82275423a4e1971dc8ca88a45e82558f7a0474da08",
     "changed_files": [
       {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "path": ".doofus/events.jsonl",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
         "status": " M"
       },
       {
@@ -4372,7 +4459,39 @@
         "status": " M"
       },
       {
+        "path": "apps/hermes-native/docs/PLAN.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/lib.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/tools/build_implementation_progress.py",
+        "status": " M"
+      },
+      {
         "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/CAPABILITY_CROSSWALK.csv",
+        "status": " M"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities.yaml",
         "status": " M"
       },
       {
@@ -4556,15 +4675,19 @@
         "status": "??"
       },
       {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-reasoning-off-2026-11-26T02-24-58-819Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-reasoning-off-2026-11-26T02-24-58-819Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-reasoning-off-20261126T0223Z.json",
+        "status": "??"
+      },
+      {
         "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.json",
-        "status": "??"
-      },
-      {
-        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-2026-11-26T02-16-40-181Z.png",
-        "status": "??"
-      },
-      {
-        "path": "apps/hermes-native/artifacts/agent-ui/live-terminal-tool-smoke-20261126T0215Z.json",
         "status": "??"
       },
       {
@@ -4585,6 +4708,10 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/reconcile-live-coding-session-20261125T1830Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/src/mcp_import.rs",
         "status": "??"
       },
       {
@@ -4934,19 +5061,23 @@
       {
         "path": "artifacts/releases/hermes-native-windows-x64-e6b2653c351f/pdfium-8125.dll",
         "status": "??"
+      },
+      {
+        "path": "docs/reference/Hermes_DoofusDock_Rust_Parity_2026-11-12/maps/capabilities/evidence/EV-0185.json",
+        "status": "??"
       }
     ],
-    "head_commit": "5cbcbfe9d93b96eec5e785a074a75b694a474c79",
+    "head_commit": "e7d74610e453fe4bea469cb5c13a9910243ad3c6",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1130,
+  "revision": 1137,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1130,
+  "state_revision": 1137,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
-  "task_ledger_revision": 192,
+  "task_ledger_revision": 193,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -7361,5 +7492,5 @@
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-26T02:19:42Z"
+  "updated_at": "2026-11-26T18:06:00Z"
 }

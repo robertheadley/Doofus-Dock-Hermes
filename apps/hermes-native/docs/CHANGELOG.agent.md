@@ -3950,3 +3950,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** One local model turn; no changes to project files.
 - **risks:** This bounded tool smoke proves terminal dispatch/result display only. It does not prove coding edits, approvals, provider reliability, or complete agent workflow coverage.
 - **follow_up:** Verify a complete tool-edit-test-summary workflow with a provider/model that follows Hermes tool schemas and reports tool results accurately.
+
+- **id:** `hermes-native-mcp-import-review-before-save-20261126`
+- **timestamp:** `2026-11-26T17:34:26Z`
+- **what:** Added bounded MCP setup import with safe preview, editable review-before-save, dedicated bearer-secret transfer, transport-field loss rejection, and zeroized JSON/line intermediates.
+- **why:** Reduce manual connector setup while preventing silent loss of imported settings or display of secret values.
+- **components:** Hermes Native Connectors UI, MCP import parser, MCP add draft projection, capability evidence.
+- **type:** Feature and data-integrity fix.
+- **validation:** 12 focused importer tests pass; full `cargo test --locked -p hermes-native --features agent-automation` passes (817 library, 16 automation protocol, 3 launcher); all-target locked check, formatting check, and diff check pass.
+- **performance:** Local bounded parsing only; 256 KiB input and 64-entry limits remain in effect. No network or process launch was added.
+- **risks:** Live credential persistence, OAuth, server startup, env passthrough editing, live Gateway, packaged Windows, and pinned-source paired acceptance remain unverified.
+- **follow_up:** Continue live model/tool workflow acceptance and close remaining provider, skills, plugin/MCP, and source-paired gaps.

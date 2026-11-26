@@ -2399,3 +2399,9 @@ PAR-0066 now uses the real native terminal surface: terminal text is selectable 
 DoofusDock is the reusable Rust UI framework, analogous to using egui: canonical workspace layout and docking/windowing live in DoofusDock, while Hermes owns agent-specific panes and workflow semantics. The pinned core, presentation, and egui renderer crates are already consumed by Hermes. Process-list snapshot hydration, live Gateway acceptance, packaged Windows behavior, and formal source-paired acceptance remain open.
 
 Validation: `cargo test --workspace --locked --features agent-automation -- --test-threads=1` passes 797 library, 15 automation-protocol, and 3 launcher tests; the focused terminal suite passes 13/13. Earlier checks without `agent-automation` fail because existing test modules use the optional `egui_kittest` dependency; the focused and full test commands were rerun with the required feature.
+
+### Revision 389 — Review-before-save MCP setup import — 2026-11-26
+
+Connectors can parse bounded MCP server JSON, Claude/Hermes setup commands, HTTP(S) URLs, and Cursor install links into a masked review list. Loading an entry fills the existing editable form; saving remains explicit. Bearer authorization is routed to the dedicated secret field. Transport-incompatible and unknown fields are rejected instead of being silently dropped. Parser JSON and UI transfer buffers use zeroizing ownership where supported.
+
+Validation: 12 focused MCP importer tests pass; full locked agent-automation suite passes (817 library + 16 automation protocol + 3 launcher tests); all-target cargo check, rustfmt check, and git diff check pass. EV-0185 records the headless evidence. PAR-0263 remains partial: live secret persistence, OAuth, server startup, environment passthrough editing, packaged Windows interaction, live Gateway, and source-paired acceptance remain open.

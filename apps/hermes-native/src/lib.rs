@@ -12,6 +12,7 @@ mod gateway_runtime;
 pub mod keybindings;
 pub mod keybindings_ui;
 pub mod layout;
+pub mod mcp_import;
 pub mod native_oauth;
 pub mod native_token_store;
 pub mod native_window;
