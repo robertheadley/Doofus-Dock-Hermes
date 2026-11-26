@@ -747,6 +747,66 @@
   ],
   "changed_files": [
     {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/events.jsonl",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/handoff.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": ".doofus/task-ledger.json",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/README.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/gateway.rs",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "docs/EXECUTION_LOGS.md",
+      "status": " M"
+    },
+    {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T17-25-29-902Z.json",
@@ -1492,14 +1552,13 @@
     }
   ],
   "checkpoint": {
-    "command": "git push origin main; cargo test --locked -p hermes-native --features agent-automation --bin hermes-automation; node --test apps/hermes-native/agent/acceptance/live-coding-assignment.test.mjs; python apps/hermes-native/tools/doofus_task.py validate",
+    "command": "cargo test --locked -p hermes-native --features agent-automation",
     "evidence": [
-      "apps/hermes-native/artifacts/agent-ui/live-coding-reconcile-20261126T0055Z.json#acceptance",
-      "docs/EXECUTION_LOGS.md#hermes-native-acceptance-runner-recovery-20261126T0050Z"
+      "apps/hermes-native/src/gateway.rs#older_transcript_page_omits_profile_for_ticket_scoped_local_read"
     ],
     "state": "in_progress",
-    "summary": "Published automation response-bound recovery and current task-state handoff to origin/main (0b63b6d and 3cf2ec9). Rust and Node automation tests pass. Live coding acceptance remains failed/unverified: qwen3:8b made no write call and clean-profile transcript reads returned HTTP 403. Preserve unrelated untracked artifacts; do not treat screenshots or source tests as live acceptance.",
-    "verified_at": "2026-11-26T01:05:18Z"
+    "summary": "Fixed local Hermes native HTTP transcript/profile routing, added scope and URL regressions, stabilized async composer image test frame stepping, and verified the full app target set. Live Gateway refresh and provider-backed write acceptance remain unverified.",
+    "verified_at": "2026-11-26T01:26:09Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1597,7 +1656,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-26T02:05:18Z",
+    "lease_expires_at": "2026-11-26T02:26:09Z",
     "lease_id": "76f784e3-a8ec-425c-911b-34b010e70e62",
     "model": null,
     "ownership_state": "active",
@@ -3743,9 +3802,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-native-automation-checkpoint-20261126T0105Z",
+  "last_event_id": "8091a92f-3dd7-4780-bc81-a44ddec4be82",
   "last_operation": {
-    "request_id": "hermes-native-automation-checkpoint-20261126T0105Z",
+    "request_id": "8091a92f-3dd7-4780-bc81-a44ddec4be82",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -3781,7 +3840,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Diagnose local Hermes Gateway ticket/profile scope for session transcript API reads; retry coding acceptance with a provider/model that reliably executes Hermes file-write tools, then continue the remaining agent workflow requirements.",
+  "recommended_next_action": "Run a temporary isolated live Gateway transcript refresh against the fixed build; then resume the provider-backed coding acceptance and continue remaining agent workflow requirements.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4196,8 +4255,48 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "8d114849681997ebd90cc3452e9d5171ddb1f099d7167be9037ecc265ca7a8b4",
+    "change_fingerprint": "10bd1dbca4c9e1128df036618968a2b37e8795b3dbaf38417963e657ae37641e",
     "changed_files": [
+      {
+        "path": ".doofus/events.jsonl",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/handoff.json",
+        "status": " M"
+      },
+      {
+        "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/app.rs",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/src/gateway.rs",
+        "status": " M"
+      },
+      {
+        "path": "docs/EXECUTION_LOGS.md",
+        "status": " M"
+      },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-25T17-25-29-902Z.json",
         "status": "??"
@@ -4695,17 +4794,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "3cf2ec91857b65ea66e73d6779bcc3e84f413fd2",
+    "head_commit": "adbe55ab4f069e3aeddc18bede0a7c7cdf161953",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1117,
+  "revision": 1120,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1117,
+  "state_revision": 1120,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
-  "task_ledger_revision": 191,
+  "task_ledger_revision": 192,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -7041,9 +7140,49 @@
       "command": "python apps/hermes-native/tools/doofus_task.py validate",
       "result": "Rust automation 16/16; Node runner test 1/1 (9 completion gate cases); formatting and task-state validation pass. Live provider acceptance failed; no fixture tests ran.",
       "timestamp": "2026-11-26T01:05:18Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS 805/805. Earlier full-suite retries exposed two image UI tests exceeding default max_steps; both tests now advance one frame per iteration and pass.",
+      "timestamp": "2026-11-26T01:24:30Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation --lib (805 passed)",
+      "result": "PASS 805/805. Earlier full-suite retries exposed two image UI tests exceeding default max_steps; both tests now advance one frame per iteration and pass.",
+      "timestamp": "2026-11-26T01:24:30Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation local_native_http_reads_use_ticket_scope_instead_of_home_path_selector",
+      "result": "PASS 805/805. Earlier full-suite retries exposed two image UI tests exceeding default max_steps; both tests now advance one frame per iteration and pass.",
+      "timestamp": "2026-11-26T01:24:30Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation older_transcript_page_omits_profile_for_ticket_scoped_local_read",
+      "result": "PASS 805/805. Earlier full-suite retries exposed two image UI tests exceeding default max_steps; both tests now advance one frame per iteration and pass.",
+      "timestamp": "2026-11-26T01:24:30Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation remote_gateway_reads_preserve_logical_profile_selector",
+      "result": "PASS 805/805. Earlier full-suite retries exposed two image UI tests exceeding default max_steps; both tests now advance one frame per iteration and pass.",
+      "timestamp": "2026-11-26T01:24:30Z"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "PASS: 805 library + 16 automation + 3 app-binary tests; 0 failures; formatting, diff check and Doofus task validation pass.",
+      "timestamp": "2026-11-26T01:26:09Z"
+    },
+    {
+      "command": "cargo test --locked -p hermes-native --features agent-automation",
+      "result": "PASS: 805 library + 16 automation + 3 app-binary tests; 0 failures; formatting, diff check and Doofus task validation pass.",
+      "timestamp": "2026-11-26T01:26:09Z"
+    },
+    {
+      "command": "python apps/hermes-native/tools/doofus_task.py validate",
+      "result": "PASS: 805 library + 16 automation + 3 app-binary tests; 0 failures; formatting, diff check and Doofus task validation pass.",
+      "timestamp": "2026-11-26T01:26:09Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-26T01:05:18Z"
+  "updated_at": "2026-11-26T01:26:09Z"
 }

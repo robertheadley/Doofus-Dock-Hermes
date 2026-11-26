@@ -50167,7 +50167,7 @@ mod tests {
             .build_ui(move |ui| frame_app.borrow_mut().composer(ui));
         let mut preview_rendered = false;
         for _ in 0..40 {
-            harness.run();
+            harness.run_steps(1);
             if harness
                 .query_by_label("Image preview: preview.png")
                 .is_some()
@@ -50213,13 +50213,13 @@ mod tests {
             .with_size(egui::vec2(1100.0, 620.0))
             .build_ui(move |ui| frame_app.borrow_mut().composer(ui));
         harness.get_by_label("Message composer").click();
-        harness.run();
+        harness.run_steps(1);
         let pasted = Arc::new(egui::ColorImage::new(
             [2, 2],
             vec![Color32::from_rgb(27, 108, 194); 4],
         ));
         harness.event(egui::Event::PasteImage(pasted));
-        harness.run();
+        harness.run_steps(1);
 
         let (request_id, session_id, stored_session_id, profile, path, name, is_image) = loop {
             match commands.recv_timeout(std::time::Duration::from_secs(1)) {

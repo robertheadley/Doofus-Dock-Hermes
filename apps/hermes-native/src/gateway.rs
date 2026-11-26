@@ -15485,6 +15485,21 @@ fn request_all_profile_archived_session_page(
 
 const TRANSCRIPT_PAGE_SIZE: usize = 120;
 
+fn profile_selector_for_endpoint<'a>(
+    endpoint: &GatewayEndpoint,
+    profile: Option<&'a str>,
+) -> Result<Option<&'a str>, String> {
+    if endpoint.remote_auth.is_some() {
+        return Ok(profile);
+    }
+    if profile.is_some_and(|profile| profile != endpoint.profile_id.as_str()) {
+        return Err("Hermes local API profile scope does not match the attached profile".into());
+    }
+    // The native HTTP ticket is already bound to endpoint.profile_id. Hermes
+    // expects `profile` to be a logical profile name, not this local home path.
+    Ok(None)
+}
+
 fn load_older_transcript_http(
     endpoint: &GatewayEndpoint,
     session_id: &str,
@@ -15530,13 +15545,14 @@ fn load_older_transcript_http(
     if offset > 10_000_000 {
         return Err("Hermes transcript page offset exceeds the safe limit".into());
     }
+    let request_profile = profile_selector_for_endpoint(endpoint, profile)?;
     let ticket = mint_windows_ticket(endpoint, "native-http", None)?;
     validate_http_ticket(&ticket)?;
     request_older_transcript_page(
         &endpoint.api_origin,
         ticket.as_str(),
         session_id,
-        profile,
+        request_profile,
         offset,
     )
 }
@@ -15558,12 +15574,13 @@ fn load_prompt_timeline_http(
     {
         return Err("Hermes prompt timeline request scope is invalid".into());
     }
+    let request_profile = profile_selector_for_endpoint(endpoint, profile)?;
     let mut url = format!(
         "{}/api/sessions/{}/timeline?limit={PROMPT_TIMELINE_PAGE_SIZE}&after_row_id={after_row_id}",
         endpoint.api_origin.trim_end_matches('/'),
         encode_query_component(session_id)
     );
-    if let Some(profile) = profile {
+    if let Some(profile) = request_profile {
         url.push_str(&format!("&profile={}", encode_query_component(profile)));
     }
     let response: PromptTimelineResponse = if endpoint.remote_auth.is_some() {
@@ -15576,7 +15593,7 @@ fn load_prompt_timeline_http(
         validate_http_ticket(&ticket)?;
         request_gateway_json(&endpoint.api_origin, ticket.as_str(), &url)?
     };
-    decode_prompt_timeline_page(response, session_id, profile, after_row_id)
+    decode_prompt_timeline_page(response, session_id, request_profile, after_row_id)
 }
 
 fn decode_prompt_timeline_page(
@@ -15635,12 +15652,13 @@ fn load_prompt_history_window_http(
     {
         return Err("Hermes prompt history window scope is invalid".into());
     }
+    let request_profile = profile_selector_for_endpoint(endpoint, profile)?;
     let mut url = format!(
         "{}/api/sessions/{}/messages/around?row_id={row_id}&limit={PROMPT_HISTORY_WINDOW_LIMIT}",
         endpoint.api_origin.trim_end_matches('/'),
         encode_query_component(session_id)
     );
-    if let Some(profile) = profile {
+    if let Some(profile) = request_profile {
         url.push_str(&format!("&profile={}", encode_query_component(profile)));
     }
     let response: PromptHistoryWindowResponse = if endpoint.remote_auth.is_some() {
@@ -15653,7 +15671,7 @@ fn load_prompt_history_window_http(
         validate_http_ticket(&ticket)?;
         request_gateway_json(&endpoint.api_origin, ticket.as_str(), &url)?
     };
-    decode_prompt_history_window(response, session_id, profile, row_id)
+    decode_prompt_history_window(response, session_id, request_profile, row_id)
 }
 
 fn decode_prompt_history_window(
@@ -20460,6 +20478,12 @@ fn bounded_http_error_detail(bytes: &[u8]) -> String {
     let Some(detail) = value.get("detail") else {
         return String::new();
     };
+    if let Some(code) = detail.as_str() {
+        return match code {
+            "profile_scope_mismatch" => " (profile scope mismatch)".into(),
+            _ => String::new(),
+        };
+    }
     let mut messages = Vec::new();
     match detail {
         serde_json::Value::String(_) => return String::new(),
@@ -28452,6 +28476,10 @@ mod tests {
             " (query.recents_profile: request validation failed)"
         );
         assert!(!detail.contains("private"));
+        assert_eq!(
+            bounded_http_error_detail(br#"{"detail":"profile_scope_mismatch"}"#),
+            " (profile scope mismatch)"
+        );
         assert_eq!(bounded_http_error_detail(br#"{"detail":"denied"}"#), "");
         assert_eq!(bounded_http_error_detail(b"not json"), "");
         let unsafe_location = bounded_http_error_detail(
@@ -29725,6 +29753,86 @@ mod tests {
                 .expect_err("a shifted history page must not yield an edit target");
         assert!(error.contains("changed while pages were being read"));
         server.join().expect("edit history fixture exits");
+    }
+
+    #[test]
+    fn local_native_http_reads_use_ticket_scope_instead_of_home_path_selector() {
+        let endpoint = GatewayEndpoint {
+            profile_id: r"C:\Hermes\profiles\default".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        };
+        assert_eq!(
+            profile_selector_for_endpoint(&endpoint, Some(&endpoint.profile_id))
+                .expect("attached local profile is accepted"),
+            None
+        );
+        assert!(
+            profile_selector_for_endpoint(&endpoint, Some("sibling"))
+                .expect_err("local ticket must not target a sibling profile")
+                .contains("does not match the attached profile")
+        );
+    }
+
+    #[test]
+    fn older_transcript_page_omits_profile_for_ticket_scoped_local_read() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture HTTP endpoint");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept transcript read");
+            let request = read_http_fixture_request(&mut stream);
+            assert!(request.starts_with(
+                "GET /api/sessions/session-42/messages?limit=120&offset=0&order=latest&include_compacted=true HTTP/1.1\r\n"
+            ));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("x-hermes-gateway-ticket: fixture-local-ticket\r\n")
+            );
+            let body = json!({
+                "session_id":"session-42",
+                "profile":"default",
+                "messages":[{"role":"assistant","content":"latest"}],
+                "pagination":{"limit":120,"offset":0,"order":"latest","returned":1}
+            })
+            .to_string();
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body)
+                .expect("write transcript page");
+        });
+        let page = request_older_transcript_page(
+            &format!("http://{address}"),
+            "fixture-local-ticket",
+            "session-42",
+            None,
+            0,
+        )
+        .expect("read local ticket-scoped transcript page");
+        assert_eq!(page.messages[0]["content"], "latest");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn remote_gateway_reads_preserve_logical_profile_selector() {
+        let endpoint = GatewayEndpoint {
+            profile_id: "owner".into(),
+            instance_id: "fixture-instance".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "https://gateway.example".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: Some(RemoteGatewayAuth::Token(Zeroizing::new("token".into()))),
+        };
+        assert_eq!(
+            profile_selector_for_endpoint(&endpoint, Some("worker"))
+                .expect("remote sibling profile remains selectable"),
+            Some("worker")
+        );
     }
 
     #[test]

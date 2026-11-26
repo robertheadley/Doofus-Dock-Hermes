@@ -3889,3 +3889,31 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - performance: Poll loop reads compact state once per second; full tree is read only once for optional final diagnostics.
 - risks: Live coding acceptance remains failed: the local model did not issue a write tool call and the UI could not refresh its transcript (HTTP 403); no fixture test was run.
 - follow_up: Diagnose ticket/profile scope for active transcript reads, then retry with a provider/model that executes native Hermes tools reliably.
+
+
+## Hermes local transcript profile scope — 2026-11-26
+
+- **id:** `hermes-native-local-transcript-profile-scope-20261126T0119Z`
+- **timestamp:** `2026-11-26T01:19:32Z`
+- **what:** Local native-HTTP transcript, prompt timeline, and around-row history requests now omit the local home path from the API profile selector and rely on the profile-bound ticket. A local request for a different profile fails closed; remote logical profile selectors are unchanged. The error sanitizer now surfaces only the known-safe `profile_scope_mismatch` code as a bounded human-readable detail.
+- **why:** Hermes interprets `profile` as a logical profile name and rejects an absolute `HERMES_HOME` path with HTTP 403, while the native ticket already scopes access to that home.
+- **components:** Hermes Native Gateway HTTP reads and profile/error diagnostics.
+- **type:** Bug fix and regression tests.
+- **validation:** `cargo fmt --all -- --check`; targeted tests for local profile boundary (1/1), profile-less ticket-scoped transcript URL/header (1/1), remote logical profile routing (1/1), and bounded HTTP error detail (1/1). Actual provider-backed coding acceptance and live Gateway verification remain pending.
+- **performance:** No benchmark change; request count and payload bounds are unchanged.
+- **risks:** Omitted local selectors rely on native-http ticket enforcement by the pinned Hermes Gateway, as specified by its source contract.
+- **follow_up:** Run the isolated live acceptance to verify transcript refresh returns successfully, then continue the provider-backed tool-write gate.
+
+
+## Deterministic composer image preview tests — 2026-11-26
+
+- **id:** `hermes-native-composer-image-test-frames-20261126T0132Z`
+- **timestamp:** `2026-11-26T01:32:00Z`
+- **what:** Updated the two composer image UI tests to advance one explicit egui frame at a time while image decoding and spinner repaints are pending.
+- **why:** Under the full parallel suite, the default four-frame settle helper could fail before asynchronous image-preview work completed; one of the two affected tests passed when rerun alone, confirming a harness timing issue.
+- **components:** Hermes Native composer UI tests using egui_kittest.
+- **type:** Test reliability.
+- **validation:** Both image-focused tests pass; the full `cargo test --locked -p hermes-native --features agent-automation --lib` suite passes 805/805; formatting check passes.
+- **performance:** Test-only; no product runtime impact.
+- **risks:** Explicit one-frame stepping is bounded by the existing image-preview wait loop and does not wait for unrelated spinner quiescence.
+- **follow_up:** Keep future asynchronous image UI tests on explicit frame stepping.
