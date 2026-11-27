@@ -5852,3 +5852,14 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: Avoids an unnecessary `model.options` round trip after a receipt; no benchmark claim.
 - risks: A successful Gateway receipt is verified in a rendered test, but live existing-session model persistence after close/reopen remains unverified. Source-paired acceptance and packaged Windows behavior remain open.
 - follow_up: Use the dedicated key in a disposable Gateway profile to select a different model in an existing session, wait for the accessible model/provider label, close/reopen, and verify persisted readback; then continue Skills/plugins/MCP and restart/recovery acceptance.
+## Revision 391 — Expose redacted session/Gateway identity diagnostics
+- id: hermes-native-session-gateway-identity-diagnostics-20261127
+- timestamp: 2026-11-27T20:56:52Z
+- what: Added exact session, endpoint and runtime profile IDs, connection ID, connected state, and identity-match status to the agent-automation chat snapshot. The report excludes endpoint URLs and secret material.
+- why: The failed existing-session model selection showed an identity mismatch, but prior captures omitted the three profile operands needed to identify which owner disagreed.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv; docs/BACKLOG.md; docs/CHANGELOG.agent.md; docs/EXECUTION_LOGS.md
+- type: diagnostics and agent automation
+- validation: focused identity-state test passed; full locked suite passed 820 library + 17 automation + 3 app tests; formatting and diff checks passed. Runtime model switching remains unverified.
+- performance: Adds a small, bounded JSON object to diagnostic state only; no performance claim.
+- risks: Profile IDs and a connection identifier are included in local automation snapshots. Endpoint URLs, tokens, and credential values remain omitted.
+- follow_up: Use the snapshots to isolate profile mismatch, then verify an authenticated existing-session switch and close/reopen readback; continue Skills/plugins/MCP acceptance.

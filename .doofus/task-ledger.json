@@ -1,5 +1,5 @@
 {
-  "revision": 194,
+  "revision": 195,
   "schema_version": 1,
   "tasks": [
     {
@@ -7156,7 +7156,7 @@
                 "priority": "P1",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-27T20:21:01Z",
+              "last_updated_at": "2026-11-27T20:58:39Z",
               "lease_id": "32f092db-d47e-424c-91b7-a2f2fd4238f4",
               "objective": "ui-switch-model-in-a-running-session",
               "outputs": [],
@@ -7177,7 +7177,8 @@
               "title": "PAR-0215 Switch model in a running session",
               "verification_evidence": [
                 "apps/hermes-native/docs/PLAN.md#Revision 279",
-                "apps/hermes-native/src/app.rs#model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation"
+                "apps/hermes-native/src/app.rs#model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation",
+                "apps/hermes-native/src/app.rs#automation_state_reports_each_session_gateway_identity_without_connection_secrets"
               ]
             },
             {
@@ -16610,5 +16611,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-27T20:21:01Z"
+  "updated_at": "2026-11-27T20:58:39Z"
 }

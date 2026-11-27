@@ -110,3 +110,5 @@ Hermes Native PAR-0013/0014 now has persisted semantic Sessions and File browser
 
 
 Hermes' pinned DoofusDock core and presentation crates are vendored at the fixed revision with provenance and license notes; group minimize/restore is integrated. See Hermes Native PLAN Revision 202 for implementation scope and remaining acceptance requirements.
+
+PAR-0215 diagnostics now expose the session, endpoint, and runtime profile identities plus connection ID and match verdict to the local agent-automation snapshot, while omitting endpoint URLs and secrets. This will make the prior Identity mismatch failure diagnosable on the next disposable Gateway run; it does not yet verify the model mutation or persistence.

@@ -50102,6 +50102,69 @@ mod tests {
         std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
+    #[cfg(feature = "agent-automation")]
+    #[test]
+    fn automation_state_reports_each_session_gateway_identity_without_connection_secrets() {
+        let (mut app, profile_dir) = isolated_app();
+        app.gateway_connected = true;
+        app.active_session_profile = Some("session-profile".into());
+        app.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "endpoint-profile".into(),
+            instance_id: "gateway-test".into(),
+            authority_epoch: 1,
+            runtime_protocol: 1,
+            api_origin: "https://gateway.example.test/private-endpoint".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        app.gateway_connection_id = Some("connection-test".into());
+        app.gateway_runtime = Some(
+            crate::gateway_runtime::RuntimeDescription::parse(serde_json::json!({
+                "instance_id": "gateway-test",
+                "profile_id": "runtime-profile",
+                "authority_epoch": 1,
+                "capabilities": [],
+                "session_create": {"sources": [], "parameters": []}
+            }))
+            .expect("valid runtime descriptor"),
+        );
+
+        let state = app.automation_state();
+        let identity = &state["chat"]["gateway_identity"];
+        assert_eq!(identity["session_profile"], "session-profile");
+        assert_eq!(identity["endpoint_profile"], "endpoint-profile");
+        assert_eq!(identity["runtime_profile"], "runtime-profile");
+        assert_eq!(identity["connection_id"], "connection-test");
+        assert_eq!(identity["connected"], true);
+        assert_eq!(identity["status"], "Identity mismatch");
+        assert_eq!(identity["matches"], false);
+        let mut keys = identity
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [
+                "connected",
+                "connection_id",
+                "endpoint_profile",
+                "matches",
+                "runtime_profile",
+                "session_profile",
+                "status"
+            ]
+        );
+        let encoded = serde_json::to_string(identity).unwrap();
+        assert!(!encoded.contains("private-endpoint"));
+        assert!(!encoded.contains("api_origin"));
+
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
     #[test]
     fn profile_main_model_settings_confirm_before_saving_and_keep_chat_overrides_separate() {
         let (mut native, profile_dir) = isolated_app();
@@ -73726,6 +73789,39 @@ impl HermesNativeApp {
                 self.active_gateway_connection_id(),
             )
         });
+        let session_gateway_identity = session_gateway_context(
+            self.active_session_profile.as_deref(),
+            None,
+            self.gateway_connected,
+            self.gateway_endpoint
+                .as_ref()
+                .map(|endpoint| endpoint.profile_id.as_str()),
+            self.gateway_runtime
+                .as_ref()
+                .map(|runtime| runtime.profile_id.as_str()),
+        );
+        let endpoint_profile = self
+            .gateway_endpoint
+            .as_ref()
+            .map(|endpoint| endpoint.profile_id.as_str());
+        let runtime_profile = self
+            .gateway_runtime
+            .as_ref()
+            .map(|runtime| runtime.profile_id.as_str());
+        let session_profile = self.active_session_profile.as_deref();
+        let session_gateway_identity_matches = endpoint_profile.is_some_and(|endpoint| {
+            runtime_profile.is_none_or(|runtime| runtime == endpoint)
+                && session_profile.is_none_or(|session| session == endpoint)
+        });
+        let session_gateway_identity_value = serde_json::json!({
+            "session_profile": session_profile,
+            "endpoint_profile": endpoint_profile,
+            "runtime_profile": runtime_profile,
+            "connection_id": self.active_gateway_connection_id(),
+            "connected": self.gateway_connected,
+            "status": session_gateway_identity.state,
+            "matches": session_gateway_identity_matches,
+        });
         let new_chat_model_selection = self.new_chat_model_selection.as_ref().filter(|selection| {
             new_chat_model_owner.is_some_and(|(profile, connection_id)| {
                 selection.profile == profile && selection.connection_id == connection_id
@@ -73965,6 +74061,12 @@ impl HermesNativeApp {
             "transcript_message_count": self.transcript.len(),
             "load_error": self.load_error.as_deref(),
         });
+        if let Some(chat) = state
+            .get_mut("chat")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            chat.insert("gateway_identity".into(), session_gateway_identity_value);
+        }
         if let Some(object) = state.as_object_mut() {
             object.insert("status".into(), serde_json::json!(self.status));
             object.insert(
