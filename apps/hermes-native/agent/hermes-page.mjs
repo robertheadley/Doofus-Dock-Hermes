@@ -254,13 +254,13 @@ export class HermesPage {
   }
 
   async wheelAt({ x, y, deltaX = 0, deltaY }) {
-    if (this.protocol !== "hermes-native-window/1") {
-      throw new HermesAgentError("unsupported_protocol", "wheelAt requires the native window protocol");
-    }
     if (![x, y, deltaX, deltaY].every(Number.isFinite)
-      || x < 0 || x > 1440 || y < 0 || y > 900
+      || x < 0 || x >= 1440 || y < 0 || y >= 900
       || (deltaX === 0 && deltaY === 0) || Math.abs(deltaX) > 3000 || Math.abs(deltaY) > 3000) {
       throw new TypeError("wheelAt requires a point within the 1440x900 logical viewport and finite, non-zero deltas within 3000 points");
+    }
+    if (this.protocol !== "hermes-native-window/1") {
+      return this._mutate("actions.scroll_at", { x, y, delta_x: deltaX, delta_y: deltaY });
     }
     try {
       return await this._mutate("ui.wheel", { x, y, delta_x: deltaX, delta_y: deltaY });

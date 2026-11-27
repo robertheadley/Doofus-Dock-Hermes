@@ -5830,3 +5830,14 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: No performance change claimed.
 - risks: The new-chat picker catalog is visible, but the probe did not yet prove a manual model override or existing-session model menu selection. One model/provider workflow does not establish complete Hermes agent-feature parity.
 - follow_up: Complete a headless manual OpenRouter model-selection and existing-session picker interaction; continue the remaining tools, skills and plugins capability gaps.
+## Revision 389 — Headless coordinate scrolling for agent UI
+- id: hermes-native-coordinate-scroll-at-20261127
+- timestamp: 2026-11-27T20:07:48Z
+- what: Added bounded ctions.scroll_at viewport scrolling to the stdio automation protocol and routed HermesPage.wheelAt through it, retaining the native-window wheel route.
+- why: Model menus can clip target rows outside their visible popup area; the agent harness needs real viewport scrolling to reach and select them.
+- components: apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs; apps/hermes-native/agent/hermes-page.mjs; apps/hermes-native/agent/hermes-page.test.mjs; apps/hermes-native/docs/AGENT_AUTOMATION.md; apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md; README.md; docs/ARCHITECTURE.md; docs/BACKLOG.md; apps/hermes-native/artifacts/agent-ui/openrouter-picker-selected-deepseek-flash-2026-11-27.png; apps/hermes-native/artifacts/agent-ui/openrouter-picker-selected-deepseek-flash-2026-11-27.json; docs/EXECUTION_LOGS.md
+- type: feature and live agent-UI acceptance
+- validation: cargo test --locked -p hermes-native --features agent-automation passed 819 library tests, 17 automation tests and 3 app tests; automation binary build passed; Node HermesPage tests passed 5/5; rustfmt and diff checks passed. Headless live Gateway selection read back openrouter/deepseek/deepseek-v4.1-flash in a new chat; no prompt was sent. The isolated Hermes config was restored byte-for-byte and the owned Gateway PID is absent. Existing-session model change remains unverified because UI reported Updating session settings… and reopened readback showed profile default.
+- performance: No performance change claimed.
+- risks: Callers must target the intended visible surface and stay within viewport and scroll bounds. Existing-session model mutation is not proven; this slice does not establish full feature parity.
+- follow_up: Diagnose existing-session model policy completion using a disposable Gateway session, then continue prioritized chat/tool/skills/plugins capability gaps.

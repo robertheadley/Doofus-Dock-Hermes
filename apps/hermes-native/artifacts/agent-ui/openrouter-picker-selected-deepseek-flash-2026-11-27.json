@@ -1,0 +1,498 @@
+{
+  "schema": "hermes-native-ui-capture/1",
+  "timestamp_utc": "2026-11-27T02:31:48.5666756Z",
+  "request_id": "8fc6f7a8-db49-465f-b984-0e05dfa3727c",
+  "source_sha": "8783054ef6cbafd86f10892241436862c1171a66",
+  "doofusdock_sha": "f23ed02a99c7f8c57f83164d98feadb17cc4ed87",
+  "target_commit": "c4297ac1c6cb1c64a33a4f64254eb6b5db7a70b1",
+  "target_worktree_dirty": true,
+  "build_id": "b179b645874830d09a39088c1b96ab5ee52809f590ab2f094f4941279bc10d68",
+  "package_version": "0.1.0",
+  "process_generation": "isolated-headless-stdio",
+  "process_generation_number": 8,
+  "process_id": 17008,
+  "route": "/",
+  "state": {
+    "route": "/",
+    "route_title": "New session",
+    "native_window": {
+      "id": null,
+      "pending_open_requests": 0,
+      "child_readiness_pending": false,
+      "native_launch_enabled": false
+    },
+    "peer_session_sync": {
+      "enabled": false,
+      "error": null
+    },
+    "capabilities": {
+      "tab": "skills",
+      "query": "",
+      "plugin_catalog_pending": false,
+      "plugin_catalog_error": null,
+      "plugin_catalog_entry_count": null,
+      "selected_plugin_id": null,
+      "plugin_catalog_visible_limit": 60,
+      "plugin_catalog_filter_mode": "categories",
+      "plugin_catalog_sort": "stars",
+      "plugin_catalog_active_facets": {
+        "tiers": 0,
+        "categories": 0,
+        "tags": 0,
+        "installed_only": false,
+        "updates_only": false
+      },
+      "installed_plugins_pending": false,
+      "installed_plugins_error": null,
+      "installed_plugin_count": null,
+      "installed_plugins_user_count": null,
+      "installed_plugins_bundled_count": null,
+      "plugin_updates_pending": 0,
+      "plugin_catalog_updates_pending": 0,
+      "plugin_auto_update": null,
+      "plugin_auto_update_pending": false,
+      "plugin_update_all_pending": false,
+      "plugin_update_all_uncertain": false,
+      "plugin_update_all_report": null,
+      "plugin_update_review": null,
+      "plugin_removals_pending": 0,
+      "connectors_pending": false,
+      "connectors_error": null,
+      "connectors_available": null,
+      "connectors_catalog_count": null,
+      "connectors_account_count": null,
+      "mcp_servers_pending": false,
+      "mcp_servers_error": null,
+      "mcp_servers_count": null
+    },
+    "interface_mode": "advanced",
+    "layout_profile": "default",
+    "layout_revision": 1,
+    "layout_document": {
+      "schema_version": 2,
+      "layout_id": "hermes-native-main",
+      "workspace_id": "hermes-native-default",
+      "revision": 1,
+      "panels": [
+        {
+          "id": "sessions",
+          "title_key": "Sessions",
+          "icon_key": "",
+          "min": [
+            180,
+            140
+          ],
+          "max": [
+            0,
+            0
+          ],
+          "close_policy": 1,
+          "persistence": 0,
+          "provider": "",
+          "reparent": 0,
+          "docking": {
+            "allow_tab": true,
+            "allow_split": true,
+            "allow_float": true,
+            "allow_auto_hide": true,
+            "allowed_edges": [
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "hermes-bots:pane",
+          "title_key": "Bots",
+          "icon_key": "",
+          "min": [
+            260,
+            140
+          ],
+          "max": [
+            0,
+            0
+          ],
+          "close_policy": 1,
+          "persistence": 0,
+          "provider": "",
+          "reparent": 0,
+          "docking": {
+            "allow_tab": true,
+            "allow_split": true,
+            "allow_float": true,
+            "allow_auto_hide": true,
+            "allowed_edges": [
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "workspace",
+          "title_key": "New session",
+          "icon_key": "",
+          "min": [
+            180,
+            140
+          ],
+          "max": [
+            0,
+            0
+          ],
+          "close_policy": 1,
+          "persistence": 0,
+          "provider": "",
+          "reparent": 0,
+          "docking": {
+            "allow_tab": true,
+            "allow_split": true,
+            "allow_float": true,
+            "allow_auto_hide": true,
+            "allowed_edges": [
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "review",
+          "title_key": "Review",
+          "icon_key": "",
+          "min": [
+            180,
+            140
+          ],
+          "max": [
+            0,
+            0
+          ],
+          "close_policy": 0,
+          "persistence": 0,
+          "provider": "",
+          "reparent": 0,
+          "docking": {
+            "allow_tab": true,
+            "allow_split": true,
+            "allow_float": true,
+            "allow_auto_hide": true,
+            "allowed_edges": [
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "files",
+          "title_key": "Files",
+          "icon_key": "",
+          "min": [
+            180,
+            140
+          ],
+          "max": [
+            0,
+            0
+          ],
+          "close_policy": 0,
+          "persistence": 0,
+          "provider": "",
+          "reparent": 0,
+          "docking": {
+            "allow_tab": true,
+            "allow_split": true,
+            "allow_float": true,
+            "allow_auto_hide": true,
+            "allowed_edges": [
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "terminal",
+          "title_key": "Terminal",
+          "icon_key": "",
+          "min": [
+            180,
+            140
+          ],
+          "max": [
+            0,
+            0
+          ],
+          "close_policy": 0,
+          "persistence": 0,
+          "provider": "",
+          "reparent": 0,
+          "docking": {
+            "allow_tab": true,
+            "allow_split": true,
+            "allow_float": true,
+            "allow_auto_hide": true,
+            "allowed_edges": [
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      ],
+      "closed_panels": [
+        "files",
+        "hermes-bots:pane",
+        "review",
+        "terminal"
+      ],
+      "auto_hide_panels": [],
+      "maximized_panel": null,
+      "root": {
+        "id": "profile-container:64656661756c74:73706c2d726f6f74",
+        "type": "split",
+        "orientation": "horizontal",
+        "weights": [
+          0.22727272727272727,
+          0.7727272727272726
+        ],
+        "children": [
+          {
+            "id": "profile-region:64656661756c74:73657373696f6e73:73657373696f6e73",
+            "type": "panel",
+            "panel": "sessions"
+          },
+          {
+            "id": "profile-region:64656661756c74:776f726b7370616365:776f726b7370616365",
+            "type": "panel",
+            "panel": "workspace"
+          }
+        ]
+      },
+      "windows": []
+    },
+    "persistence_error": null,
+    "dock_tab_groups": [],
+    "recent_session_switcher": null,
+    "command_palette": {
+      "open": false,
+      "selected_index": 0,
+      "session_results": 0,
+      "session_refresh_pending": false,
+      "session_refresh_error": false
+    },
+    "available_profiles": [
+      "default",
+      "basic",
+      "focus",
+      "terminal-deck",
+      "quad"
+    ],
+    "panels": {
+      "sessions": true,
+      "bots": false,
+      "workspace": true,
+      "review": false,
+      "files": false,
+      "terminal": false
+    },
+    "bot_roster": {
+      "profile": "C:\\Users\\orphe\\AppData\\Local\\Temp\\HermesNative-Delivery-Test-20261126-0130\\gateway-profile",
+      "pending": false,
+      "error": null,
+      "profiles": null
+    },
+    "gateway": {
+      "state": "connected",
+      "first_run_setup_visible": false,
+      "first_run_remote_setup_open": false,
+      "first_run_setup_has_error": false,
+      "first_run_remote_probe_pending": false,
+      "first_run_remote_probe_reachable": false,
+      "first_run_remote_probe_auth_mode": null,
+      "first_run_remote_probe_error": null,
+      "first_run_remote_probe_supports_native_pkce": false,
+      "first_run_remote_test_pending": false,
+      "first_run_remote_test_passed": false,
+      "first_run_remote_test_error": null,
+      "first_run_oauth_pending": false,
+      "first_run_oauth_signed_in": false,
+      "first_run_oauth_error": null,
+      "session_count": 16,
+      "show_archived_sessions": false,
+      "archived_session_count": 0,
+      "archived_sessions_loading": false
+    },
+    "session_rename": {
+      "open": false,
+      "session_id": null,
+      "profile": null,
+      "pending_count": 0
+    },
+    "session_branch": {
+      "pending_count": 0,
+      "uncertain_count": 0
+    },
+    "chat": {
+      "active_runtime_session_id": null,
+      "transcript_visible_message_count": 0,
+      "transcript_total_message_count": 0,
+      "transcript_has_older_messages": false,
+      "transcript_page_loading": false,
+      "transcript_page_error": null,
+      "active_profile": "C:\\Users\\orphe\\AppData\\Local\\Temp\\HermesNative-Delivery-Test-20261126-0130\\gateway-profile",
+      "new_chat_model_selection": {
+        "status": "ready",
+        "source": "user_selected",
+        "provider_slug": "openrouter",
+        "model": "deepseek/deepseek-v4.1-flash"
+      },
+      "cached_session_view_count": 0,
+      "submission_pending": false,
+      "submission_pending_count": 0,
+      "submission_uncertain": false,
+      "admission_id": null,
+      "interrupt_pending": false,
+      "approval_pending_count": 0,
+      "sudo_pending_count": 0,
+      "vault_unlock_pending_count": 0,
+      "vault_agent_pending_count": 0,
+      "secret_pending_count": 0,
+      "clarify_pending_count": 0,
+      "can_stop": false
+    },
+    "transcript_message_count": 0,
+    "load_error": null,
+    "status": "Gateway connected · 8 sessions",
+    "create_pending": false,
+    "create_prompt_pending": false,
+    "state_generation": 8
+  },
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "scale_factor": 1.0,
+    "logical_width": 1440.0,
+    "logical_height": 900.0,
+    "physical_dpi": null
+  },
+  "profile": {
+    "identity": "isolated temporary profile",
+    "path": "C:\\Users\\orphe\\AppData\\Local\\Temp\\HermesNative-Agent-17008-1795746695913568400"
+  },
+  "fixture": "isolated-headless-stdio",
+  "gateway": "enabled",
+  "actions": [
+    {
+      "event_id": 1,
+      "timestamp_unix_ms": 1795746696078,
+      "request_id": "48d0bd78-8f6e-4140-b084-b40af4ca810e",
+      "correlation_id": "48d0bd78-8f6e-4140-b084-b40af4ca810e",
+      "trace_id": "ui-48d0bd78-8f6e-4140-b084-b40af4ca810e",
+      "type": "agent_ui.action.completed",
+      "method": "actions.click",
+      "outcome": "succeeded",
+      "state_generation_before": 0,
+      "state_generation_after": 1
+    },
+    {
+      "event_id": 2,
+      "timestamp_unix_ms": 1795746698103,
+      "request_id": "52a7f055-30f7-49a4-8959-2e9b493c6306",
+      "correlation_id": "52a7f055-30f7-49a4-8959-2e9b493c6306",
+      "trace_id": "ui-52a7f055-30f7-49a4-8959-2e9b493c6306",
+      "type": "agent_ui.action.completed",
+      "method": "actions.click",
+      "outcome": "succeeded",
+      "state_generation_before": 1,
+      "state_generation_after": 2
+    },
+    {
+      "event_id": 3,
+      "timestamp_unix_ms": 1795746702795,
+      "request_id": "e5bb25f0-85fb-4240-af90-e2d17164ece7",
+      "correlation_id": "e5bb25f0-85fb-4240-af90-e2d17164ece7",
+      "trace_id": "ui-e5bb25f0-85fb-4240-af90-e2d17164ece7",
+      "type": "agent_ui.action.completed",
+      "method": "actions.click",
+      "outcome": "succeeded",
+      "state_generation_before": 2,
+      "state_generation_after": 3
+    },
+    {
+      "event_id": 4,
+      "timestamp_unix_ms": 1795746706231,
+      "request_id": "d0e2e68a-9e27-4173-8dc7-30c0b034b5ea",
+      "correlation_id": "d0e2e68a-9e27-4173-8dc7-30c0b034b5ea",
+      "trace_id": "ui-d0e2e68a-9e27-4173-8dc7-30c0b034b5ea",
+      "type": "agent_ui.action.completed",
+      "method": "actions.scroll_at",
+      "outcome": "succeeded",
+      "state_generation_before": 3,
+      "state_generation_after": 4
+    },
+    {
+      "event_id": 5,
+      "timestamp_unix_ms": 1795746706435,
+      "request_id": "6eed8025-1d70-48d7-a72f-57f91bace3f2",
+      "correlation_id": "6eed8025-1d70-48d7-a72f-57f91bace3f2",
+      "trace_id": "ui-6eed8025-1d70-48d7-a72f-57f91bace3f2",
+      "type": "agent_ui.action.completed",
+      "method": "actions.scroll_at",
+      "outcome": "succeeded",
+      "state_generation_before": 4,
+      "state_generation_after": 5
+    },
+    {
+      "event_id": 6,
+      "timestamp_unix_ms": 1795746706635,
+      "request_id": "4d18bcc3-a6ad-49df-8f3a-2fb635c893dd",
+      "correlation_id": "4d18bcc3-a6ad-49df-8f3a-2fb635c893dd",
+      "trace_id": "ui-4d18bcc3-a6ad-49df-8f3a-2fb635c893dd",
+      "type": "agent_ui.action.completed",
+      "method": "actions.scroll_at",
+      "outcome": "succeeded",
+      "state_generation_before": 5,
+      "state_generation_after": 6
+    },
+    {
+      "event_id": 7,
+      "timestamp_unix_ms": 1795746706868,
+      "request_id": "32287d1c-3f7b-4c27-bae0-02db0438986c",
+      "correlation_id": "32287d1c-3f7b-4c27-bae0-02db0438986c",
+      "trace_id": "ui-32287d1c-3f7b-4c27-bae0-02db0438986c",
+      "type": "agent_ui.action.completed",
+      "method": "actions.scroll_at",
+      "outcome": "succeeded",
+      "state_generation_before": 6,
+      "state_generation_after": 7
+    },
+    {
+      "event_id": 8,
+      "timestamp_unix_ms": 1795746707066,
+      "request_id": "fe8df6a2-d9f0-4257-9b01-c96140a66da6",
+      "correlation_id": "fe8df6a2-d9f0-4257-9b01-c96140a66da6",
+      "trace_id": "ui-fe8df6a2-d9f0-4257-9b01-c96140a66da6",
+      "type": "agent_ui.action.completed",
+      "method": "actions.click",
+      "outcome": "succeeded",
+      "state_generation_before": 7,
+      "state_generation_after": 8
+    }
+  ],
+  "screenshot": "openrouter-picker-selected-deepseek-flash-2026-11-27.png",
+  "screenshot_sha256": "7c62531cbac35b903b39519cf538cee0ccb235751cbba27719e5187d0076759e",
+  "screenshot_bytes": 143425,
+  "evidence_limits": [
+    "Headless egui render; this does not prove a native window, operating-system DPI, or physical desktop pixels."
+  ]
+}

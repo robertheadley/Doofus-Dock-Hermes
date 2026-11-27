@@ -17,6 +17,9 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(test)]
+use std::cell::Cell;
+
 const PROTOCOL_VERSION: u64 = 1;
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
@@ -67,7 +70,7 @@ fn run_stdio_with_gateway(connect_gateway: bool) -> Result<(), String> {
         .build_ui(move |ui| frame_app.borrow_mut().draw(ui));
     // Prime the shared egui app before publishing its accessibility tree. This also gives the
     // explicitly opted-in live mode its first chance to consume a completed Gateway attach.
-    harness.run();
+    harness.run_steps(2);
     let mut protocol = ProtocolState {
         profile_path: Some(profile_path),
         gateway_enabled: connect_gateway,
@@ -221,10 +224,10 @@ impl ProtocolState {
             "capabilities.list" => success(id.clone(), capabilities()),
             "app.actions.list" => success(id.clone(), registered_ui_action_catalog()),
             // The headless harness has no native event loop to repaint the app on its own.
-            // Pump one frame before reporting state so background Gateway completions and
-            // other UI-owned async results are observable to an agent polling this endpoint.
+            // Pump a bounded number of frames before reporting state so background Gateway
+            // completions are observable without waiting indefinitely for animations/tooltips.
             "state.get" => {
-                harness.run();
+                harness.run_steps(2);
                 success(id.clone(), snapshot(app, self.generation))
             }
             "ui.tree" => success(id.clone(), describe_node(harness.root(), None)),
@@ -251,7 +254,7 @@ impl ProtocolState {
                     self.record_event(id, method, "failed", before_generation, before_generation);
                     return failure(id.clone(), "action_rejected", error);
                 }
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -325,23 +328,23 @@ impl ProtocolState {
                 } else {
                     let position = matches[0].rect().center();
                     harness.event(egui::Event::PointerMoved(position));
-                    harness.run();
+                    harness.run_steps(2);
                     harness.event(egui::Event::PointerButton {
                         pos: position,
                         button: egui::PointerButton::Secondary,
                         pressed: true,
                         modifiers: egui::Modifiers::default(),
                     });
-                    harness.run();
+                    harness.run_steps(2);
                     harness.event(egui::Event::PointerButton {
                         pos: position,
                         button: egui::PointerButton::Secondary,
                         pressed: false,
                         modifiers: egui::Modifiers::default(),
                     });
-                    harness.run();
+                    harness.run_steps(2);
                 }
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -424,7 +427,7 @@ impl ProtocolState {
                 }
                 let position = bounds.center();
                 harness.event(egui::Event::PointerMoved(position));
-                harness.run();
+                harness.run_steps(2);
                 harness.event(egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(delta_x as f32, delta_y as f32),
@@ -432,7 +435,7 @@ impl ProtocolState {
                     source: egui::MouseWheelSource::Wheel,
                     modifiers: egui::Modifiers::default(),
                 });
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -446,6 +449,96 @@ impl ProtocolState {
                         "permission_class": "ui-interaction",
                         "command": "ui.scroll",
                         "target": {"role": role, "name": name, "bounds": {"x": bounds.min.x, "y": bounds.min.y, "width": bounds.width(), "height": bounds.height()}},
+                        "delta_x": delta_x,
+                        "delta_y": delta_y,
+                        "state_generation_before": before_generation,
+                        "state_generation_after": self.generation,
+                        "before": before_state,
+                        "after": after_state,
+                        "outcome": "succeeded"
+                    }),
+                )
+            }
+            "actions.scroll_at" => {
+                let Some(x) = number_param(&params, "x") else {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "x must be a finite number".into(),
+                    );
+                };
+                let Some(y) = number_param(&params, "y") else {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "y must be a finite number".into(),
+                    );
+                };
+                let Some(delta_x) = number_param(&params, "delta_x") else {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "delta_x must be a finite number".into(),
+                    );
+                };
+                let Some(delta_y) = number_param(&params, "delta_y") else {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "delta_y must be a finite number".into(),
+                    );
+                };
+                if (delta_x == 0.0 && delta_y == 0.0)
+                    || delta_x.abs() > 3000.0
+                    || delta_y.abs() > 3000.0
+                {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "scroll deltas must be non-zero and within 3000 points".into(),
+                    );
+                }
+                let viewport = harness.ctx.viewport_rect();
+                if x < f64::from(viewport.min.x)
+                    || x >= f64::from(viewport.max.x)
+                    || y < f64::from(viewport.min.y)
+                    || y >= f64::from(viewport.max.y)
+                {
+                    return failure(
+                        id.clone(),
+                        "invalid_argument",
+                        "scroll coordinates must be inside the UI viewport".into(),
+                    );
+                }
+                if let Err(error) = self.check_generation(&params) {
+                    return failure(id.clone(), error.0, error.1);
+                }
+                let before_generation = self.generation;
+                let before_state = snapshot(app, before_generation);
+                let position = egui::pos2(x as f32, y as f32);
+                harness.event(egui::Event::PointerMoved(position));
+                harness.run_steps(2);
+                harness.event(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(delta_x as f32, delta_y as f32),
+                    phase: egui::TouchPhase::Move,
+                    source: egui::MouseWheelSource::Wheel,
+                    modifiers: egui::Modifiers::default(),
+                });
+                harness.run_steps(2);
+                self.generation = self.generation.saturating_add(1);
+                let after_state = snapshot(app, self.generation);
+                self.record_event(id, method, "succeeded", before_generation, self.generation);
+                success(
+                    id.clone(),
+                    json!({
+                        "request_id": request_id,
+                        "correlation_id": request_id,
+                        "trace_id": format!("ui-{request_id}"),
+                        "actor": "stdio-peer",
+                        "permission_class": "ui-interaction",
+                        "command": "ui.scroll_at",
+                        "target": {"x": x, "y": y},
                         "delta_x": delta_x,
                         "delta_y": delta_y,
                         "state_generation_before": before_generation,
@@ -496,7 +589,7 @@ impl ProtocolState {
                     );
                 }
                 matches[0].type_text(text);
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -574,7 +667,7 @@ impl ProtocolState {
                         data: Some(egui::accesskit::ActionData::Value(text.into())),
                     },
                 ));
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -723,18 +816,18 @@ impl ProtocolState {
                     );
                 }
                 harness.event(egui::Event::PointerMoved(start));
-                harness.run();
+                harness.run_steps(2);
                 harness.event(egui::Event::PointerButton {
                     pos: start,
                     button: egui::PointerButton::Primary,
                     pressed: true,
                     modifiers: egui::Modifiers::default(),
                 });
-                harness.run();
+                harness.run_steps(2);
                 for step in 1..=steps {
                     let position = start.lerp(end, step as f32 / steps as f32);
                     harness.event(egui::Event::PointerMoved(position));
-                    harness.run();
+                    harness.run_steps(2);
                 }
                 harness.event(egui::Event::PointerButton {
                     pos: end,
@@ -742,7 +835,7 @@ impl ProtocolState {
                     pressed: false,
                     modifiers: egui::Modifiers::default(),
                 });
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -799,7 +892,7 @@ impl ProtocolState {
                     );
                 }
                 selectors[0].click();
-                harness.run();
+                harness.run_steps(2);
                 let options = matching_labels(harness, option);
                 if options.len() != 1 {
                     let (code, message) = if options.is_empty() {
@@ -823,7 +916,7 @@ impl ProtocolState {
                     );
                 }
                 options[0].click();
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -853,7 +946,7 @@ impl ProtocolState {
                 let before_generation = self.generation;
                 let before_state = snapshot(app, before_generation);
                 harness.key_press_modifiers(modifiers, key);
-                harness.run();
+                harness.run_steps(2);
                 self.generation = self.generation.saturating_add(1);
                 let after_state = snapshot(app, self.generation);
                 self.record_event(id, method, "succeeded", before_generation, self.generation);
@@ -901,7 +994,7 @@ impl ProtocolState {
                             format!("no visible {role} named {name:?} within {timeout_ms} ms"),
                         );
                     }
-                    harness.run();
+                    harness.run_steps(2);
                     thread::sleep(Duration::from_millis(10));
                 }
             }
@@ -1384,6 +1477,7 @@ fn capabilities() -> Value {
             {"id":"ui.click","method":"actions.click","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
             {"id":"ui.right_click","method":"actions.right_click","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
             {"id":"ui.scroll","method":"actions.scroll","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
+            {"id":"ui.scroll_at","method":"actions.scroll_at","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_coordinates"},
             {"id":"ui.type","method":"actions.type","permission":"ui_interaction","implemented":true,"verification":"headless_semantic"},
             {"id":"ui.fill","method":"actions.fill","permission":"ui_interaction","implemented":true,"verification":"headless_keyboard_text_events"},
             {"id":"ui.drag","method":"actions.drag","permission":"ui_interaction","implemented":true,"verification":"headless_pointer_events"},
@@ -2886,9 +2980,14 @@ mod tests {
         )));
         let visible_rows = Rc::new(RefCell::new(Vec::<usize>::new()));
         let frame_visible_rows = visible_rows.clone();
+        let request_repaint = Rc::new(Cell::new(false));
+        let frame_request_repaint = request_repaint.clone();
         let mut harness = Harness::builder()
             .with_size(egui::vec2(420.0, 220.0))
             .build_ui(move |ui| {
+                if frame_request_repaint.get() {
+                    ui.ctx().request_repaint();
+                }
                 frame_visible_rows.borrow_mut().clear();
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for index in 0..40 {
@@ -2901,6 +3000,7 @@ mod tests {
             });
         let initial = visible_rows.borrow().clone();
         assert!(initial.contains(&0));
+        request_repaint.set(true);
         let mut protocol = ProtocolState::default();
         let response = protocol.handle(
             json!({
@@ -2967,6 +3067,100 @@ mod tests {
             assert_eq!(fields.len(), 1);
             assert_eq!(fields[0].value().as_deref(), Some(text));
         }
+        drop(harness);
+        drop(app);
+        drop(profile);
+    }
+
+    #[test]
+    fn coordinate_scroll_reaches_a_nested_egui_scroll_area() {
+        let profile = super::super::TemporaryProfile::create().expect("isolated profile");
+        let app = Rc::new(RefCell::new(HermesNativeApp::new_for_automation(
+            profile.0.clone(),
+        )));
+        let visible_rows = Rc::new(RefCell::new(Vec::<usize>::new()));
+        let frame_visible_rows = visible_rows.clone();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(420.0, 220.0))
+            .build_ui(move |ui| {
+                frame_visible_rows.borrow_mut().clear();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for index in 0..40 {
+                        let response = ui.button(format!("Wheel row {index}"));
+                        if ui.is_rect_visible(response.rect) {
+                            frame_visible_rows.borrow_mut().push(index);
+                        }
+                    }
+                });
+            });
+        let before = visible_rows.borrow().clone();
+        assert!(before.contains(&0));
+        let mut protocol = ProtocolState::default();
+        let response = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "wheel-list-down",
+                "method": "actions.scroll_at",
+                "params": {
+                    "x": 210,
+                    "y": 100,
+                    "delta_x": 0,
+                    "delta_y": -500,
+                    "expected_state_generation": 0
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(response["status"], "succeeded", "{response}");
+        assert_eq!(response["result"]["command"], "ui.scroll_at");
+        assert_eq!(response["result"]["state_generation_after"], 1);
+        let after = visible_rows.borrow().clone();
+        assert!(
+            after.iter().any(|row| *row > 5),
+            "visible rows after coordinate scroll: {after:?}"
+        );
+
+        let outside = protocol.handle(
+            json!({
+                "version": 1,
+                "id": "wheel-outside-viewport",
+                "method": "actions.scroll_at",
+                "params": {
+                    "x": 420,
+                    "y": 100,
+                    "delta_x": 0,
+                    "delta_y": -100,
+                    "expected_state_generation": 1
+                }
+            }),
+            &mut harness,
+            &app,
+        );
+        assert_eq!(outside["status"], "failed", "{outside}");
+        assert_eq!(outside["error"]["code"], "invalid_argument");
+        assert_eq!(protocol.generation, 1);
+        for (id, delta_y) in [("wheel-zero-delta", 0), ("wheel-too-large", 3001)] {
+            let invalid = protocol.handle(
+                json!({
+                    "version": 1,
+                    "id": id,
+                    "method": "actions.scroll_at",
+                    "params": {
+                        "x": 210,
+                        "y": 100,
+                        "delta_x": 0,
+                        "delta_y": delta_y,
+                        "expected_state_generation": 1
+                    }
+                }),
+                &mut harness,
+                &app,
+            );
+            assert_eq!(invalid["status"], "failed", "{invalid}");
+            assert_eq!(invalid["error"]["code"], "invalid_argument");
+        }
+        assert_eq!(protocol.generation, 1);
         drop(harness);
         drop(app);
         drop(profile);

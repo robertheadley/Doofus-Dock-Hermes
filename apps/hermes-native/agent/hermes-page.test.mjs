@@ -107,6 +107,27 @@ test("HermesPage drives semantic locators and tracks action generations", async 
   }
 });
 
+test("HermesPage wheelAt dispatches a bounded viewport scroll through the stdio protocol", async () => {
+  const page = await HermesPage.launch({
+    command: execPath,
+    args: ["-e", fakeProtocol],
+    cwd: process.cwd(),
+  });
+  try {
+    const receipt = await page.wheelAt({ x: 480, y: 620, deltaX: 0, deltaY: -360 });
+    assert.equal(receipt.command, "actions.scroll_at");
+    assert.equal(receipt.state_generation_before, 0);
+    assert.equal(receipt.state_generation_after, 1);
+    await assert.rejects(
+      page.wheelAt({ x: 1440, y: 620, deltaY: -360 }),
+      TypeError,
+    );
+    assert.equal((await page.state()).state_generation, 1);
+  } finally {
+    await page.close();
+  }
+});
+
 test("HermesPage surfaces stale-generation refusals without replaying the mutation", async () => {
   const page = await HermesPage.launch({
     command: execPath,
