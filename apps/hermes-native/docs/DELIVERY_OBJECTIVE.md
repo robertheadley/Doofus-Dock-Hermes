@@ -103,3 +103,18 @@ Use the operator-provided Doofus Design Guide as the visual target: warm charcoa
 
 - Rebuilt the Windows x64 package from published source commit `e6b2653c351f01fee133dcaf7b6ca5a2bbd019ae` at `artifacts/releases/hermes-native-windows-x64-e6b2653c351f`. The package manifest pins Hermes `8783054ef6cbafd86f10892241436862c1171a66` and DoofusDock `f23ed02a99c7f8c57f83164d98feadb17cc4ed87`; all four file lengths and hashes validate, and no user profile or credentials are included.
 - The packaged off-screen `HermesPage` smoke reached route `/`, showed Settings and Terminal controls, and closed cleanly. No screenshot, Gateway prompt, or model call was used. This does not prove a visible cold launch, live Gateway attachment, or provider-backed agent coding.
+
+
+## Latest live agent-workflow evidence (2026-11-27)
+
+A disposable profile check verified MCP stdio credential persistence, the authenticated probe, runtime startup/reload and tool discovery. The profile-scoped synthetic secret was read back from `.env`, while `config.yaml` retained only an environment reference; `tools.list` exposed the registered local tool and runtime status reported it connected. The test Gateway and local MCP child were stopped and verified absent. This check did not invoke the tool through a model turn or drive the app's credential UI. The dedicated OpenRouter key is available for a later controlled agent-turn test, but it was deliberately not forwarded to the MCP-only Gateway check. See `artifacts/agent-ui/mcp-live-profile-acceptance-20261127.json`.
+
+
+## Latest MCP implementation update (2026-11-27)
+
+The stdio Add form now separates profile environment passthrough names from explicit environment values. Exact imported `${NAME}` self-references become passthrough rows and serialize back to `${NAME}`; names are validated, duplicate passthrough names are rejected, and the original source precedence is retained if an explicit assignment uses the same name. Add/Remove controls are accessible and covered by rendered tests. The feature remains partial until the native UI save path and model-driven tool invocation are verified; live profile backend evidence is recorded separately in `artifacts/agent-ui/mcp-live-profile-acceptance-20261127.json`.
+
+
+## Live MCP agent-turn evidence (2026-11-27)
+
+One fresh Hermes Native chat used OpenRouter `deepseek/deepseek-v4.1-flash-1017`, called the local synthetic MCP tool once, and displayed the actual `MCP_PROBE_OK` result. The app reported a connected isolated Gateway, selected model, completed transcript, and no pending approval. This verifies one working model-to-MCP loop. It does not verify the native credential-save flow, OAuth, broad provider reliability, packaged Windows behavior, recovery, or source-paired acceptance. See `artifacts/agent-ui/mcp-agent-turn-20261127.json`.

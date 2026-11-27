@@ -5876,3 +5876,55 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: No performance change claimed.
 - risks: Live Hermes profile persistence, MCP worker startup/restart, packaged Windows behavior, and source-paired acceptance remain unverified. JSON-RPC serialization buffers are not proven to be zeroized.
 - follow_up: Add environment passthrough editing to MCP add form, then use an isolated Gateway profile to verify secret persistence, server startup and tool discovery without touching the installed Hermes profile.
+
+
+## Revision 393 — Verify live MCP stdio credential and tool registration
+- id: hermes-native-live-mcp-stdio-20261127
+- timestamp: 2026-11-27T22:19:37Z
+- what: Added a sanitized live acceptance receipt and marked the MCP row's live runtime evidence verified while leaving implementation partial.
+- why: Headless UI/RPC contract tests did not prove that Hermes persisted a server credential, started a real MCP child, or exposed the resulting tool at runtime.
+- components: disposable Hermes Gateway profile; apps/hermes-native/artifacts/agent-ui/mcp-live-profile-acceptance-20261127.json; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/DELIVERY_OBJECTIVE.md; apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv; docs/EXECUTION_LOGS.md; .doofus task state
+- type: live runtime validation and evidence update
+- validation: Authenticated stdio test added `codex-par0263-live`; profile `.env` readback matched the synthetic credential, config retained only `${ENV}`, probe listed `probe_ping`, `reload.mcp` returned reloaded, runtime status was connected, and `tools.list` exposed `mcp__codex_par0263_live__probe_ping`. The profile-scoped Gateway stop left the Gateway PID, MCP child, and sockets absent. No model prompt or user key was sent.
+- performance: No performance claim; the MCP probe and registration completed within the Gateway test operation.
+- risks: Test drove the Gateway RPC directly, not the native UI; no model turn invoked the MCP tool. Environment passthrough rows and OAuth remain open. Gateway identity matched the disposable profile, but observed loopback listeners did not match the configured API port and require follow-up.
+- follow_up: Implement environment passthrough editing, verify native UI credential entry, then call the local MCP tool through a DeepSeek Flash agent turn using the dedicated key; continue Windows package and restart/recovery checks.
+
+
+## Revision 394 — MCP environment passthrough editing
+- id: hermes-native-mcp-env-passthrough-20261127
+- timestamp: 2026-11-27T22:32:05Z
+- what: Added separate accessible environment passthrough rows to stdio MCP creation, exact self-reference import splitting, name validation and payload serialization.
+- why: Hermes MCP servers often need credentials or runtime values inherited from profile environment; the source presents these as distinct passthrough inputs instead of requiring explicit values.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/docs/ARCHITECTURE.md; apps/hermes-native/docs/BACKLOG.md; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/DELIVERY_OBJECTIVE.md; apps/hermes-native/README.md; apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv; README.md; docs/CHANGELOG.agent.md; docs/EXECUTION_LOGS.md
+- type: agent capability and source-contract implementation
+- validation: full locked suite passed 825 library + 17 automation + 3 launcher tests; focused Add path 4/4; import round-trip 1/1; `cargo fmt --check` and `cargo check --all-targets --features agent-automation` passed. Existing `gateway_runtime.rs::supports` dead-code warning remains. Independent source review confirmed exact-self-reference splitting and source precedence.
+- performance: No performance change claimed.
+- risks: Explicit environment values still reside in the serialized RPC payload transiently; end-to-end memory zeroization is not established. Live native UI credential submission, model-driven MCP invocation, OAuth, packaged Windows behavior, cold restart/recovery and source-paired acceptance remain open.
+- follow_up: Use the dedicated OpenRouter key for a harmless local MCP invocation through a Hermes agent turn; then exercise the UI save path and continue recovery/package checks.
+
+
+## Revision 395 — native Hermes MCP agent-turn verification
+- id: hermes-native-mcp-agent-turn-20261127
+- timestamp: 2026-11-27T23:16:26Z
+- what: Verified one fresh Hermes Native chat selected OpenRouter DeepSeek Flash, invoked the registered synthetic MCP probe exactly once, and rendered the actual `MCP_PROBE_OK` result.
+- why: Confirm that configured MCP tools reach the Hermes agent model loop and their results return to the native transcript.
+- components: Hermes Native chat composer and transcript; isolated Hermes Gateway profile; MCP tool registry; OpenRouter DeepSeek Flash; PAR-0263 evidence.
+- type: live agent workflow validation
+- validation: Connected Gateway and registered tool confirmed; native session selected `deepseek/deepseek-v4.1-flash-1017`; transcript settled with one MCP result and no pending approval.
+- performance: No performance claim. Provider usage was limited to the single tool-oriented test turn.
+- risks: One model and one harmless tool do not establish general provider reliability or complete connector parity. Native credential entry, OAuth, package and recovery checks remain open.
+- follow_up: Stop/remove the disposable test profile, then verify native UI credential entry and continue the remaining PAR-0263 acceptance.
+
+
+## Revision 396 — disposable MCP profile cleanup
+- id: hermes-native-mcp-test-cleanup-20261127
+- timestamp: 2026-11-27T23:21:29Z
+- what: Stopped the isolated Gateway, verified the installed Gateway remained active, removed the exact disposable MCP test profile, and updated the sanitized agent-turn receipt.
+- why: Avoid leaving temporary profile credentials or test fixture state after live validation.
+- components: Hermes Native PAR-0263 live acceptance artifact and temp-scoped test runtime.
+- type: test cleanup and evidence finalization
+- validation: PID 868 absent after profile-scoped stop; installed Gateway PID 2864 remained present; exact profile path resolved to the expected direct system TEMP child and was absent after cleanup.
+- performance: Not measured.
+- risks: PAR-0263 remains partial; see PLAN Working revision 396 for remaining acceptance.
+- follow_up: Continue native UI credential entry and remaining OAuth, recovery, packaging, and source-pair checks.

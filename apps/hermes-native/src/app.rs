@@ -989,13 +989,13 @@ struct McpServerRemovalConfirmation {
     authority_epoch: u64,
 }
 
-#[derive(Clone)]
 struct McpServerAddDraft {
     name: String,
     transport: String,
     command: String,
     args: Zeroizing<String>,
     env: Zeroizing<String>,
+    env_passthrough: Vec<String>,
     cwd: String,
     url: Zeroizing<String>,
     headers: Zeroizing<String>,
@@ -1121,6 +1121,7 @@ impl Default for McpServerAddDraft {
             command: String::new(),
             args: Zeroizing::new(String::new()),
             env: Zeroizing::new(String::new()),
+            env_passthrough: Vec::new(),
             cwd: String::new(),
             url: Zeroizing::new(String::new()),
             headers: Zeroizing::new(String::new()),
@@ -1270,8 +1271,13 @@ fn mcp_import_entry_to_draft(
     // The source import is zeroized by the caller after this transfer. Clear
     // temporary map copies after projecting them into the masked form fields.
     let mut env_text = Zeroizing::new(String::new());
-    for (index, (key, value)) in env.iter().enumerate() {
-        if index > 0 {
+    let mut env_passthrough = Vec::new();
+    for (key, value) in env.iter() {
+        if value == &format!("${{{key}}}") {
+            env_passthrough.push(key.clone());
+            continue;
+        }
+        if !env_text.is_empty() {
             env_text.push('\n');
         }
         env_text.push_str(key);
@@ -1300,6 +1306,7 @@ fn mcp_import_entry_to_draft(
         command,
         args: args_text,
         env: env_text,
+        env_passthrough,
         cwd: text("cwd")?,
         url,
         headers: headers_text,
@@ -1377,7 +1384,26 @@ fn mcp_server_add_draft_payload(
             .filter(|value| !value.is_empty())
             .map(str::to_owned)
             .collect::<Vec<_>>();
-        let env = parse_mcp_key_value_lines(&draft.env, "Environment")?;
+        let mut env = parse_mcp_key_value_lines(&draft.env, "Environment")?;
+        let mut passthrough_names = std::collections::BTreeSet::new();
+        for name in &draft.env_passthrough {
+            let name = name.trim();
+            if name.is_empty() {
+                continue;
+            }
+            if !valid_mcp_env_var(name) {
+                return Err(
+                    "Environment passthrough names must be valid environment variable names".into(),
+                );
+            }
+            if !passthrough_names.insert(name) {
+                return Err("Environment passthrough names must be unique".into());
+            }
+            env.insert(
+                name.to_owned(),
+                serde_json::Value::String(format!("${{{name}}}")),
+            );
+        }
         let mut config = serde_json::Map::new();
         config.insert(
             "command".into(),
@@ -16358,6 +16384,49 @@ fn render_message() -> &'static str {
                                     .password(!self.mcp_server_add_show_secrets),
                             )
                             .accessible_name("MCP server environment variables");
+                            ui.group(|ui| {
+                                ui.label("Environment variable passthrough");
+                                let mut remove_index = None;
+                                for (index, name) in self
+                                    .mcp_server_add_draft
+                                    .env_passthrough
+                                    .iter_mut()
+                                    .enumerate()
+                                {
+                                    ui.horizontal(|ui| {
+                                        ui.add(
+                                            egui::TextEdit::singleline(name)
+                                                .hint_text("VARIABLE_NAME"),
+                                        )
+                                        .accessible_name(format!(
+                                            "MCP server passthrough variable {}",
+                                            index + 1
+                                        ));
+                                        if ui
+                                            .button("Remove")
+                                            .accessible_name(format!(
+                                                "Remove MCP server passthrough variable {}",
+                                                index + 1
+                                            ))
+                                            .clicked()
+                                        {
+                                            remove_index = Some(index);
+                                        }
+                                    });
+                                }
+                                if let Some(index) = remove_index {
+                                    self.mcp_server_add_draft.env_passthrough.remove(index);
+                                }
+                                if ui
+                                    .button("+ Add variable")
+                                    .accessible_name("Add MCP server passthrough variable")
+                                    .clicked()
+                                {
+                                    self.mcp_server_add_draft
+                                        .env_passthrough
+                                        .push(String::new());
+                                }
+                            });
                             ui.horizontal(|ui| {
                                 ui.label("Working directory");
                                 ui.text_edit_singleline(&mut self.mcp_server_add_draft.cwd)
@@ -72458,7 +72527,10 @@ mod tests {
             transport: "stdio".into(),
             command: "uvx".into(),
             args: Zeroizing::new("mcp-server-docs\n--read-only".into()),
-            env: Zeroizing::new("DOCS_ROOT=C:/docs\nAPI_MODE=readonly".into()),
+            env: Zeroizing::new(
+                "DOCS_ROOT=C:/docs\nAPI_MODE=readonly\nOPENAI_API_KEY=explicit-value".into(),
+            ),
+            env_passthrough: vec!["OPENAI_API_KEY".into(), "CUSTOM_ROOT".into()],
             cwd: "C:/project".into(),
             ..McpServerAddDraft::default()
         };
@@ -72467,6 +72539,9 @@ mod tests {
         assert_eq!(config["command"], "uvx");
         assert_eq!(config["args"], json!(["mcp-server-docs", "--read-only"]));
         assert_eq!(config["env"]["DOCS_ROOT"], "C:/docs");
+        // The pinned source applies passthrough rows after explicit pairs, so the reference wins.
+        assert_eq!(config["env"]["OPENAI_API_KEY"], "${OPENAI_API_KEY}");
+        assert_eq!(config["env"]["CUSTOM_ROOT"], "${CUSTOM_ROOT}");
         assert_eq!(config["cwd"], "C:/project");
         assert!(token.is_none());
 
@@ -72495,6 +72570,21 @@ mod tests {
             }
         };
         assert!(mcp_server_add_draft_payload(&invalid).is_err());
+
+        for env_passthrough in [
+            vec!["1INVALID".into()],
+            vec!["DUPLICATE".into(), "DUPLICATE".into()],
+        ] {
+            let invalid = McpServerAddDraft {
+                env_passthrough,
+                ..McpServerAddDraft {
+                    name: "bad-passthrough".into(),
+                    command: "node".into(),
+                    ..McpServerAddDraft::default()
+                }
+            };
+            assert!(mcp_server_add_draft_payload(&invalid).is_err());
+        }
     }
 
     #[test]
@@ -72525,6 +72615,25 @@ mod tests {
 
         entries[0].clear_sensitive();
         assert!(entries[0].config.is_null());
+    }
+
+    #[test]
+    fn mcp_import_splits_exact_environment_references_into_passthrough_rows() {
+        let mut entries = crate::mcp_import::parse_mcp_import(
+            r#"{"mcpServers":{"local-docs":{"command":"node","env":{"OPENAI_API_KEY":"${OPENAI_API_KEY}","DOCS_ROOT":"C:/docs","OTHER_REFERENCE":"${SHARED_TOKEN}"}}}}"#,
+        )
+        .expect("parse MCP config");
+        let draft = mcp_import_entry_to_draft(&entries[0]).expect("map import to editor draft");
+        assert_eq!(draft.env_passthrough, ["OPENAI_API_KEY"]);
+        assert_eq!(
+            draft.env.as_str(),
+            "DOCS_ROOT=C:/docs\nOTHER_REFERENCE=${SHARED_TOKEN}"
+        );
+        let (_, config, _) = mcp_server_add_draft_payload(&draft).expect("rebuild MCP config");
+        assert_eq!(config["env"]["OPENAI_API_KEY"], "${OPENAI_API_KEY}");
+        assert_eq!(config["env"]["DOCS_ROOT"], "C:/docs");
+        assert_eq!(config["env"]["OTHER_REFERENCE"], "${SHARED_TOKEN}");
+        entries[0].clear_sensitive();
     }
 
     #[test]
@@ -72617,7 +72726,7 @@ mod tests {
         });
         app.mcp_server_add_open = true;
 
-        let harness = egui_kittest::Harness::builder()
+        let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1440.0, 3000.0))
             .build_ui(|ui| app.draw(ui));
         let labels = harness
@@ -72646,7 +72755,27 @@ mod tests {
             labels.iter().any(|label| label == "MCP server command"),
             "labels: {labels:?}"
         );
+        assert!(
+            labels
+                .iter()
+                .any(|label| label == "Add MCP server passthrough variable"),
+            "labels: {labels:?}"
+        );
+        harness
+            .get_by_label("Add MCP server passthrough variable")
+            .click();
+        harness.run();
         drop(harness);
+        assert_eq!(app.mcp_server_add_draft.env_passthrough.len(), 1);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 3000.0))
+            .build_ui(|ui| app.draw(ui));
+        harness
+            .get_by_label("Remove MCP server passthrough variable 1")
+            .click();
+        harness.run();
+        drop(harness);
+        assert!(app.mcp_server_add_draft.env_passthrough.is_empty());
         app.mcp_server_add_draft.transport = "http".into();
         app.mcp_server_add_draft.auth = "bearer".into();
         let harness = egui_kittest::Harness::builder()

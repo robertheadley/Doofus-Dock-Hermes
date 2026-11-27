@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "test_id": "PAR-0263",
+  "timestamp_utc": "2026-11-27T23:16:26Z",
+  "hermes_source": "8783054ef6cbafd86f10892241436862c1171a66",
+  "repository_head_before": "0c0681783103590e9ee090d3c7376fc4fad56b00",
+  "profile_scope": "disposable Hermes Native test profile under system TEMP",
+  "native_ui": {
+    "automation_protocol": "hermes-native-agent-ui/1",
+    "gateway_state": "connected",
+    "selected_model": {
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4.1-flash-1017",
+      "source": "profile_default"
+    },
+    "active_runtime_session_id": "local-b1a806bbacb8e438a5843a1e060fd077d7cf611065980c5e65342cc3bd66b332",
+    "transcript_message_count": 4,
+    "submission_pending": false,
+    "approval_pending_count": 0
+  },
+  "gateway_mcp": {
+    "server": "codex-par0263-live",
+    "connected": true,
+    "tool_count": 1,
+    "registered_tool": "mcp__codex_par0263_live__probe_ping",
+    "mcp_test_ok": true,
+    "reload_status": "reloaded"
+  },
+  "agent_turn": {
+    "prompt_submitted_through_native_composer": true,
+    "tool_invocations_observed": 1,
+    "tool_result": "MCP_PROBE_OK",
+    "assistant_final": "Marker returned: `MCP_PROBE_OK`",
+    "other_tools_observed": 0
+  },
+  "credential_handling": {
+    "provider_key_source": "existing local Hermes .env",
+    "passed_only_to_isolated_test_process": true,
+    "secret_value_recorded": false,
+    "provider_key_in_test_artifact": false,
+    "synthetic_mcp_secret_used": true
+  },
+  "isolation": {
+    "installed_hermes_profile_touched": false,
+    "installed_gateway_touched": false,
+    "test_gateway_profile_scoped": true,
+    "test_gateway_shutdown_pending": false,
+    "test_gateway_stopped": true,
+    "test_profile_removed": true,
+    "installed_gateway_pid_2864_still_running": true
+  },
+  "result": "PASS",
+  "limitations": [
+    "One model/provider and one harmless synthetic MCP tool only.",
+    "Native UI-driven MCP credential entry, OAuth, cold restart/recovery, packaged Windows behavior and source-paired acceptance remain open.",
+    "The temporary profile needed its isolated python-deps directory on PYTHONPATH so Hermes MCP support could start."
+  ],
+  "cleanup_timestamp_utc": "2026-11-27T23:21:29Z"
+}

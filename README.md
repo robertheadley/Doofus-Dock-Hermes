@@ -73,3 +73,4 @@ Prior-message edits preserve the current composer, support separately staged rep
 
 
 The native Hermes chat edit flow now resolves a missing local durable row ID through a bounded, authenticated, profile-scoped transcript read. Only a safe exact match can enter the existing truncation path; ambiguous, stale, or failed lookups submit without truncating history. See the PAR-0051 completion evidence in apps/hermes-native/docs/COMPLETION_OVERVIEW.md.
+MCP stdio setup now has separate accessible environment passthrough rows, and a disposable live Gateway profile has verified profile-scoped secret persistence, server startup/reload and tool discovery. The capability remains partial pending a native UI-driven save and real agent-turn invocation.

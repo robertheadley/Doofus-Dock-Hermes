@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "test_id": "PAR-0263",
+  "hermes_source": "8783054ef6cbafd86f10892241436862c1171a66",
+  "repository_head": "0c0681783103590e9ee090d3c7376fc4fad56b00",
+  "profile_scope": "new disposable TEMP Hermes profile; no installed profile",
+  "gateway_identity": {
+    "pid": 21112,
+    "profile_match": true,
+    "shutdown": "scoped gateway stop; process and child absent; sockets closed"
+  },
+  "credential": {
+    "rpc": "mcp.servers.set_api_key",
+    "env_var": "MCP_CODEX_PAR0263_LIVE_API_KEY",
+    "persisted_in_profile_env": true,
+    "config_env_reference": true,
+    "config_secret_literal_absent": true,
+    "credential_value_recorded": false
+  },
+  "mcp": {
+    "server_added": true,
+    "probe_ok": true,
+    "probe_tools": [
+      "probe_ping"
+    ],
+    "reload_status": "reloaded",
+    "runtime_connected": true,
+    "runtime_status": "connected",
+    "registered_tool": "mcp__codex_par0263_live__probe_ping",
+    "tool_visible_in_tools_list": true
+  },
+  "isolation": {
+    "listener_host": "127.0.0.1",
+    "requested_api_server_port": 18642,
+    "provider_api_keys_forwarded": false,
+    "user_gateway_touched": false,
+    "observed_gateway_listeners": [
+      {
+        "port": 62882,
+        "host": "127.0.0.1"
+      },
+      {
+        "port": 62883,
+        "host": "127.0.0.1"
+      }
+    ],
+    "configured_port_observed": false,
+    "port_note": "Attach/start returned a working profile-bound endpoint; process inspection recorded loopback listeners 62882 and 62883. The requested API_SERVER_PORT 18642 was not among those sockets."
+  },
+  "validation": {
+    "result": "PASS",
+    "initial_orchestrator_env_readback": "incorrectly used outer shell profile",
+    "corrected_profile_scoped_readback": "PASS",
+    "limitation": "Live server persistence, authenticated probe, startup/reload, tool discovery and cleanup verified. The tool itself was not invoked through an agent prompt."
+  }
+}

@@ -2423,3 +2423,39 @@ PAR-0263 remains partial. The Connectors server row now opens an accessible, mas
 Validation: rendered UI test enters a synthetic key through the accessible controls and verifies the profile-scoped request and redacted success receipt; an app regression verifies cache invalidation, accessible inventory refresh, and credential-row restoration only after the successful inventory response; Gateway WebSocket tests cover pinned RPC shape and secret/error redaction. The full locked agent-automation suite passes 824 library, 17 automation-protocol, and 3 launcher tests; `cargo build --locked -p hermes-native --features agent-automation`, rustfmt, diff checks, and the Doofus task validator pass. The dedicated OpenRouter key was checked with a read-only `/api/v1/models` request (HTTP 200; 477 catalog rows including DeepSeek Flash models); no prompt/completion call was made. This validates key/provider reachability, not the native app's provider setup.
 
 Remaining: add-form environment passthrough editing, authenticated live Hermes profile secret persistence, actual MCP process startup/restart behavior, packaged Windows acceptance, and source-paired acceptance. The API secret is transiently serialized for the JSON-RPC WebSocket request; the Rust transport/library buffers are not proven to be memory-zeroized.
+
+
+## Working revision 393 — live MCP stdio credential and tool discovery (2026-11-27)
+
+PAR-0263 now has a successful live backend check against a newly created disposable Gateway profile. Through an authenticated Gateway connection, the test added a local stdio MCP server, stored a synthetic credential with `mcp.servers.set_api_key`, read it back from that profile's `.env`, confirmed `config.yaml` contains only the `${ENV}` reference, probed `probe_ping`, reloaded MCP, and observed the connected server and `mcp__codex_par0263_live__probe_ping` in the live tool inventory. A profile-scoped stop ended the test Gateway and its fixture process; the installed Hermes process/profile was not targeted. The isolated test profile and sanitized receipt are preserved under the system temp directory and `apps/hermes-native/artifacts/agent-ui/mcp-live-profile-acceptance-20261127.json`.
+
+The MCP SDK `mcp==2.3.0` was installed only into the disposable profile's Python dependency directory. The real OpenRouter/DeepSeek key was removed from the test Gateway environment; this MCP check used only a synthetic local secret and made no model call. The first read-back attempt used the caller shell's profile; a subsequent explicit `HERMES_HOME` read confirmed persistence. The gateway identity was profile-fenced, although its observed loopback sockets were 62882/62883 while the profile requested `API_SERVER_PORT=18642`; the port-selection discrepancy is recorded for follow-up.
+
+PAR-0263 remains partial: the add form still lacks environment passthrough rows. Live OAuth, UI-driven credential entry, prompt-driven MCP tool invocation, packaged Windows behavior, cold restart/recovery and source-paired acceptance remain open. Next: implement safe environment rows, then verify the native UI flow end to end and invoke a harmless MCP tool through a real agent turn using the dedicated OpenRouter key.
+
+
+## Working revision 394 — MCP environment passthrough editing (2026-11-27)
+
+PAR-0263's stdio Add form now exposes editable name-only environment passthrough rows alongside explicit `KEY=VALUE` environment assignments. Each nonempty row must use a valid environment variable name; duplicate passthrough names fail validation. The payload maps `NAME` to `${NAME}` after explicit values, preserving the pinned source's precedence. MCP imports recognize only the exact self-reference `${NAME}` as passthrough; other references such as `${SHARED_TOKEN}` remain explicit values. The passthrough rows are visible regardless of the secret-value reveal toggle because they contain names only. The Add/Remove controls and inputs have stable accessible names; the pre-existing explicit environment values remain in a zeroizing masked draft.
+
+Validation: full locked Hermes Native suite passed 825 library + 17 automation + 3 launcher tests; focused MCP Add tests passed 4/4 and import round-trip passed 1/1; `cargo fmt --check` and all-target `cargo check` passed. One pre-existing dead-code warning remains in `gateway_runtime.rs`. The live disposable Gateway profile already verified synthetic credential persistence, stdio probing, `reload.mcp`, connected status and `tools.list` exposure. PAR-0263 remains partial: native UI-driven live save, model-driven MCP invocation, OAuth, cold restart/recovery, packaged Windows behavior and source-paired acceptance are open.
+
+Next: use the dedicated OpenRouter key in a disposable profile to invoke the harmless local MCP tool through a Hermes agent turn, then verify the native UI save path and continue recovery/package acceptance.
+
+
+## Working revision 395 — native agent invokes a live MCP tool (2026-11-27)
+
+A fresh headless Hermes Native chat selected `deepseek/deepseek-v4.1-flash-1017` through OpenRouter, submitted a prompt through the native composer, invoked `mcp__codex_par0263_live__probe_ping` exactly once, displayed the real `MCP_PROBE_OK` tool result, and completed without approval or clarification. Before the turn, an authenticated Gateway check showed the synthetic server connected and `tools.list` exposed the matching tool.
+
+The first native prompt attempt correctly reported that the tool was absent. The isolated Gateway had been started without its temporary `python-deps` directory on `PYTHONPATH`, so MCP SDK support was unavailable and the server remained configured but disconnected. Restarting only the disposable profile with that directory in `PYTHONPATH`, then running the profile-bound MCP reload, made the server connected and the tool available. The successful native turn then confirmed the full model-to-tool-to-result loop. No installed Hermes profile or installed Gateway was touched.
+
+PAR-0263 remains partial. The one-turn proof does not establish general provider reliability, native UI credential entry, OAuth, cold restart/recovery, packaged Windows behavior, or source-paired acceptance. The dedicated OpenRouter key came from the existing local Hermes `.env`, was passed to the temporary process environment, and its value was not recorded in repository evidence.
+
+Next: stop and remove the disposable test profile after recording this evidence; then verify credential entry from the native Connectors UI and continue OAuth, recovery, package, and source-paired checks.
+
+
+## Working revision 396 — MCP live test profile cleanup (2026-11-27)
+
+The isolated MCP agent-turn validation completed and its temporary test state has been removed. The profile-scoped Gateway process (PID 868) was stopped and verified absent; installed Hermes Gateway PID 2864 remained running. The exact disposable directory `C:\Users\orphe\AppData\Local\Temp\HermesNative-Delivery-Test-20261127-160416` was resolved and verified as a direct child of system TEMP before deletion, then confirmed absent. The synthetic MCP server fixture was not running at cleanup. The sanitized receipt `apps/hermes-native/artifacts/agent-ui/mcp-agent-turn-20261127.json` records the model-to-tool-to-result proof and cleanup state without provider or fixture secret values.
+
+PAR-0263 remains partial. Open acceptance includes native UI credential entry, OAuth, cold restart/recovery, packaged Windows behavior, source-paired review, and proving credential buffer zeroization. The one-turn test used OpenRouter DeepSeek Flash and a harmless synthetic tool; it is not general provider or connector acceptance.

@@ -551,4 +551,6 @@ Existing native code and headless regressions already cover profile routing, ret
 
 ### PAR-0263 — MCP server credential writes
 - [x] Add masked per-server credential entry through the profile-scoped pinned RPC; validate redacted receipts, accessible entry, stale-owner fencing, and unknown-outcome refresh gating.
-- [ ] Add passthrough environment rows to the create form and validate real Hermes profile secret persistence, MCP server startup/restart, packaged Windows behavior, and source-paired acceptance.
+- [x] Add accessible environment passthrough rows to the stdio create form; serialize names as `${NAME}`, split exact imported self-references, validate variable names/duplicates, and cover add/remove plus payload/import round-trip. Full locked suite passes 825 library + 17 automation + 3 launcher tests.
+- [x] Verify one model-driven `mcp__codex_par0263_live__probe_ping` invocation through a fresh Hermes Native chat using OpenRouter DeepSeek Flash; the transcript displayed the actual `MCP_PROBE_OK` tool result. See `artifacts/agent-ui/mcp-agent-turn-20261127.json`.
+- [ ] Validate native-UI-driven credential entry, OAuth, cold restart/recovery, packaged Windows behavior, and source-paired acceptance. The disposable profile also proves synthetic secret persistence, stdio probe, startup/reload and tool discovery; see `artifacts/agent-ui/mcp-live-profile-acceptance-20261127.json`.
