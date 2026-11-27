@@ -19459,7 +19459,7 @@ fn render_message() -> &'static str {
                 });
                 let model_picker_response = model_picker
                     .inner
-                    .accessible_name("Choose model for this chat session");
+                    .accessible_name(format!("Choose model for this chat session · {label}"));
                 if self.chat_model_picker_requested && !mutation_pending {
                     egui::Popup::open_id(
                         ui.ctx(),
@@ -39740,7 +39740,11 @@ fn render_message() -> &'static str {
                                         "Reasoning change queued for the next turn".into();
                                 }
                             }
-                            self.chat_model_options_owner = None;
+                            self.chat_model_options_owner = Some((
+                                pending.session_id.clone(),
+                                pending.profile.clone(),
+                                pending.connection_id.clone(),
+                            ));
                         }
                         Err(error) => {
                             self.chat_policy_error =
@@ -49820,7 +49824,7 @@ mod tests {
         harness.run_steps(2);
         assert!(
             harness
-                .query_by_label("Choose model for this chat session")
+                .query_by_label("Choose model for this chat session · m1 · openai")
                 .is_some()
         );
         assert!(harness.query_by_label("Reasoning · High").is_some());
@@ -50362,9 +50366,15 @@ mod tests {
             .build_ui(move |ui| draw_app.borrow_mut().composer(ui));
         harness.run_steps(2);
 
-        harness.get_by_label("Add custom model…").click();
+        harness
+            .get_by_label("Choose model for this chat session · m1 · openai")
+            .click();
         harness.run();
-        harness.get_by_label("Use m3 · OpenAI").click();
+        assert!(
+            harness.query_by_label("m2").is_some(),
+            "the configured model catalog opens"
+        );
+        harness.get_by_label("m2").click();
         harness.run();
         let (request_id, session_id, profile) = {
             let borrowed = app.borrow();
@@ -50380,6 +50390,14 @@ mod tests {
         };
         assert_eq!(app.borrow().draft, "keep this unsent prompt");
         assert_eq!(app.borrow().composer_attachments[0], original_attachment);
+        assert_eq!(
+            app.borrow()
+                .chat_policy_mutation
+                .as_ref()
+                .expect("selection is pending")
+                .payload,
+            json!({"model":"m2","provider":"openai"})
+        );
         events
             .send(GatewayEvent::ChatPolicyMutated {
                 request_id: request_id.clone(),
@@ -50410,6 +50428,14 @@ mod tests {
         );
         assert_eq!(app.borrow().draft, "keep this unsent prompt");
         assert_eq!(app.borrow().composer_attachments[0], original_attachment);
+        assert_eq!(
+            app.borrow()
+                .chat_policy_mutation
+                .as_ref()
+                .expect("selection is pending")
+                .payload,
+            json!({"model":"m2","provider":"openai"})
+        );
         events
             .send(GatewayEvent::ChatPolicyMutated {
                 request_id,
@@ -50428,6 +50454,24 @@ mod tests {
             .expect("deliver accepted model switch");
         app.borrow_mut()
             .update_gateway_discovery(&egui::Context::default());
+        assert_eq!(
+            app.borrow()
+                .chat_model_options
+                .as_ref()
+                .unwrap()
+                .model
+                .as_deref(),
+            Some("m2"),
+            "the Gateway receipt is applied before repaint"
+        );
+        harness.run();
+        assert!(app.borrow().chat_model_options_pending.is_none());
+        assert!(
+            harness
+                .query_by_label("Choose model for this chat session · m2 · openai")
+                .is_some(),
+            "confirmed session model and provider are visible to UI automation"
+        );
         assert_eq!(
             app.borrow()
                 .chat_model_options

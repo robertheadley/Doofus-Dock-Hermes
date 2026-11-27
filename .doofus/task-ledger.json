@@ -1,5 +1,5 @@
 {
-  "revision": 193,
+  "revision": 194,
   "schema_version": 1,
   "tasks": [
     {
@@ -7156,12 +7156,13 @@
                 "priority": "P1",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-20T16:39:52Z",
-              "lease_id": "cccae5f2-22ce-4b31-8aee-63827dddbfc2",
+              "last_updated_at": "2026-11-27T20:21:01Z",
+              "lease_id": "32f092db-d47e-424c-91b7-a2f2fd4238f4",
               "objective": "ui-switch-model-in-a-running-session",
               "outputs": [],
               "owner": "codex",
               "parent_task_id": "hermes-native-ui-parity",
+              "phase": "06-agent-workflow",
               "progress": {
                 "evidence_level": "not_reviewed",
                 "implementation_state": "unknown",
@@ -7171,11 +7172,12 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "tested",
+              "state": "in_progress",
               "task_id": "hermes-par-0215",
               "title": "PAR-0215 Switch model in a running session",
               "verification_evidence": [
-                "apps/hermes-native/docs/PLAN.md#Revision 279"
+                "apps/hermes-native/docs/PLAN.md#Revision 279",
+                "apps/hermes-native/src/app.rs#model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation"
               ]
             },
             {
@@ -16608,5 +16610,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-26T18:06:00Z"
+  "updated_at": "2026-11-27T20:21:01Z"
 }

@@ -5841,3 +5841,14 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: No performance change claimed.
 - risks: Callers must target the intended visible surface and stay within viewport and scroll bounds. Existing-session model mutation is not proven; this slice does not establish full feature parity.
 - follow_up: Diagnose existing-session model policy completion using a disposable Gateway session, then continue prioritized chat/tool/skills/plugins capability gaps.
+## Revision 390 — Existing-session model receipt continuity
+- id: hermes-native-chat-model-receipt-continuity-20261127
+- timestamp: 2026-11-27T20:39:47Z
+- what: Preserve the active session's model-options owner after a confirmed model or reasoning mutation, and include current model/provider in the model picker accessible name. Expanded the rendered session picker regression to select a configured catalog row and verify the receipt-updated accessible state.
+- why: Clearing the options owner immediately after a successful receipt caused the next egui frame to discard the confirmed selection and temporarily display `profile default` during an unnecessary catalog reload; this also denied agents a reliable value to wait for.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/DELIVERY_OBJECTIVE.md; apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv; docs/BACKLOG.md; docs/EXECUTION_LOGS.md
+- type: bug fix and agent accessibility improvement
+- validation: `cargo test --locked -p hermes-native --features agent-automation` passed 819 library tests, 17 automation tests, and 3 app tests; `cargo fmt --check`, HermesPage Node tests 5/5, binary build, diff check, and task validation are recorded for this slice. The interactive unit selects a real model row and consumes an accepted matching receipt; no authenticated existing-session switch was sent during this test.
+- performance: Avoids an unnecessary `model.options` round trip after a receipt; no benchmark claim.
+- risks: A successful Gateway receipt is verified in a rendered test, but live existing-session model persistence after close/reopen remains unverified. Source-paired acceptance and packaged Windows behavior remain open.
+- follow_up: Use the dedicated key in a disposable Gateway profile to select a different model in an existing session, wait for the accessible model/provider label, close/reopen, and verify persisted readback; then continue Skills/plugins/MCP and restart/recovery acceptance.

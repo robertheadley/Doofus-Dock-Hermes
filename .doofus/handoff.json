@@ -831,43 +831,31 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/agent/hermes-page.mjs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "codex",
-      "path": "apps/hermes-native/agent/hermes-page.test.mjs",
+      "path": ".doofus/task-ledger.json",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/AGENT_AUTOMATION.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md",
+      "path": "apps/hermes-native/docs/DELIVERY_OBJECTIVE.md",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "codex",
-      "path": "apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs",
+      "path": "apps/hermes-native/docs/PLAN.md",
       "status": " M"
     },
     {
       "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/ARCHITECTURE.md",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/app.rs",
       "status": " M"
     },
     {
@@ -1294,18 +1282,6 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/openrouter-manual-picker-before-2026-11-27.png",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/artifacts/agent-ui/openrouter-picker-selected-deepseek-flash-2026-11-27.json",
-      "status": "??"
-    },
-    {
-      "change_type": "untracked",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/artifacts/agent-ui/openrouter-picker-selected-deepseek-flash-2026-11-27.png",
       "status": "??"
     },
     {
@@ -1844,15 +1820,15 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked -p hermes-native --features agent-automation; cargo build --locked -p hermes-native --bin hermes-automation --features agent-automation; node --test apps/hermes-native/agent/hermes-page.test.mjs",
+    "command": "cargo test --locked -p hermes-native --features agent-automation; cargo build --locked -p hermes-native --bin hermes-automation --features agent-automation; node --test apps/hermes-native/agent/hermes-page.test.mjs; cargo fmt --manifest-path apps/hermes-native/Cargo.toml -- --check; git diff --check",
     "evidence": [
-      "apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs#coordinate_scroll_reaches_a_nested_egui_scroll_area",
-      "apps/hermes-native/artifacts/agent-ui/openrouter-picker-selected-deepseek-flash-2026-11-27.json#new_chat_model_selection",
-      "docs/EXECUTION_LOGS.md#hermes-native-coordinate-scroll-at-20261127"
+      "apps/hermes-native/src/app.rs#model_picker_preserves_unsent_composer_state_on_success_refusal_and_confirmation",
+      "apps/hermes-native/docs/PLAN.md#Working revision 390",
+      "docs/EXECUTION_LOGS.md#hermes-native-chat-model-receipt-continuity-20261127"
     ],
     "state": "tested",
-    "summary": "Added bounded coordinate viewport scrolling to headless Hermes UI automation. Rust automation suite and build passed, HermesPage Node suite passed, and live OpenRouter DeepSeek Flash selection was confirmed for a new chat. Existing-session model mutation remains unverified. Isolated profile config restored byte-for-byte; its Gateway process is absent.",
-    "verified_at": "2026-11-27T20:11:37Z"
+    "summary": "PAR-0215 now has an actual existing-session catalog-row interaction test. A successful matching receipt keeps the owner-scoped model catalog and visible provider/model label instead of evicting it into a profile-default loading state. Refusal and confirmation branches plus draft/attachment preservation remain covered. Full Rust suite, automation build, HermesPage Node tests, formatting, diff check, and task validation pass. Live existing-session persistence after reopen remains unverified.",
+    "verified_at": "2026-11-27T20:42:20Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1896,7 +1872,6 @@
     "hermes-par-0090",
     "hermes-par-0134",
     "hermes-par-0214",
-    "hermes-par-0215",
     "hermes-par-0216",
     "hermes-par-0217",
     "hermes-par-0218",
@@ -1950,7 +1925,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-27T21:11:37Z",
+    "lease_expires_at": "2026-11-27T21:42:20Z",
     "lease_id": "32f092db-d47e-424c-91b7-a2f2fd4238f4",
     "model": null,
     "ownership_state": "active",
@@ -4293,11 +4268,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "publish-headless-viewport-scroll-efc041a",
+  "last_event_id": "hermes-native-chat-model-receipt-continuity-20261127",
   "last_operation": {
-    "request_id": "publish-headless-viewport-scroll-efc041a",
+    "request_id": "hermes-native-chat-model-receipt-continuity-20261127",
     "state": "committed",
-    "type": "external_operation.state_changed"
+    "type": "task.checkpointed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -4331,7 +4306,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Publish this tested feature slice to main, then investigate existing-session model switching and continue chat/tool/skills/plugins gaps.",
+  "recommended_next_action": "Use the dedicated OpenRouter key in a disposable Hermes Gateway profile to switch an existing session to a different provider/model, wait for the accessible confirmed model/provider label, close/reopen, and verify persisted readback. Then continue Skills/plugins/MCP and restart/recovery acceptance.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4508,6 +4483,7 @@
     "hermes-par-0211",
     "hermes-par-0212",
     "hermes-par-0213",
+    "hermes-par-0215",
     "hermes-par-0221",
     "hermes-par-0222",
     "hermes-par-0223",
@@ -4746,7 +4722,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "426f0bcce41950fd2b9be22e74e02c9899a7002f14ddd507924de2c86dc53396",
+    "change_fingerprint": "16e9cf0f68c068bf8a80ed3adaf2b92012191f3e24a4943acbd3dfcd0e66496c",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -4757,31 +4733,23 @@
         "status": " M"
       },
       {
-        "path": "README.md",
+        "path": ".doofus/task-ledger.json",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/agent/hermes-page.mjs",
+        "path": "apps/hermes-native/docs/DELIVERY_OBJECTIVE.md",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/agent/hermes-page.test.mjs",
+        "path": "apps/hermes-native/docs/PLAN.md",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/AGENT_AUTOMATION.md",
+        "path": "apps/hermes-native/docs/status/IMPLEMENTATION_PROGRESS.csv",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/AGENT_AUTOMATION_PROTOCOL.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/src/bin/hermes_automation/automation_protocol.rs",
-        "status": " M"
-      },
-      {
-        "path": "docs/ARCHITECTURE.md",
+        "path": "apps/hermes-native/src/app.rs",
         "status": " M"
       },
       {
@@ -5066,14 +5034,6 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/openrouter-manual-picker-before-2026-11-27.png",
-        "status": "??"
-      },
-      {
-        "path": "apps/hermes-native/artifacts/agent-ui/openrouter-picker-selected-deepseek-flash-2026-11-27.json",
-        "status": "??"
-      },
-      {
-        "path": "apps/hermes-native/artifacts/agent-ui/openrouter-picker-selected-deepseek-flash-2026-11-27.png",
         "status": "??"
       },
       {
@@ -5433,17 +5393,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "c4297ac1c6cb1c64a33a4f64254eb6b5db7a70b1",
+    "head_commit": "8ad8665efae91c4616f5bc7c52ec43feb1350524",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1177,
+  "revision": 1179,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1177,
+  "state_revision": 1179,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
-  "task_ledger_revision": 193,
+  "task_ledger_revision": 194,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -7864,9 +7824,14 @@
       "command": "Rust: 819 library + 17 automation + 3 app tests; build passed; HermesPage: 5/5; rustfmt and git diff checks passed.",
       "result": "recorded",
       "timestamp": "2026-11-27T20:11:37Z"
+    },
+    {
+      "command": "819 library + 17 automation + 3 app tests passed; HermesPage 5/5; automation binary build passed; rustfmt, diff check, and task validation passed.",
+      "result": "recorded",
+      "timestamp": "2026-11-27T20:42:20Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-27T20:12:45Z"
+  "updated_at": "2026-11-27T20:42:20Z"
 }
