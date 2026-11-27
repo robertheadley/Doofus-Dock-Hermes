@@ -1,5 +1,5 @@
 {
-  "revision": 195,
+  "revision": 197,
   "schema_version": 1,
   "tasks": [
     {
@@ -8754,8 +8754,8 @@
                 "priority": "P2",
                 "source_snapshot": "8783054ef6cbafd86f10892241436862c1171a66"
               },
-              "last_updated_at": "2026-11-26T18:06:00Z",
-              "lease_id": "23969a39-2c11-4736-8b49-a9b9a11b3120",
+              "last_updated_at": "2026-11-27T21:37:39Z",
+              "lease_id": "32f092db-d47e-424c-91b7-a2f2fd4238f4",
               "objective": "ui-add-mcp-server-via-http-or-stdio",
               "outputs": [],
               "owner": "codex",
@@ -8770,7 +8770,7 @@
               },
               "size_units": null,
               "started_at": null,
-              "state": "tested",
+              "state": "in_progress",
               "task_id": "hermes-par-0263",
               "title": "PAR-0263 Add MCP server via HTTP or stdio",
               "verification_evidence": [
@@ -8778,7 +8778,14 @@
                 "apps/hermes-native/src/app.rs#mcp_import_ui_previews_multiple_servers_and_loads_without_saving",
                 "apps/hermes-native/src/app.rs#mcp_import_rejects_configs_the_review_form_cannot_preserve",
                 "apps/hermes-native/src/mcp_import.rs#parses_wrapped_and_bare_json_maps",
-                "apps/hermes-native/docs/PLAN.md#Revision 389"
+                "apps/hermes-native/docs/PLAN.md#Revision 389",
+                "apps/hermes-native/docs/PLAN.md#Revision 256",
+                "apps/hermes-native/src/app.rs#mcp_server_api_key_is_entered_through_accessible_control_and_confirmed_without_echo",
+                "apps/hermes-native/src/app.rs#mcp_server_api_key_unknown_outcome_requires_inventory_refresh_before_retry",
+                "apps/hermes-native/src/gateway.rs#mcp_server_set_api_key_uses_profile_scoped_rpc_and_redacted_receipt",
+                "apps/hermes-native/src/gateway.rs#mcp_server_set_api_key_redacts_gateway_errors_that_echo_the_secret",
+                "apps/hermes-native/docs/PLAN.md#Revision 392",
+                "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv#PAR-0263"
               ]
             },
             {
@@ -16611,5 +16618,5 @@
       "verification_evidence": []
     }
   ],
-  "updated_at": "2026-11-27T20:58:39Z"
+  "updated_at": "2026-11-27T21:37:39Z"
 }

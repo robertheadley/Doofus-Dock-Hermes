@@ -837,12 +837,30 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
+      "path": "apps/hermes-native/README.md",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/BACKLOG.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
+      "path": "apps/hermes-native/docs/PLAN.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "codex",
       "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
       "status": " M"
     },
@@ -854,8 +872,8 @@
     },
     {
       "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/BACKLOG.md",
+      "owner": "codex",
+      "path": "apps/hermes-native/src/gateway.rs",
       "status": " M"
     },
     {
@@ -1814,13 +1832,17 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test --locked -p hermes-native --features agent-automation; cargo fmt --manifest-path apps/hermes-native/Cargo.toml -- --check; git diff --check; python apps/hermes-native/tools/doofus_task.py validate",
+    "command": "cargo test --locked -p hermes-native --features agent-automation --quiet; cargo build --locked -p hermes-native --features agent-automation; cargo fmt --check; git diff --check; python apps/hermes-native/tools/doofus_task.py validate",
     "evidence": [
-      "apps/hermes-native/src/app.rs#automation_state_reports_each_session_gateway_identity_without_connection_secrets"
+      "apps/hermes-native/src/app.rs#mcp_server_api_key_is_entered_through_accessible_control_and_confirmed_without_echo",
+      "apps/hermes-native/src/app.rs#mcp_server_api_key_unknown_outcome_requires_inventory_refresh_before_retry",
+      "apps/hermes-native/src/gateway.rs#mcp_server_set_api_key_uses_profile_scoped_rpc_and_redacted_receipt",
+      "apps/hermes-native/src/gateway.rs#mcp_server_set_api_key_redacts_gateway_errors_that_echo_the_secret",
+      "apps/hermes-native/docs/PLAN.md#Revision 392"
     ],
     "state": "in_progress",
-    "summary": "PAR-0215 now records the exact redacted session, endpoint, and runtime identity operands in automation snapshots; focused and full test suites pass. Live model receipt and close/reopen persistence remain unverified.",
-    "verified_at": "2026-11-27T20:58:55Z"
+    "summary": "PAR-0263 API key entry is headlessly reachable, profile-scoped, redacted, and guarded against blind retry after uncertain writes; native build/full tests pass; live persistence remains open.",
+    "verified_at": "2026-11-27T21:47:24Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1881,7 +1903,6 @@
     "hermes-par-0260",
     "hermes-par-0261",
     "hermes-par-0262",
-    "hermes-par-0263",
     "hermes-par-0264",
     "hermes-par-0265",
     "hermes-par-0266",
@@ -1917,7 +1938,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-27T21:58:55Z",
+    "lease_expires_at": "2026-11-27T22:47:24Z",
     "lease_id": "32f092db-d47e-424c-91b7-a2f2fd4238f4",
     "model": null,
     "ownership_state": "active",
@@ -4260,9 +4281,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "861360e8-7859-4396-83c2-314f79406907",
+  "last_event_id": "hermes-par0263-final-validation-20261127",
   "last_operation": {
-    "request_id": "861360e8-7859-4396-83c2-314f79406907",
+    "request_id": "hermes-par0263-final-validation-20261127",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -4298,7 +4319,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "After identifying the secure credential source, retest a fresh disposable Gateway session and capture the confirmed model receipt plus close/reopen readback. If the credential remains unavailable, continue the highest-priority Skills/MCP feature gap work.",
+  "recommended_next_action": "Use an isolated disposable Gateway profile to verify the new credential is persisted and an MCP server starts and exposes tools; then add environment passthrough rows and continue the next highest-priority agent workflow gaps.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4506,6 +4527,7 @@
     "hermes-par-0248",
     "hermes-par-0249",
     "hermes-par-0250",
+    "hermes-par-0263",
     "hermes-par-0269",
     "hermes-par-0270",
     "hermes-par-0271",
@@ -4714,7 +4736,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "aa0588ffcea7f146b920789e90d86ba1788ce8c34d117af78af0cb2e7be28c4c",
+    "change_fingerprint": "7974201841dc9baba4d1fdfe7f29c4eff0e9b0e42a7cb79f6b6e3f9c7e4ce0b0",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -4726,6 +4748,18 @@
       },
       {
         "path": ".doofus/task-ledger.json",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/README.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
+        "status": " M"
+      },
+      {
+        "path": "apps/hermes-native/docs/BACKLOG.md",
         "status": " M"
       },
       {
@@ -4741,7 +4775,7 @@
         "status": " M"
       },
       {
-        "path": "docs/BACKLOG.md",
+        "path": "apps/hermes-native/src/gateway.rs",
         "status": " M"
       },
       {
@@ -5381,17 +5415,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "eae600aab02eae5c0e372ffd2fd27ce3e0bda681",
+    "head_commit": "5d76c9e6609e4d3098f4ba1460167587ff3e1e51",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1181,
+  "revision": 1185,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1181,
+  "state_revision": 1185,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
-  "task_ledger_revision": 195,
+  "task_ledger_revision": 197,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -7822,9 +7856,19 @@
       "command": "automation_state_reports_each_session_gateway_identity_without_connection_secrets; full agent-automation test suite",
       "result": "PASS: focused diagnostic test; 820 library + 17 automation + 3 app tests; rustfmt and task validation pass.",
       "timestamp": "2026-11-27T20:58:55Z"
+    },
+    {
+      "command": "full locked agent-automation suite; focused MCP API key app and Gateway tests",
+      "result": "PASS: 824 library + 17 automation + 3 launcher tests; focused app 2/2 and Gateway 2/2; formatting and diff checks pass; PAR-0263 remains partial with live_runtime_state=not_verified and source_pair_state=pending.",
+      "timestamp": "2026-11-27T21:37:54Z"
+    },
+    {
+      "command": "full locked Hermes Native agent-automation suite, rendered MCP key/refresh UI tests, Gateway WebSocket contract/redaction tests",
+      "result": "PASS: 824 library + 17 automation + 3 launcher tests; focused UI 2/2, Gateway 2/2; cargo build, rustfmt, diff check, CSV/JSONL checks, and task validation pass. PAR-0263 partial; live runtime not verified; source-pair pending.",
+      "timestamp": "2026-11-27T21:47:24Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-27T20:58:55Z"
+  "updated_at": "2026-11-27T21:47:24Z"
 }

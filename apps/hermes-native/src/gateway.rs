@@ -2729,6 +2729,16 @@ pub enum GatewayEvent {
         authority_epoch: u64,
         result: Result<McpServerSummary, String>,
     },
+    McpServerApiKeySet {
+        request_id: String,
+        name: String,
+        env_var: String,
+        outcome_unknown: bool,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+        result: Result<McpServerSummary, String>,
+    },
     McpServerRemoved {
         request_id: String,
         name: String,
@@ -2994,6 +3004,15 @@ enum GatewayCommand {
         name: String,
         config: serde_json::Value,
         bearer_token: Option<String>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    },
+    SetMcpServerApiKey {
+        request_id: String,
+        name: String,
+        value: Zeroizing<String>,
+        env_var: Option<String>,
         profile_id: String,
         instance_id: String,
         authority_epoch: u64,
@@ -5113,6 +5132,89 @@ impl GatewayDiscovery {
     }
 
     #[cfg(test)]
+    pub(crate) fn for_test_mcp_server_api_key() -> (
+        Self,
+        Receiver<(
+            String,
+            String,
+            Zeroizing<String>,
+            Option<String>,
+            String,
+            String,
+            u64,
+        )>,
+        mpsc::Sender<GatewayEvent>,
+        Receiver<String>,
+    ) {
+        let (_status_sender, status_receiver) = mpsc::channel();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = mpsc::channel();
+        let (plugin_update_all_sender, _plugin_update_all_receiver) = mpsc::channel();
+        let (http_sender, http_receiver) = mpsc::channel();
+        let (project_tree_sender, _project_tree_receiver) = mpsc::channel();
+        let (cron_trigger_sender, _cron_trigger_receiver) = mpsc::sync_channel(1);
+        let (artifact_sender, _artifact_receiver) = mpsc::channel();
+        let (artifact_download_sender, _artifact_download_receiver) = mpsc::channel();
+        let (artifact_image_sender, _artifact_image_receiver) = mpsc::channel();
+        let (request_sender, request_receiver) = mpsc::channel();
+        let (http_request_sender, http_request_receiver) = mpsc::channel();
+        thread::spawn(move || {
+            while let Ok(command) = command_receiver.recv() {
+                if let GatewayCommand::SetMcpServerApiKey {
+                    request_id,
+                    name,
+                    value,
+                    env_var,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                } = command
+                    && request_sender
+                        .send((
+                            request_id,
+                            name,
+                            value,
+                            env_var,
+                            profile_id,
+                            instance_id,
+                            authority_epoch,
+                        ))
+                        .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        thread::spawn(move || {
+            while let Ok(command) = http_receiver.recv() {
+                if let GatewayHttpCommand::LoadMcpServers { request_id } = command
+                    && http_request_sender.send(request_id).is_err()
+                {
+                    break;
+                }
+            }
+        });
+        (
+            Self {
+                status_receiver,
+                event_receiver,
+                connection_id: None,
+                command_sender,
+                plugin_update_all_sender,
+                http_sender,
+                project_tree_sender,
+                cron_trigger_sender,
+                artifact_sender,
+                artifact_download_sender,
+                artifact_image_sender,
+            },
+            request_receiver,
+            event_sender,
+            http_request_receiver,
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) fn for_test_mcp_server_remove() -> (
         Self,
         Receiver<(String, String, String, String, u64)>,
@@ -7082,6 +7184,29 @@ impl GatewayDiscovery {
             .map_err(|_| "Hermes gateway connection has closed".to_owned())
     }
 
+    pub fn set_mcp_server_api_key(
+        &self,
+        request_id: String,
+        name: String,
+        value: Zeroizing<String>,
+        env_var: Option<String>,
+        profile_id: String,
+        instance_id: String,
+        authority_epoch: u64,
+    ) -> Result<(), String> {
+        self.command_sender
+            .send(GatewayCommand::SetMcpServerApiKey {
+                request_id,
+                name,
+                value,
+                env_var,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            })
+            .map_err(|_| "Hermes gateway connection has closed".to_owned())
+    }
+
     pub fn remove_mcp_server(
         &self,
         request_id: String,
@@ -8867,6 +8992,61 @@ fn gateway_actor_with_replay(
                     .send(GatewayEvent::McpServerAdded {
                         request_id,
                         name,
+                        profile_id,
+                        instance_id,
+                        authority_epoch,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Ok(GatewayCommand::SetMcpServerApiKey {
+                request_id,
+                name,
+                value,
+                env_var,
+                profile_id,
+                instance_id,
+                authority_epoch,
+            }) => {
+                let mut receipt_env_var = env_var.clone().unwrap_or_default();
+                let mut outcome_unknown = false;
+                let result = match mcp_server_set_api_key_params(&name, value, env_var, &profile_id)
+                {
+                    Err(_) => Err("Hermes MCP server credential update failed".to_owned()),
+                    Ok(params) => match rpc_with_events_timeout_outcome(
+                        socket,
+                        next_request_id,
+                        "mcp.servers.set_api_key",
+                        params,
+                        Duration::from_secs(60),
+                        Some(&events),
+                    ) {
+                        Err(error) => {
+                            outcome_unknown = error.is_unknown();
+                            Err("Hermes MCP server credential update failed".to_owned())
+                        }
+                        Ok(value) => match parse_mcp_server_set_api_key_result(value, &name) {
+                            Ok((env_var, summary)) => {
+                                receipt_env_var = env_var;
+                                Ok(summary)
+                            }
+                            Err(_) => {
+                                outcome_unknown = true;
+                                Err("Hermes MCP server credential update failed".to_owned())
+                            }
+                        },
+                    },
+                };
+                next_request_id = next_request_id.saturating_add(1);
+                if events
+                    .send(GatewayEvent::McpServerApiKeySet {
+                        request_id,
+                        name,
+                        env_var: receipt_env_var,
+                        outcome_unknown,
                         profile_id,
                         instance_id,
                         authority_epoch,
@@ -18782,6 +18962,61 @@ fn mcp_server_add_params(
         params["bearer_token"] = serde_json::Value::String(token);
     }
     session_profile_params(params, Some(profile_id))
+}
+
+fn mcp_server_set_api_key_params(
+    name: &str,
+    value: Zeroizing<String>,
+    env_var: Option<String>,
+    profile_id: &str,
+) -> Result<serde_json::Value, String> {
+    let valid_env_var = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 256
+            && value.bytes().enumerate().all(|(index, byte)| {
+                byte == b'_'
+                    || byte.is_ascii_alphanumeric() && (index > 0 || !byte.is_ascii_digit())
+            })
+    };
+    if name.trim().is_empty()
+        || name.trim() != name
+        || name.len() > 512
+        || name.chars().any(char::is_control)
+        || value.is_empty()
+        || value.len() > 16_384
+        || value.chars().any(char::is_control)
+        || env_var
+            .as_deref()
+            .is_some_and(|env_var| !valid_env_var(env_var))
+    {
+        return Err("MCP API key update request is invalid or oversized".into());
+    }
+    let mut params = serde_json::json!({ "name": name, "value": value.as_str() });
+    if let Some(env_var) = env_var {
+        params["env_var"] = serde_json::Value::String(env_var);
+    }
+    session_profile_params(params, Some(profile_id))
+}
+
+fn parse_mcp_server_set_api_key_result(
+    value: serde_json::Value,
+    requested_name: &str,
+) -> Result<(String, McpServerSummary), String> {
+    let env_var = value
+        .get("env_var")
+        .and_then(serde_json::Value::as_str)
+        .filter(|name| {
+            !name.is_empty()
+                && name.len() <= 256
+                && name.bytes().enumerate().all(|(index, byte)| {
+                    byte == b'_'
+                        || byte.is_ascii_alphanumeric() && (index > 0 || !byte.is_ascii_digit())
+                })
+        })
+        .ok_or_else(|| "Hermes omitted or invalidated the MCP API key environment name".to_owned())?
+        .to_owned();
+    let server = parse_mcp_server_add_result(value, requested_name)?;
+    Ok((env_var, server))
 }
 
 fn parse_mcp_server_add_result(
@@ -34461,6 +34696,170 @@ mod tests {
                 && instance_id == "gateway-home-bot" && transport == "http"
                 && url == "https://mcp.example/mcp"
         ));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn mcp_server_set_api_key_uses_profile_scoped_rpc_and_redacted_receipt() {
+        const TEST_SECRET: &str = "synthetic-mcp-api-key-secret";
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read MCP API key set") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse MCP API key set"),
+                other => panic!("expected MCP API key set text, got {other:?}"),
+            };
+            assert_eq!(request["method"], "mcp.servers.set_api_key");
+            assert_eq!(
+                request["params"],
+                json!({
+                    "name":"docs",
+                    "value":TEST_SECRET,
+                    "env_var":"DOCS_ACCESS_TOKEN",
+                    "profile":"home-bot"
+                })
+            );
+            let id = request["id"].as_u64().expect("RPC id");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":id,
+                        "result":{
+                            "ok":true,
+                            "name":"docs",
+                            "env_var":"DOCS_ACCESS_TOKEN",
+                            "server":{
+                                "name":"docs",
+                                "transport":"http",
+                                "url":"https://mcp.example/mcp",
+                                "args":[],
+                                "env":[],
+                                "enabled":true,
+                                "tools":[]
+                            }
+                        }
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("return MCP API key receipt");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::SetMcpServerApiKey {
+                request_id: "mcp-set-key-1".into(),
+                name: "docs".into(),
+                value: Zeroizing::new(TEST_SECRET.into()),
+                env_var: Some("DOCS_ACCESS_TOKEN".into()),
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+            })
+            .expect("queue MCP API key update");
+        let event = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("MCP API key receipt");
+        assert!(matches!(
+            &event,
+            GatewayEvent::McpServerApiKeySet {
+                request_id,
+                name,
+                env_var,
+                outcome_unknown,
+                profile_id,
+                instance_id,
+                authority_epoch: 12,
+                result: Ok(McpServerSummary { transport, url: Some(url), .. }),
+            } if request_id == "mcp-set-key-1" && name == "docs"
+                && env_var == "DOCS_ACCESS_TOKEN" && profile_id == "home-bot"
+                && !outcome_unknown && instance_id == "gateway-home-bot" && transport == "http"
+                && url == "https://mcp.example/mcp"
+        ));
+        assert!(!format!("{event:?}").contains(TEST_SECRET));
+        drop(command_tx);
+        actor.join().expect("gateway actor exits after peer close");
+        server.join().expect("fixture server exits");
+    }
+
+    #[test]
+    fn mcp_server_set_api_key_redacts_gateway_errors_that_echo_the_secret() {
+        const TEST_SECRET: &str = "synthetic-mcp-error-secret";
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fixture gateway");
+        let address = listener.local_addr().expect("fixture address");
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept fixture client");
+            let mut socket = tungstenite::accept(stream).expect("accept WebSocket");
+            let request: serde_json::Value = match socket.read().expect("read MCP API key set") {
+                Message::Text(text) => serde_json::from_str(&text).expect("parse MCP API key set"),
+                other => panic!("expected MCP API key set text, got {other:?}"),
+            };
+            assert_eq!(request["method"], "mcp.servers.set_api_key");
+            let id = request["id"].as_u64().expect("RPC id");
+            socket
+                .send(Message::Text(
+                    json!({
+                        "jsonrpc":"2.0",
+                        "id":id,
+                        "error":{"code":4001,"message":format!("rejected value {TEST_SECRET}")}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .expect("return MCP API key error");
+            socket.close(None).expect("close fixture WebSocket");
+        });
+        let (mut socket, _) =
+            tungstenite::connect(format!("ws://{address}/api/ws")).expect("connect fixture client");
+        if let tungstenite::stream::MaybeTlsStream::Plain(stream) = socket.get_mut() {
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("configure fixture client read timeout");
+        }
+        let (command_tx, command_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        let actor = thread::spawn(move || gateway_actor(&mut socket, &command_rx, event_tx));
+        command_tx
+            .send(GatewayCommand::SetMcpServerApiKey {
+                request_id: "mcp-set-key-error-1".into(),
+                name: "docs".into(),
+                value: Zeroizing::new(TEST_SECRET.into()),
+                env_var: None,
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+            })
+            .expect("queue MCP API key update");
+        let event = event_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("MCP API key error receipt");
+        assert!(matches!(
+            &event,
+            GatewayEvent::McpServerApiKeySet {
+                request_id,
+                env_var,
+                outcome_unknown,
+                result: Err(error),
+                ..
+            } if request_id == "mcp-set-key-error-1" && env_var.is_empty()
+                && !outcome_unknown
+                && error == "Hermes MCP server credential update failed"
+        ));
+        assert!(!format!("{event:?}").contains(TEST_SECRET));
         drop(command_tx);
         actor.join().expect("gateway actor exits after peer close");
         server.join().expect("fixture server exits");

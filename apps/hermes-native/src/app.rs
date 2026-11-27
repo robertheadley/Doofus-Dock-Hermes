@@ -935,8 +935,42 @@ struct PendingMcpServerAdd {
     request_id: String,
     name: String,
     profile_id: String,
+    connection_id: String,
     instance_id: String,
     authority_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+struct PendingMcpServerApiKey {
+    request_id: String,
+    name: String,
+    env_var: Option<String>,
+    profile_id: String,
+    connection_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+}
+
+struct McpServerApiKeyDraft {
+    name: String,
+    profile_id: String,
+    connection_id: String,
+    instance_id: String,
+    authority_epoch: u64,
+    value: Zeroizing<String>,
+    show_value: bool,
+}
+
+impl std::fmt::Debug for McpServerApiKeyDraft {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("McpServerApiKeyDraft")
+            .field("name", &self.name)
+            .field("profile_id", &self.profile_id)
+            .field("connection_id", &self.connection_id)
+            .field("secret", &"[redacted]")
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1311,6 +1345,17 @@ fn parse_mcp_key_value_lines(
         );
     }
     Ok(values)
+}
+
+fn valid_mcp_env_var(name: &str) -> bool {
+    if name.is_empty() || name.len() > 256 {
+        return false;
+    }
+    let mut characters = name.chars();
+    characters
+        .next()
+        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+        && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
 }
 
 fn mcp_server_add_draft_payload(
@@ -2777,6 +2822,9 @@ pub struct HermesNativeApp {
     mcp_server_import_selection: usize,
     mcp_server_import_error: Option<String>,
     pending_mcp_server_add: Option<PendingMcpServerAdd>,
+    mcp_server_api_key_draft: Option<McpServerApiKeyDraft>,
+    mcp_server_api_key_error: Option<String>,
+    pending_mcp_server_api_key: Option<PendingMcpServerApiKey>,
     mcp_server_removal_confirmation: Option<McpServerRemovalConfirmation>,
     pending_mcp_server_removals: BTreeMap<String, PendingMcpServerRemoval>,
     agent_plugins: Option<AgentPluginsSnapshot>,
@@ -5407,6 +5455,9 @@ fn render_message() -> &'static str {
             mcp_server_import_selection: 0,
             mcp_server_import_error: None,
             pending_mcp_server_add: None,
+            mcp_server_api_key_draft: None,
+            mcp_server_api_key_error: None,
+            pending_mcp_server_api_key: None,
             mcp_server_removal_confirmation: None,
             pending_mcp_server_removals: BTreeMap::new(),
             agent_plugins: None,
@@ -16101,16 +16152,39 @@ fn render_message() -> &'static str {
                 });
                 ui.add_space(12.0);
                 ui.separator();
-                ui.label(
-                    RichText::new(format!(
-                        "MCP servers · {}",
-                        self.mcp_servers
-                            .as_ref()
-                            .map_or(0, |snapshot| snapshot.servers.len())
-                    ))
-                    .strong()
-                    .color(TEXT),
-                );
+                let mut refresh_mcp_servers = false;
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "MCP servers · {}",
+                            self.mcp_servers
+                                .as_ref()
+                                .map_or(0, |snapshot| snapshot.servers.len())
+                        ))
+                        .strong()
+                        .color(TEXT),
+                    );
+                    if ui
+                        .add_enabled(
+                            self.gateway_connected && !self.mcp_servers_pending,
+                            egui::Button::new(if self.mcp_servers_pending {
+                                "Refreshing…"
+                            } else {
+                                "Refresh servers"
+                            }),
+                        )
+                        .accessible_name("Refresh MCP servers")
+                        .clicked()
+                    {
+                        refresh_mcp_servers = true;
+                    }
+                });
+                if refresh_mcp_servers {
+                    self.mcp_servers = None;
+                    self.mcp_servers_error = None;
+                    self.load_mcp_servers()
+                        .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
+                }
                 if ui
                     .button(if self.mcp_server_add_open {
                         "Cancel add"
@@ -16409,6 +16483,9 @@ fn render_message() -> &'static str {
                         let mut toggle_server = None;
                         let mut test_server = None;
                         let mut remove_server = None;
+                        let mut set_api_key_for = None;
+                        let mut submit_api_key = false;
+                        let mut cancel_api_key = false;
                         for server in mcp_rows {
                             let update_pending =
                                 self.pending_mcp_server_updates.contains_key(&server.name);
@@ -16442,6 +16519,20 @@ fn render_message() -> &'static str {
                                     if toggle.changed() {
                                         toggle_server =
                                             Some((server.name.clone(), enabled, server.enabled));
+                                    }
+                                    if ui
+                                        .add_enabled(
+                                            self.gateway_connected
+                                                && self.pending_mcp_server_api_key.is_none(),
+                                            egui::Button::new("Set API key"),
+                                        )
+                                        .accessible_name(format!(
+                                            "Set API key for MCP server {}",
+                                            server.name
+                                        ))
+                                        .clicked()
+                                    {
+                                        set_api_key_for = Some(server.name.clone());
                                     }
                                     if ui
                                         .add_enabled(
@@ -16499,6 +16590,63 @@ fn render_message() -> &'static str {
                                             .size(TOOL_TEXT_SIZE)
                                             .color(MUTED),
                                     );
+                                }
+                                let credential_pending = self
+                                    .pending_mcp_server_api_key
+                                    .as_ref()
+                                    .is_some_and(|pending| pending.name == server.name);
+                                if self
+                                    .mcp_server_api_key_draft
+                                    .as_ref()
+                                    .is_some_and(|draft| draft.name == server.name)
+                                {
+                                    ui.separator();
+                                    ui.label("Stored in Hermes profile secrets; only the environment-variable reference is saved in server configuration.");
+                                    if let Some(draft) = self.mcp_server_api_key_draft.as_mut() {
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut *draft.value)
+                                                .password(!draft.show_value)
+                                                .hint_text("API key / secret"),
+                                        )
+                                        .accessible_name(format!(
+                                            "MCP API key for {}",
+                                            draft.name
+                                        ));
+                                        ui.horizontal(|ui| {
+                                            ui.checkbox(&mut draft.show_value, "Show API key");
+                                            if ui
+                                                .add_enabled(
+                                                    self.gateway_connected
+                                                        && !credential_pending
+                                                        && !draft.value.trim().is_empty(),
+                                                    egui::Button::new(if credential_pending {
+                                                        "Saving…"
+                                                    } else {
+                                                        "Save API key"
+                                                    }),
+                                                )
+                                                .accessible_name(format!(
+                                                    "Save MCP API key for {}",
+                                                    draft.name
+                                                ))
+                                                .clicked()
+                                            {
+                                                submit_api_key = true;
+                                            }
+                                            if ui
+                                                .add_enabled(
+                                                    !credential_pending,
+                                                    egui::Button::new("Cancel"),
+                                                )
+                                                .clicked()
+                                            {
+                                                cancel_api_key = true;
+                                            }
+                                        });
+                                    }
+                                    if let Some(error) = &self.mcp_server_api_key_error {
+                                        ui.label(RichText::new(error).color(Color32::LIGHT_RED));
+                                    }
                                 }
                                 if update_pending {
                                     ui.label(
@@ -16590,6 +16738,21 @@ fn render_message() -> &'static str {
                                 RegisteredUiAction::RequestMcpServerRemoval { name },
                             )
                             .unwrap_or_else(|error| self.mcp_servers_error = Some(error));
+                        }
+                        if let Some(name) = set_api_key_for {
+                            self.open_mcp_server_api_key_dialog(&name)
+                                .unwrap_or_else(|error| {
+                                    self.mcp_server_api_key_error = Some(error)
+                                });
+                        }
+                        if cancel_api_key {
+                            self.mcp_server_api_key_draft = None;
+                            self.mcp_server_api_key_error = None;
+                        }
+                        if submit_api_key {
+                            self.submit_mcp_server_api_key().unwrap_or_else(|error| {
+                                self.mcp_server_api_key_error = Some(error)
+                            });
                         }
                     }
                 }
@@ -30930,6 +31093,7 @@ fn render_message() -> &'static str {
             request_id: request_id.clone(),
             name: name.clone(),
             profile_id: endpoint.profile_id.clone(),
+            connection_id: self.active_gateway_connection_id().to_owned(),
             instance_id: endpoint.instance_id.clone(),
             authority_epoch: endpoint.authority_epoch,
         };
@@ -30948,6 +31112,109 @@ fn render_message() -> &'static str {
         self.pending_mcp_server_add = Some(pending);
         self.mcp_server_add_error = None;
         self.status = "Adding MCP server…".into();
+        Ok(())
+    }
+
+    fn open_mcp_server_api_key_dialog(&mut self, name: &str) -> Result<(), String> {
+        if !self.gateway_connected {
+            return Err("Connect to Hermes before setting an MCP server credential".into());
+        }
+        if self.pending_mcp_server_api_key.is_some() {
+            return Err("An MCP server credential update is already pending".into());
+        }
+        if !self
+            .mcp_servers
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.servers.iter().any(|server| server.name == name))
+        {
+            return Err("Load the MCP server inventory before setting its credential".into());
+        }
+        let Some(endpoint) = self.gateway_endpoint.as_ref() else {
+            return Err("Hermes Gateway endpoint is unavailable".into());
+        };
+        self.mcp_server_api_key_draft = Some(McpServerApiKeyDraft {
+            name: name.to_owned(),
+            profile_id: endpoint.profile_id.clone(),
+            connection_id: self.active_gateway_connection_id().to_owned(),
+            instance_id: endpoint.instance_id.clone(),
+            authority_epoch: endpoint.authority_epoch,
+            value: Zeroizing::new(String::new()),
+            show_value: false,
+        });
+        self.mcp_server_api_key_error = None;
+        Ok(())
+    }
+
+    fn submit_mcp_server_api_key(&mut self) -> Result<(), String> {
+        if self.pending_mcp_server_api_key.is_some() {
+            return Err("An MCP server credential update is already pending".into());
+        }
+        let Some(draft) = self.mcp_server_api_key_draft.take() else {
+            return Err("Choose an MCP server before setting its credential".into());
+        };
+        if draft.value.trim().is_empty()
+            || draft.value.len() > 16_384
+            || draft.value.chars().any(char::is_control)
+        {
+            return Err(
+                "Enter a credential up to 16,384 characters without control characters".into(),
+            );
+        }
+        if !self.gateway_connected
+            || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                endpoint.profile_id != draft.profile_id
+                    || endpoint.instance_id != draft.instance_id
+                    || endpoint.authority_epoch != draft.authority_epoch
+                    || self.active_gateway_connection_id() != draft.connection_id
+            })
+        {
+            return Err(
+                "Gateway or profile changed while editing this MCP credential; reopen the form"
+                    .into(),
+            );
+        }
+        if !self.mcp_servers.as_ref().is_some_and(|snapshot| {
+            snapshot
+                .servers
+                .iter()
+                .any(|server| server.name == draft.name)
+        }) {
+            return Err("MCP server is no longer in the loaded profile inventory".into());
+        }
+        let Some(gateway) = self.gateway_discovery.as_ref() else {
+            return Err("Hermes Gateway connection is unavailable".into());
+        };
+        let McpServerApiKeyDraft {
+            name,
+            profile_id,
+            connection_id,
+            instance_id,
+            authority_epoch,
+            value,
+            ..
+        } = draft;
+        let request_id = operation_id("mcp-server-api-key");
+        let pending = PendingMcpServerApiKey {
+            request_id: request_id.clone(),
+            name: name.clone(),
+            env_var: None,
+            profile_id: profile_id.clone(),
+            connection_id: connection_id.clone(),
+            instance_id: instance_id.clone(),
+            authority_epoch,
+        };
+        gateway.set_mcp_server_api_key(
+            request_id,
+            name,
+            value,
+            None,
+            profile_id,
+            instance_id,
+            authority_epoch,
+        )?;
+        self.pending_mcp_server_api_key = Some(pending);
+        self.mcp_server_api_key_error = None;
+        self.status = "Saving MCP credential in Hermes profile secrets…".into();
         Ok(())
     }
 
@@ -41544,6 +41811,18 @@ fn render_message() -> &'static str {
                         Ok(snapshot) => {
                             self.mcp_servers = Some(snapshot);
                             self.mcp_servers_error = None;
+                            if self
+                                .mcp_server_api_key_error
+                                .as_deref()
+                                .is_some_and(|error| {
+                                    error.starts_with("MCP credential save outcome is unknown")
+                                })
+                            {
+                                self.mcp_server_api_key_error = None;
+                                self.status =
+                                    "MCP server inventory refreshed; credential update may be retried"
+                                        .into();
+                            }
                         }
                         Err(error) => self.mcp_servers_error = Some(error),
                     }
@@ -41995,6 +42274,7 @@ fn render_message() -> &'static str {
                     if pending.request_id != request_id
                         || pending.name != name
                         || pending.profile_id != profile_id
+                        || pending.connection_id != self.active_gateway_connection_id()
                         || pending.instance_id != instance_id
                         || pending.authority_epoch != authority_epoch
                         || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
@@ -42020,6 +42300,75 @@ fn render_message() -> &'static str {
                         Err(error) => {
                             self.mcp_server_add_error = Some(error.clone());
                             self.status = format!("Could not add MCP server {name}: {error}");
+                        }
+                    }
+                }
+                GatewayEvent::McpServerApiKeySet {
+                    request_id,
+                    name,
+                    env_var,
+                    outcome_unknown,
+                    profile_id,
+                    instance_id,
+                    authority_epoch,
+                    result,
+                } => {
+                    let Some(pending) = self.pending_mcp_server_api_key.as_ref() else {
+                        continue;
+                    };
+                    if pending.request_id != request_id
+                        || pending.name != name
+                        || pending
+                            .env_var
+                            .as_deref()
+                            .is_some_and(|expected| expected != env_var)
+                        || pending.profile_id != profile_id
+                        || pending.connection_id != self.active_gateway_connection_id()
+                        || pending.instance_id != instance_id
+                        || pending.authority_epoch != authority_epoch
+                        || self.gateway_endpoint.as_ref().is_none_or(|endpoint| {
+                            endpoint.profile_id != profile_id
+                                || endpoint.instance_id != instance_id
+                                || endpoint.authority_epoch != authority_epoch
+                        })
+                    {
+                        continue;
+                    }
+                    self.pending_mcp_server_api_key = None;
+                    self.mcp_server_api_key_draft = None;
+                    match result {
+                        Ok(server) if valid_mcp_env_var(&env_var) => {
+                            let servers = self.mcp_servers.get_or_insert_with(Default::default);
+                            servers.servers.retain(|entry| entry.name != server.name);
+                            servers.servers.push(server);
+                            self.mcp_server_api_key_error = None;
+                            self.status = format!(
+                                "Saved MCP credential for {name} as environment variable {env_var}"
+                            );
+                        }
+                        Ok(_) => {
+                            let error =
+                                "Hermes returned an invalid credential environment-variable name"
+                                    .to_owned();
+                            self.mcp_server_api_key_error = Some(error.clone());
+                            self.status =
+                                format!("Could not confirm MCP credential for {name}: {error}");
+                        }
+                        Err(error) => {
+                            let message = if outcome_unknown {
+                                "MCP credential save outcome is unknown; refresh server inventory before retrying".to_owned()
+                            } else {
+                                error
+                            };
+                            if outcome_unknown {
+                                self.mcp_servers = None;
+                                self.mcp_servers_error = Some(
+                                    "Credential write outcome is unknown; refresh MCP server inventory before retrying".into(),
+                                );
+                            }
+                            self.mcp_server_api_key_error = Some(message.clone());
+                            self.status =
+                                format!("Could not save MCP credential for {name}: {message}");
                         }
                     }
                 }
@@ -42230,6 +42579,12 @@ fn render_message() -> &'static str {
                             "MCP server update outcome is unknown after Gateway disconnect; refresh the inventory before retrying".into(),
                         );
                     }
+                    if self.pending_mcp_server_api_key.take().is_some() {
+                        let note = "MCP credential save outcome is unknown after Gateway disconnect; refresh the profile inventory before retrying";
+                        self.mcp_server_api_key_error = Some(note.into());
+                        disconnect_uncertainty.push(note.into());
+                    }
+                    self.mcp_server_api_key_draft = None;
                     self.pending_mcp_server_tests.clear();
                     self.pending_mcp_server_add = None;
                     self.pending_mcp_server_removals.clear();
@@ -50169,6 +50524,9 @@ mod tests {
     fn profile_main_model_settings_confirm_before_saving_and_keep_chat_overrides_separate() {
         let (mut native, profile_dir) = isolated_app();
         native.gateway_connected = true;
+        native.route = AppRoute::Capabilities;
+        native.capabilities_tab = CapabilitiesTab::Connectors;
+        native.load_connectors_fixture_for_automation();
         native.gateway_endpoint = Some(GatewayEndpoint {
             profile_id: "work".into(),
             instance_id: "gateway-work".into(),
@@ -50199,6 +50557,11 @@ mod tests {
         native.gateway_discovery = Some(gateway);
 
         let app = Rc::new(RefCell::new(native));
+        let draw_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(move |ui| draw_app.borrow_mut().draw(ui));
+        harness.run_steps(2);
         let draw_app = app.clone();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1000.0, 520.0))
@@ -71292,6 +71655,249 @@ mod tests {
         assert!(mcp_catalog_cache_is_stale(Some(
             now - Duration::from_secs(301)
         )));
+    }
+
+    #[test]
+    fn mcp_server_api_key_is_entered_through_accessible_control_and_confirmed_without_echo() {
+        let (mut native, profile_dir) = isolated_app();
+        let (gateway, requests, events, _http_requests) =
+            GatewayDiscovery::for_test_mcp_server_api_key();
+        native.gateway_discovery = Some(gateway);
+        native.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        native.gateway_connected = true;
+        native.route = AppRoute::Capabilities;
+        native.capabilities_tab = CapabilitiesTab::Connectors;
+        native.load_connectors_fixture_for_automation();
+        native.mcp_servers = Some(McpServersSnapshot {
+            servers: vec![crate::gateway::McpServerSummary {
+                name: "docs".into(),
+                transport: "stdio".into(),
+                command: Some("uvx".into()),
+                args: vec!["mcp-server-docs".into()],
+                url: None,
+                enabled: true,
+                tools: None,
+            }],
+        });
+        let app = Rc::new(RefCell::new(native));
+        let draw_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(move |ui| draw_app.borrow_mut().draw(ui));
+        harness.run_steps(2);
+        let key_button = harness.get_by_label("Set API key for MCP server docs");
+        assert!(
+            !key_button.accesskit_node().is_disabled(),
+            "MCP API key action is enabled when the Gateway is connected"
+        );
+        key_button.click_accesskit();
+        harness.run_steps(2);
+        assert!(
+            app.borrow().mcp_server_api_key_draft.is_some(),
+            "clicking the row action opens the credential draft; status={} error={:?}",
+            app.borrow().status,
+            app.borrow().mcp_server_api_key_error
+        );
+        harness.get_by_label("MCP API key for docs").click();
+        harness
+            .get_by_label("MCP API key for docs")
+            .type_text("synthetic-mcp-api-key");
+        harness.run();
+        assert_eq!(
+            app.borrow()
+                .mcp_server_api_key_draft
+                .as_ref()
+                .expect("API key draft remains open")
+                .value
+                .as_str(),
+            "synthetic-mcp-api-key",
+            "accessible text entry populates the secret draft"
+        );
+        let save_button = harness.get_by_label("Save MCP API key for docs");
+        assert!(
+            !save_button.accesskit_node().is_disabled(),
+            "save becomes enabled after entering the key"
+        );
+        save_button.click_accesskit();
+        harness.run();
+
+        let (request_id, name, value, env_var, profile_id, instance_id, authority_epoch) = requests
+            .recv_timeout(Duration::from_secs(1))
+            .expect("profile-scoped credential writer receives the secret");
+        assert_eq!(name, "docs");
+        assert_eq!(value.as_str(), "synthetic-mcp-api-key");
+        assert_eq!(env_var, None);
+        assert_eq!(profile_id, "home-bot");
+        assert_eq!(instance_id, "gateway-home-bot");
+        assert_eq!(authority_epoch, 12);
+        assert_eq!(
+            app.borrow()
+                .pending_mcp_server_api_key
+                .as_ref()
+                .unwrap()
+                .name,
+            "docs"
+        );
+
+        drop(value);
+        events
+            .send(GatewayEvent::McpServerApiKeySet {
+                request_id,
+                name: "docs".into(),
+                env_var: "MCP_DOCS_API_KEY".into(),
+                outcome_unknown: false,
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Ok(crate::gateway::McpServerSummary {
+                    name: "docs".into(),
+                    transport: "stdio".into(),
+                    command: Some("uvx".into()),
+                    args: vec!["mcp-server-docs".into()],
+                    url: None,
+                    enabled: true,
+                    tools: None,
+                }),
+            })
+            .expect("deliver confirmed MCP secret receipt");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        harness.run();
+        assert!(app.borrow().pending_mcp_server_api_key.is_none());
+        assert!(app.borrow().mcp_server_api_key_draft.is_none());
+        assert_eq!(
+            app.borrow().status,
+            "Saved MCP credential for docs as environment variable MCP_DOCS_API_KEY"
+        );
+        assert!(!app.borrow().status.contains("synthetic-mcp-api-key"));
+        assert!(harness.query_by_label("MCP API key for docs").is_none());
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
+    }
+
+    #[test]
+    fn mcp_server_api_key_unknown_outcome_requires_inventory_refresh_before_retry() {
+        let (mut native, profile_dir) = isolated_app();
+        let (gateway, _requests, events, http_requests) =
+            GatewayDiscovery::for_test_mcp_server_api_key();
+        native.gateway_discovery = Some(gateway);
+        native.gateway_endpoint = Some(GatewayEndpoint {
+            profile_id: "home-bot".into(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+            runtime_protocol: 1,
+            api_origin: "http://127.0.0.1:8765".into(),
+            capabilities: Vec::new(),
+            control_home: None,
+            remote_auth: None,
+        });
+        native.gateway_connected = true;
+        native.route = AppRoute::Capabilities;
+        native.capabilities_tab = CapabilitiesTab::Connectors;
+        native.load_connectors_fixture_for_automation();
+        native.mcp_servers = Some(McpServersSnapshot {
+            servers: vec![crate::gateway::McpServerSummary {
+                name: "docs".into(),
+                transport: "stdio".into(),
+                command: Some("uvx".into()),
+                args: vec!["mcp-server-docs".into()],
+                url: None,
+                enabled: true,
+                tools: None,
+            }],
+        });
+        native.pending_mcp_server_api_key = Some(PendingMcpServerApiKey {
+            request_id: "mcp-key-unknown".into(),
+            name: "docs".into(),
+            env_var: None,
+            profile_id: "home-bot".into(),
+            connection_id: native.active_gateway_connection_id().to_owned(),
+            instance_id: "gateway-home-bot".into(),
+            authority_epoch: 12,
+        });
+        let app = Rc::new(RefCell::new(native));
+        let draw_app = Rc::clone(&app);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1440.0, 2600.0))
+            .build_ui(move |ui| draw_app.borrow_mut().draw(ui));
+        harness.run_steps(2);
+        events
+            .send(GatewayEvent::McpServerApiKeySet {
+                request_id: "mcp-key-unknown".into(),
+                name: "docs".into(),
+                env_var: String::new(),
+                outcome_unknown: true,
+                profile_id: "home-bot".into(),
+                instance_id: "gateway-home-bot".into(),
+                authority_epoch: 12,
+                result: Err("Hermes MCP server credential update failed".into()),
+            })
+            .expect("deliver unknown MCP credential result");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        harness.run();
+        assert!(app.borrow().pending_mcp_server_api_key.is_none());
+        assert!(app.borrow().mcp_servers.is_none());
+        assert_eq!(
+            app.borrow().mcp_server_api_key_error.as_deref(),
+            Some(
+                "MCP credential save outcome is unknown; refresh server inventory before retrying"
+            )
+        );
+        assert!(app.borrow().status.contains("refresh server inventory"));
+        assert!(!app.borrow().status.contains("secret"));
+        assert!(harness.query_by_label("Refresh MCP servers").is_some());
+
+        harness
+            .get_by_label("Refresh MCP servers")
+            .click_accesskit();
+        harness.run();
+        let request_id = http_requests
+            .recv_timeout(Duration::from_secs(1))
+            .expect("refresh control queues MCP inventory read");
+        assert!(app.borrow().mcp_servers_pending);
+        events
+            .send(GatewayEvent::McpServersLoaded {
+                request_id,
+                profile_id: "home-bot".into(),
+                result: Ok(McpServersSnapshot {
+                    servers: vec![crate::gateway::McpServerSummary {
+                        name: "docs".into(),
+                        transport: "stdio".into(),
+                        command: Some("uvx".into()),
+                        args: vec!["mcp-server-docs".into()],
+                        url: None,
+                        enabled: true,
+                        tools: None,
+                    }],
+                }),
+            })
+            .expect("deliver refreshed MCP inventory");
+        app.borrow_mut()
+            .update_gateway_discovery(&egui::Context::default());
+        harness.run();
+        assert!(!app.borrow().mcp_servers_pending);
+        assert!(app.borrow().mcp_servers.is_some());
+        assert!(app.borrow().mcp_server_api_key_error.is_none());
+        assert!(app.borrow().status.contains("inventory refreshed"));
+        assert!(
+            harness
+                .query_by_label("Set API key for MCP server docs")
+                .is_some()
+        );
+        drop(harness);
+        drop(app);
+        std::fs::remove_dir_all(profile_dir).expect("remove isolated test profile");
     }
 
     #[test]

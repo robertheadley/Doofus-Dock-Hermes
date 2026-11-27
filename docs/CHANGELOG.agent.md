@@ -5863,3 +5863,16 @@ Added caret-aware inline skill autocomplete to Hermes Native. Selecting an item 
 - performance: Adds a small, bounded JSON object to diagnostic state only; no performance claim.
 - risks: Profile IDs and a connection identifier are included in local automation snapshots. Endpoint URLs, tokens, and credential values remain omitted.
 - follow_up: Use the snapshots to isolate profile mismatch, then verify an authenticated existing-session switch and close/reopen readback; continue Skills/plugins/MCP acceptance.
+
+
+## Revision 392 — Profile-scoped MCP server credential entry
+- id: hermes-native-mcp-server-api-key-20261127
+- timestamp: 2026-11-27T21:34:02Z
+- what: Added an accessible masked per-server API-key editor wired to pinned `mcp.servers.set_api_key`, profile/connection/instance/epoch-fenced receipts, generic error redaction, and explicit unknown-outcome refresh gating. Removed Clone from the secret draft.
+- why: Private MCP HTTP and stdio servers need a usable profile-secret entry path, and an RPC timeout must not be presented as a definite failure that invites blind retry.
+- components: apps/hermes-native/src/app.rs; apps/hermes-native/src/gateway.rs; apps/hermes-native/docs/PLAN.md; apps/hermes-native/docs/ARCHITECTURE.md; apps/hermes-native/docs/BACKLOG.md; apps/hermes-native/README.md; apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv; docs/CHANGELOG.agent.md; docs/EXECUTION_LOGS.md
+- type: agent capability and secret-handling reliability
+- validation: Focused rendered API-key entry and unknown-outcome tests passed; Gateway success and echoed-error tests passed; full locked agent-automation suite passed (824 library + 17 automation + 3 launcher tests); `cargo build --locked -p hermes-native --features agent-automation`, rustfmt, diff checks, CSV schema validation and Doofus task validation passed. OpenRouter read-only model-list request returned HTTP 200 and exposed DeepSeek Flash entries; no completion request was sent.
+- performance: No performance change claimed.
+- risks: Live Hermes profile persistence, MCP worker startup/restart, packaged Windows behavior, and source-paired acceptance remain unverified. JSON-RPC serialization buffers are not proven to be zeroized.
+- follow_up: Add environment passthrough editing to MCP add form, then use an isolated Gateway profile to verify secret persistence, server startup and tool discovery without touching the installed Hermes profile.
