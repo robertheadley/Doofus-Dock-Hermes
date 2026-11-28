@@ -1,12 +1,12 @@
-# Immediate release critical path (2026-11-25)
+# Immediate release critical path (updated 2026-11-28)
 
-1. **Live model response — partial:** isolated local `qwen3:8b` through Ollama returned a settled `READY` response and the native transcript displayed it. A prior isolated `deepseek-flash` request returned HTTP 402 `Insufficient Balance`; provider-backed coding acceptance remains open.
-2. **Tool workflow — partial, coding acceptance not passed:** an isolated Hermes `terminal` call returned `HERMES_TOOL_OK` (exit code 0), and the native UI rendered the persisted tool result without transcript refresh errors. `qwen3:8b` then gave an inaccurate final response. In the separate coding assignment it chose `write_file` instead of the instructed `patch`; Hermes blocked the stale write, no fixture file changed, and fixture tests were not run. Release acceptance remains an actual tool edit, passing project tests, and an accurate summary.
+1. **Live model response — passed for the coding gate:** two isolated OpenRouter DeepSeek Flash coding runs completed through Hermes Native. Broader provider reliability and existing-session model switching remain open.
+2. **Tool workflow — coding gate passed twice:** the latest run used Hermes tools to patch only the isolated `calc.py`, preserved `test_calc.py`, passed all four tests, and returned an accurate summary. Cold restart/resume and repeatability remain open.
 3. **Approval/clarification, stop/recovery, and session resume:** exercise the existing UI actions against live runtime events; acceptance requires correct owner scoping and no duplicate prompt admission.
 4. **Project context and artifacts:** verify working directory, file/image attachment handling, terminal/file/artifact access in the same workflow.
 5. **Reliability/release:** restart and resume, isolate two concurrent sessions, then package and launch the Windows executable.
 
-The target window is 24–72 hours, not a measured ETA. The current model credit failure blocks provider-backed acceptance; implementation and headless validation continue where independent. Detailed capabilities and acceptance live in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md). A source-commit-qualified portable Windows package script now builds the release UI and headless agent-control binary, validates PDFium and bundled notices, and emits a provenance/hash manifest. A cold packaged launch and provider-backed coding task remain release gates.
+The target window is 24–72 hours, not a measured ETA. The provider credit failure is no longer the active blocker for the first coding workflow; implementation and headless validation continue. Detailed capabilities and acceptance live in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md). A source-commit-qualified portable Windows package script now builds the release UI and headless agent-control binary, validates PDFium and bundled notices, and emits a provenance/hash manifest. A cold packaged launch, restart/resume, and Skills/plugin/MCP workflows remain release gates.
 
 ## Terminal slice — local implementation, partial acceptance
 

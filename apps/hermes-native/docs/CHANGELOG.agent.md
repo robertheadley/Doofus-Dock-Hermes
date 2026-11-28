@@ -4005,3 +4005,15 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Documentation-only.
 - **risks:** A real OpenRouter key was unavailable to the test profile; no live DeepSeek Flash call was made.
 - **follow_up:** Verify OpenRouter model and tool flow once a dedicated key is securely available in the isolated Hermes profile.
+
+
+- **id:** hermes-native-live-coding-repeat-20261128T013743Z
+- **timestamp:** 2026-11-28T01:37:43Z
+- **what:** Recorded a second successful OpenRouter DeepSeek Flash coding assignment through the headless Hermes Native UI and refreshed the active objective, plan, and backlog status.
+- **why:** The operator provided a dedicated key so the first-version coding workflow could be exercised with a real model and Hermes tool loop.
+- **components:** Native chat/provider workflow, Hermes tool execution, isolated Gateway acceptance, release plan/objective/backlog, sanitized result and screenshots.
+- **type:** Live acceptance evidence and delivery status.
+- **validation:** Agent automation binary built; isolated Gateway connected; transcript completed with 9 messages; only `calc.py` changed; `python -m unittest -q` passed 4/4; before/after UI screenshots reviewed.
+- **performance:** Live acceptance took about 34 seconds after the Gateway was ready; not used as a delivery-time estimate.
+- **risks:** Only a single repeated fixture scenario; provider breadth, cold restart/resume, Skills/plugins/MCP, packaged Windows, and source-paired acceptance remain open. Secret value is not included in artifacts or repository text.
+- **follow_up:** Test cold restart/resume without duplicate submission; then complete one live Skill, Agent Plugin and MCP workflow and package/cold-launch acceptance.

@@ -173,6 +173,26 @@
     {
       "kind": "isolated_test_gateway",
       "model": null,
+      "note": "Gateway PID 32964 matches gateway_state.json in the isolated HermesNative-Delivery-Test-20261128-0128 profile; active_agents=0 and no active work. Leave running to preserve the successful session for cold restart/resume acceptance.",
+      "observed_at": "2026-11-28T01:42:55Z",
+      "pid": 32964,
+      "process_id": "hermesnative-livecoding-gateway-32964",
+      "provider": "codex",
+      "state": "running"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
+      "note": "PID 6524 is the pinned test venv Hermes Gateway for the isolated PAR-0263 profile. gateway_state.json confirms the profile path, running state, zero active agents, and no active work. Preserve the profile and let the configured idle-exit policy stop it.",
+      "observed_at": "2026-11-28T01:22:06Z",
+      "pid": 6524,
+      "process_id": "hermesnative-par0263-gateway-6524",
+      "provider": "codex",
+      "state": "running"
+    },
+    {
+      "kind": "isolated_test_gateway",
+      "model": null,
       "note": "Fresh process-table inspection showed the old PID 36648 had been reused by svchost.exe; it was not targeted. The profile gateway_state.json identifies the current owned PID separately.",
       "observed_at": "2026-11-27T20:03:08Z",
       "pid": 36648,
@@ -199,6 +219,16 @@
       "process_id": "openrouter-picker-gateway-4552",
       "provider": "codex",
       "state": "stopped"
+    },
+    {
+      "kind": "unattributed_test_gateway",
+      "model": null,
+      "note": "PID 3336 is still present and runs hermes_cli.main gateway run under the pinned test venv. No matching gateway_state.json was found in top-level Temp directories or the installed Hermes root; profile ownership remains unknown, so do not stop it.",
+      "observed_at": "2026-11-28T01:22:08Z",
+      "pid": 3336,
+      "process_id": "pinned-venv-gateway-unattributed-3336",
+      "provider": "codex",
+      "state": "unknown"
     },
     {
       "kind": "delegated_agent",
@@ -841,18 +871,6 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": ".doofus/task-ledger.json",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/docs/BACKLOG.md",
       "status": " M"
     },
@@ -865,13 +883,19 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/docs/DELIVERY_OBJECTIVE.md",
+      "status": " M"
+    },
+    {
+      "change_type": "modified",
+      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/src/app.rs",
+      "path": "apps/hermes-native/docs/PLAN.md",
       "status": " M"
     },
     {
@@ -974,6 +998,18 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-28T01-33-53-711Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-28T01-33-53-711Z.png",
       "status": "??"
     },
     {
@@ -1082,6 +1118,18 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T02-07-01-211Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-28T01-33-53-711Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-28T01-33-53-711Z.png",
       "status": "??"
     },
     {
@@ -1394,6 +1442,12 @@
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
       "path": "artifacts/agent-ui/live-coding-result-2026-11-26T02-01-12-392Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "artifacts/agent-ui/live-coding-result-2026-11-28T01-33-53-711Z.json",
       "status": "??"
     },
     {
@@ -1866,15 +1920,14 @@
     }
   ],
   "checkpoint": {
-    "command": "cargo test -p hermes-native --features agent-automation --lib mcp_server_; cargo test -p hermes-native --features agent-automation --lib connectors_directory_shows_connected_state_and_account_details; cargo check -p hermes-native --all-targets --features agent-automation",
+    "command": "cargo build --locked -p hermes-native --bins --features agent-automation; node apps/hermes-native/agent/acceptance/live-coding-assignment.mjs; python -m unittest -q",
     "evidence": [
-      "apps/hermes-native/src/app.rs#mcp_server_add_form_renders_transport_controls_and_submit_accessibly",
-      "apps/hermes-native/src/app.rs#mcp_server_api_key_is_entered_through_accessible_control_and_confirmed_without_echo",
-      "apps/hermes-native/src/app.rs#connectors_directory_shows_connected_state_and_account_details"
+      "artifacts/agent-ui/live-coding-result-2026-11-28T01-33-53-711Z.json#outcome",
+      "apps/hermes-native/docs/PLAN.md#Working revision 398"
     ],
     "state": "in_progress",
-    "summary": "MCP management has a dedicated view, and the 1440x900 MCP add, credential, and directory-navigation harness tests pass. The isolated real-profile UI path and remaining OAuth/recovery/package/source-pair checks remain open.",
-    "verified_at": "2026-11-28T00:19:20Z"
+    "summary": "Repeated isolated live coding acceptance passed with OpenRouter DeepSeek Flash: Hermes Native completed a nine-message tool turn, changed only calc.py in a disposable fixture, and all four tests passed. Overall goal remains partial; recovery, Skills/plugins/MCP breadth, concurrent sessions, and packaged Windows acceptance remain.",
+    "verified_at": "2026-11-28T01:41:27Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1970,8 +2023,8 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-28T01:19:20Z",
-    "lease_id": "32f092db-d47e-424c-91b7-a2f2fd4238f4",
+    "lease_expires_at": "2026-11-28T02:41:27Z",
+    "lease_id": "d2bef172-5f0f-4002-a8f5-8fcabdf1faa4",
     "model": null,
     "ownership_state": "active",
     "provider": "codex",
@@ -4341,11 +4394,11 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-par-0263-mcp-management-final-20261128T001800Z",
+  "last_event_id": "44e72d64-340a-461e-b4d2-e2e2a696c3be",
   "last_operation": {
-    "request_id": "hermes-par-0263-mcp-management-final-20261128T001800Z",
+    "request_id": "44e72d64-340a-461e-b4d2-e2e2a696c3be",
     "state": "committed",
-    "type": "task.checkpointed"
+    "type": "process.state_changed"
   },
   "legacy_checklist_measurement": {
     "comparable_to_parity": false,
@@ -4355,7 +4408,7 @@
   },
   "parent_task_id": "hermes-native-ui-parity",
   "pending_user_approvals": [],
-  "phase": "03-chat",
+  "phase": "Native MCP management is reachable and tested at standard viewport; live profile, OAuth, recovery and packaged acceptance remain.",
   "phase_effort_samples": [
     {
       "duration_minutes": 8.0,
@@ -4379,7 +4432,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Rebuild and run the headless native UI against a disposable Gateway to verify MCP server creation and synthetic credential persistence from the dedicated view; then continue the remaining acceptance gaps.",
+  "recommended_next_action": "Run cold app/Gateway restart and resume without duplicate submission, then validate one Skill, one Hermes Agent Plugin, and one MCP workflow; continue toward portable Windows cold-launch.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4796,7 +4849,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "7b42265ba89228148ec2e4c24029531b3f33dcf7623a2d8b7398ed76f6c83b59",
+    "change_fingerprint": "5436c2c3e1156169fa74d4f4f8e430cc9ee5270d9076237455eec950bc7cda38",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -4804,14 +4857,6 @@
       },
       {
         "path": ".doofus/handoff.json",
-        "status": " M"
-      },
-      {
-        "path": ".doofus/task-ledger.json",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/README.md",
         "status": " M"
       },
       {
@@ -4823,11 +4868,15 @@
         "status": " M"
       },
       {
+        "path": "apps/hermes-native/docs/DELIVERY_OBJECTIVE.md",
+        "status": " M"
+      },
+      {
         "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/src/app.rs",
+        "path": "apps/hermes-native/docs/PLAN.md",
         "status": " M"
       },
       {
@@ -4896,6 +4945,14 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-26T02-07-01-211Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-28T01-33-53-711Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-after-2026-11-28T01-33-53-711Z.png",
         "status": "??"
       },
       {
@@ -4968,6 +5025,14 @@
       },
       {
         "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-26T02-07-01-211Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-28T01-33-53-711Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/live-coding-before-2026-11-28T01-33-53-711Z.png",
         "status": "??"
       },
       {
@@ -5176,6 +5241,10 @@
       },
       {
         "path": "artifacts/agent-ui/live-coding-result-2026-11-26T02-01-12-392Z.json",
+        "status": "??"
+      },
+      {
+        "path": "artifacts/agent-ui/live-coding-result-2026-11-28T01-33-53-711Z.json",
         "status": "??"
       },
       {
@@ -5491,16 +5560,16 @@
         "status": "??"
       }
     ],
-    "head_commit": "4c3b8e891fbf26fcde78205c029748e6e2ccc7fb",
+    "head_commit": "4c1574c87ad900f362b464a6437aeb89645be09e",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1199,
+  "revision": 1206,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1199,
+  "state_revision": 1206,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
-  "task_id": "hermes-par-0066",
+  "task_id": "hermes-par-0263",
   "task_ledger_revision": 201,
   "tests_executed": [
     {
@@ -7957,9 +8026,19 @@
       "command": "mcp_server_add_form_renders_transport_controls_and_submit_accessibly; mcp_server_api_key_is_entered_through_accessible_control_and_confirmed_without_echo; connectors_directory_shows_connected_state_and_account_details",
       "result": "PASS: 15 MCP tests; 1 connector view-navigation test; all-target cargo check; git diff --check; task validation.",
       "timestamp": "2026-11-28T00:19:20Z"
+    },
+    {
+      "command": "automation_protocol binary tests; isolated headless live MCP credential entry; progress/status schema checks",
+      "result": "PASS: 17 protocol tests; all-target check; task validator; live isolated UI saved synthetic key without echo; origin/main equals commit 4c1574c.",
+      "timestamp": "2026-11-28T01:23:10Z"
+    },
+    {
+      "command": "live isolated OpenRouter coding assignment and fixture unit tests",
+      "result": "PASS: coding_assignment_passed; connected Gateway; 9 transcript messages; only calc.py changed; 4/4 unit tests; no pending submit/uncertainty/approval/clarification.",
+      "timestamp": "2026-11-28T01:41:27Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-28T00:19:20Z"
+  "updated_at": "2026-11-28T01:42:55Z"
 }

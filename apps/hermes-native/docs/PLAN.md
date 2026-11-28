@@ -2,8 +2,8 @@
 
 - **Plan ID:** `HUR-001`
 - **Approved scope:** revision 1; direction clarified by the user on 2026-11-22.
-- **Working revision:** 388 (workflow-first delivery; provider access blocks live coding acceptance).
-- **Status:** active gate is a complete live coding workflow in Hermes Native. The 24–72 hour delivery window is a target, not an evidence-based ETA.
+- **Working revision:** 398 (workflow-first delivery; the live coding-assignment gate has passed twice, while recovery, feature breadth, and packaging remain open).
+- **Status:** a complete live coding workflow has now passed twice in isolated profiles through Hermes Native. Continue with repeatability/recovery, Skills and plugin/MCP workflows, and portable Windows acceptance. The 24–72 hour delivery window is a target, not an evidence-based ETA.
 - **Fixed Hermes parity snapshot:** `NousResearch/hermes-agent@8783054ef6cbafd86f10892241436862c1171a66` (downloaded 2026-11-14; target remains fixed unless explicitly changed).
 - **Current DoofusDock:** `robertheadley/doofusdock@f23ed02a99c7f8c57f83164d98feadb17cc4ed87` (fetched `main` on 2026-11-24; exact commit pinned until explicitly refreshed).
 - **Immediate scope:** a reliable primary AI coding agent on native Rust/egui/DoofusDock, proven by a complete real coding assignment. Minimum release capabilities and acceptance dimensions are in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md). Hermes Gateway/runtime/tool loops remain authoritative.
@@ -17,9 +17,9 @@ Immediate completion means the operator can finish a real coding assignment in H
 
 PAR-0066 now hydrates Hermes background processes from bounded, owner-fenced `process.list` snapshots when its collapsed-by-default Agent output section opens and polls every five seconds while visible. Snapshot tails merge with live chunks without duplicate output and restore terminal process status. The locked workspace suite passes 802 library + 15 automation protocol + 3 launcher tests; all-target check, rustfmt and diff checks pass. Live Gateway, packaged Windows, and formal source-paired acceptance remain open.
 
-The current headless executable connects to the isolated Gateway, opens a session, and submits the controlled coding prompt. The provider returns HTTP 402 `Insufficient Balance` for `deepseek-flash` before any tool call, so the test project remains unchanged. The application rendered the provider error and returned to a non-pending state. This is the current external blocker; the previously recorded Python-runtime discovery diagnostic is separate and has not been shown to cause the failure.
+Current acceptance evidence includes two successful isolated OpenRouter DeepSeek Flash coding assignments. The newest run connected to a disposable Gateway profile, streamed a complete Hermes tool cycle, patched only the authorized fixture file, and passed all four fixture tests. Earlier HTTP 402 failures remain part of the history but are no longer the active provider blocker. See Working revision 398 and `artifacts/agent-ui/live-coding-result-2026-11-28T01-33-53-711Z.json`.
 
-Next sequence: (1) use an already-authorized provider with available entitlement; (2) complete the disposable coding assignment and verify the exact file diff, tool result and project test; (3) smoke Skills, Hermes Agent Plugins and a local read-only MCP tool; (4) cold restart/resume and two concurrent sessions; (5) make a portable Windows release folder and cold-launch it. Relative effort bands and acceptance details are in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md); total ETA remains unavailable until provider access and comparable work samples exist. The prior parity milestone remains preserved for later work.
+Next sequence: (1) repeat the live coding workflow after a cold app/Gateway restart and verify resume without duplicate submission; (2) smoke one Skill, one Hermes Agent Plugin operation, and a local read-only MCP tool through a model turn; (3) verify concurrent session isolation; (4) build and cold-launch the portable Windows release folder. Relative effort bands and acceptance details are in [DELIVERY_OBJECTIVE.md](DELIVERY_OBJECTIVE.md); total ETA remains unavailable until remaining scope is sized and comparable work samples exist. The prior parity milestone remains preserved for later work.
 
 ## Working revision 390 — session model receipt continuity (2026-11-27)
 
@@ -2467,3 +2467,14 @@ The native UI credential-entry gap for PAR-0263 is now verified against the isol
 PAR-0263 remains partial. This run did not exercise adding a new server through the UI, start/reload the MCP process, use the dedicated OpenRouter key, or send a DeepSeek Flash request. OAuth, cold restart/recovery, native Windows window, packaged behavior, credential-buffer zeroization, and source-paired acceptance remain open. The test used the pinned Hermes CLI by explicitly putting its test venv on PATH; the installed Hermes profile was not touched.
 
 Next: configure the dedicated OpenRouter key through the isolated profile's credential flow, verify a model-to-tool round-trip, then continue the remaining recovery, packaging, and source-pair acceptance.
+
+
+## Working revision 398 — repeat live coding assignment with DeepSeek Flash (2026-11-28)
+
+A second isolated provider-backed coding assignment passed through the headless Hermes Native UI using OpenRouter `deepseek/deepseek-v4.1-flash-1017`. The app attached to a disposable Gateway profile, created a project session, streamed a nine-message turn with Hermes file and terminal tools, changed only `calc.py` through the instructed patch operation, left `test_calc.py` unchanged, and showed a final summary. The fixture's `python -m unittest -q` run passed all four positive, negative, mixed-sign, and zero cases. The transcript ended with no pending submission, uncertainty, approval, or clarification. The paired before/after UI captures and sanitized result are preserved under `apps/hermes-native/artifacts/agent-ui/` and `artifacts/agent-ui/`.
+
+The run used an isolated temporary profile and project; the installed Hermes profile and app were not the target. The credential value is not included in the result artifact or documentation. This is one additional successful run, not proof of broad provider reliability, cold restart/resume, Skills/plugins coverage, packaged Windows behavior, or full feature completion.
+
+Validation: `cargo build --locked -p hermes-native --bins --features agent-automation` passed; the live acceptance reported `coding_assignment_passed`; the fixture unit suite passed 4/4; transcript and changed-file readback showed only `calc.py`; screenshots were visually inspected.
+
+Next: exercise a cold restart/resume, then complete live Skill/plugin/MCP workflows and package/cold-launch acceptance.
