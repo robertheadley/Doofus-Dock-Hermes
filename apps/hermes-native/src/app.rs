@@ -2808,6 +2808,7 @@ pub struct HermesNativeApp {
     capabilities_tab: CapabilitiesTab,
     capabilities_query: String,
     connectors_segment: ConnectorsSegment,
+    mcp_management_selected: bool,
     capabilities_request_id: Option<String>,
     capabilities_pending: bool,
     capabilities_error: Option<String>,
@@ -5441,6 +5442,7 @@ fn render_message() -> &'static str {
             capabilities_tab: CapabilitiesTab::default(),
             capabilities_query: String::new(),
             connectors_segment: ConnectorsSegment::default(),
+            mcp_management_selected: false,
             capabilities_request_id: None,
             capabilities_pending: false,
             capabilities_error: None,
@@ -15970,6 +15972,29 @@ fn render_message() -> &'static str {
                     self.route_unavailable(ui, "Connect to Hermes to browse available connectors.");
                     return;
                 };
+                let mcp_server_count = self
+                    .mcp_servers
+                    .as_ref()
+                    .map_or(0, |snapshot| snapshot.servers.len());
+                ui.horizontal(|ui| {
+                    if ui
+                        .selectable_label(!self.mcp_management_selected, "Connector directory")
+                        .accessible_name("Connector directory")
+                        .clicked()
+                    {
+                        self.mcp_management_selected = false;
+                    }
+                    if ui
+                        .selectable_label(
+                            self.mcp_management_selected,
+                            format!("MCP servers · {mcp_server_count}"),
+                        )
+                        .accessible_name("MCP server management")
+                        .clicked()
+                    {
+                        self.mcp_management_selected = true;
+                    }
+                });
                 if self.connectors_pending {
                     ui.label(
                         RichText::new("Refreshing connectors…")
@@ -15984,198 +16009,202 @@ fn render_message() -> &'static str {
                             .color(MUTED),
                     );
                 }
-                let mut catalog = snapshot.catalog.clone();
-                for connector in &snapshot.connectors {
-                    if !catalog
-                        .iter()
-                        .any(|entry| entry.slug == connector.connector)
-                    {
-                        catalog.push(crate::gateway::ConnectorCatalogEntry {
-                            slug: connector.connector.clone(),
-                            name: connector_title(&connector.connector),
-                            description: String::new(),
-                            category: String::new(),
-                        });
-                    }
-                }
                 let query = self.capabilities_query.trim().to_lowercase();
-                let statuses = snapshot
-                    .connectors
-                    .iter()
-                    .map(|row| (row.connector.as_str(), row))
-                    .collect::<BTreeMap<_, _>>();
-                let mut all_rows = catalog
-                    .iter()
-                    .filter(|row| {
-                        query.is_empty()
-                            || row.name.to_lowercase().contains(&query)
-                            || row.slug.to_lowercase().contains(&query)
-                    })
-                    .map(|row| {
-                        let state = statuses.get(row.slug.as_str()).copied();
-                        let mut accounts = snapshot
-                            .accounts
+                if !self.mcp_management_selected {
+                    let mut catalog = snapshot.catalog.clone();
+                    for connector in &snapshot.connectors {
+                        if !catalog
                             .iter()
-                            .filter(|account| account.connector == row.slug && !account.disabled)
-                            .collect::<Vec<_>>();
-                        accounts.sort_by(|left, right| {
-                            right
-                                .active
-                                .cmp(&left.active)
-                                .then_with(|| right.created_at.cmp(&left.created_at))
-                        });
-                        let account_status =
-                            accounts.first().map(|account| account.status.as_str());
-                        let enabled = state.is_none_or(|item| item.enabled);
-                        let connected =
-                            !accounts.is_empty() || state.is_some_and(|item| item.connected);
-                        let status = account_status
-                            .or_else(|| state.and_then(|item| item.connection_status.as_deref()));
-                        let (label, segment, rank) =
-                            connector_directory_state(enabled, connected, status);
-                        (row, state, accounts, label, segment, rank)
-                    })
-                    .collect::<Vec<_>>();
-                all_rows.sort_by(|left, right| {
-                    left.5
-                        .cmp(&right.5)
-                        .then_with(|| left.0.name.to_lowercase().cmp(&right.0.name.to_lowercase()))
-                });
-                let mut segments = vec![(ConnectorsSegment::All, all_rows.len())];
-                for segment in [
-                    ConnectorsSegment::Connected,
-                    ConnectorsSegment::Available,
-                    ConnectorsSegment::Off,
-                ] {
-                    let count = all_rows.iter().filter(|row| row.4 == segment).count();
-                    if count > 0 {
-                        segments.push((segment, count));
-                    }
-                }
-                if !segments
-                    .iter()
-                    .any(|(segment, _)| *segment == self.connectors_segment)
-                {
-                    self.connectors_segment = ConnectorsSegment::All;
-                }
-                let shown_segment = self.connectors_segment;
-                let rows = all_rows
-                    .iter()
-                    .filter(|row| shown_segment == ConnectorsSegment::All || row.4 == shown_segment)
-                    .collect::<Vec<_>>();
-                let hidden_matches = all_rows.len().saturating_sub(rows.len());
-                ui.horizontal(|ui| {
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(format!("Connectors · {} of {}", rows.len(), all_rows.len()))
-                            .strong()
-                            .color(TEXT),
-                    );
-                });
-                if segments.len() > 2 {
-                    ui.horizontal_wrapped(|ui| {
-                        for (segment, count) in &segments {
-                            let label = format!("{} {count}", connector_segment_label(*segment));
-                            if ui
-                                .selectable_label(self.connectors_segment == *segment, label)
-                                .clicked()
-                            {
-                                self.connectors_segment = *segment;
-                            }
-                        }
-                    });
-                    if hidden_matches > 0 && !query.is_empty() {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new(format!("{hidden_matches} matches in other groups"))
-                                    .size(MICRO_TEXT_SIZE)
-                                    .color(MUTED),
-                            );
-                            if ui.small_button("Show all matches").clicked() {
-                                self.connectors_segment = ConnectorsSegment::All;
-                            }
-                        });
-                    }
-                }
-                if rows.is_empty() {
-                    self.empty_panel(
-                        ui,
-                        if query.is_empty() && all_rows.is_empty() {
-                            "No connectors available"
-                        } else {
-                            "No matching connectors"
-                        },
-                    );
-                }
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut previous_group = None;
-                    for (row, state, accounts, state_text, group, _) in rows {
-                        if previous_group != Some(*group) {
-                            let group_count = all_rows
-                                .iter()
-                                .filter(|candidate| candidate.4 == *group)
-                                .count();
-                            ui.add_space(10.0);
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    RichText::new(connector_segment_label(*group))
-                                        .strong()
-                                        .size(15.0)
-                                        .color(TEXT),
-                                );
-                                ui.label(RichText::new(group_count.to_string()).color(MUTED));
+                            .any(|entry| entry.slug == connector.connector)
+                        {
+                            catalog.push(crate::gateway::ConnectorCatalogEntry {
+                                slug: connector.connector.clone(),
+                                name: connector_title(&connector.connector),
+                                description: String::new(),
+                                category: String::new(),
                             });
-                            if *group == ConnectorsSegment::Off {
-                                ui.label(
-                                    RichText::new(
-                                        "These connectors are turned off for this profile.",
-                                    )
-                                    .size(TOOL_TEXT_SIZE)
-                                    .color(MUTED),
-                                );
-                            }
-                            previous_group = Some(*group);
                         }
-                        egui::CollapsingHeader::new(
-                            RichText::new(format!("{} · {state_text}", row.name))
+                    }
+                    let statuses = snapshot
+                        .connectors
+                        .iter()
+                        .map(|row| (row.connector.as_str(), row))
+                        .collect::<BTreeMap<_, _>>();
+                    let mut all_rows = catalog
+                        .iter()
+                        .filter(|row| {
+                            query.is_empty()
+                                || row.name.to_lowercase().contains(&query)
+                                || row.slug.to_lowercase().contains(&query)
+                        })
+                        .map(|row| {
+                            let state = statuses.get(row.slug.as_str()).copied();
+                            let mut accounts = snapshot
+                                .accounts
+                                .iter()
+                                .filter(|account| account.connector == row.slug && !account.disabled)
+                                .collect::<Vec<_>>();
+                            accounts.sort_by(|left, right| {
+                                right
+                                    .active
+                                    .cmp(&left.active)
+                                    .then_with(|| right.created_at.cmp(&left.created_at))
+                            });
+                            let account_status =
+                                accounts.first().map(|account| account.status.as_str());
+                            let enabled = state.is_none_or(|item| item.enabled);
+                            let connected =
+                                !accounts.is_empty() || state.is_some_and(|item| item.connected);
+                            let status = account_status
+                                .or_else(|| state.and_then(|item| item.connection_status.as_deref()));
+                            let (label, segment, rank) =
+                                connector_directory_state(enabled, connected, status);
+                            (row, state, accounts, label, segment, rank)
+                        })
+                        .collect::<Vec<_>>();
+                    all_rows.sort_by(|left, right| {
+                        left.5
+                            .cmp(&right.5)
+                            .then_with(|| left.0.name.to_lowercase().cmp(&right.0.name.to_lowercase()))
+                    });
+                    let mut segments = vec![(ConnectorsSegment::All, all_rows.len())];
+                    for segment in [
+                        ConnectorsSegment::Connected,
+                        ConnectorsSegment::Available,
+                        ConnectorsSegment::Off,
+                    ] {
+                        let count = all_rows.iter().filter(|row| row.4 == segment).count();
+                        if count > 0 {
+                            segments.push((segment, count));
+                        }
+                    }
+                    if !segments
+                        .iter()
+                        .any(|(segment, _)| *segment == self.connectors_segment)
+                    {
+                        self.connectors_segment = ConnectorsSegment::All;
+                    }
+                    let shown_segment = self.connectors_segment;
+                    let rows = all_rows
+                        .iter()
+                        .filter(|row| shown_segment == ConnectorsSegment::All || row.4 == shown_segment)
+                        .collect::<Vec<_>>();
+                    let hidden_matches = all_rows.len().saturating_sub(rows.len());
+                    ui.horizontal(|ui| {
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(format!("Connectors · {} of {}", rows.len(), all_rows.len()))
                                 .strong()
                                 .color(TEXT),
-                        )
-                        .id_salt(("connector-row", &row.slug))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new(*state_text).color(ACCENT));
-                                if !row.category.is_empty() {
-                                    ui.label(RichText::new(&row.category).color(MUTED));
+                        );
+                    });
+                    if segments.len() > 2 {
+                        ui.horizontal_wrapped(|ui| {
+                            for (segment, count) in &segments {
+                                let label = format!("{} {count}", connector_segment_label(*segment));
+                                if ui
+                                    .selectable_label(self.connectors_segment == *segment, label)
+                                    .clicked()
+                                {
+                                    self.connectors_segment = *segment;
                                 }
-                            });
-                            ui.label(
-                                RichText::new(&row.description)
-                                    .size(CAPTION_TEXT_SIZE)
-                                    .color(MUTED),
-                            );
-                            if let Some(item) = state
-                                && let Some(reason) = item.status_reason.as_deref()
-                                && !reason.trim().is_empty()
-                            {
-                                ui.label(RichText::new(reason).size(TOOL_TEXT_SIZE).color(MUTED));
-                            }
-                            for account in accounts {
-                                let name = account
-                                    .alias
-                                    .as_deref()
-                                    .filter(|v| !v.trim().is_empty())
-                                    .unwrap_or(&account.label);
-                                ui.label(
-                                    RichText::new(format!("Account · {name} · {}", account.status))
-                                        .size(TOOL_TEXT_SIZE)
-                                        .color(MUTED),
-                                );
                             }
                         });
-                        ui.add_space(4.0);
+                        if hidden_matches > 0 && !query.is_empty() {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(format!("{hidden_matches} matches in other groups"))
+                                        .size(MICRO_TEXT_SIZE)
+                                        .color(MUTED),
+                                );
+                                if ui.small_button("Show all matches").clicked() {
+                                    self.connectors_segment = ConnectorsSegment::All;
+                                }
+                            });
+                        }
                     }
-                });
+                    if rows.is_empty() {
+                        self.empty_panel(
+                            ui,
+                            if query.is_empty() && all_rows.is_empty() {
+                                "No connectors available"
+                            } else {
+                                "No matching connectors"
+                            },
+                        );
+                    }
+                    egui::ScrollArea::vertical()
+                        .max_height((ui.available_height() * 0.35).clamp(160.0, 320.0))
+                        .show(ui, |ui| {
+                            let mut previous_group = None;
+                            for (row, state, accounts, state_text, group, _) in rows {
+                                if previous_group != Some(*group) {
+                                    let group_count = all_rows
+                                        .iter()
+                                        .filter(|candidate| candidate.4 == *group)
+                                        .count();
+                                    ui.add_space(10.0);
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new(connector_segment_label(*group))
+                                                .strong()
+                                                .size(15.0)
+                                                .color(TEXT),
+                                        );
+                                        ui.label(RichText::new(group_count.to_string()).color(MUTED));
+                                });
+                                if *group == ConnectorsSegment::Off {
+                                    ui.label(
+                                        RichText::new(
+                                            "These connectors are turned off for this profile.",
+                                        )
+                                        .size(TOOL_TEXT_SIZE)
+                                        .color(MUTED),
+                                    );
+                                }
+                                previous_group = Some(*group);
+                            }
+                            egui::CollapsingHeader::new(
+                                RichText::new(format!("{} · {state_text}", row.name))
+                                    .strong()
+                                    .color(TEXT),
+                            )
+                            .id_salt(("connector-row", &row.slug))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(*state_text).color(ACCENT));
+                                    if !row.category.is_empty() {
+                                        ui.label(RichText::new(&row.category).color(MUTED));
+                                    }
+                                });
+                                ui.label(
+                                    RichText::new(&row.description)
+                                        .size(CAPTION_TEXT_SIZE)
+                                        .color(MUTED),
+                                );
+                                if let Some(item) = state
+                                    && let Some(reason) = item.status_reason.as_deref()
+                                    && !reason.trim().is_empty()
+                                {
+                                    ui.label(RichText::new(reason).size(TOOL_TEXT_SIZE).color(MUTED));
+                                }
+                                for account in accounts {
+                                    let name = account
+                                        .alias
+                                        .as_deref()
+                                        .filter(|v| !v.trim().is_empty())
+                                        .unwrap_or(&account.label);
+                                    ui.label(
+                                        RichText::new(format!("Account · {name} · {}", account.status))
+                                            .size(TOOL_TEXT_SIZE)
+                                            .color(MUTED),
+                                    );
+                                }
+                            });
+                            ui.add_space(4.0);
+                        }
+                        });
+                }
                 ui.add_space(12.0);
                 ui.separator();
                 let mut refresh_mcp_servers = false;
@@ -50595,6 +50624,7 @@ mod tests {
         native.gateway_connected = true;
         native.route = AppRoute::Capabilities;
         native.capabilities_tab = CapabilitiesTab::Connectors;
+        native.mcp_management_selected = true;
         native.load_connectors_fixture_for_automation();
         native.gateway_endpoint = Some(GatewayEndpoint {
             profile_id: "work".into(),
@@ -56028,8 +56058,16 @@ mod tests {
         assert!(harness.query_by_label("Available 1").is_some());
         assert!(harness.query_by_label("Off 1").is_some());
         assert!(harness.query_by_label("MCP servers · 1").is_some());
+        assert!(harness.query_by_label("MCP server management").is_some());
         assert!(harness.query_by_label("docs").is_some());
         assert!(harness.query_by_label("2 tools").is_some());
+        harness.get_by_label("MCP server management").click();
+        harness.run();
+        assert!(harness.query_by_label("Linear · Connected").is_none());
+        assert!(harness.query_by_label("docs").is_some());
+        harness.get_by_label("Connector directory").click();
+        harness.run();
+        assert!(harness.query_by_label("Linear · Connected").is_some());
         harness
             .query_by_label("Available 1")
             .expect("available connector group selector")
@@ -71760,7 +71798,7 @@ mod tests {
         let app = Rc::new(RefCell::new(native));
         let draw_app = Rc::clone(&app);
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 2600.0))
+            .with_size(egui::vec2(1440.0, 900.0))
             .build_ui(move |ui| draw_app.borrow_mut().draw(ui));
         harness.run_steps(2);
         let key_button = harness.get_by_label("Set API key for MCP server docs");
@@ -72666,6 +72704,7 @@ mod tests {
         app.load_connectors_fixture_for_automation();
         app.route = AppRoute::Capabilities;
         app.capabilities_tab = CapabilitiesTab::Connectors;
+        app.mcp_management_selected = true;
         app.gateway_connected = true;
         app.mcp_servers = Some(McpServersSnapshot {
             servers: Vec::new(),
@@ -72720,6 +72759,7 @@ mod tests {
         app.load_connectors_fixture_for_automation();
         app.route = AppRoute::Capabilities;
         app.capabilities_tab = CapabilitiesTab::Connectors;
+        app.mcp_management_selected = true;
         app.gateway_connected = true;
         app.mcp_servers = Some(McpServersSnapshot {
             servers: Vec::new(),
@@ -72727,7 +72767,7 @@ mod tests {
         app.mcp_server_add_open = true;
 
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 3000.0))
+            .with_size(egui::vec2(1440.0, 900.0))
             .build_ui(|ui| app.draw(ui));
         let labels = harness
             .query_all_by(|_| true)
@@ -72768,7 +72808,7 @@ mod tests {
         drop(harness);
         assert_eq!(app.mcp_server_add_draft.env_passthrough.len(), 1);
         let mut harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 3000.0))
+            .with_size(egui::vec2(1440.0, 900.0))
             .build_ui(|ui| app.draw(ui));
         harness
             .get_by_label("Remove MCP server passthrough variable 1")
@@ -72779,7 +72819,7 @@ mod tests {
         app.mcp_server_add_draft.transport = "http".into();
         app.mcp_server_add_draft.auth = "bearer".into();
         let harness = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1440.0, 3000.0))
+            .with_size(egui::vec2(1440.0, 900.0))
             .build_ui(|ui| app.draw(ui));
         let labels = harness
             .query_all_by(|_| true)

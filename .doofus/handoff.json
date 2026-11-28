@@ -847,19 +847,7 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/README.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/ARCHITECTURE.md",
       "status": " M"
     },
     {
@@ -871,37 +859,19 @@
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/DELIVERY_OBJECTIVE.md",
+      "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/PLAN.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+      "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
       "change_type": "modified",
       "owner": "unattributed_preexisting",
       "path": "apps/hermes-native/src/app.rs",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/CHANGELOG.agent.md",
-      "status": " M"
-    },
-    {
-      "change_type": "modified",
-      "owner": "unattributed_preexisting",
-      "path": "docs/EXECUTION_LOGS.md",
       "status": " M"
     },
     {
@@ -1236,14 +1206,38 @@
     },
     {
       "change_type": "untracked",
-      "owner": "codex",
-      "path": "apps/hermes-native/artifacts/agent-ui/mcp-agent-turn-20261127.json",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-after-wheel-debug-20261127T2352Z.json",
       "status": "??"
     },
     {
       "change_type": "untracked",
       "owner": "unattributed_preexisting",
-      "path": "apps/hermes-native/artifacts/agent-ui/mcp-live-profile-acceptance-20261127.json",
+      "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-after-wheel-debug-20261127T2352Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-debug-20261127T2348Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-debug-20261127T2348Z.png",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-step-debug-20261127T2355Z.json",
+      "status": "??"
+    },
+    {
+      "change_type": "untracked",
+      "owner": "unattributed_preexisting",
+      "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-step-debug-20261127T2355Z.png",
       "status": "??"
     },
     {
@@ -1872,13 +1866,15 @@
     }
   ],
   "checkpoint": {
-    "command": null,
+    "command": "cargo test -p hermes-native --features agent-automation --lib mcp_server_; cargo test -p hermes-native --features agent-automation --lib connectors_directory_shows_connected_state_and_account_details; cargo check -p hermes-native --all-targets --features agent-automation",
     "evidence": [
-      "apps/hermes-native/artifacts/agent-ui/mcp-agent-turn-20261127.json#agent_turn"
+      "apps/hermes-native/src/app.rs#mcp_server_add_form_renders_transport_controls_and_submit_accessibly",
+      "apps/hermes-native/src/app.rs#mcp_server_api_key_is_entered_through_accessible_control_and_confirmed_without_echo",
+      "apps/hermes-native/src/app.rs#connectors_directory_shows_connected_state_and_account_details"
     ],
     "state": "in_progress",
-    "summary": "PAR-0263 now has a verified fresh native Hermes chat using OpenRouter DeepSeek Flash to invoke one connected synthetic MCP tool and render MCP_PROBE_OK. Temporary profile was stopped and removed; installed Gateway remains active. Broader acceptance remains partial.",
-    "verified_at": "2026-11-27T23:22:35Z"
+    "summary": "MCP management has a dedicated view, and the 1440x900 MCP add, credential, and directory-navigation harness tests pass. The isolated real-profile UI path and remaining OAuth/recovery/package/source-pair checks remain open.",
+    "verified_at": "2026-11-28T00:19:20Z"
   },
   "completed_subtasks": [
     "hermes-par-0017",
@@ -1974,7 +1970,7 @@
   ],
   "created_at": "2026-11-17T01:04:31Z",
   "current_owner": {
-    "lease_expires_at": "2026-11-28T00:22:35Z",
+    "lease_expires_at": "2026-11-28T01:19:20Z",
     "lease_id": "32f092db-d47e-424c-91b7-a2f2fd4238f4",
     "model": null,
     "ownership_state": "active",
@@ -4345,9 +4341,9 @@
       "state": "failed"
     }
   ],
-  "last_event_id": "hermes-native-mcp-agent-turn-checkpoint-20261127",
+  "last_event_id": "hermes-par-0263-mcp-management-final-20261128T001800Z",
   "last_operation": {
-    "request_id": "hermes-native-mcp-agent-turn-checkpoint-20261127",
+    "request_id": "hermes-par-0263-mcp-management-final-20261128T001800Z",
     "state": "committed",
     "type": "task.checkpointed"
   },
@@ -4383,7 +4379,7 @@
     "provider": "codex"
   },
   "project_id": "doofus-dock-hermes",
-  "recommended_next_action": "Exercise credential entry through native Connectors UI, then continue OAuth, cold restart/recovery, packaged Windows, and source-paired acceptance.",
+  "recommended_next_action": "Rebuild and run the headless native UI against a disposable Gateway to verify MCP server creation and synthetic credential persistence from the dedicated view; then continue the remaining acceptance gaps.",
   "remaining_subtasks": [
     "hermes-native-project",
     "hermes-native-ui-parity",
@@ -4800,7 +4796,7 @@
   ],
   "repository": {
     "branch": "main",
-    "change_fingerprint": "8ea6e6eb10f968757a63ccd41b1587acaf9f2b9433cb9aed4b9fb217c90daf60",
+    "change_fingerprint": "7b42265ba89228148ec2e4c24029531b3f33dcf7623a2d8b7398ed76f6c83b59",
     "changed_files": [
       {
         "path": ".doofus/events.jsonl",
@@ -4815,15 +4811,7 @@
         "status": " M"
       },
       {
-        "path": "README.md",
-        "status": " M"
-      },
-      {
         "path": "apps/hermes-native/README.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/ARCHITECTURE.md",
         "status": " M"
       },
       {
@@ -4831,27 +4819,15 @@
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/DELIVERY_OBJECTIVE.md",
+        "path": "apps/hermes-native/docs/CHANGELOG.agent.md",
         "status": " M"
       },
       {
-        "path": "apps/hermes-native/docs/PLAN.md",
-        "status": " M"
-      },
-      {
-        "path": "apps/hermes-native/docs/status/CHAT_TOOL_PROGRESS.csv",
+        "path": "apps/hermes-native/docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
         "path": "apps/hermes-native/src/app.rs",
-        "status": " M"
-      },
-      {
-        "path": "docs/CHANGELOG.agent.md",
-        "status": " M"
-      },
-      {
-        "path": "docs/EXECUTION_LOGS.md",
         "status": " M"
       },
       {
@@ -5075,11 +5051,27 @@
         "status": "??"
       },
       {
-        "path": "apps/hermes-native/artifacts/agent-ui/mcp-agent-turn-20261127.json",
+        "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-after-wheel-debug-20261127T2352Z.json",
         "status": "??"
       },
       {
-        "path": "apps/hermes-native/artifacts/agent-ui/mcp-live-profile-acceptance-20261127.json",
+        "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-after-wheel-debug-20261127T2352Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-debug-20261127T2348Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-debug-20261127T2348Z.png",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-step-debug-20261127T2355Z.json",
+        "status": "??"
+      },
+      {
+        "path": "apps/hermes-native/artifacts/agent-ui/mcp-connectors-scroll-step-debug-20261127T2355Z.png",
         "status": "??"
       },
       {
@@ -5499,17 +5491,17 @@
         "status": "??"
       }
     ],
-    "head_commit": "0c0681783103590e9ee090d3c7376fc4fad56b00",
+    "head_commit": "4c3b8e891fbf26fcde78205c029748e6e2ccc7fb",
     "repository_identity": "https://github.com/robertheadley/Doofus-Dock-Hermes.git",
     "worktree_id": "1322166886f6d3be0108b6ae"
   },
-  "revision": 1196,
+  "revision": 1199,
   "schema_version": 1,
   "scope_task_id": "hermes-native-project",
-  "state_revision": 1196,
+  "state_revision": 1199,
   "task_description": "Deliver a first usable native Hermes agent-workflow UI on DoofusDock against pinned downloaded source 8783054ef6cbafd86f10892241436862c1171a66, covering model/provider connection, chat and prompt lifecycle, tools, skills, plugins/MCP and required supporting context/attachments. Visual polish and unrelated Desktop administration are deferred.",
   "task_id": "hermes-par-0066",
-  "task_ledger_revision": 200,
+  "task_ledger_revision": 201,
   "tests_executed": [
     {
       "command": "test_doofus_task.py provider handoff and crash recovery suite",
@@ -7955,9 +7947,19 @@
       "command": "python apps/hermes-native/tools/doofus_task.py validate; git diff --check",
       "result": "Task schema validation PASS before checkpoint; diff check PASS; live native MCP agent turn PASS; temporary Gateway cleanup PASS.",
       "timestamp": "2026-11-27T23:22:35Z"
+    },
+    {
+      "command": "mcp_server_add_form_renders_transport_controls_and_submit_accessibly",
+      "result": "PASS: 15 MCP tests, including add form and credential entry, at 1440x900; connector directory interaction regression PASS; diff check PASS.",
+      "timestamp": "2026-11-28T00:16:21Z"
+    },
+    {
+      "command": "mcp_server_add_form_renders_transport_controls_and_submit_accessibly; mcp_server_api_key_is_entered_through_accessible_control_and_confirmed_without_echo; connectors_directory_shows_connected_state_and_account_details",
+      "result": "PASS: 15 MCP tests; 1 connector view-navigation test; all-target cargo check; git diff --check; task validation.",
+      "timestamp": "2026-11-28T00:19:20Z"
     }
   ],
   "uncertain_operations": [],
   "unresolved_questions": [],
-  "updated_at": "2026-11-27T23:22:35Z"
+  "updated_at": "2026-11-28T00:19:20Z"
 }

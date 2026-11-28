@@ -3961,3 +3961,14 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Local bounded parsing only; 256 KiB input and 64-entry limits remain in effect. No network or process launch was added.
 - **risks:** Live credential persistence, OAuth, server startup, env passthrough editing, live Gateway, packaged Windows, and pinned-source paired acceptance remain unverified.
 - **follow_up:** Continue live model/tool workflow acceptance and close remaining provider, skills, plugin/MCP, and source-paired gaps.
+
+- **id:** `hermes-native-mcp-management-viewport-20261128T001416Z`
+- **timestamp:** `2026-11-28T00:14:16Z`
+- **what:** Bounded the connector directory to a responsive share of the available pane and added a selectable MCP management view that hides the long directory while configuring servers.
+- **why:** The connector catalog consumed the full pane height, leaving MCP server and credential controls below the reachable viewport. The 900-pixel form test exposed that a height cap alone still clipped the expanded form.
+- **components:** Hermes Native Connectors UI, MCP server add and credential forms, UI harness tests, Hermes Native README and backlog.
+- **type:** Usability and regression fix.
+- **validation:** `cargo test -p hermes-native --features agent-automation --lib mcp_server_` (15 passed); `cargo test -p hermes-native --features agent-automation --lib connectors_directory_shows_connected_state_and_account_details` (1 passed); 1440×900 harness coverage for MCP add and credential forms; `git diff --check`.
+- **performance:** Height calculation is local and bounded; no extra Gateway request or persistence work was added.
+- **risks:** The connector directory intentionally uses less vertical space while MCP management is shown; the directory remains one click away. Live profile persistence and packaged acceptance remain open.
+- **follow_up:** Re-run the live Gateway credential-entry workflow from the MCP view using a synthetic value, then continue OAuth, recovery, packaged Windows, and pinned-source acceptance.
