@@ -2459,3 +2459,11 @@ Next: stop and remove the disposable test profile after recording this evidence;
 The isolated MCP agent-turn validation completed and its temporary test state has been removed. The profile-scoped Gateway process (PID 868) was stopped and verified absent; installed Hermes Gateway PID 2864 remained running. The exact disposable directory `C:\Users\orphe\AppData\Local\Temp\HermesNative-Delivery-Test-20261127-160416` was resolved and verified as a direct child of system TEMP before deletion, then confirmed absent. The synthetic MCP server fixture was not running at cleanup. The sanitized receipt `apps/hermes-native/artifacts/agent-ui/mcp-agent-turn-20261127.json` records the model-to-tool-to-result proof and cleanup state without provider or fixture secret values.
 
 PAR-0263 remains partial. Open acceptance includes native UI credential entry, OAuth, cold restart/recovery, packaged Windows behavior, source-paired review, and proving credential buffer zeroization. The one-turn test used OpenRouter DeepSeek Flash and a harmless synthetic tool; it is not general provider or connector acceptance.
+
+## Working revision 397 — Verify native UI MCP credential entry (2026-11-28)
+
+The native UI credential-entry gap for PAR-0263 is now verified against the isolated live Hermes Gateway. The headless runner navigated to the MCP server management view, opened the per-server masked PasswordInput, focused and filled it with a synthetic test value, then completed the profile-scoped save. Hermes confirmed only the environment-variable name; the value was not echoed or written to repository evidence. Evidence: apps/hermes-native/artifacts/agent-ui/mcp-native-ui-credential-20261128.json.
+
+PAR-0263 remains partial. This run did not exercise adding a new server through the UI, start/reload the MCP process, use the dedicated OpenRouter key, or send a DeepSeek Flash request. OAuth, cold restart/recovery, native Windows window, packaged behavior, credential-buffer zeroization, and source-paired acceptance remain open. The test used the pinned Hermes CLI by explicitly putting its test venv on PATH; the installed Hermes profile was not touched.
+
+Next: configure the dedicated OpenRouter key through the isolated profile's credential flow, verify a model-to-tool round-trip, then continue the remaining recovery, packaging, and source-pair acceptance.

@@ -324,7 +324,23 @@ impl ProtocolState {
                     );
                 }
                 if method == "actions.click" {
-                    matches[0].click();
+                    let position = matches[0].rect().center();
+                    harness.event(egui::Event::PointerMoved(position));
+                    harness.run_steps(2);
+                    harness.event(egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::default(),
+                    });
+                    harness.run_steps(2);
+                    harness.event(egui::Event::PointerButton {
+                        pos: position,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: egui::Modifiers::default(),
+                    });
+                    harness.run_steps(2);
                 } else {
                     let position = matches[0].rect().center();
                     harness.event(egui::Event::PointerMoved(position));

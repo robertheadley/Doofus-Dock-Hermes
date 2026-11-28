@@ -460,3 +460,7 @@ Replay transport handles explicit `snapshot_required: true` before normal event 
 ## MCP server credentials
 
 MCP server credentials use the pinned `mcp.servers.set_api_key` RPC. The Connectors server row opens an accessible masked editor; the value is sent only in the profile-scoped RPC, and the app retains only the returned server summary and environment-variable name. Receipts are fenced by request, server, profile, connection, instance, and authority epoch. A missing, invalid, or transport-unknown result clears the cached inventory and keeps the credential action unavailable until a matching refresh succeeds. The transient JSON-RPC serialization buffer is not proven to be memory-zeroized.
+
+## Local profile selectors and UI automation clicks
+
+A local Gateway endpoint profile identity is the Hermes-home filesystem path used to bind its ticket. It is not a valid logical profile selector for pinned upstream RPC APIs. Local profile-bound calls therefore omit profile and use the authenticated ticket authority; remote connections keep the logical profile name. The automation protocol sends actions.click as pointer move/down/up events at the unique semantic node center, matching egui normal input route. Unit coverage verifies the UI harness path; live native-window credential entry remains unverified.

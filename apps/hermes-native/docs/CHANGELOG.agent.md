@@ -3972,3 +3972,36 @@ Published transcript-follow implementation commit `04743204c45ea5b4b9894166dbeba
 - **performance:** Height calculation is local and bounded; no extra Gateway request or persistence work was added.
 - **risks:** The connector directory intentionally uses less vertical space while MCP management is shown; the directory remains one click away. Live profile persistence and packaged acceptance remain open.
 - **follow_up:** Re-run the live Gateway credential-entry workflow from the MCP view using a synthetic value, then continue OAuth, recovery, packaged Windows, and pinned-source acceptance.
+
+- **id:** hermes-native-local-profile-and-pointer-click-20261128T005238Z
+- **timestamp:** 2026-11-28T00:52:38Z
+- **what:** Omitted local Hermes-home filesystem paths from logical profile RPC selectors and changed semantic automation clicks to dispatch egui pointer move/down/up events.
+- **why:** The pinned Gateway treats profile as a logical profile name, while a local endpoint identity is a filesystem path. Pointer event dispatch gives live UI automation the same hit-testing path as normal input and allows testing MCP credential controls headlessly.
+- **components:** Gateway profile scoping, MCP server settings, headless automation protocol, README, architecture, backlog.
+- **type:** Compatibility and automation behavior.
+- **validation:** cargo test -p hermes-native --features agent-automation --bin hermes-automation (17 passed); cargo check -p hermes-native --all-targets --features agent-automation; git diff --check. Earlier focused profile-scope/MCP UI tests passed before the pointer dispatch update.
+- **performance:** No new network operations or persistent state; clicks use bounded egui harness steps.
+- **risks:** A live click attempt against the MCP key editor has not yet opened the editor, so live native credential entry remains unverified. No OpenRouter key was present in process/user/machine environment or the isolated profile; no live model call was attempted.
+- **follow_up:** Rebuild and retry headless live MCP key-editor interaction with the updated pointer route; then use DeepSeek Flash through OpenRouter once a secret is available through the app credential flow.
+
+- **id:** hermes-native-live-mcp-credential-ui-20261128T010821Z
+- **timestamp:** 2026-11-28T01:08:21Z
+- **what:** Verified the MCP credential editor through the rebuilt headless native UI against an isolated live Hermes Gateway and saved a synthetic credential.
+- **why:** The prior live attempt used an unpinned Hermes CLI path and the test looked for the wrong accessible input role. Pinning the venv CLI and targeting PasswordInput made the native UI path observable and repeatable.
+- **components:** MCP server configuration, automation pointer input, isolated Gateway harness, backlog and acceptance artifact.
+- **type:** Live acceptance evidence.
+- **validation:** Gateway identity matched the isolated Hermes home; MCP server row loaded; Set API key opened; PasswordInput accepted test input after focus; Save succeeded and reported only the environment-variable name; no secret value was recorded or echoed.
+- **performance:** No product-side runtime or network cost changes.
+- **risks:** The actual OpenRouter key was not available to this run; no DeepSeek Flash live turn, native Windows window, OAuth, or packaged acceptance was performed.
+- **follow_up:** Securely configure the dedicated OpenRouter key in the isolated profile, then verify a real model turn and tool round-trip.
+
+- **id:** hermes-native-par0263-evidence-rollup-20261128T011712Z
+- **timestamp:** 2026-11-28T01:17:12Z
+- **what:** Updated the MCP capability progress records and plan with the live headless credential-save evidence, keeping overall PAR-0263 partial.
+- **why:** The live test closes only the isolated profile credential-entry gap; preserving remaining runtime and packaging gaps prevents overstatement.
+- **components:** PAR-0263 implementation/chat progress rows, plan, backlog, sanitized test artifact.
+- **type:** Evidence and status update.
+- **validation:** Doofus task schema validator passed; all execution-log lines parse as JSON; both PAR-0263 progress rows reference the sanitized artifact and retain partial implementation state; artifact confirms success without storing the test value.
+- **performance:** Documentation-only.
+- **risks:** A real OpenRouter key was unavailable to the test profile; no live DeepSeek Flash call was made.
+- **follow_up:** Verify OpenRouter model and tool flow once a dedicated key is securely available in the isolated Hermes profile.

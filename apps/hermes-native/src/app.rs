@@ -16593,7 +16593,7 @@ fn render_message() -> &'static str {
                                 self.pending_mcp_server_removals.contains_key(&server.name);
                             let mut enabled = server.enabled;
                             ui.group(|ui| {
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.label(RichText::new(&server.name).strong().color(TEXT));
                                     ui.label(
                                         RichText::new(if server.enabled {

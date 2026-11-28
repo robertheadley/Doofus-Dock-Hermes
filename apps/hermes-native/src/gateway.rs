@@ -12702,7 +12702,15 @@ fn session_profile_params(
     let Some(profile) = profile else {
         return Ok(params);
     };
-    if profile.is_empty() || profile.len() > 128 || profile.chars().any(char::is_control) {
+    if profile.is_empty() || profile.chars().any(char::is_control) {
+        return Err("Hermes session profile scope is invalid".into());
+    }
+    // Local Gateway owner IDs are filesystem paths, not Hermes profile names. Its ticket already
+    // scopes the request to this home, so sending the path would be rejected by profile lookup.
+    if is_local_profile_home_identity(profile) {
+        return Ok(params);
+    }
+    if profile.len() > 128 {
         return Err("Hermes session profile scope is invalid".into());
     }
     let object = params
@@ -12713,6 +12721,17 @@ fn session_profile_params(
         serde_json::Value::String(profile.to_owned()),
     );
     Ok(params)
+}
+
+fn is_local_profile_home_identity(profile: &str) -> bool {
+    let bytes = profile.as_bytes();
+    PathBuf::from(profile).is_absolute()
+        || profile.starts_with('/')
+        || profile.starts_with("\\\\")
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'\\' | b'/'))
 }
 
 fn parse_agent_plugin_auto_update_settings(
@@ -20380,7 +20399,8 @@ fn validate_session_mutation_input(session_id: &str, request_id: &str) -> Result
 }
 
 fn session_profile_suffix(profile_id: &str) -> String {
-    if profile_id.is_empty() || profile_id == "default" {
+    if profile_id.is_empty() || profile_id == "default" || is_local_profile_home_identity(profile_id)
+    {
         String::new()
     } else {
         format!("?profile={}", encode_query_component(profile_id))
@@ -29462,10 +29482,23 @@ mod tests {
             Some("all".to_owned())
         );
         assert_eq!(optional_session_profile_suffix(None), "");
+        assert_eq!(session_profile_suffix(owner), "");
+        assert_eq!(session_profile_suffix("/home/hermes/.hermes"), "");
         assert_eq!(
             optional_session_profile_suffix(Some("worker")),
             "?profile=worker"
         );
+    }
+
+    #[test]
+    fn session_profile_params_omit_home_paths_but_preserve_logical_names() {
+        let owner = r"C:\Hermes\profiles\default";
+        let local = session_profile_params(json!({"name":"docs"}), Some(owner))
+            .expect("local owner path is a ticket scope, not a wire profile name");
+        assert_eq!(local, json!({"name":"docs"}));
+        let sibling = session_profile_params(json!({"name":"docs"}), Some("worker"))
+            .expect("logical sibling profile remains selectable");
+        assert_eq!(sibling, json!({"name":"docs","profile":"worker"}));
     }
 
     #[test]
